@@ -1,0 +1,123 @@
+// Function reference integration tests
+
+source -s <<END
+    // ── basic fn ref and call-through ──────────────────────────────
+
+    function add(a: int, b: int) -> int { a + b }
+    function double(x: int) -> int { x * 2 }
+    function negate(x: int) -> int { 0 - x }
+    function greet() -> string { "hello" }
+
+    // store in variable and call
+    derive test_basic_ref() -> int {
+        let f: fn(int, int) -> int = add
+        f(10, 20)
+    }
+
+    // call through different refs
+    derive test_swap_ref() -> int {
+        let f: fn(int) -> int = double
+        let g: fn(int) -> int = negate
+        f(5) + g(3)
+    }
+
+    // no-arg fn ref
+    derive test_nullary_ref() -> string {
+        let f: fn() -> string = greet
+        f()
+    }
+
+    // ── fn ref as parameter ───────────────────────────────────────
+
+    derive apply(f: fn(int) -> int, x: int) -> int { f(x) }
+
+    derive test_fn_as_param() -> int {
+        apply(double, 7)
+    }
+
+    // ── fn ref in struct field ────────────────────────────────────
+
+    struct BinOp {
+        op: fn(int, int) -> int
+    }
+
+    derive test_struct_field_call() -> int {
+        let b = BinOp { op: add }
+        b.op(3, 4)
+    }
+
+    // ── fn ref in list ────────────────────────────────────────────
+
+    derive test_fn_list() -> int {
+        let ops: list<fn(int) -> int> = [double, negate]
+        ops[0](5) + ops[1](5)
+    }
+
+    // ── fn ref equality ───────────────────────────────────────────
+
+    derive test_fn_eq() -> bool {
+        let f: fn(int) -> int = double
+        let g: fn(int) -> int = double
+        f == g
+    }
+
+    derive test_fn_neq() -> bool {
+        let f: fn(int) -> int = double
+        let g: fn(int) -> int = negate
+        f != g
+    }
+
+    // ── fn ref with mutation (function, not derive) ───────────────
+
+    entity Character { hp: int }
+
+    function heal(target: Character, amount: int) {
+        target.hp += amount
+    }
+
+    function apply_effect(target: Character, effect: fn(Character, int), amount: int) {
+        effect(target, amount)
+    }
+
+    // ── void fn ref ───────────────────────────────────────────────
+
+    function void_fn(x: int) { }
+
+    derive test_void_ref() -> bool {
+        let f: fn(int) = void_fn
+        true
+    }
+END
+
+// ── basic ref and call-through ─────────────────────────────────
+
+assert_eq test_basic_ref(), 30
+assert_eq test_swap_ref(), 7
+assert_eq test_nullary_ref(), "hello"
+
+// ── fn ref as parameter ────────────────────────────────────────
+
+assert_eq test_fn_as_param(), 14
+
+// ── fn ref in struct field ─────────────────────────────────────
+
+assert_eq test_struct_field_call(), 7
+
+// ── fn ref in list ─────────────────────────────────────────────
+
+assert_eq test_fn_list(), 5
+
+// ── fn ref equality ────────────────────────────────────────────
+
+assert_eq test_fn_eq(), true
+assert_eq test_fn_neq(), true
+
+// ── fn ref with mutation ───────────────────────────────────────
+
+spawn Character patient { hp: 10 }
+do apply_effect(patient, heal, 5)
+assert_eq patient.hp, 15
+
+// ── void fn ref ────────────────────────────────────────────────
+
+assert_eq test_void_ref(), true

@@ -171,6 +171,7 @@ pub(crate) fn value_eq(state: &dyn StateProvider, a: &Value, b: &Value) -> bool 
         }
 
         (Value::Invocation(a), Value::Invocation(b)) => a == b,
+        (Value::FnRef(a), Value::FnRef(b)) => a == b,
 
         // Different variants are not equal
         _ => false,
