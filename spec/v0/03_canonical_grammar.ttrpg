@@ -65,7 +65,7 @@
 //   Contextual / soft (lexed as IDENT, recognized by parser in position):
 //     system  use  group  enum  struct  entity  derive  mechanic  action
 //     reaction  hook  condition  prompt  option  event  move  cost  tag
-//     table  unit  suffix  const
+//     table  unit  suffix  const  fn
 //     requires  resolve  modify  suppress  trigger  roll  on  returns
 //     when  enabled  hint  suggest  description  default  result
 //     with  with_budget  has  is  include  as  grant  revoke  emit  free  ordered
@@ -630,12 +630,27 @@ type            = "int" | "bool" | "string" | "float"
                 | "TurnBudget" | "Duration" | "Position" | "Direction"
                 | "Condition" | "ActiveCondition" | "Invocation"
                 | "entity"                           // polymorphic any-entity type alias
+                | fn_type                            // function reference type
                 | IDENT                              // user-defined type
                 | "map" "<" type "," type ">"
                 | "list" "<" type ">"
                 | "set" "<" type ">"
                 | "option" "<" type ">"
                 | "resource" "(" expr "..=" expr ")"
+
+fn_type         = "fn" "(" (type ("," type)*)? ")" ("->" type)?
+
+// fn_type describes a function reference type. `fn` is a soft keyword —
+// recognized as a type constructor only when followed by `(`. The return
+// type is optional; when omitted, it defaults to unit.
+//
+// Examples:
+//   fn(int, int) -> int     two int params, returns int
+//   fn(entity) -> bool      one param, returns bool
+//   fn(int)                 one param, returns unit
+//   fn() -> string          no params, returns string
+//
+// See 01_type_system.ttrpg "Function reference types" for semantics.
 
 // `entity` is a checker-resolved alias for "any entity type" (Ty::AnyEntity).
 // It is useful for polymorphic parameters/receivers and can be combined with
@@ -877,10 +892,12 @@ primary_expr    = INT | STRING
 // RESOLUTION ORDER for `obj.Name(args)`:
 //   1. Enum constructor:  if obj resolves to Ty::EnumType
 //   2. Module-qualified:  if obj resolves to Ty::ModuleAlias
-//   3. Action dispatch:   if Name matches an action whose receiver
+//   3. Struct field fn-ref: if obj is a struct and Name is a field of
+//                         fn type, call through the fn ref value
+//   4. Action dispatch:   if Name matches an action whose receiver
 //                         type is compatible with typeof(obj)
-//   4. Builtin method:    type-specific methods (len, append, etc.)
-//   5. Error:             "type T has no method Name"
+//   5. Builtin method:    type-specific methods (len, append, etc.)
+//   6. Error:             "type T has no method Name"
 //
 // Action methods are checked BEFORE builtin methods because:
 //   - Builtin method names are lowercase (len, append, first, ...)

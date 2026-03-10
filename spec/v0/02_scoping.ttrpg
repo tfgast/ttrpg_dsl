@@ -57,6 +57,11 @@
 // clauses. Functions can call actions, other functions, derives, and
 // mechanics. Derives and mechanics CANNOT call functions.
 //
+// Functions (and only functions) can be referenced as first-class values.
+// A bare function name in expression position resolves to a fn ref value
+// of type `fn(T1, T2) -> R`. See 01_type_system.ttrpg for full details.
+// Functions with `with` constraints on any parameter cannot be referenced.
+//
 // Functions can provision turn budgets via `with_budget`, enabling them
 // to call costed actions. Within a `with_budget` block, the `turn`
 // keyword is accessible (readable as a struct). See with_budget docs below.

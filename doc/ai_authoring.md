@@ -447,6 +447,7 @@ function compute_heal(base: int, bonus: int) -> int {
 - NOT subject to condition `modify` clauses (no modify pipeline)
 - Return type optional — omit `->` for void functions
 - Supports `return expr` for early exit (or bare `return` for void functions)
+- **Function references:** functions can be stored as first-class values using `fn(T1, T2) -> R` types. Use the function name as a bare identifier to create a reference. Only `function` blocks without `with` constraints are eligible.
 - `with_budget(entity, { field: value }) { body }` provisions a scoped turn budget:
   - Actions called inside the body deduct from the provisioned budget
   - `turn` keyword works inside action/reaction/hook resolve blocks (set by action dispatch)

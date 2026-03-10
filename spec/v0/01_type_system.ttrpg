@@ -621,6 +621,66 @@ enum EffectSource {
 //     with `.name`, `.duration`, `.id`, `.applied_at` fields
 
 
+// --- Function reference types ---
+//
+// `fn(T1, T2, ...) -> R` is a first-class function reference type.
+// Values of this type reference a specific `function` declaration
+// and can be called like ordinary function calls.
+//
+// Type syntax:
+//   fn(int, int) -> int       two int params, returns int
+//   fn(entity) -> bool        one entity param, returns bool
+//   fn(int)                   one int param, returns unit (-> unit omitted)
+//   fn() -> string            no params, returns string
+//
+// Creating a function reference:
+//   A bare function name in expression position resolves to a function
+//   reference value when the name matches a declared `function` block.
+//   The resulting value has type `fn(P1, P2, ...) -> R` matching the
+//   function's declared signature.
+//
+//   function add(a: int, b: int) -> int { a + b }
+//   let op: fn(int, int) -> int = add    // op is a fn ref to `add`
+//
+// Calling through a function reference:
+//   fn-ref values are called with positional arguments only.
+//   Named arguments are not supported on indirect calls.
+//
+//   op(10, 20)    // returns 30
+//
+// Restrictions:
+//   - Only `function` blocks can be referenced. Derives, mechanics,
+//     actions, reactions, hooks, tables, prompts, and builtins are
+//     NOT eligible. Attempting to reference them is a checker error.
+//   - Functions with `with` constraints on any parameter cannot be
+//     referenced. The constraint requires call-site proof that cannot
+//     be enforced through indirect calls; allowing it would be unsound.
+//   - Signature matching is exact structural equality — the parameter
+//     types and return type must match precisely. Coercion-compatible
+//     types (e.g., int where float is expected) do NOT satisfy fn type
+//     matching.
+//
+// Function references can be:
+//   - Stored in variables:       let f: fn(int) -> int = double
+//   - Passed as arguments:       apply(f, 5)
+//   - Stored in struct fields:   struct Ops { apply: fn(int, int) -> int }
+//   - Called through struct fields: ops.apply(3, 4)
+//   - Compared for equality:     f == g  (compares by function name)
+//
+// Display: a function reference value displays as `<fn name>`.
+//
+// Resolution order for bare identifiers in expression position:
+//   1. Local variable bindings (let)
+//   2. Const declarations
+//   3. Function references (FnKind::Function only, no with constraints)
+//   4. Condition names (Condition type)
+//   5. Enum type names
+//
+// Function references do NOT capture any environment — they are
+// static references to top-level function declarations. There are
+// no closures or lambdas in v0.
+
+
 // --- ActiveCondition ---
 //
 // Runtime representation of a condition currently active on an entity.

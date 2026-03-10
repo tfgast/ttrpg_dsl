@@ -33,6 +33,7 @@
 | Type              | Description                                                 |
 |-------------------|-------------------------------------------------------------|
 | `entity`          | Polymorphic any-entity alias in type position               |
+| `fn(T1, T2) -> R` | Function reference type — see [Function References](#function-references) |
 | `Position`        | Opaque game board location                                  |
 | `Direction`       | Opaque spatial orientation (host-provided)                   |
 | `Duration`        | `EndOfTurn`, `StartOfNextTurn`, `Rounds(n)`, `Minutes(n)`, `Indefinite` |
@@ -277,6 +278,25 @@ Syntax: `function Name(params) -> ReturnType { body }` (return type optional, de
 
 Capabilities: dice, mutation, emit, grant/revoke, call actions/functions/derives/mechanics.
 Restrictions: no receiver (`on`), no cost/requires, no `invocation()`, not targeted by condition `modify`.
+
+#### Function References
+
+Functions (only `function` blocks — not derives, mechanics, actions, or tables) can be referenced as first-class values by using the function name as a bare identifier in expression position:
+
+```
+function add(a: int, b: int) -> int { a + b }
+
+let op: fn(int, int) -> int = add     // fn ref
+op(10, 20)                            // call through ref → 30
+```
+
+Type syntax: `fn(ParamType1, ParamType2) -> ReturnType`. Omit `-> ReturnType` for unit-returning functions: `fn(int)`.
+
+Restrictions:
+- Only `function` blocks can be referenced (not derives, mechanics, actions, tables, or builtins)
+- Functions with `with` constraints on any parameter cannot be referenced (the constraint cannot be enforced through indirect calls)
+- Signature matching is exact (structural equality, not coercion-compatible)
+- Named arguments are not supported when calling through a function reference — positional only
 
 `with_budget(entity, { field: value }) { body }` — provisions a scoped turn budget:
 - `turn` keyword readable/writable inside the body
@@ -671,6 +691,27 @@ if target is Character && target has Spellcasting {
 }
 ```
 
+### Function References
+
+A bare function name in expression position resolves to a `Value::FnRef` — a first-class reference to that function. The value can be stored in variables, passed as arguments, stored in struct fields, and called.
+
+```
+function double(x: int) -> int { x * 2 }
+
+let f: fn(int) -> int = double    // reference
+f(5)                               // call → 10
+
+// Stored in structs
+struct Ops { apply: fn(int, int) -> int }
+function add(a: int, b: int) -> int { a + b }
+let ops = Ops { apply: add }
+ops.apply(3, 4)                    // call through struct field → 7
+```
+
+Resolution order for bare identifiers: local bindings → consts → function refs → condition names → enum type names.
+
+Only `function` blocks (no `with` constraints on any parameter) are eligible. The `fn(T1, T2) -> R` type uses exact structural signature matching.
+
 ### Block Values
 
 Blocks are expressions — last expression statement is the value.
@@ -828,5 +869,5 @@ load ose:chargen  # load named bundle
 - Comments: `// line comment` (no block comments)
 - NL suppressed: inside `()` `[]`; after `+ - * / || && == != >= <= in => -> = += -=`; after `{ , : | #`
 - Reserved keywords: `let` `if` `else` `match` `true` `false` `none` `in` `for`
-- Soft keywords (usable as identifiers): `system` `use` `group` `enum` `struct` `entity` `derive` `mechanic` `function` `action` `reaction` `hook` `condition` `prompt` `option` `event` `move` `cost` `tag` `table` `unit` `suffix` `requires` `resolve` `modify` `suppress` `trigger` `roll` `on` `returns` `when` `enabled` `hint` `suggest` `description` `default` `result` `with` `has` `is` `include` `as` `grant` `revoke` `emit` `free` `ordered` `extends` `restricted` `on_apply` `on_remove` `stacking` `best` `by` `highest` `lowest` `ties` `oldest`
+- Soft keywords (usable as identifiers): `system` `use` `group` `enum` `struct` `entity` `derive` `mechanic` `function` `action` `reaction` `hook` `condition` `prompt` `option` `event` `move` `cost` `tag` `table` `unit` `suffix` `fn` `requires` `resolve` `modify` `suppress` `trigger` `roll` `on` `returns` `when` `enabled` `hint` `suggest` `description` `default` `result` `with` `has` `is` `include` `as` `grant` `revoke` `emit` `free` `ordered` `extends` `restricted` `on_apply` `on_remove` `stacking` `best` `by` `highest` `lowest` `ties` `oldest`
 - Dice literals take precedence over unit literals (`2d6` is dice, not unit)
