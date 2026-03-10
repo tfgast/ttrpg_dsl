@@ -1,0 +1,270 @@
+// ============================================================
+// OSRIC 3.0 World Objects — non-creature spell targets
+//
+// WorldObject is a thin entity representing doors, portals,
+// chests, torches, food stores, warded surfaces, dropped items,
+// and similar things that spells and abilities can interact with.
+//
+// Behaviour is composed via optional groups:
+//   Lockable      — doors, chests, portals (Hold Portal, Knock)
+//   Illumination  — torches, lanterns, magical lights
+//   Consumable    — food, water, rations
+//   Wardable      — glyphed/trapped surfaces
+//   Container     — chests, bags, barrels (holds items)
+//
+// Material feeds into the existing item_saving_throw() mechanic
+// in osric_item_saves.ttrpg. Lock states feed into strength
+// test tables in osric_ability.ttrpg.
+//
+// Reference: OSRIC 3.0 Player Guide, §1.6.4 (item saves),
+//            §1.1.2a (strength tests)
+// ============================================================
+
+import "osric_core.ttrpg"
+import "osric_ability.ttrpg"
+import "osric_item_saves.ttrpg"
+
+use "OSRIC"
+use "OSRIC Combat"
+use "OSRIC Ability"
+use "OSRIC Item Saves"
+
+system "OSRIC World Objects" {
+
+    // ========================================================
+    //  ENUMS
+    // ========================================================
+
+    enum ObjectKind {
+        Door,
+        Portal,
+        Chest,
+        Torch,
+        Lantern,
+        Candle,
+        Brazier,
+        FoodStore,
+        WaterStore,
+        Surface,
+        DroppedItem,
+        Furniture,
+        Other
+    }
+
+    // ========================================================
+    //  GROUPS
+    // ========================================================
+
+    // Lockable — doors, chests, portals.
+    // Resolution is strength-test-based (osric_ability.ttrpg),
+    // not HP-based. OSRIC does not assign HP to mundane objects.
+    group Lockable {
+        locked: bool = false
+        stuck: bool = false
+        held: bool = false              // Hold Portal
+        wizard_locked: bool = false     // Wizard Lock
+        spiked: bool = false
+    }
+
+    // Illumination — the WorldObject is the light source.
+    // It provides light in a Zone (created/managed by the host).
+    // Radius in feet. Duration uses the standard Duration enum
+    // (Indefinite for permanent light sources like Continual Light).
+    group Illumination {
+        lit: bool = false
+        radius: Feet = 0ft
+        magical: bool = false
+        duration: Duration = Duration.Indefinite
+    }
+
+    // Consumable — food, water, rations.
+    // Quantity is abstract units appropriate to the object
+    // (gallons for water, rations for food, etc.).
+    group Consumable {
+        quantity: int = 0
+        purified: bool = false
+    }
+
+    // Wardable — surfaces/objects with inscribed wards or traps.
+    // Glyph of Warding and Fire Trap target these. The actual
+    // zone/trigger is a Zone entity; this tracks the ward state
+    // on the object itself.
+    group Wardable {
+        warded: bool = false
+        ward_source: EffectSource = EffectSource.Unknown
+    }
+
+    // Container — chests, bags, barrels, sacks.
+    // Capacity in lbs. Contents tracking is simplified for now;
+    // full inventory transfer mechanics are deferred (tdsl-nphd).
+    group Container {
+        capacity_lbs: int = 0
+        item_count: int = 0
+    }
+
+    // ========================================================
+    //  WORLD OBJECT ENTITY
+    // ========================================================
+
+    entity WorldObject {
+        name: string
+        kind: ObjectKind
+        material: ItemMaterial
+        is_magical: bool = false
+        magic_bonus: int = 0
+        destroyed: bool = false
+
+        optional Lockable
+        optional Illumination
+        optional Consumable
+        optional Wardable
+        optional Container
+    }
+
+    // ========================================================
+    //  ITEM SAVE INTEGRATION
+    //
+    //  Convenience wrapper that rolls an item saving throw for
+    //  a WorldObject using its material and magic properties.
+    // ========================================================
+
+    mechanic world_object_saving_throw(
+        obj: WorldObject,
+        damage_type: ItemDamageType
+    ) -> ItemSaveResult {
+        item_saving_throw(
+            material: obj.material,
+            damage_type: damage_type,
+            is_magical: obj.is_magical,
+            magic_bonus: obj.magic_bonus
+        )
+    }
+
+
+    // ========================================================
+    //  DAMAGE TYPE MAPPING
+    //
+    //  Maps combat DamageType to ItemDamageType for item saves.
+    //  Not all combat damage types map cleanly; physical weapon
+    //  damage maps to Crushing (closest analogue for structural
+    //  impact). Magical fire/cold are distinguished from normal.
+    // ========================================================
+
+    derive combat_to_item_damage_type(dt: DamageType, magical: bool) -> ItemDamageType {
+        match dt {
+            Fire      => if magical { ItemDamageType.FireMagical } else { ItemDamageType.FireNormal },
+            Cold      => ItemDamageType.ColdMagical,
+            Lightning => ItemDamageType.Lightning,
+            Acid      => ItemDamageType.Acid,
+            Corrosion => ItemDamageType.Acid,
+            _         => ItemDamageType.Crushing
+        }
+    }
+
+
+    // ========================================================
+    //  WORLD OBJECT DAMAGE
+    //
+    //  WorldObjects don't have HP. When subjected to damaging
+    //  effects, they roll an item saving throw. On failure the
+    //  object is destroyed.
+    // ========================================================
+
+    event ObjectDestroyed(obj: WorldObject, damage_type: ItemDamageType) {}
+
+    action DamageObject on target: WorldObject (
+        attacker: entity,
+        raw_damage: int,
+        damage_type: DamageType = DamageType.Blunt,
+        magical_source: bool = false
+    ) {
+        cost free
+        resolve {
+            if !target.destroyed {
+                let idt = combat_to_item_damage_type(damage_type, magical_source)
+                let result = world_object_saving_throw(target, idt)
+                if !result.survived {
+                    target.destroyed = true
+                    emit ObjectDestroyed(obj: target, damage_type: idt)
+                }
+            }
+        }
+    }
+
+
+    // ========================================================
+    //  DOOR FORCING — STRENGTH TESTS
+    //
+    //  Wires Lockable state into the existing strength test
+    //  tables from osric_ability.ttrpg.
+    //
+    //  Stuck doors: minor test (1-X on d6 based on STR).
+    //  Held/wizard-locked doors: extraordinary test (only
+    //  STR 18.91+ or 19 have a chance).
+    //  Locked doors: not forceable by minor test alone —
+    //  requires extraordinary success or tools (thieves' picks,
+    //  Knock spell, chopping).
+    //
+    //  Reference: OSRIC 3.0 Player Guide, §1.1.2a, §3.3.5
+    // ========================================================
+
+    event DoorForced(actor: Character, door: WorldObject, extraordinary: bool, roll: int, threshold: int) {}
+    event DoorForceFailed(actor: Character, door: WorldObject, extraordinary: bool, roll: int, threshold: int) {}
+
+    // Compute the effective minor test threshold for a character,
+    // accounting for exceptional strength.
+    derive effective_str_minor(actor: Character) -> int {
+        let score = actor.abilities[STR]
+        if score == 18 {
+            if actor has ExceptionalStrength as es {
+                exc_str_minor_test(actor.es.percentile)
+            } else { str_minor_test(18) }
+        } else {
+            str_minor_test(score)
+        }
+    }
+
+    // Compute the extraordinary minor test threshold.
+    derive effective_str_extraordinary(actor: Character) -> int {
+        let score = actor.abilities[STR]
+        if score == 18 {
+            if actor has ExceptionalStrength as es {
+                exc_str_minor_extraordinary(actor.es.percentile)
+            } else { 0 }
+        } else {
+            str_minor_extraordinary(score)
+        }
+    }
+
+    action ForceDoor on actor: Character (door: WorldObject) {
+        cost free
+        resolve {
+            if door has Lockable as lock {
+                let needs_extraordinary = door.lock.held || door.lock.wizard_locked || door.lock.locked
+
+                if needs_extraordinary {
+                    let threshold = effective_str_extraordinary(actor)
+                    let d6 = roll(1d6).total
+                    if threshold > 0 && d6 <= threshold {
+                        door.lock.stuck = false
+                        door.lock.locked = false
+                        door.lock.held = false
+                        door.lock.wizard_locked = false
+                        emit DoorForced(actor: actor, door: door, extraordinary: true, roll: d6, threshold: threshold)
+                    } else {
+                        emit DoorForceFailed(actor: actor, door: door, extraordinary: true, roll: d6, threshold: threshold)
+                    }
+                } else if door.lock.stuck {
+                    let threshold = effective_str_minor(actor)
+                    let d6 = roll(1d6).total
+                    if d6 <= threshold {
+                        door.lock.stuck = false
+                        emit DoorForced(actor: actor, door: door, extraordinary: false, roll: d6, threshold: threshold)
+                    } else {
+                        emit DoorForceFailed(actor: actor, door: door, extraordinary: false, roll: d6, threshold: threshold)
+                    }
+                }
+            }
+        }
+    }
+}

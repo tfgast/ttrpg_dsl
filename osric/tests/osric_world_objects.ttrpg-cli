@@ -1,0 +1,189 @@
+// OSRIC World Objects integration tests
+//
+// Tests for WorldObject entity, groups, item save integration,
+// DamageObject action, and ForceDoor action.
+
+load osric/*.ttrpg
+
+// ── combat_to_item_damage_type derive ─────────────────────────
+
+assert_eq combat_to_item_damage_type(DamageType.Fire, true), ItemDamageType.FireMagical
+assert_eq combat_to_item_damage_type(DamageType.Fire, false), ItemDamageType.FireNormal
+assert_eq combat_to_item_damage_type(DamageType.Cold, true), ItemDamageType.ColdMagical
+assert_eq combat_to_item_damage_type(DamageType.Cold, false), ItemDamageType.ColdMagical
+assert_eq combat_to_item_damage_type(DamageType.Lightning, false), ItemDamageType.Lightning
+assert_eq combat_to_item_damage_type(DamageType.Acid, false), ItemDamageType.Acid
+assert_eq combat_to_item_damage_type(DamageType.Corrosion, false), ItemDamageType.Acid
+assert_eq combat_to_item_damage_type(DamageType.Slashing, false), ItemDamageType.Crushing
+assert_eq combat_to_item_damage_type(DamageType.Piercing, false), ItemDamageType.Crushing
+assert_eq combat_to_item_damage_type(DamageType.Blunt, false), ItemDamageType.Crushing
+
+// ── effective_str_minor derive ────────────────────────────────
+
+// STR 10: minor test threshold = 2
+spawn Character str10 { name: "STR 10", classes: [ClassLevel { class: Fighter, level: 1 }], abilities: { STR: 10, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 10, hp: 10 } }
+assert_eq effective_str_minor(str10), 2
+
+// STR 16: minor test threshold = 3
+spawn Character str16 { name: "STR 16", classes: [ClassLevel { class: Fighter, level: 1 }], abilities: { STR: 16, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 10, hp: 10 } }
+assert_eq effective_str_minor(str16), 3
+
+// STR 18 without exceptional: minor test threshold = 3
+spawn Character str18 { name: "STR 18", classes: [ClassLevel { class: Fighter, level: 1 }], abilities: { STR: 18, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 10, hp: 10 } }
+assert_eq effective_str_minor(str18), 3
+
+// STR 18/76: minor test threshold = 4 (exc_str_minor_test 76..=90 => 4)
+spawn Character str18_76 { name: "STR 18/76", classes: [ClassLevel { class: Fighter, level: 1 }], abilities: { STR: 18, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 10, hp: 10 }, ExceptionalStrength { percentile: 76 } }
+assert_eq effective_str_minor(str18_76), 4
+
+// STR 19: minor test threshold = 5
+spawn Character str19 { name: "STR 19", classes: [ClassLevel { class: Fighter, level: 1 }], abilities: { STR: 19, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 10, hp: 10 } }
+assert_eq effective_str_minor(str19), 5
+
+// ── effective_str_extraordinary derive ────────────────────────
+
+// STR 10: no extraordinary chance
+assert_eq effective_str_extraordinary(str10), 0
+
+// STR 18 without exceptional: no extraordinary chance
+assert_eq effective_str_extraordinary(str18), 0
+
+// STR 18/76: no extraordinary chance (exc_str_minor_extraordinary 1..=90 => 0)
+assert_eq effective_str_extraordinary(str18_76), 0
+
+// STR 18/91: extraordinary chance = 1 (exc_str_minor_extraordinary 91..=99 => 1)
+spawn Character str18_91 { name: "STR 18/91", classes: [ClassLevel { class: Fighter, level: 1 }], abilities: { STR: 18, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 10, hp: 10 }, ExceptionalStrength { percentile: 91 } }
+assert_eq effective_str_extraordinary(str18_91), 1
+
+// STR 19: extraordinary chance = 2
+assert_eq effective_str_extraordinary(str19), 2
+
+// ── world_object_saving_throw mechanic ────────────────────────
+
+// Wooden door vs normal fire: target 5 (item_save_target Wood/FireNormal)
+// Roll high (20) => survives
+spawn WorldObject wood_door { name: "Wooden Door", kind: ObjectKind.Door, material: ItemMaterial.Wood }
+rolls 20
+let save_pass = world_object_saving_throw(wood_door, ItemDamageType.FireNormal)
+assert_eq save_pass.survived, true
+assert_eq save_pass.target, 5
+
+// Roll low (1) => destroyed
+rolls 1
+let save_fail = world_object_saving_throw(wood_door, ItemDamageType.FireNormal)
+assert_eq save_fail.survived, false
+assert_eq save_fail.target, 5
+
+rolls clear
+
+// Magical item bonus: +2 for magical, lowers effective target
+spawn WorldObject magic_chest { name: "Magic Chest", kind: ObjectKind.Chest, material: ItemMaterial.Wood, is_magical: true }
+rolls 4
+let magic_save = world_object_saving_throw(magic_chest, ItemDamageType.FireNormal)
+// Target 5, magic bonus 2 => effective target 3 => roll 4 >= 3 => survives
+assert_eq magic_save.survived, true
+assert_eq magic_save.target, 5
+assert_eq magic_save.modified_target, 3
+
+rolls clear
+
+// ── DamageObject action ───────────────────────────────────────
+
+// Object survives when save succeeds (high roll)
+spawn WorldObject sturdy_door { name: "Sturdy Door", kind: ObjectKind.Door, material: ItemMaterial.Metal }
+spawn Character attacker { name: "Attacker", classes: [ClassLevel { class: Fighter, level: 1 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 10, hp: 10 } }
+rolls 20
+do DamageObject(sturdy_door, attacker, 10, DamageType.Fire, true)
+assert_eq sturdy_door.destroyed, false
+
+rolls clear
+
+// Object destroyed when save fails (low roll)
+// Metal vs FireMagical: target 2, roll 1 => fail
+spawn WorldObject flimsy_door { name: "Flimsy Door", kind: ObjectKind.Door, material: ItemMaterial.Metal }
+rolls 1
+do DamageObject(flimsy_door, attacker, 10, DamageType.Fire, true)
+assert_eq flimsy_door.destroyed, true
+
+rolls clear
+
+// Already-destroyed object is not re-rolled
+spawn WorldObject broken_obj { name: "Broken Thing", kind: ObjectKind.Furniture, material: ItemMaterial.Wood, destroyed: true }
+do DamageObject(broken_obj, attacker, 10, DamageType.Fire)
+assert_eq broken_obj.destroyed, true
+
+rolls clear
+
+// ── ForceDoor action: stuck door ──────────────────────────────
+
+// STR 16 vs stuck door: threshold 3, roll 2 => success (2 <= 3)
+spawn WorldObject stuck_door { name: "Stuck Door", kind: ObjectKind.Door, material: ItemMaterial.Wood, Lockable { stuck: true } }
+rolls 2
+do ForceDoor(str16, stuck_door)
+assert_eq stuck_door.Lockable.stuck, false
+
+rolls clear
+
+// STR 10 vs stuck door: threshold 2, roll 5 => fail (5 > 2)
+spawn WorldObject stuck_door_2 { name: "Stuck Door 2", kind: ObjectKind.Door, material: ItemMaterial.Wood, Lockable { stuck: true } }
+rolls 5
+do ForceDoor(str10, stuck_door_2)
+assert_eq stuck_door_2.Lockable.stuck, true
+
+rolls clear
+
+// ── ForceDoor action: held door (extraordinary) ───────────────
+
+// STR 19 vs held door: extraordinary threshold 2, roll 1 => success
+spawn WorldObject held_door { name: "Held Door", kind: ObjectKind.Door, material: ItemMaterial.Wood, Lockable { held: true } }
+rolls 1
+do ForceDoor(str19, held_door)
+assert_eq held_door.Lockable.held, false
+assert_eq held_door.Lockable.stuck, false
+
+rolls clear
+
+// STR 10 vs held door: extraordinary threshold 0, always fails
+spawn WorldObject held_door_2 { name: "Held Door 2", kind: ObjectKind.Door, material: ItemMaterial.Wood, Lockable { held: true } }
+rolls 1
+do ForceDoor(str10, held_door_2)
+assert_eq held_door_2.Lockable.held, true
+
+rolls clear
+
+// ── ForceDoor action: wizard-locked door ──────────────────────
+
+// STR 18/91 vs wizard-locked: extraordinary threshold 1, roll 1 => success
+spawn WorldObject wlocked_door { name: "Wizard Locked Door", kind: ObjectKind.Door, material: ItemMaterial.Wood, Lockable { wizard_locked: true } }
+rolls 1
+do ForceDoor(str18_91, wlocked_door)
+assert_eq wlocked_door.Lockable.wizard_locked, false
+
+rolls clear
+
+// STR 18/76 vs wizard-locked: extraordinary threshold 0, always fails
+spawn WorldObject wlocked_door_2 { name: "Wizard Locked Door 2", kind: ObjectKind.Door, material: ItemMaterial.Wood, Lockable { wizard_locked: true } }
+rolls 1
+do ForceDoor(str18_76, wlocked_door_2)
+assert_eq wlocked_door_2.Lockable.wizard_locked, true
+
+rolls clear
+
+// ── ForceDoor action: locked door ─────────────────────────────
+
+// Locked doors require extraordinary strength (same as held)
+// STR 19 vs locked door: extraordinary threshold 2, roll 2 => success
+spawn WorldObject locked_door { name: "Locked Door", kind: ObjectKind.Door, material: ItemMaterial.Wood, Lockable { locked: true } }
+rolls 2
+do ForceDoor(str19, locked_door)
+assert_eq locked_door.Lockable.locked, false
+
+rolls clear
+
+// STR 16 vs locked door: extraordinary threshold 0, always fails
+spawn WorldObject locked_door_2 { name: "Locked Door 2", kind: ObjectKind.Door, material: ItemMaterial.Wood, Lockable { locked: true } }
+rolls 1
+do ForceDoor(str16, locked_door_2)
+assert_eq locked_door_2.Lockable.locked, true
+
+rolls clear
