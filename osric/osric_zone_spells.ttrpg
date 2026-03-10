@@ -78,7 +78,7 @@ system "OSRIC Zone Spells" {
         level: 2,
         range: SpellRange.Distance(distance: Feet { value: 120 }),
         duration: SpellDuration.Rounds(count: 0),   // 2 rounds/level, set at resolution
-        area: SpellArea { shape: AreaShape.Sphere(radius: 15ft), anchor_mode: AnchorMode.Either },
+        area: [SpellArea { shape: AreaShape.Sphere(radius: 15ft), anchor_mode: AnchorMode.Either }],
         components: SpellComponents { material: false },
         casting_time: CastingTime.Segments(count: 5),
         saving_throw: SpellSave.NoSave,
@@ -146,7 +146,7 @@ system "OSRIC Zone Spells" {
         level: 4,
         range: SpellRange.Touch,
         duration: SpellDuration.Rounds(count: 0),   // 2 rounds/level, set at resolution
-        area: SpellArea { shape: AreaShape.Sphere(radius: 10ft), anchor_mode: AnchorMode.EntityOnly },
+        area: [SpellArea { shape: AreaShape.Sphere(radius: 10ft), anchor_mode: AnchorMode.EntityOnly }],
         components: SpellComponents { material: true },
         casting_time: CastingTime.Rounds(count: 1),
         saving_throw: SpellSave.NoSave,
@@ -232,7 +232,10 @@ system "OSRIC Zone Spells" {
         level: 4,
         range: SpellRange.Distance(distance: Feet { value: 60 }),
         duration: SpellDuration.Rounds(count: 0),   // concentration or 1 round/level
-        area: SpellArea { shape: AreaShape.Wall(length_per_level: 20ft, thickness: 10ft), anchor_mode: AnchorMode.PositionOnly },
+        area: [
+            SpellArea { shape: AreaShape.Wall(length_per_level: 20ft, thickness: 10ft), anchor_mode: AnchorMode.PositionOnly },
+            SpellArea { shape: AreaShape.Radius(radius: 10ft), anchor_mode: AnchorMode.EntityOnly }
+        ],
         components: SpellComponents { material: false },
         casting_time: CastingTime.Segments(count: 4),
         saving_throw: SpellSave.NoSave,
@@ -278,7 +281,12 @@ system "OSRIC Zone Spells" {
         level: 6,
         range: SpellRange.Distance(distance: Feet { value: 30 }),
         duration: SpellDuration.Rounds(count: 0),   // 3 rounds/level
-        area: SpellArea { shape: AreaShape.Special(description: "Sphere, 5ft to 20ft radius"), anchor_mode: AnchorMode.PositionOnly },
+        area: [
+            SpellArea { shape: AreaShape.Sphere(radius: 5ft) },
+            SpellArea { shape: AreaShape.Sphere(radius: 10ft) },
+            SpellArea { shape: AreaShape.Sphere(radius: 15ft) },
+            SpellArea { shape: AreaShape.Sphere(radius: 20ft) }
+        ],
         components: SpellComponents { material: false },
         casting_time: CastingTime.Segments(count: 9),
         saving_throw: SpellSave.NoSave,
@@ -374,7 +382,7 @@ system "OSRIC Zone Spells" {
         level: 3,
         range: SpellRange.Touch,
         duration: SpellDuration.Special(description: "Until discharged"),
-        area: SpellArea { shape: AreaShape.Special(description: "Up to 25 sq ft per caster level"), anchor_mode: AnchorMode.PositionOnly },
+        area: [SpellArea { shape: AreaShape.Special(description: "Up to 25 sq ft per caster level") }],
         components: SpellComponents { material: true },
         casting_time: CastingTime.Special(description: "1 segment per sq ft"),
         saving_throw: SpellSave.Half,

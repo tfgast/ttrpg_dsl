@@ -259,7 +259,6 @@ system "OSRIC" {
 
     // Shape of the spell's area of effect.
     enum AreaShape {
-        None,
         Radius(radius: Feet),
         Sphere(radius: Feet),
         Cube(side: Feet),
@@ -415,7 +414,7 @@ system "OSRIC" {
         level: int
         range: SpellRange
         duration: SpellDuration
-        area: SpellArea
+        area: list<SpellArea> = []
         components: SpellComponents
         casting_time: CastingTime
         saving_throw: SpellSave

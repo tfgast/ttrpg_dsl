@@ -169,8 +169,8 @@ fn osric_core_has_all_enums() {
     // SpellId: 18 variants (13 original + Silence15Radius, ProtectionFromEvil10Radius, WallOfFire, BladeBarrier, GlyphOfWarding)
     assert!(enums.contains(&("SpellId", 18)), "missing SpellId enum");
 
-    // AreaShape: 8 variants (None, Radius, Sphere, Cube, Wall, Cone, Line, Special)
-    assert!(enums.contains(&("AreaShape", 8)), "missing AreaShape enum");
+    // AreaShape: 7 variants (Radius, Sphere, Cube, Wall, Cone, Line, Special)
+    assert!(enums.contains(&("AreaShape", 7)), "missing AreaShape enum");
     // AnchorMode: 3 variants (PositionOnly, EntityOnly, Either)
     assert!(enums.contains(&("AnchorMode", 3)), "missing AnchorMode enum");
     // AnchorPoint: 2 variants (AtPosition, AtEntity)
