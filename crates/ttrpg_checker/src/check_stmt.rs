@@ -405,16 +405,9 @@ impl Checker<'_> {
     /// Check whether an lvalue targets a `restricted` field from outside its
     /// declaring system. Only called when module-aware checking is active.
     fn check_restricted_lvalue(&mut self, lvalue: &LValue, span: ttrpg_ast::Span) {
-        // Find the last Field segment — that's the field being assigned.
-        let last_field = match lvalue.segments.last() {
-            Some(LValueSegment::Field(name)) => name,
-            _ => return, // ends with Index or empty — no field restriction
-        };
-
-        // Walk the path up to (but not including) the last segment to find the
-        // container type.  We mirror the logic in resolve_lvalue_type but bail
-        // silently on any resolution failure (errors are already reported
-        // elsewhere).
+        // Walk the full path and reject as soon as assignment flows through a
+        // restricted field, even if the final mutation is to a nested subfield
+        // or an indexed element of that restricted container.
         let root_ty = match self.scope.lookup(&lvalue.root) {
             Some(binding) => binding.ty.clone(),
             None => return,
@@ -422,9 +415,7 @@ impl Checker<'_> {
 
         let mut current = root_ty;
         let mut path_key = lvalue.root.to_string();
-        // Walk all segments except the last one to find the container type
-        let prefix_len = lvalue.segments.len() - 1;
-        for seg in &lvalue.segments[..prefix_len] {
+        for seg in &lvalue.segments {
             if current.is_error() {
                 return;
             }
@@ -439,106 +430,117 @@ impl Checker<'_> {
                     } else {
                         name.clone()
                     };
+                    if let Some((field_name, group_owner, entity_owner)) =
+                        self.lookup_restricted_field_owners(&current, &resolved_name)
+                    {
+                        if !self.restricted_field_mutation_allowed(&group_owner, &entity_owner) {
+                            let declaring_sys = group_owner.as_ref().or(entity_owner.as_ref());
+                            if let (Some(current_sys), Some(declaring_sys)) =
+                                (&self.current_system, declaring_sys)
+                            {
+                                self.error(
+                                    format!(
+                                        "cannot mutate restricted field `{field_name}` from system \"{current_sys}\"; \
+                                         it is declared in system \"{declaring_sys}\""
+                                    ),
+                                    span,
+                                );
+                                return;
+                            }
+                        }
+                    }
                     current = self.resolve_field(&current, &resolved_name, lvalue.span);
                     path_key = format!("{path_key}.{name}");
                 }
                 LValueSegment::Index(_) => {
-                    // Can't track types through dynamic indexing for this check
-                    return;
+                    current = match &current {
+                        Ty::List(inner) => *inner.clone(),
+                        Ty::Map(_, val) => *val.clone(),
+                        _ => return,
+                    };
+                    // Narrowing cannot be tracked through dynamic indexing.
+                    path_key.clear();
                 }
             }
         }
+    }
 
-        if current.is_error() {
-            return;
-        }
-
-        // Now `current` is the container type and `last_field` is the field name.
-        // Look up the FieldInfo to check `restricted`.
-        // Returns (field_name, group_declaring_system, entity_declaring_system).
-        // Mutation is allowed if current_system matches either owner.
-        let (field_name, group_owner, entity_owner) = match &current {
+    fn lookup_restricted_field_owners(
+        &self,
+        current: &Ty,
+        field_name: &Name,
+    ) -> Option<(Name, Option<Name>, Option<Name>)> {
+        match current {
             Ty::Entity(entity_name) | Ty::Struct(entity_name) | Ty::UnitType(entity_name) => {
-                // Check entity/struct own fields
                 if let Some(fields) = self.env.lookup_fields(entity_name) {
-                    if let Some(fi) = fields.iter().find(|f| f.name == *last_field) {
+                    if let Some(fi) = fields.iter().find(|f| f.name == *field_name) {
                         if !fi.restricted {
-                            return;
+                            return None;
                         }
                         let eo = self.env.type_owner.get(entity_name).cloned();
-                        (fi.name.clone(), None, eo)
+                        Some((fi.name.clone(), None, eo))
                     } else if let Ty::Entity(ename) = &current {
-                        // Check if it's a flattened included-group field
-                        if let Some(group_name) = self.env.lookup_flattened_field(ename, last_field)
+                        if let Some(group_name) = self.env.lookup_flattened_field(ename, field_name)
                         {
                             if let Some(group_info) =
                                 self.env.lookup_optional_group(ename, group_name)
                             {
                                 if let Some(fi) =
-                                    group_info.fields.iter().find(|f| f.name == *last_field)
+                                    group_info.fields.iter().find(|f| f.name == *field_name)
                                 {
                                     if !fi.restricted {
-                                        return;
+                                        return None;
                                     }
                                     let go = self.env.group_owner.get(group_name).cloned();
                                     let eo = self.env.type_owner.get(ename).cloned();
-                                    (fi.name.clone(), go, eo)
+                                    Some((fi.name.clone(), go, eo))
                                 } else {
-                                    return;
+                                    None
                                 }
                             } else {
-                                return;
+                                None
                             }
                         } else {
-                            return;
+                            None
                         }
                     } else {
-                        return;
+                        None
                     }
                 } else {
-                    return;
+                    None
                 }
             }
             Ty::OptionalGroupRef(entity_name, group_name) => {
-                // Field on an optional/included group
                 if let Some(group_info) = self.env.lookup_optional_group(entity_name, group_name) {
-                    if let Some(fi) = group_info.fields.iter().find(|f| f.name == *last_field) {
+                    if let Some(fi) = group_info.fields.iter().find(|f| f.name == *field_name) {
                         if !fi.restricted {
-                            return;
+                            return None;
                         }
                         let go = self.env.group_owner.get(group_name).cloned();
                         let eo = self.env.type_owner.get(entity_name).cloned();
-                        (fi.name.clone(), go, eo)
+                        Some((fi.name.clone(), go, eo))
                     } else {
-                        return;
+                        None
                     }
                 } else {
-                    return;
+                    None
                 }
             }
-            _ => return,
-        };
+            _ => None,
+        }
+    }
 
-        // Compare declaring system(s) with current system.
-        // Mutation is allowed from the module that declared the group OR the
-        // module that declared the entity containing the group.
+    fn restricted_field_mutation_allowed(
+        &self,
+        group_owner: &Option<Name>,
+        entity_owner: &Option<Name>,
+    ) -> bool {
         if let Some(ref current_sys) = self.current_system {
-            let allowed = [&group_owner, &entity_owner]
+            [&group_owner, &entity_owner]
                 .iter()
-                .any(|owner| owner.as_ref() == Some(current_sys));
-            if !allowed {
-                // Pick the most specific owner for the error message
-                let declaring_sys = group_owner.as_ref().or(entity_owner.as_ref());
-                if let Some(declaring_sys) = declaring_sys {
-                    self.error(
-                        format!(
-                            "cannot mutate restricted field `{field_name}` from system \"{current_sys}\"; \
-                             it is declared in system \"{declaring_sys}\""
-                        ),
-                        span,
-                    );
-                }
-            }
+                .any(|owner| owner.as_ref() == Some(current_sys))
+        } else {
+            true
         }
     }
 

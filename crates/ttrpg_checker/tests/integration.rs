@@ -12098,6 +12098,77 @@ fn test_restricted_group_field_cross_system_rejected() {
 }
 
 #[test]
+fn test_restricted_indexed_field_cross_system_rejected() {
+    expect_multi_errors(
+        &[
+            (
+                "core.ttrpg",
+                r#"
+                system "Core" {
+                    entity Character {
+                        restricted spell_slots: map<int, int>
+                    }
+                }
+                "#,
+            ),
+            (
+                "ext.ttrpg",
+                r#"
+                use "Core"
+                system "Ext" {
+                    action Cast on target: Character () {
+                        resolve {
+                            target.spell_slots[1] -= 1
+                        }
+                    }
+                }
+                "#,
+            ),
+        ],
+        &["cannot mutate restricted field `spell_slots`"],
+    );
+}
+
+#[test]
+fn test_restricted_group_nested_subfield_cross_system_rejected() {
+    expect_multi_errors(
+        &[
+            (
+                "core.ttrpg",
+                r#"
+                system "Core" {
+                    struct CoinPurse {
+                        gp: int
+                    }
+                    entity Character {
+                        optional Inventory {
+                            restricted coins: CoinPurse
+                        }
+                    }
+                }
+                "#,
+            ),
+            (
+                "ext.ttrpg",
+                r#"
+                use "Core"
+                system "Ext" {
+                    action Spend on target: Character () {
+                        resolve {
+                            if target has Inventory {
+                                target.Inventory.coins.gp -= 1
+                            }
+                        }
+                    }
+                }
+                "#,
+            ),
+        ],
+        &["cannot mutate restricted field `coins`"],
+    );
+}
+
+#[test]
 fn test_restricted_group_field_entity_owner_allowed() {
     // A group declared in "Core" with restricted fields, included by an entity
     // declared in "Ext". "Ext" (the entity owner) should be allowed to mutate
