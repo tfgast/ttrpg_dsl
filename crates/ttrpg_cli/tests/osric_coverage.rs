@@ -77,7 +77,9 @@ fn osric_combined_coverage() {
     }
 
     // 4. Generate and write coverage report
-    runner.exec("coverage").expect("failed to generate coverage report");
+    runner
+        .exec("coverage")
+        .expect("failed to generate coverage report");
     let output = runner.take_output();
     let report = output.join("\n");
 
