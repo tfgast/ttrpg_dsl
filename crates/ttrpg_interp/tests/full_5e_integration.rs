@@ -153,7 +153,7 @@ fn add_weapon(
             None => Value::Option(None),
         },
     );
-    state.add_entity(name, fields)
+    state.add_entity("Weapon", fields)
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -189,7 +189,7 @@ fn add_character(
     fields.insert("conditions".into(), conditions);
     fields.insert("position".into(), position);
     fields.insert("equipped_weapon".into(), Value::Entity(equipped_weapon));
-    state.add_entity(name, fields)
+    state.add_entity("Character", fields)
 }
 
 fn standard_turn_budget() -> BTreeMap<ttrpg_ast::Name, Value> {

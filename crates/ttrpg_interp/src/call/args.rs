@@ -6,6 +6,7 @@ use ttrpg_checker::ty::Ty;
 use crate::Env;
 use crate::RuntimeError;
 use crate::eval::{eval_expr, try_resolve_variant_from_hint};
+use crate::state::StateProvider;
 use crate::value::Value;
 
 // ── Argument binding ───────────────────────────────────────────
@@ -91,6 +92,13 @@ pub(super) fn bind_args(
         env.pop_scope();
     }
 
+    // Debug-only: validate entity-typed arguments match declared parameter types
+    if cfg!(debug_assertions) {
+        if let Ok(ref bound) = outcome {
+            debug_assert_entity_args(params, bound, env.state);
+        }
+    }
+
     outcome
 }
 
@@ -152,6 +160,30 @@ fn fill_defaults(
         }
     }
     Ok(bound)
+}
+
+/// Debug-only: warn if any entity-typed argument doesn't match its declared parameter type.
+///
+/// This catches checker bugs where a function receives a `Monster` entity for a `Character`
+/// parameter. Uses `entity_type_name()` for best-effort checking — unknown entity types pass.
+fn debug_assert_entity_args(
+    params: &[ParamInfo],
+    bound: &[(Name, Value)],
+    state: &dyn StateProvider,
+) {
+    for (name, val) in bound {
+        if let Some(param) = params.iter().find(|p| &p.name == name) {
+            if let (Value::Entity(eref), Ty::Entity(expected)) = (val, &param.ty) {
+                if let Some(actual) = state.entity_type_name(eref) {
+                    debug_assert!(
+                        &actual == expected,
+                        "entity type mismatch for parameter '{}': expected '{}', got '{}'",
+                        name, expected, actual
+                    );
+                }
+            }
+        }
+    }
 }
 
 /// Evaluate an argument expression, trying type-hinted enum variant resolution first.
