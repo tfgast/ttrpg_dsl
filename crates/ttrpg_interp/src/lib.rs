@@ -6,6 +6,7 @@ pub mod coverage;
 pub mod effect;
 pub mod eval;
 pub mod event;
+pub mod handle_registry;
 pub mod pipeline;
 pub mod reference_state;
 pub mod state;
