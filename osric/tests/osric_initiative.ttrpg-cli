@@ -688,15 +688,21 @@ assert_eq action_segment(3, OverbearAction), 3
 assert_eq action_segment(5, BrawlingAction), 5
 assert_eq action_segment(1, OverbearAction), 1
 
-// ── combat_movement_rate: Character vs default ────────────────
+// ── entity_movement + combat_movement_rate: Character vs Monster ──
 
 spawn Character cmr_human { name: "Human", classes: [ClassLevel { class: Fighter, level: 1 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 10, hp: 10 } }
 spawn Monster cmr_orc { name: "Orc", hit_dice: 1d8, max_hp: 8, hp: 8, ac: 14, attacks: [MonsterAttack { name: "Club", damage: 1d6 }] }
+spawn Monster cmr_fast { name: "Fast Beast", hit_dice: 2d8, max_hp: 12, hp: 12, ac: 12, base_movement: 180ft, attacks: [MonsterAttack { name: "Claw", damage: 1d6 }] }
 
-// Human base movement 120ft (no armor cap, no encumbrance condition)
+// entity_movement returns Feet
+assert_eq entity_movement(cmr_human), 120ft
+assert_eq entity_movement(cmr_orc), 120ft
+assert_eq entity_movement(cmr_fast), 180ft
+
+// combat_movement_rate returns int (for table lookups)
 assert_eq combat_movement_rate(cmr_human), 120
-// Monster defaults to 120
 assert_eq combat_movement_rate(cmr_orc), 120
+assert_eq combat_movement_rate(cmr_fast), 180
 
 
 // ── resolve_action: BrawlingAction — unarmed target, no fend-off ──

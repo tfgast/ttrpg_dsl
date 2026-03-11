@@ -867,19 +867,23 @@ system "OSRIC Combat" {
         _        => -10
     }
 
-    // Combat movement rate for unarmed attack modifiers.
+    // Unified movement rate for any entity.
     // Characters: character_movement (ancestry base, capped by armour,
-    // modified by EncumbranceState condition). Monsters: base_movement.
+    // modified by EncumbranceState condition). Monsters: base_movement field.
+    derive entity_movement(target: entity) -> Feet {
+        if target is Character {
+            character_movement(target)
+        } else if target is Monster {
+            target.base_movement
+        } else {
+            120ft
+        }
+    }
+
+    // Combat movement rate for unarmed attack modifiers.
     // Returns the Feet value as an int for table lookups.
     derive combat_movement_rate(target: entity) -> int {
-        if target is Character {
-            character_movement(target).value
-        } else {
-            // Monsters don't track movement in the entity model;
-            // default 120ft (standard). Host can override via
-            // the attacker_move/defender_move params directly.
-            120
-        }
+        entity_movement(target).value
     }
 
     // Attacker's armour AC for unarmed combat purposes.
