@@ -195,6 +195,27 @@ Spawn blocks support:
 
 Note: spawn lines can be long. This is fine -- each command is one line.
 
+### Creating positions
+
+Use `pos` to create standalone Position values without spawning entities:
+
+```
+pos p 5 3
+pos origin 0,0
+pos target at 10, 10
+
+// Use in distance checks
+eval distance(p, origin)
+
+// Assign to entity fields
+set hero.position = p
+
+// Build Placement structs for AoE spells
+let _p = Placement { anchor: AnchorPoint.AtPosition(position: p), position: p }
+```
+
+Supports the same coordinate syntax as `place`: `x y`, `x,y`, or `at x,y`.
+
 ### Modifying entities
 
 ```

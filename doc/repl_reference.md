@@ -242,6 +242,42 @@ Values are parsed and evaluated at queue time — syntax errors are caught
 immediately. When the queue is empty, prompts fall back to their
 `default` body (if present) or `suggest` value.
 
+### Host Simulation
+
+| Command                              | Description                                    |
+|--------------------------------------|------------------------------------------------|
+| `emit <Event>(param: expr, ...)`     | Fire a DSL event from the host side            |
+| `place <handle> <x> <y>`            | Set entity position on a grid                  |
+| `pos <name> <x> <y>`                | Create a standalone Position value             |
+| `zone_sync`                          | Recompute zone membership and emit events      |
+
+`place` sets an entity's position field (`center` for Zones, `position`
+for others). `pos` creates a Position value bound to a variable without
+spawning an entity — useful for building `Placement` structs, distance
+checks, and assigning positions via `set`. Both support the same
+coordinate syntax: `x y`, `x,y`, or `at x,y`.
+
+```
+place fighter 5 3
+place silence_zone at 10,10
+
+pos p 5 3
+pos origin 0,0
+eval distance(p, origin)
+set hero.position = p
+
+let _p = Placement { anchor: AnchorPoint.AtPosition(position: p), position: p }
+```
+
+`emit` fires an event with all matching hooks and reactions:
+
+```
+emit ZoneEntered(target: orc, zone: silence_zone)
+```
+
+`zone_sync` recomputes zone membership using Chebyshev distance and emits
+`ZoneExited`/`ZoneEntered` events for changes.
+
 ---
 
 ## Query Subcommand (CLI)
