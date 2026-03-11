@@ -28,12 +28,15 @@ system "OSRIC Spells" {
     //
     //  Optional group on Character. Restricted fields enforce
     //  that slot accounting (slots_used, memorised_spells) stays
-    //  in sync, and casting_invocation tracks active cast state.
+    //  in sync, and concentrating_on tracks the invocation of
+    //  the active concentration spell (if any) so that
+    //  BreakConcentration can revoke all conditions applied by
+    //  that spell in one call.
     //  spell_slots is unrestricted (set during character creation).
     // ========================================================
 
     group Spellcasting {
-        restricted casting_invocation: option<Invocation> = none
+        restricted concentrating_on: option<Invocation> = none
         spell_slots: list<int> = []
         slots_used: list<int> = []
         restricted memorised_spells: list<MemorizedSpell> = []
@@ -1117,8 +1120,8 @@ system "OSRIC Spells" {
     // ========================================================
     //  BEGIN CASTING ACTION
     //
-    //  Applies CastingSpell condition and stores the invocation
-    //  handle for later revocation (e.g., concentration break).
+    //  Applies CastingSpell condition, making the caster
+    //  interruptible by damage (see SpellInterruption hook).
     //  Requires Spellcasting optional group.
     // ========================================================
 
@@ -1127,7 +1130,99 @@ system "OSRIC Spells" {
     ) {
         resolve {
             apply_condition(caster, CastingSpell, Duration.Indefinite)
-            caster.sc.casting_invocation = some(invocation())
+        }
+    }
+
+
+    // ========================================================
+    //  CONCENTRATION
+    //
+    //  Some spells require concentration for their full duration.
+    //  While concentrating:
+    //   - Cannot cast another spell.
+    //   - Cannot move, fight, or use other powers (unless the
+    //     spell description says otherwise).
+    //  Concentration lasts until the spell ends or the caster
+    //  voluntarily stops. It is broken automatically if the
+    //  caster is killed, knocked out, stunned, mesmerised, or
+    //  charmed.
+    //
+    //  Pattern: concentration spells capture invocation() in
+    //  their resolve block and emit ConcentrationStarted. The
+    //  hook stores the invocation in concentrating_on and
+    //  applies the Concentrating condition. BreakConcentration
+    //  revokes all conditions from that invocation in one call.
+    //
+    //  Reference: OSRIC 3.0 Player Guide, §1.6.2
+    // ========================================================
+
+    event ConcentrationStarted(caster: Character, inv: Invocation) {}
+    event ConcentrationBroken(caster: Character) {}
+
+    // Concentrating: bearer is maintaining an active spell.
+    // Suppresses new spell casting and bearer attacks.
+    condition Concentrating on bearer: Character {
+        tags: #mental
+        modify [#spellcasting_gate](caster: bearer) {
+            result = false
+        }
+        modify [#attack_resolution](attacker: bearer) {
+            result.outcome = AttackOutcome.Miss
+            result.damage = 0
+        }
+    }
+
+
+    // ── When a new concentration spell starts, break any
+    //    existing concentration and record the new invocation. ──
+
+    hook OnConcentrationStarted on caster: Character with Spellcasting as sc (
+        trigger: ConcentrationStarted(caster: caster)
+    ) {
+        if caster.sc.concentrating_on != none {
+            caster.BreakConcentration()
+        }
+        caster.sc.concentrating_on = some(trigger.inv)
+        apply_condition(caster, Concentrating, Duration.Indefinite)
+    }
+
+
+    // ── Break concentration: revoke the spell's conditions,
+    //    clear the invocation, remove the Concentrating condition. ──
+
+    action BreakConcentration on caster: Character with Spellcasting as sc () {
+        cost free
+        resolve {
+            revoke(caster.sc.concentrating_on)
+            caster.sc.concentrating_on = none
+            remove_condition(caster, Concentrating)
+            emit ConcentrationBroken(caster: caster)
+        }
+    }
+
+
+    // ── Auto-break concentration on death ──
+
+    hook ConcentrationBreakOnDeath on caster: Character (
+        trigger: CharacterDead(target: caster)
+    ) {
+        if caster has Spellcasting as sc {
+            if caster.sc.concentrating_on != none {
+                caster.BreakConcentration()
+            }
+        }
+    }
+
+
+    // ── Auto-break concentration on knockout ──
+
+    hook ConcentrationBreakOnKO on caster: Character (
+        trigger: CharacterUnconscious(target: caster)
+    ) {
+        if caster has Spellcasting as sc {
+            if caster.sc.concentrating_on != none {
+                caster.BreakConcentration()
+            }
         }
     }
 }
