@@ -1323,11 +1323,11 @@ hook Regenerate on creature: Character (
 //
 // Grammar:
 //   import_decl = "import" STRING TERM
-//   use_decl    = "use" STRING ("as" IDENT)? TERM
+//   use_decl    = "use" (STRING | IDENT) ("as" IDENT)? TERM
 //   top_level   = import_decl | use_decl | system_decl
 //
 // `as` is a soft keyword — it is recognized as a keyword after the
-// `use` string literal, after group names in `with` constraints, and
+// `use` name, after group names in `with` constraints, and
 // after group names in `has` expressions. Identifiers named `as` are
 // valid elsewhere in the language.
 //

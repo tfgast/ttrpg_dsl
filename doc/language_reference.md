@@ -815,8 +815,14 @@ system "Core Rules" {
     // declarations...
 }
 
+// System names can also be bare identifiers (no spaces):
+system CoreRules {
+    // declarations...
+}
+
 use "Core Rules"
 use "Core Rules" as Core
+use CoreRules as Core
 
 Core.TypeName
 Core.Enum.Variant

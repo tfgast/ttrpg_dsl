@@ -135,8 +135,8 @@
 program         = top_level* EOF
 top_level       = import_decl | use_decl | system_block
 import_decl     = "import" STRING term
-use_decl        = "use" STRING ("as" IDENT)? term
-system_block    = "system" STRING "{" decl* "}"
+use_decl        = "use" (STRING | IDENT) ("as" IDENT)? term
+system_block    = "system" (STRING | IDENT) "{" decl* "}"
 
 
 // =========================

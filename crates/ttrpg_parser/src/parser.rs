@@ -124,6 +124,27 @@ impl Parser {
         }
     }
 
+    /// Accept either a string literal or an identifier, returning the text.
+    pub(crate) fn expect_string_or_ident(&mut self) -> Result<(String, Span), ()> {
+        match self.peek().clone() {
+            TokenKind::String(s) => {
+                let tok = self.advance();
+                Ok((s, tok.span))
+            }
+            TokenKind::Ident(s) => {
+                let tok = self.advance();
+                Ok((s.to_string(), tok.span))
+            }
+            _ => {
+                self.error(format!(
+                    "expected string literal or identifier, found {}",
+                    self.peek()
+                ));
+                Err(())
+            }
+        }
+    }
+
     /// Consume a statement terminator: NL, lookahead `}`, or EOF.
     pub(crate) fn expect_term(&mut self) -> Result<(), ()> {
         match self.peek() {
@@ -342,7 +363,7 @@ impl Parser {
     fn parse_use_decl(&mut self) -> Result<UseDecl, ()> {
         let start = self.start_span();
         self.expect_soft_keyword("use")?;
-        let (path, _) = self.expect_string()?;
+        let (path, _) = self.expect_string_or_ident()?;
         let alias = if self.at_ident("as") {
             self.advance();
             let (name, _) = self.expect_ident()?;
@@ -360,7 +381,7 @@ impl Parser {
 
     fn parse_system_block(&mut self) -> Result<SystemBlock, ()> {
         self.expect_soft_keyword("system")?;
-        let (name_str, _) = self.expect_string()?;
+        let (name_str, _) = self.expect_string_or_ident()?;
         let name: Name = name_str.into();
         self.expect(&TokenKind::LBrace)?;
         self.skip_newlines();

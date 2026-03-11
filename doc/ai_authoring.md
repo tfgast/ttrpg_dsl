@@ -694,9 +694,15 @@ move GoAggro on actor: Character (target: Character) {
 //     // all declarations go here
 // }
 //
+// // Names without spaces can be bare identifiers:
+// system CoreRules {
+//     // all declarations go here
+// }
+//
 // // In another file:
 // use "Core Rules"
 // use "Core Rules" as Core
+// use CoreRules as Core
 // // Then: Core.TypeName, Core.function(), Core.Enum.Variant
 ```
 
@@ -1478,7 +1484,7 @@ system "Ext" {
 }
 ```
 
-- `import` loads source files; `use` exposes symbols from another system
+- `import` loads source files (path must be a string); `use` exposes symbols from another system (name can be a string or identifier)
 - Import paths are resolved relative to the importing file's directory
 - Transitive imports are followed automatically — if `a.ttrpg` imports `b.ttrpg` and `b.ttrpg` imports `c.ttrpg`, loading `a.ttrpg` loads all three
 - Duplicate imports are deduplicated by canonical path (diamond patterns are fine)
