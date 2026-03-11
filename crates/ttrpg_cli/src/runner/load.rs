@@ -1,5 +1,5 @@
 use super::*;
-use crate::manifest;
+use ttrpg_parser::manifest;
 
 impl Runner {
     /// Reset all loaded state (program, types, game state, handles, etc.)
@@ -10,7 +10,6 @@ impl Runner {
         self.game_state = RefCell::new(GameState::new());
         self.last_paths = paths;
         self.handles.clear();
-        self.reverse_handles.clear();
         self.source_map = None;
         self.unit_suffixes = crate::format::UnitSuffixes::new();
     }
@@ -212,7 +211,6 @@ impl Runner {
             self.source_map = Some(MultiSourceMap::new(sources));
             self.last_paths = resolved_paths;
             self.handles.clear();
-            self.reverse_handles.clear();
             self.output.push(loaded_label);
             Ok(())
         } else {
@@ -282,7 +280,6 @@ impl Runner {
             self.diagnostics = all_diags;
             self.last_paths = Vec::new();
             self.handles.clear();
-            self.reverse_handles.clear();
             self.output.push("loaded <source>".into());
             self.source_map = Some(MultiSourceMap::new(sources));
             Ok(())

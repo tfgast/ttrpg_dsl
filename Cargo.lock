@@ -1975,9 +1975,7 @@ dependencies = [
  "rand 0.9.2",
  "reedline",
  "rustc-hash",
- "serde",
  "tempfile",
- "toml",
  "ttrpg_ast",
  "ttrpg_checker",
  "ttrpg_interp",
@@ -2019,7 +2017,9 @@ name = "ttrpg_parser"
 version = "0.1.0"
 dependencies = [
  "rustc-hash",
+ "serde",
  "tempfile",
+ "toml",
  "ttrpg_ast",
  "ttrpg_lexer",
 ]

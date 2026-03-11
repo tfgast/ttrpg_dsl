@@ -2,6 +2,7 @@ mod decl;
 pub mod diagnostic;
 mod expr;
 pub mod lower;
+pub mod manifest;
 pub mod parser;
 mod pattern;
 pub mod resolve;
