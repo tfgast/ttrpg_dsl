@@ -3,6 +3,7 @@ use std::collections::{HashMap, HashSet};
 use ttrpg_ast::Name;
 use ttrpg_ast::Spanned;
 use ttrpg_ast::ast::*;
+use ttrpg_ast::diagnostic::Diagnostic;
 
 use crate::check::{Checker, Namespace};
 use crate::env::*;
@@ -165,7 +166,7 @@ impl Checker<'_> {
             return;
         }
 
-        self.check_modify_body(clause, &fn_info, receiver, condition_params);
+        self.check_modify_body(clause, &fn_info, receiver, condition_params, &[]);
     }
 
     /// Check a modify clause targeting an action/reaction's cost.
@@ -569,7 +570,7 @@ impl Checker<'_> {
             trigger: None,
         };
 
-        self.check_modify_body(clause, &synthetic_fn, receiver, condition_params);
+        self.check_modify_body(clause, &synthetic_fn, receiver, condition_params, &matched_fns);
 
         // Store match set for interpreter runtime dispatch
         self.selector_matches.insert(clause.id, match_set);
@@ -693,6 +694,7 @@ impl Checker<'_> {
         fn_info: &FnInfo,
         receiver: Option<(&Name, &Spanned<TypeExpr>, &WithClause)>,
         condition_params: &[Param],
+        matched_fns: &[&FnInfo],
     ) {
         self.scope.push(BlockKind::ModifyClause);
 
@@ -741,13 +743,13 @@ impl Checker<'_> {
 
         // Check modify statements
         for stmt in &clause.body {
-            self.check_modify_stmt(stmt, fn_info);
+            self.check_modify_stmt(stmt, fn_info, matched_fns);
         }
 
         self.scope.pop();
     }
 
-    fn check_modify_stmt(&mut self, stmt: &ModifyStmt, fn_info: &FnInfo) {
+    fn check_modify_stmt(&mut self, stmt: &ModifyStmt, fn_info: &FnInfo, matched_fns: &[&FnInfo]) {
         match stmt {
             ModifyStmt::Let {
                 name,
@@ -807,10 +809,36 @@ impl Checker<'_> {
                     }
                 } else {
                     self.check_expr(value);
-                    self.error(
+                    let mut diag = Diagnostic::error(
                         format!("`{}` has no parameter `{}`", fn_info.name, name),
                         *span,
                     );
+                    // For tag selectors, check if the param exists in some but not
+                    // all matched functions and report which ones are missing it.
+                    if !matched_fns.is_empty() {
+                        let have: Vec<&Name> = matched_fns
+                            .iter()
+                            .filter(|fi| fi.params.iter().any(|p| p.name == *name))
+                            .map(|fi| &fi.name)
+                            .collect();
+                        if !have.is_empty() {
+                            let missing: Vec<&Name> = matched_fns
+                                .iter()
+                                .filter(|fi| !fi.params.iter().any(|p| p.name == *name))
+                                .map(|fi| &fi.name)
+                                .collect();
+                            let missing_names: Vec<String> =
+                                missing.iter().map(|n| n.to_string()).collect();
+                            diag = diag.with_help(format!(
+                                "parameter `{}` exists in {}/{} matched functions but is missing from: {}",
+                                name,
+                                have.len(),
+                                matched_fns.len(),
+                                missing_names.join(", "),
+                            ));
+                        }
+                    }
+                    self.diagnostics.push(diag);
                 }
             }
             ModifyStmt::ResultOverride { field, value, span } => {
@@ -843,13 +871,13 @@ impl Checker<'_> {
                 }
                 self.scope.push(BlockKind::Inner);
                 for s in then_body {
-                    self.check_modify_stmt(s, fn_info);
+                    self.check_modify_stmt(s, fn_info, matched_fns);
                 }
                 self.scope.pop();
                 if let Some(else_stmts) = else_body {
                     self.scope.push(BlockKind::Inner);
                     for s in else_stmts {
-                        self.check_modify_stmt(s, fn_info);
+                        self.check_modify_stmt(s, fn_info, matched_fns);
                     }
                     self.scope.pop();
                 }
