@@ -178,7 +178,9 @@ fn debug_assert_entity_args(
                     debug_assert!(
                         &actual == expected,
                         "entity type mismatch for parameter '{}': expected '{}', got '{}'",
-                        name, expected, actual
+                        name,
+                        expected,
+                        actual
                     );
                 }
             }

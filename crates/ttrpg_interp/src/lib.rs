@@ -1801,10 +1801,12 @@ system "test" {
             .unwrap();
         // Lowered moves expose a regular action publicly, so no return type means void.
         assert_eq!(val, Value::Void);
-        assert!(handler
-            .log
-            .iter()
-            .any(|e| matches!(e, Effect::RollDice { .. })));
+        assert!(
+            handler
+                .log
+                .iter()
+                .any(|e| matches!(e, Effect::RollDice { .. }))
+        );
     }
 
     // ── End-to-end: struct spread (..base) ──

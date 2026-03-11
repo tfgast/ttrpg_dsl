@@ -10,9 +10,9 @@
 use std::collections::VecDeque;
 use std::path::{Path, PathBuf};
 
+use crate::Diagnostic;
 use rustc_hash::FxHashSet;
 use ttrpg_ast::FileId;
-use crate::Diagnostic;
 
 /// Error from the source resolver.
 #[derive(Debug)]

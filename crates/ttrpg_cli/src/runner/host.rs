@@ -89,14 +89,16 @@ impl Runner {
                 )
                 .quiet(self.quiet)
                 .interactive(self.interactive);
-                let bindings: rustc_hash::FxHashMap<Name, Value> =
-                    self.variables
-                        .iter()
-                        .map(|(name, val)| (Name::from(name.as_str()), val.clone()))
-                        .chain(self.handles.iter().map(|(name, entity)| {
-                            (Name::from(name), Value::Entity(*entity))
-                        }))
-                        .collect();
+                let bindings: rustc_hash::FxHashMap<Name, Value> = self
+                    .variables
+                    .iter()
+                    .map(|(name, val)| (Name::from(name.as_str()), val.clone()))
+                    .chain(
+                        self.handles
+                            .iter()
+                            .map(|(name, entity)| (Name::from(name), Value::Entity(*entity))),
+                    )
+                    .collect();
                 let val = interp
                     .evaluate_expr_with_bindings(&state, &mut handler, default_expr, bindings)
                     .map_err(|e| {
@@ -137,14 +139,16 @@ impl Runner {
                 .quiet(self.quiet)
                 .interactive(self.interactive);
                 // Include params so derived fields can reference them
-                let mut bindings: rustc_hash::FxHashMap<Name, Value> =
-                    self.variables
-                        .iter()
-                        .map(|(name, val)| (Name::from(name.as_str()), val.clone()))
-                        .chain(self.handles.iter().map(|(name, entity)| {
-                            (Name::from(name), Value::Entity(*entity))
-                        }))
-                        .collect();
+                let mut bindings: rustc_hash::FxHashMap<Name, Value> = self
+                    .variables
+                    .iter()
+                    .map(|(name, val)| (Name::from(name.as_str()), val.clone()))
+                    .chain(
+                        self.handles
+                            .iter()
+                            .map(|(name, entity)| (Name::from(name), Value::Entity(*entity))),
+                    )
+                    .collect();
                 for (name, val) in &all_fields {
                     bindings.insert(name.clone(), val.clone());
                 }

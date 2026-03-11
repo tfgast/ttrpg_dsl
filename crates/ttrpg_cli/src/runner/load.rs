@@ -153,11 +153,12 @@ impl Runner {
     pub(super) fn load_paths(&mut self, resolved_paths: Vec<PathBuf>) -> Result<(), CliError> {
         // Resolve imports transitively: reads all files, follows `import` edges,
         // deduplicates, and returns a stable load order.
-        let resolved = ttrpg_parser::source_resolve::resolve_sources(&resolved_paths).map_err(|e| {
-            self.clear_state(resolved_paths.clone());
-            self.diagnostics = Vec::new();
-            CliError::Message(e.to_string())
-        })?;
+        let resolved =
+            ttrpg_parser::source_resolve::resolve_sources(&resolved_paths).map_err(|e| {
+                self.clear_state(resolved_paths.clone());
+                self.diagnostics = Vec::new();
+                CliError::Message(e.to_string())
+            })?;
 
         let sources = resolved.sources;
 

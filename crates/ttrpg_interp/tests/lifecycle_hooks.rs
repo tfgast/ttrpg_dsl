@@ -240,7 +240,12 @@ system "test" {
     let mut handler = ScriptedHandler::new();
     adapter.run(&mut handler, |state, handler| {
         interp
-            .evaluate_function(state, handler, "mark_then_remove_first", vec![Value::Entity(c)])
+            .evaluate_function(
+                state,
+                handler,
+                "mark_then_remove_first",
+                vec![Value::Entity(c)],
+            )
             .unwrap();
     });
 
@@ -249,7 +254,10 @@ system "test" {
     assert_eq!(count_gate_effects(&handler.log, "ConditionApplyGate"), 1);
     assert_eq!(count_gate_effects(&handler.log, "ConditionRemovalGate"), 1);
     assert!(
-        final_state.read_conditions(&c).unwrap_or_default().is_empty(),
+        final_state
+            .read_conditions(&c)
+            .unwrap_or_default()
+            .is_empty(),
         "condition should be removed by ActiveCondition id"
     );
 }

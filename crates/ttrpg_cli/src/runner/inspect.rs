@@ -501,9 +501,11 @@ impl Runner {
             .variables
             .iter()
             .map(|(name, val)| (ttrpg_ast::Name::from(name.as_str()), val.clone()))
-            .chain(self.handles.iter().map(|(name, entity)| {
-                (ttrpg_ast::Name::from(name), Value::Entity(*entity))
-            }))
+            .chain(
+                self.handles
+                    .iter()
+                    .map(|(name, entity)| (ttrpg_ast::Name::from(name), Value::Entity(*entity))),
+            )
             .collect();
 
         let result = interp

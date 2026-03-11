@@ -353,8 +353,7 @@ fn apply_mutation<S: WritableState>(
         } => {
             // Bearer type compatibility: skip if target entity type doesn't match
             // the condition's declared receiver_type (Ty::AnyEntity always passes)
-            if let Some(Ty::Entity(expected)) = condition_receiver_types.get(condition)
-            {
+            if let Some(Ty::Entity(expected)) = condition_receiver_types.get(condition) {
                 if let Some(ref actual) = state.entity_type_name(target) {
                     if expected != actual {
                         eprintln!(
@@ -466,7 +465,14 @@ fn apply_mutation<S: WritableState>(
             tag,
             exclude_instance,
         } => {
-            apply_transfer_conditions(state, from, to, tag, *exclude_instance, condition_receiver_types);
+            apply_transfer_conditions(
+                state,
+                from,
+                to,
+                tag,
+                *exclude_instance,
+                condition_receiver_types,
+            );
         }
         _ => {} // Not a mutation effect
     }

@@ -286,7 +286,10 @@ system "test" {
     let a_conds = state.read_conditions(&a).unwrap();
     assert_eq!(a_conds.len(), 1, "A should have the condition back");
     assert_eq!(a_conds[0].name.as_str(), "Blessed");
-    assert_eq!(a_conds[0].id, original_id, "ID preserved through round-trip");
+    assert_eq!(
+        a_conds[0].id, original_id,
+        "ID preserved through round-trip"
+    );
     assert_eq!(
         a_conds[0].gained_at, original_gained_at,
         "gained_at preserved through round-trip"
@@ -296,7 +299,11 @@ system "test" {
         Some(ttrpg_interp::state::InvocationId(99)),
         "invocation preserved"
     );
-    assert_eq!(a_conds[0].source, Value::Str("divine".into()), "source preserved");
+    assert_eq!(
+        a_conds[0].source,
+        Value::Str("divine".into()),
+        "source preserved"
+    );
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -496,12 +503,7 @@ system "test" {
     let mut handler = ScriptedHandler::new();
     adapter.run(&mut handler, |state, handler| {
         interp
-            .evaluate_function(
-                state,
-                handler,
-                "self_transfer",
-                vec![Value::Entity(a)],
-            )
+            .evaluate_function(state, handler, "self_transfer", vec![Value::Entity(a)])
             .unwrap();
     });
 
