@@ -487,6 +487,27 @@ system "OSRIC" {
         restricted breath_charges: resource(0..=breath_charges_max)
     }
 
+    // --- Spell-like ability model for monsters ---
+    // Innate magical abilities that mimic spells but aren't true spellcasting.
+    // For true casters (Lich, Ki-rin), use the Spellcasting optional group instead.
+
+    enum SpellUseLimit {
+        AtWill,
+        PerDay(count: int),
+    }
+
+    struct SpellLikeEntry {
+        spell: SpellId
+        uses: SpellUseLimit
+        uses_remaining: int = -1
+        override_caster_level: option<int> = none
+    }
+
+    group SpellAbility {
+        innate_caster_level: int
+        abilities: list<SpellLikeEntry>
+    }
+
     // --- Per-class level and XP tracking ---
 
     struct ClassLevel {
@@ -586,6 +607,10 @@ system "OSRIC" {
         optional EquipmentSlots
 
         optional BreathWeapon
+
+        optional SpellAbility
+
+        optional Spellcasting
     }
 
     // Generic persistent positioned effect. Provenance is tracked via

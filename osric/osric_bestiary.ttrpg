@@ -679,7 +679,13 @@ system "OSRIC Bestiary" {
             base_movement: 90ft,
             attacks: [MonsterAttack { name: "Fist", damage: 1d8 }],
             size: Size.Large,
-            special: ["ImmuneToFire", "SpellLikeAbilities"]
+            special: ["ImmuneToFire", "SpellLikeAbilities"],
+            SpellAbility {
+                innate_caster_level: 12,
+                abilities: [
+                    SpellLikeEntry { spell: SpellId.WallOfFire, uses: SpellUseLimit.AtWill }
+                ]
+            }
         }
         apply_condition(m, ImmuneToFire, Duration.Indefinite)
         apply_condition(m, Infravision(range: 60ft), Duration.Indefinite)

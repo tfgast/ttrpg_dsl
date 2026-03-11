@@ -194,7 +194,13 @@ fn osric_core_has_all_enums() {
         "missing ContactMode enum"
     );
 
-    assert_eq!(enums.len(), 34, "expected 34 enums, got {enums:?}");
+    // SpellUseLimit: 2 variants (AtWill, PerDay)
+    assert!(
+        enums.contains(&("SpellUseLimit", 2)),
+        "missing SpellUseLimit enum"
+    );
+
+    assert_eq!(enums.len(), 35, "expected 35 enums, got {enums:?}");
 }
 
 #[test]
@@ -340,7 +346,13 @@ fn osric_core_has_all_structs() {
         "missing Placement struct"
     );
 
-    assert_eq!(structs.len(), 16, "expected 16 structs, got {structs:?}");
+    // SpellLikeEntry: spell, uses, uses_remaining, override_caster_level
+    assert!(
+        structs.contains(&("SpellLikeEntry", 4)),
+        "missing SpellLikeEntry struct"
+    );
+
+    assert_eq!(structs.len(), 17, "expected 17 structs, got {structs:?}");
 }
 
 // ── Unit type ──────────────────────────────────────────────────
