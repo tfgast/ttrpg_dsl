@@ -49,7 +49,7 @@ do TakeDamage(clw_target_1, clw_caster_1, 20)
 assert_eq clw_target_1.hp, 10
 rolls clear
 rolls 5
-call resolve_cure_light_wounds(clw_caster_1, clw_target_1)
+call resolve_cure_light_wounds(clw_caster_1, [clw_target_1])
 assert_eq clw_target_1.hp, 15
 
 spawn Character clw_caster_2 { name: "Alaric CLW 2", classes: [ClassLevel { class: Cleric, level: 3 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, ancestry: Human, HitPoints { max_hp: 18, hp: 18 }, Spellcasting { spell_slots: [2], slots_used: [0], memorised_spells: [] } }
@@ -59,7 +59,7 @@ do TakeDamage(clw_target_2, clw_caster_2, 2)
 assert_eq clw_target_2.hp, 28
 rolls clear
 rolls 8
-call resolve_cure_light_wounds(clw_caster_2, clw_target_2)
+call resolve_cure_light_wounds(clw_caster_2, [clw_target_2])
 assert_eq clw_target_2.hp, 30
 
 // ── Cause Light Wounds ──────────────────────────────────────────
@@ -69,7 +69,7 @@ spawn Character cslw_target_1 { name: "Borin Cause 1", classes: [ClassLevel { cl
 
 rolls clear
 rolls 6
-call resolve_cause_light_wounds(cslw_caster_1, cslw_target_1)
+call resolve_cause_light_wounds(cslw_caster_1, [cslw_target_1])
 assert_eq cslw_target_1.hp, 24
 
 spawn Character cslw_caster_2 { name: "Alaric Cause 2", classes: [ClassLevel { class: Cleric, level: 3 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, ancestry: Human, HitPoints { max_hp: 18, hp: 18 }, Spellcasting { spell_slots: [2], slots_used: [0], memorised_spells: [] } }
@@ -79,7 +79,7 @@ do TakeDamage(cslw_target_2, cslw_caster_2, 27)
 assert_eq cslw_target_2.hp, 3
 rolls clear
 rolls 8
-call resolve_cause_light_wounds(cslw_caster_2, cslw_target_2)
+call resolve_cause_light_wounds(cslw_caster_2, [cslw_target_2])
 assert_eq cslw_target_2.hp, -5
 assert_condition cslw_target_2, Unconscious
 assert_condition cslw_target_2, Bleeding

@@ -114,7 +114,7 @@ spawn Character rc_target { name: "Victim RC", classes: [ClassLevel { class: Fig
 call apply_condition(rc_target, BestowedCurse, Duration.Indefinite, EffectSource.Spell(name: "Bestow Curse", caster_level: 5))
 assert_condition rc_target, BestowedCurse
 
-call resolve_remove_curse(rc_caster, rc_target)
+call resolve_remove_curse(rc_caster, [rc_target])
 assert_no_condition rc_target, BestowedCurse
 
 // ── Remove Curse: only removes first curse ───────────────────────
@@ -126,7 +126,7 @@ spawn Character rc_target2 { name: "Victim RC2", classes: [ClassLevel { class: F
 call apply_condition(rc_target2, Stunned, Duration.Rounds(5))
 call apply_condition(rc_target2, BestowedCurse, Duration.Indefinite, EffectSource.Spell(name: "Bestow Curse", caster_level: 5))
 
-call resolve_remove_curse(rc_caster2, rc_target2)
+call resolve_remove_curse(rc_caster2, [rc_target2])
 // Curse should be removed, stun should remain
 assert_no_condition rc_target2, BestowedCurse
 assert_condition rc_target2, Stunned
@@ -139,7 +139,7 @@ spawn Character bc_target { name: "Victim BC", classes: [ClassLevel { class: Fig
 // Roll low on save (fail)
 rolls clear
 rolls 1
-call resolve_bestow_curse(bc_caster, bc_target)
+call resolve_bestow_curse(bc_caster, [bc_target])
 assert_condition bc_target, BestowedCurse
 
 // ── Bestow Curse: save succeeds, no curse ────────────────────────
@@ -150,7 +150,7 @@ spawn Character bc_target2 { name: "Victim BC2", classes: [ClassLevel { class: F
 // Roll high on save (succeed)
 rolls clear
 rolls 20
-call resolve_bestow_curse(bc_caster2, bc_target2)
+call resolve_bestow_curse(bc_caster2, [bc_target2])
 assert_no_condition bc_target2, BestowedCurse
 
 // ── Neutralise Poison: removes poison-tagged conditions ──────────
@@ -165,18 +165,18 @@ call apply_condition(np_target, Paralyzed, Duration.Rounds(5), EffectSource.Spel
 assert_condition np_target, Stunned
 assert_condition np_target, Paralyzed
 
-call resolve_neutralise_poison(np_caster, np_target)
+call resolve_neutralise_poison(np_caster, [np_target])
 // Poison-sourced condition removed, spell-sourced condition remains
 assert_no_condition np_target, Stunned
 assert_condition np_target, Paralyzed
 
 // ── Spell registry: new spells are in the registry ───────────────
 
-assert_eq spell_def(DispelMagicCleric).level, 3
-assert_eq spell_def(DispelMagicMU).level, 3
-assert_eq spell_def(RemoveCurse).level, 3
-assert_eq spell_def(BestowCurse).level, 3
-assert_eq spell_def(NeutralisePoison).level, 4
+assert_eq spell_registry(DispelMagicCleric).def.level, 3
+assert_eq spell_registry(DispelMagicMU).def.level, 3
+assert_eq spell_registry(RemoveCurse).def.level, 3
+assert_eq spell_registry(BestowCurse).def.level, 3
+assert_eq spell_registry(NeutralisePoison).def.level, 4
 
 assert_eq true_spell_level(DispelMagicCleric), 3
 assert_eq true_spell_level(DispelMagicMU), 3

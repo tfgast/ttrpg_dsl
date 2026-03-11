@@ -172,7 +172,7 @@ system "OSRIC Scrolls" {
     // ========================================================
 
     derive spell_scroll_item(spell_id: SpellId, scroll_class: SpellClassType) -> Item {
-        let def = spell_def(spell_id)
+        let def = spell_registry(spell_id).def
         // Table 2.13.1J: spell scrolls are valued at 300 gp per spell level
         let value = 300 * def.level
         Item {
@@ -633,7 +633,7 @@ system "OSRIC Scrolls" {
                 error("This scroll can only be used by the appropriate class")
             }
 
-            let def = spell_def(spell_id)
+            let def = spell_registry(spell_id).def
             let scroll_name = "Scroll of " + def.name
 
             // Consume the scroll from inventory
@@ -650,11 +650,11 @@ system "OSRIC Scrolls" {
                     let effect = scroll_failure_effect(effect_roll)
                     emit ScrollSpellFailed(reader: reader, spell_id: spell_id, failure_effect: effect)
                 } else {
-                    resolve_spell(spell_id, reader, targets)
+                    cast_spell(spell_id, reader, targets: targets)
                     emit ScrollSpellCast(reader: reader, spell_id: spell_id, scroll_class: scroll_class)
                 }
             } else {
-                resolve_spell(spell_id, reader, targets)
+                cast_spell(spell_id, reader, targets: targets)
                 emit ScrollSpellCast(reader: reader, spell_id: spell_id, scroll_class: scroll_class)
             }
         }

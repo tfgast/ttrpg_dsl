@@ -200,7 +200,7 @@ fn osric_core_has_all_enums() {
         "missing SpellUseLimit enum"
     );
 
-    assert_eq!(enums.len(), 35, "expected 35 enums, got {enums:?}");
+    assert_eq!(enums.len(), 36, "expected 36 enums, got {enums:?}");
 }
 
 #[test]
@@ -352,7 +352,7 @@ fn osric_core_has_all_structs() {
         "missing SpellLikeEntry struct"
     );
 
-    assert_eq!(structs.len(), 17, "expected 17 structs, got {structs:?}");
+    assert_eq!(structs.len(), 18, "expected 18 structs, got {structs:?}");
 }
 
 // ── Unit type ──────────────────────────────────────────────────

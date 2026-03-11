@@ -1,12 +1,14 @@
 // ============================================================
 // OSRIC 3.0 Spell Registry
 //
-// Central dispatch for spell definitions and resolution.
-// spell_def(SpellId) -> SpellDef is a table lookup keyed by SpellId.
-// resolve_spell(SpellId, caster, targets) routes targeted spells.
-// resolve_area_spell(SpellId, caster, placement) routes spatial spells
-// (both instant AoE and persistent zones). All resolvers accept
-// entity-typed targets so dispatch works for Characters and Monsters.
+// Central registry for spell definitions and resolution.
+// spell_registry(SpellId) -> SpellEntry returns the static
+// metadata (SpellDef) and resolution strategy (SpellResolve)
+// for every implemented spell.
+//
+// cast_spell dispatches resolution through the stored function
+// reference, so callers don't need to know which targeting
+// style a spell uses.
 // ============================================================
 
 import "osric_character.ttrpg"
@@ -34,136 +36,143 @@ use "OSRIC Zone Spells"
 system "OSRIC Spell Registry" {
 
     // ========================================================
-    //  SPELL DEFINITION LOOKUP
+    //  SPELL REGISTRY
     //
-    //  Returns the static SpellDef for a given SpellId.
-    //  Every implemented spell must have an entry here.
-    // ========================================================
-
-    table spell_def(id: SpellId) -> SpellDef {
-        SpellId.CureLightWounds             => CURE_LIGHT_WOUNDS_DEF,
-        SpellId.CauseLightWounds            => CAUSE_LIGHT_WOUNDS_DEF,
-        SpellId.Bless                       => BLESS_DEF,
-        SpellId.Curse                       => CURSE_DEF,
-        SpellId.HoldPerson                  => HOLD_PERSON_DEF,
-        SpellId.Silence15Radius             => SILENCE_15_DEF,
-        SpellId.DispelMagicCleric           => DISPEL_MAGIC_CLERIC_DEF,
-        SpellId.RemoveCurse                 => REMOVE_CURSE_DEF,
-        SpellId.BestowCurse                 => BESTOW_CURSE_DEF,
-        SpellId.GlyphOfWarding              => GLYPH_OF_WARDING_DEF,
-        SpellId.NeutralisePoison            => NEUTRALISE_POISON_DEF,
-        SpellId.ProtectionFromEvil10Radius  => PROTECTION_FROM_EVIL_10_DEF,
-        SpellId.BladeBarrier                => BLADE_BARRIER_DEF,
-        SpellId.MagicMissile                => MAGIC_MISSILE_DEF,
-        SpellId.Sleep                       => SLEEP_DEF,
-        SpellId.DispelMagicMU               => DISPEL_MAGIC_MU_DEF,
-        SpellId.Fireball                    => FIREBALL_DEF,
-        SpellId.WallOfFire                  => WALL_OF_FIRE_DEF
-    }
-
-    // ========================================================
-    //  SPELL RESOLUTION DISPATCH
+    //  Returns the SpellEntry (metadata + resolver) for a given
+    //  SpellId. Every implemented spell must have an entry here.
     //
-    //  Routes spell resolution to the appropriate resolve_*
-    //  function. Accepts entity-typed targets so the same
-    //  dispatch works for Characters, Monsters, or any mix.
-    //  Single-target spells (CLW, Cause LW) unwrap the first
-    //  element from the list.
+    //  Blade Barrier and Glyph of Warding require extra
+    //  parameters beyond Placement — call resolve_blade_barrier
+    //  or resolve_glyph_of_warding directly for those spells.
+    //  Their entries use error wrappers as area resolvers.
     // ========================================================
 
-    function resolve_spell(id: SpellId, caster: entity, targets: list<entity>) {
-        match id {
-            SpellId.CureLightWounds => {
-                let target = targets.first().unwrap()
-                resolve_cure_light_wounds(caster, target)
-            },
-            SpellId.CauseLightWounds => {
-                let target = targets.first().unwrap()
-                resolve_cause_light_wounds(caster, target)
-            },
-            SpellId.Bless => {
-                resolve_bless(caster, targets)
-            },
-            SpellId.Curse => {
-                resolve_curse(caster, targets)
-            },
-            SpellId.HoldPerson => {
-                resolve_hold_person(caster, targets)
-            },
-            SpellId.DispelMagicCleric => {
-                error("resolve_spell: Dispel Magic (Cleric) requires spatial targeting, use resolve_area_spell instead")
-            },
-            SpellId.RemoveCurse => {
-                let target = targets.first().unwrap()
-                resolve_remove_curse(caster, target)
-            },
-            SpellId.BestowCurse => {
-                let target = targets.first().unwrap()
-                resolve_bestow_curse(caster, target)
-            },
-            SpellId.NeutralisePoison => {
-                let target = targets.first().unwrap()
-                resolve_neutralise_poison(caster, target)
-            },
-            SpellId.MagicMissile => {
-                resolve_magic_missile(caster, targets)
-            },
-            SpellId.DispelMagicMU => {
-                error("resolve_spell: Dispel Magic (MU) requires spatial targeting, use resolve_area_spell instead")
-            },
-            SpellId.Fireball => {
-                error("resolve_spell: Fireball requires spatial targeting, use resolve_area_spell instead")
-            },
-            SpellId.Sleep => {
-                error("resolve_spell: Sleep requires spatial targeting, use resolve_area_spell instead")
-            },
-            _ => {
-                error("resolve_spell: spell requires spatial targeting, use resolve_area_spell instead")
-            }
+    table spell_registry(id: SpellId) -> SpellEntry {
+        // --- Cleric level 1 ---
+        SpellId.CureLightWounds => SpellEntry {
+            def: CURE_LIGHT_WOUNDS_DEF,
+            resolve: SpellResolve.Targeted(resolve: resolve_cure_light_wounds)
+        },
+        SpellId.CauseLightWounds => SpellEntry {
+            def: CAUSE_LIGHT_WOUNDS_DEF,
+            resolve: SpellResolve.Targeted(resolve: resolve_cause_light_wounds)
+        },
+        SpellId.Bless => SpellEntry {
+            def: BLESS_DEF,
+            resolve: SpellResolve.Targeted(resolve: resolve_bless)
+        },
+        SpellId.Curse => SpellEntry {
+            def: CURSE_DEF,
+            resolve: SpellResolve.Targeted(resolve: resolve_curse)
+        },
+        // --- Cleric level 2 ---
+        SpellId.HoldPerson => SpellEntry {
+            def: HOLD_PERSON_DEF,
+            resolve: SpellResolve.Targeted(resolve: resolve_hold_person)
+        },
+        SpellId.Silence15Radius => SpellEntry {
+            def: SILENCE_15_DEF,
+            resolve: SpellResolve.Area(resolve: resolve_silence_15)
+        },
+        // --- Cleric level 3 ---
+        SpellId.DispelMagicCleric => SpellEntry {
+            def: DISPEL_MAGIC_CLERIC_DEF,
+            resolve: SpellResolve.Area(resolve: resolve_dispel_magic_cleric)
+        },
+        SpellId.RemoveCurse => SpellEntry {
+            def: REMOVE_CURSE_DEF,
+            resolve: SpellResolve.Targeted(resolve: resolve_remove_curse)
+        },
+        SpellId.BestowCurse => SpellEntry {
+            def: BESTOW_CURSE_DEF,
+            resolve: SpellResolve.Targeted(resolve: resolve_bestow_curse)
+        },
+        SpellId.GlyphOfWarding => SpellEntry {
+            def: GLYPH_OF_WARDING_DEF,
+            resolve: SpellResolve.Area(resolve: resolve_glyph_of_warding_default)
+        },
+        // --- Cleric level 4 ---
+        SpellId.NeutralisePoison => SpellEntry {
+            def: NEUTRALISE_POISON_DEF,
+            resolve: SpellResolve.Targeted(resolve: resolve_neutralise_poison)
+        },
+        SpellId.ProtectionFromEvil10Radius => SpellEntry {
+            def: PROTECTION_FROM_EVIL_10_DEF,
+            resolve: SpellResolve.Area(resolve: resolve_protection_from_evil_10)
+        },
+        // --- Cleric level 6 ---
+        SpellId.BladeBarrier => SpellEntry {
+            def: BLADE_BARRIER_DEF,
+            resolve: SpellResolve.Area(resolve: resolve_blade_barrier_default)
+        },
+        // --- Magic-User level 1 ---
+        SpellId.MagicMissile => SpellEntry {
+            def: MAGIC_MISSILE_DEF,
+            resolve: SpellResolve.Targeted(resolve: resolve_magic_missile)
+        },
+        SpellId.Sleep => SpellEntry {
+            def: SLEEP_DEF,
+            resolve: SpellResolve.Area(resolve: resolve_sleep)
+        },
+        // --- Magic-User level 3 ---
+        SpellId.DispelMagicMU => SpellEntry {
+            def: DISPEL_MAGIC_MU_DEF,
+            resolve: SpellResolve.Area(resolve: resolve_dispel_magic_mu)
+        },
+        SpellId.Fireball => SpellEntry {
+            def: FIREBALL_DEF,
+            resolve: SpellResolve.Area(resolve: resolve_fireball)
+        },
+        // --- Magic-User level 4 ---
+        SpellId.WallOfFire => SpellEntry {
+            def: WALL_OF_FIRE_DEF,
+            resolve: SpellResolve.Area(resolve: resolve_wall_of_fire)
         }
     }
 
     // ========================================================
-    //  AREA SPELL RESOLUTION DISPATCH
+    //  DEFAULT WRAPPERS
     //
-    //  Routes spells that require spatial targeting (Placement)
-    //  to their resolve functions. Covers both:
-    //  - Instant AoE spells (Fireball, Sleep, Dispel Magic) that
-    //    prompt the host for area occupants internally
-    //  - Zone spells (Silence, Wall of Fire) that spawn persistent
-    //    Zone entities
-    //
-    //  Blade Barrier and Glyph of Warding require extra parameters
-    //  beyond Placement — call their resolve functions directly.
+    //  Blade Barrier and Glyph of Warding require extra
+    //  parameters. These wrappers use sensible defaults so
+    //  the spells can still be dispatched through cast_spell.
+    //  Call resolve_blade_barrier / resolve_glyph_of_warding
+    //  directly when specific parameters are needed.
     // ========================================================
 
-    function resolve_area_spell(id: SpellId, caster: entity, placement: Placement) {
-        match id {
-            // Instant AoE spells — prompt for occupants internally
-            SpellId.Fireball => {
-                resolve_fireball(caster, placement)
+    function resolve_blade_barrier_default(caster: entity, placement: Placement) {
+        resolve_blade_barrier(caster, placement, 10ft)
+    }
+
+    function resolve_glyph_of_warding_default(caster: entity, placement: Placement) {
+        resolve_glyph_of_warding(caster, placement, "Fire")
+    }
+
+    // ========================================================
+    //  UNIFIED CAST SPELL DISPATCH
+    //
+    //  Routes spell resolution through the registry's stored
+    //  function reference. Targeted spells use the targets
+    //  parameter; area spells use placement; self-only spells
+    //  use neither.
+    // ========================================================
+
+    function cast_spell(
+        id: SpellId,
+        caster: entity,
+        targets: list<entity> = [],
+        placement: option<Placement> = none
+    ) {
+        let entry = spell_registry(id)
+        match entry.resolve {
+            SpellResolve.Targeted(resolver) => {
+                resolver(caster, targets)
             },
-            SpellId.Sleep => {
-                resolve_sleep(caster, placement)
+            SpellResolve.Area(resolver) => {
+                resolver(caster, placement.unwrap())
             },
-            SpellId.DispelMagicCleric => {
-                resolve_dispel_magic_cleric(caster, placement)
-            },
-            SpellId.DispelMagicMU => {
-                resolve_dispel_magic_mu(caster, placement)
-            },
-            // Zone spells — spawn persistent Zone entities
-            SpellId.Silence15Radius => {
-                resolve_silence_15(caster, placement)
-            },
-            SpellId.ProtectionFromEvil10Radius => {
-                resolve_protection_from_evil_10(caster, placement)
-            },
-            SpellId.WallOfFire => {
-                resolve_wall_of_fire(caster, placement)
-            },
-            _ => {
-                error("resolve_area_spell: unknown area spell or requires extra parameters (use resolve_blade_barrier / resolve_glyph_of_warding directly)")
+            SpellResolve.SelfOnly(resolver) => {
+                resolver(caster)
             }
         }
     }

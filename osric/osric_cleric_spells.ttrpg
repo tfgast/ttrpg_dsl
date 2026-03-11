@@ -52,7 +52,8 @@ system "OSRIC Cleric Spells" {
         description: "The target creature regains 1d8 hit points, up to its normal maximum."
     }
 
-    function resolve_cure_light_wounds(caster: entity, target: entity) {
+    function resolve_cure_light_wounds(caster: entity, targets: list<entity>) {
+        let target = targets.first().unwrap()
         let healing = roll(1d8).total
         resolve_heal_target(caster, target, "Cure Light Wounds", healing)
     }
@@ -81,7 +82,8 @@ system "OSRIC Cleric Spells" {
         description: "The touched target creature takes 1d8 hit points of magical damage."
     }
 
-    function resolve_cause_light_wounds(caster: entity, target: entity) {
+    function resolve_cause_light_wounds(caster: entity, targets: list<entity>) {
+        let target = targets.first().unwrap()
         let damage = roll(1d8).total
         target.TakeDamage(caster, damage)
         emit SpellDamaged(caster: caster, target: target, spell_name: "Cause Light Wounds", amount: damage)
@@ -288,7 +290,8 @@ system "OSRIC Cleric Spells" {
     // Resolve Remove Curse. Removes the first condition tagged
     // with #curse from the target. If no curse-tagged conditions
     // exist, the spell has no effect.
-    function resolve_remove_curse(caster: entity, target: entity) {
+    function resolve_remove_curse(caster: entity, targets: list<entity>) {
+        let target = targets.first().unwrap()
         for cond in conditions(target) {
             if "curse" in cond.tags {
                 remove_condition(target, cond)
@@ -331,7 +334,8 @@ system "OSRIC Cleric Spells" {
 
     // Resolve Bestow Curse. Target saves vs spells; on failure
     // the BestowedCurse condition is applied permanently.
-    function resolve_bestow_curse(caster: entity, target: entity) {
+    function resolve_bestow_curse(caster: entity, targets: list<entity>) {
+        let target = targets.first().unwrap()
         let cl = caster_level(caster, Divine)
         let source = EffectSource.Spell(name: "Bestow Curse", caster_level: cl)
         let result = target.ResistSpell(category: some(SpellsUnlisted))
@@ -371,7 +375,8 @@ system "OSRIC Cleric Spells" {
     // Resolve Neutralise Poison. Removes all conditions tagged
     // with #poison from the target. Also removes conditions whose
     // source is EffectSource.Poison.
-    function resolve_neutralise_poison(caster: entity, target: entity) {
+    function resolve_neutralise_poison(caster: entity, targets: list<entity>) {
+        let target = targets.first().unwrap()
         for cond in conditions(target) {
             if "poison" in cond.tags {
                 remove_condition(target, cond)

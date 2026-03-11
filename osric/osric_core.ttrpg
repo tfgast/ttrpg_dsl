@@ -422,6 +422,27 @@ system "OSRIC" {
         description: string
     }
 
+    // --- Spell resolution strategy ---
+    // Categorises how a spell is resolved at cast time.
+    // Targeted spells receive an explicit target list; area spells
+    // receive a Placement for spatial targeting; self-only spells
+    // affect only the caster.
+
+    enum SpellResolve {
+        Targeted(resolve: fn(entity, list<entity>)),
+        Area(resolve: fn(entity, Placement)),
+        SelfOnly(resolve: fn(entity))
+    }
+
+    // --- Spell registry entry ---
+    // Combines static metadata with the resolution strategy so
+    // the registry table returns everything needed to cast a spell.
+
+    struct SpellEntry {
+        def: SpellDef,
+        resolve: SpellResolve
+    }
+
     // --- Spell identity ---
     // Typed spell identifier — one variant per implemented spell.
     // Replaces string-based spell names for type-safe memorisation,
