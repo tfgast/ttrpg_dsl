@@ -600,9 +600,10 @@ impl Checker<'_> {
                         return;
                     }
                     None => {
-                        self.error(
+                        self.error_with_help(
                             format!("unknown optional group `{group_name}` for type `entity`"),
                             span,
+                            format!("declare it with: group {group_name} {{ ... }}"),
                         );
                         return;
                     }
@@ -840,9 +841,10 @@ impl Checker<'_> {
                         span,
                     );
                 } else {
-                    self.error(
+                    self.error_with_help(
                         format!("unknown optional group `{group_name}` for type `entity`"),
                         span,
+                        format!("declare it with: group {group_name} {{ ... }}"),
                     );
                 }
             }

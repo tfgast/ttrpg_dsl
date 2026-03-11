@@ -396,10 +396,12 @@ impl TypeEnv {
                     return;
                 }
                 if !self.types.contains_key(name) {
-                    diagnostics.push(Diagnostic::error(
-                        format!("unknown type `{name}`"),
-                        texpr.span,
-                    ));
+                    diagnostics.push(
+                        Diagnostic::error(format!("unknown type `{name}`"), texpr.span)
+                            .with_help(format!(
+                                "declare it with: enum {name} {{ ... }}, struct {name} {{ ... }}, or entity {name} {{ ... }}"
+                            )),
+                    );
                 }
             }
             TypeExpr::List(inner) | TypeExpr::OptionType(inner) => {

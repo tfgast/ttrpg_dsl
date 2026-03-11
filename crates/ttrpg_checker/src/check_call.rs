@@ -271,12 +271,13 @@ impl Checker<'_> {
             {
                 let tag_name: ttrpg_ast::Name = tag_str.as_str().into();
                 if !self.env.tags.contains(&tag_name) {
-                    self.error(
+                    self.error_with_help(
                         format!(
                             "undeclared tag `{tag_str}` in {callee_name}() — \
                              no `tag {tag_str}` declaration found"
                         ),
                         tag_arg.value.span,
+                        format!("declare it with: tag {tag_str}"),
                     );
                 }
             }

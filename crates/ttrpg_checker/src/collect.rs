@@ -726,10 +726,19 @@ fn collect_entity(e: &EntityDecl, env: &mut TypeEnv, diagnostics: &mut Vec<Diagn
                         } else {
                             "attached"
                         };
-                        diagnostics.push(Diagnostic::error(
-                            format!("unknown group `{}` {} to entity `{}`", g.name, kind, e.name),
-                            g.span,
-                        ));
+                        diagnostics.push(
+                            Diagnostic::error(
+                                format!(
+                                    "unknown group `{}` {} to entity `{}`",
+                                    g.name, kind, e.name
+                                ),
+                                g.span,
+                            )
+                            .with_help(format!(
+                                "declare it with: group {} {{ ... }}",
+                                g.name
+                            )),
+                        );
                         None
                     }
                 };
@@ -1005,10 +1014,13 @@ fn collect_fn(
     let mut tag_set = HashSet::new();
     for tag in tags {
         if !env.tags.contains(tag) {
-            diagnostics.push(Diagnostic::error(
-                format!("undeclared tag `{tag}` on function `{name}`"),
-                span,
-            ));
+            diagnostics.push(
+                Diagnostic::error(
+                    format!("undeclared tag `{tag}` on function `{name}`"),
+                    span,
+                )
+                .with_help(format!("declare it with: tag {tag}")),
+            );
         }
         tag_set.insert(tag.clone());
     }
@@ -1182,10 +1194,13 @@ fn collect_action(
     let mut tag_set = HashSet::new();
     for tag in &a.tags {
         if !env.tags.contains(tag) {
-            diagnostics.push(Diagnostic::error(
-                format!("undeclared tag `{tag}` on action `{}`", a.name),
-                span,
-            ));
+            diagnostics.push(
+                Diagnostic::error(
+                    format!("undeclared tag `{tag}` on action `{}`", a.name),
+                    span,
+                )
+                .with_help(format!("declare it with: tag {tag}")),
+            );
         }
         tag_set.insert(tag.clone());
     }
@@ -1428,10 +1443,13 @@ fn collect_condition(
     let mut tag_set = HashSet::new();
     for tag in &c.tags {
         if !env.tags.contains(tag) {
-            diagnostics.push(Diagnostic::error(
-                format!("undeclared tag `{tag}` on condition `{name}`"),
-                span,
-            ));
+            diagnostics.push(
+                Diagnostic::error(
+                    format!("undeclared tag `{tag}` on condition `{name}`"),
+                    span,
+                )
+                .with_help(format!("declare it with: tag {tag}")),
+            );
         }
         tag_set.insert(tag.clone());
     }
@@ -1682,12 +1700,17 @@ pub fn validate_condition_extends(
             let parent_info = match env.conditions.get(parent_name) {
                 Some(info) => info,
                 None => {
-                    diagnostics.push(Diagnostic::error(
-                        format!(
-                            "condition `{child_name}` extends unknown condition `{parent_name}`"
-                        ),
-                        *span,
-                    ));
+                    diagnostics.push(
+                        Diagnostic::error(
+                            format!(
+                                "condition `{child_name}` extends unknown condition `{parent_name}`"
+                            ),
+                            *span,
+                        )
+                        .with_help(format!(
+                            "declare it with: condition {parent_name} on bearer: <type> {{ ... }}"
+                        )),
+                    );
                     continue;
                 }
             };

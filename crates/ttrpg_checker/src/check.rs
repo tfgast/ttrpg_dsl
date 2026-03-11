@@ -80,6 +80,16 @@ impl<'a> Checker<'a> {
         self.diagnostics.push(Diagnostic::error(message, span));
     }
 
+    pub fn error_with_help(
+        &mut self,
+        message: impl Into<String>,
+        span: Span,
+        help: impl Into<String>,
+    ) {
+        self.diagnostics
+            .push(Diagnostic::error(message, span).with_help(help));
+    }
+
     pub fn warning(&mut self, message: impl Into<String>, span: Span) {
         self.diagnostics.push(Diagnostic::warning(message, span));
     }
@@ -921,12 +931,13 @@ impl<'a> Checker<'a> {
                 ConditionClause::Periodic(pc) => {
                     // Validate tag is declared
                     if !self.env.tags.contains(&pc.tag) {
-                        self.error(
+                        self.error_with_help(
                             format!(
                                 "undeclared tag `{}` on periodic block in condition `{}`",
                                 pc.tag, c.name
                             ),
                             pc.span,
+                            format!("declare it with: tag {}", pc.tag),
                         );
                     }
                     // Type-check the periodic body with bearer, self, and params in scope
@@ -1130,7 +1141,11 @@ impl<'a> Checker<'a> {
             self.check_name_visible(&group.name, Namespace::Group, group.span);
             if group.is_external_ref {
                 if self.env.lookup_group(&group.name).is_none() {
-                    self.error(format!("unknown group `{}`", group.name), group.span);
+                    self.error_with_help(
+                        format!("unknown group `{}`", group.name),
+                        group.span,
+                        format!("declare it with: group {} {{ ... }}", group.name),
+                    );
                 }
             } else {
                 for field in &group.fields {
@@ -1251,9 +1266,10 @@ impl<'a> Checker<'a> {
                     if self.env.lookup_group(group_name).is_none()
                         && !self.env.has_optional_group_named(group_name)
                     {
-                        self.error(
+                        self.error_with_help(
                             format!("unknown optional group `{group_name}` for type `entity`"),
                             span,
+                            format!("declare it with: group {group_name} {{ ... }}"),
                         );
                     }
                 }

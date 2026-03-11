@@ -31,9 +31,10 @@ impl Checker<'_> {
                 if self.env.lookup_group(group_name).is_none()
                     && !self.env.has_optional_group_named(group_name)
                 {
-                    self.error(
+                    self.error_with_help(
                         format!("unknown optional group `{group_name}` for type `entity`"),
                         span,
+                        format!("declare it with: group {group_name} {{ ... }}"),
                     );
                 }
             }
@@ -115,7 +116,11 @@ impl Checker<'_> {
                 return Ty::Bool;
             }
             None => {
-                self.error(format!("unknown type `{entity_type_name}`"), span);
+                self.error_with_help(
+                    format!("unknown type `{entity_type_name}`"),
+                    span,
+                    format!("declare it with: enum {entity_type_name} {{ ... }}, struct {entity_type_name} {{ ... }}, or entity {entity_type_name} {{ ... }}"),
+                );
                 return Ty::Bool;
             }
         };
