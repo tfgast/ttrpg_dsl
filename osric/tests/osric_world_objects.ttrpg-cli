@@ -17,6 +17,8 @@ assert_eq combat_to_item_damage_type(DamageType.Corrosion, false), ItemDamageTyp
 assert_eq combat_to_item_damage_type(DamageType.Slashing, false), ItemDamageType.Crushing
 assert_eq combat_to_item_damage_type(DamageType.Piercing, false), ItemDamageType.Crushing
 assert_eq combat_to_item_damage_type(DamageType.Blunt, false), ItemDamageType.Crushing
+assert_eq combat_to_item_damage_type(DamageType.Disintegrate, false), ItemDamageType.Disintegrate
+assert_eq combat_to_item_damage_type(DamageType.Fall, false), ItemDamageType.Fall
 
 // ── effective_str_minor derive ────────────────────────────────
 

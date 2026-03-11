@@ -87,9 +87,9 @@ fn osric_core_has_all_enums() {
         enums.contains(&("ThiefSkill", 8)),
         "missing ThiefSkill enum"
     );
-    // DamageType: 9 variants (Slashing, Piercing, Blunt + Fire, Cold, Lightning, Acid, Poison, Corrosion)
+    // DamageType: 11 variants (Slashing, Piercing, Blunt, Fire, Cold, Lightning, Acid, Poison, Corrosion, Disintegrate, Fall)
     assert!(
-        enums.contains(&("DamageType", 9)),
+        enums.contains(&("DamageType", 11)),
         "missing DamageType enum"
     );
     // MeleeWeapon: 27 variants

@@ -54,7 +54,7 @@ fn osric_equipment_parses_and_typechecks() {
 // ── Enum completeness ──────────────────────────────────────────
 
 #[test]
-fn damage_type_enum_has_9_variants() {
+fn damage_type_enum_has_11_variants() {
     let (program, _) = compile_osric_equipment();
     let decls = get_core_decls(&program);
     let dt = decls
@@ -77,7 +77,9 @@ fn damage_type_enum_has_9_variants() {
             "Lightning",
             "Acid",
             "Poison",
-            "Corrosion"
+            "Corrosion",
+            "Disintegrate",
+            "Fall"
         ]
     );
 }

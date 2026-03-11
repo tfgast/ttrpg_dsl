@@ -152,12 +152,14 @@ system "OSRIC World Objects" {
 
     derive combat_to_item_damage_type(dt: DamageType, magical: bool) -> ItemDamageType {
         match dt {
-            Fire      => if magical { ItemDamageType.FireMagical } else { ItemDamageType.FireNormal },
-            Cold      => ItemDamageType.ColdMagical,
-            Lightning => ItemDamageType.Lightning,
-            Acid      => ItemDamageType.Acid,
-            Corrosion => ItemDamageType.Acid,
-            _         => ItemDamageType.Crushing
+            Fire         => if magical { ItemDamageType.FireMagical } else { ItemDamageType.FireNormal },
+            Cold         => ItemDamageType.ColdMagical,
+            Lightning    => ItemDamageType.Lightning,
+            Acid         => ItemDamageType.Acid,
+            Corrosion    => ItemDamageType.Acid,
+            Disintegrate => ItemDamageType.Disintegrate,
+            Fall         => ItemDamageType.Fall,
+            _            => ItemDamageType.Crushing
         }
     }
 

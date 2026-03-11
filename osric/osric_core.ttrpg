@@ -116,7 +116,7 @@ system "OSRIC" {
 
     // --- Damage types ---
 
-    enum DamageType { Slashing, Piercing, Blunt, Fire, Cold, Lightning, Acid, Poison, Corrosion }
+    enum DamageType { Slashing, Piercing, Blunt, Fire, Cold, Lightning, Acid, Poison, Corrosion, Disintegrate, Fall }
 
     // --- Weapon enums (bare types; lookup tables in OSRIC Equipment) ---
 
