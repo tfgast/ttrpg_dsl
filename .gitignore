@@ -9,6 +9,7 @@
 # Dolt database files (added by bd init)
 .dolt/
 *.db
+*.pid.lock
 
 # Fuzz artifacts (crashes, corpus, coverage)
 fuzz/artifacts/
