@@ -626,10 +626,10 @@ where
     // 3. Restore all budgets (always runs, reverse order)
     let mut cleanup_err = None;
     for (actor, prev_budget) in snapshots.into_iter().rev() {
-        if let Err(e) = restore_budget(env, actor, prev_budget, span) {
-            if cleanup_err.is_none() {
-                cleanup_err = Some(e);
-            }
+        if let Err(e) = restore_budget(env, actor, prev_budget, span)
+            && cleanup_err.is_none()
+        {
+            cleanup_err = Some(e);
         }
     }
 

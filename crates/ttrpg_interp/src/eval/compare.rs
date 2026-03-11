@@ -254,26 +254,22 @@ pub(super) fn match_pattern(
                 // Match field patterns positionally against variant field values
                 // Look up variant field names from type env
                 if let Some(DeclInfo::Enum(enum_info)) = env.interp.type_env.types.get(ty.as_str())
-                {
-                    if let Some(variant_info) =
+                    && let Some(variant_info) =
                         enum_info.variants.iter().find(|vi| vi.name == *variant)
-                    {
-                        if patterns.len() != variant_info.fields.len() {
-                            return false;
-                        }
-                        for (pat, (field_name, _)) in
-                            patterns.iter().zip(variant_info.fields.iter())
-                        {
-                            if let Some(field_val) = fields.get(field_name) {
-                                if !match_pattern(env, pat, field_val, bindings) {
-                                    return false;
-                                }
-                            } else {
+                {
+                    if patterns.len() != variant_info.fields.len() {
+                        return false;
+                    }
+                    for (pat, (field_name, _)) in patterns.iter().zip(variant_info.fields.iter()) {
+                        if let Some(field_val) = fields.get(field_name) {
+                            if !match_pattern(env, pat, field_val, bindings) {
                                 return false;
                             }
+                        } else {
+                            return false;
                         }
-                        return true;
                     }
+                    return true;
                 }
                 false
             } else {
@@ -304,26 +300,24 @@ pub(super) fn match_pattern(
                     // Use the value's own enum_name for field info lookup
                     if let Some(DeclInfo::Enum(enum_info)) =
                         env.interp.type_env.types.get(actual_enum.as_str())
-                    {
-                        if let Some(variant_info) =
+                        && let Some(variant_info) =
                             enum_info.variants.iter().find(|vi| vi.name == *name)
+                    {
+                        if patterns.len() != variant_info.fields.len() {
+                            return false;
+                        }
+                        for (pat, (field_name, _)) in
+                            patterns.iter().zip(variant_info.fields.iter())
                         {
-                            if patterns.len() != variant_info.fields.len() {
-                                return false;
-                            }
-                            for (pat, (field_name, _)) in
-                                patterns.iter().zip(variant_info.fields.iter())
-                            {
-                                if let Some(field_val) = fields.get(field_name) {
-                                    if !match_pattern(env, pat, field_val, bindings) {
-                                        return false;
-                                    }
-                                } else {
+                            if let Some(field_val) = fields.get(field_name) {
+                                if !match_pattern(env, pat, field_val, bindings) {
                                     return false;
                                 }
+                            } else {
+                                return false;
                             }
-                            return true;
                         }
+                        return true;
                     }
                 }
                 false

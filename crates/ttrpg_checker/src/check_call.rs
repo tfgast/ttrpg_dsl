@@ -40,81 +40,71 @@ impl Checker<'_> {
                     return self.resolve_alias_call(alias_name, field, args, span);
                 }
                 // Action method call: entity.Action(args)
-                if obj_ty.is_entity() {
-                    if let Some(fn_info) = self.env.lookup_fn(field).cloned() {
-                        if fn_info.kind == FnKind::Action {
-                            // Check module visibility (same as direct call path)
-                            self.check_name_visible(field, Namespace::Function, span);
+                if obj_ty.is_entity()
+                    && let Some(fn_info) = self.env.lookup_fn(field).cloned()
+                    && fn_info.kind == FnKind::Action
+                {
+                    // Check module visibility (same as direct call path)
+                    self.check_name_visible(field, Namespace::Function, span);
 
-                            // Select the best overload for this receiver type.
-                            // If found, use its params for arg checking; otherwise
-                            // verify against the representative and report mismatch.
-                            let resolved = self
-                                .env
-                                .lookup_action_overload(field, &obj_ty)
-                                .cloned()
-                                .unwrap_or(fn_info);
+                    // Select the best overload for this receiver type.
+                    // If found, use its params for arg checking; otherwise
+                    // verify against the representative and report mismatch.
+                    let resolved = self
+                        .env
+                        .lookup_action_overload(field, &obj_ty)
+                        .cloned()
+                        .unwrap_or(fn_info);
 
-                            if let Some(ref receiver) = resolved.receiver {
-                                if !self.types_compatible(&obj_ty, &receiver.ty) {
-                                    self.error(
-                                        format!(
-                                            "action `{}` expects receiver of type {}, found {}",
-                                            field,
-                                            receiver.ty.display(),
-                                            obj_ty.display()
-                                        ),
-                                        span,
-                                    );
-                                }
-                            }
+                    if let Some(ref receiver) = resolved.receiver
+                        && !self.types_compatible(&obj_ty, &receiver.ty)
+                    {
+                        self.error(
+                            format!(
+                                "action `{}` expects receiver of type {}, found {}",
+                                field,
+                                receiver.ty.display(),
+                                obj_ty.display()
+                            ),
+                            span,
+                        );
+                    }
 
-                            // Check context restrictions (same as function-call path)
-                            let current_ctx = self.scope.current_block_kind();
-                            if !matches!(
-                                current_ctx,
-                                Some(
-                                    BlockKind::FunctionBody
-                                        | BlockKind::ActionResolve
-                                        | BlockKind::ReactionResolve
-                                        | BlockKind::HookResolve
-                                        | BlockKind::WithBudget
-                                        | BlockKind::PeriodicBlock
-                                )
-                            ) {
-                                self.error(
+                    // Check context restrictions (same as function-call path)
+                    let current_ctx = self.scope.current_block_kind();
+                    if !matches!(
+                        current_ctx,
+                        Some(
+                            BlockKind::FunctionBody
+                                | BlockKind::ActionResolve
+                                | BlockKind::ReactionResolve
+                                | BlockKind::HookResolve
+                                | BlockKind::WithBudget
+                                | BlockKind::PeriodicBlock
+                        )
+                    ) {
+                        self.error(
                                     format!(
                                         "`{field}` is an action and can only be called from function, action, reaction, or hook context"
                                     ),
                                     span,
                                 );
-                            }
-
-                            // Check args against action params (without receiver — it's the object)
-                            self.check_args(
-                                field,
-                                CallKind::Function,
-                                &resolved.params,
-                                args,
-                                span,
-                            );
-                            return resolved.return_type.clone();
-                        }
                     }
+
+                    // Check args against action params (without receiver — it's the object)
+                    self.check_args(field, CallKind::Function, &resolved.params, args, span);
+                    return resolved.return_type.clone();
                 }
                 // Check if the field is a fn-ref type on a struct (e.g., entry.resolve(args))
-                if let Ty::Struct(ref struct_name) = obj_ty {
-                    if let Some(crate::env::DeclInfo::Struct(info)) =
+                if let Ty::Struct(ref struct_name) = obj_ty
+                    && let Some(crate::env::DeclInfo::Struct(info)) =
                         self.env.types.get(struct_name.as_str())
-                    {
-                        if let Some(field_info) = info.fields.iter().find(|f| f.name == *field) {
-                            if let Ty::Fn(ref param_tys, ref ret_ty) = field_info.ty {
-                                let param_tys = param_tys.clone();
-                                let ret_ty = ret_ty.clone();
-                                return self.check_fn_ref_call(&param_tys, &ret_ty, args, span);
-                            }
-                        }
-                    }
+                    && let Some(field_info) = info.fields.iter().find(|f| f.name == *field)
+                    && let Ty::Fn(ref param_tys, ref ret_ty) = field_info.ty
+                {
+                    let param_tys = param_tys.clone();
+                    let ret_ty = ret_ty.clone();
+                    return self.check_fn_ref_call(&param_tys, &ret_ty, args, span);
                 }
                 // Method call: obj.method(args)
                 return self.check_method_call(&obj_ty, field, args, span);
@@ -500,20 +490,20 @@ impl Checker<'_> {
         for (i, arg) in args.iter().enumerate() {
             let hint = param_tys.get(i);
             let arg_ty = self.check_expr_expecting(&arg.value, hint);
-            if !arg_ty.is_error() {
-                if let Some(expected) = param_tys.get(i) {
-                    if !expected.is_error() && arg_ty != *expected {
-                        self.error(
-                            format!(
-                                "argument {} has type {}, expected {}",
-                                i + 1,
-                                arg_ty.display(),
-                                expected.display()
-                            ),
-                            arg.span,
-                        );
-                    }
-                }
+            if !arg_ty.is_error()
+                && let Some(expected) = param_tys.get(i)
+                && !expected.is_error()
+                && arg_ty != *expected
+            {
+                self.error(
+                    format!(
+                        "argument {} has type {}, expected {}",
+                        i + 1,
+                        arg_ty.display(),
+                        expected.display()
+                    ),
+                    arg.span,
+                );
             }
         }
 

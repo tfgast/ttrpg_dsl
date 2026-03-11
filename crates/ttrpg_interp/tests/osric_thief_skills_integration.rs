@@ -39,12 +39,12 @@ fn has_expected_tables() {
 
     let mut table_names = Vec::new();
     for item in &program.items {
-        if let TopLevel::System(sys) = &item.node {
-            if sys.name == "OSRIC Thief Skills" {
-                for decl in &sys.decls {
-                    if let DeclKind::Table(t) = &decl.node {
-                        table_names.push(t.name.to_string());
-                    }
+        if let TopLevel::System(sys) = &item.node
+            && sys.name == "OSRIC Thief Skills"
+        {
+            for decl in &sys.decls {
+                if let DeclKind::Table(t) = &decl.node {
+                    table_names.push(t.name.to_string());
                 }
             }
         }
@@ -69,12 +69,12 @@ fn has_expected_derives() {
 
     let mut derive_names = Vec::new();
     for item in &program.items {
-        if let TopLevel::System(sys) = &item.node {
-            if sys.name == "OSRIC Thief Skills" {
-                for decl in &sys.decls {
-                    if let DeclKind::Derive(d) = &decl.node {
-                        derive_names.push(d.name.to_string());
-                    }
+        if let TopLevel::System(sys) = &item.node
+            && sys.name == "OSRIC Thief Skills"
+        {
+            for decl in &sys.decls {
+                if let DeclKind::Derive(d) = &decl.node {
+                    derive_names.push(d.name.to_string());
                 }
             }
         }
@@ -98,14 +98,14 @@ fn has_thief_skill_check_mechanic() {
 
     let mut found = false;
     for item in &program.items {
-        if let TopLevel::System(sys) = &item.node {
-            if sys.name == "OSRIC Thief Skills" {
-                for decl in &sys.decls {
-                    if let DeclKind::Mechanic(m) = &decl.node {
-                        if m.name == "thief_skill_check" {
-                            found = true;
-                        }
-                    }
+        if let TopLevel::System(sys) = &item.node
+            && sys.name == "OSRIC Thief Skills"
+        {
+            for decl in &sys.decls {
+                if let DeclKind::Mechanic(m) = &decl.node
+                    && m.name == "thief_skill_check"
+                {
+                    found = true;
                 }
             }
         }

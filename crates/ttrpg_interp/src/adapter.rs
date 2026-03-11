@@ -804,12 +804,12 @@ mod tests {
 
     impl WritableState for TestWritableState {
         fn write_field(&mut self, entity: &EntityRef, path: &[FieldPathSegment], value: Value) {
-            if let Some(FieldPathSegment::Field(f)) = path.first() {
-                if path.len() == 1 {
-                    self.fields.insert((entity.0, f.to_string()), value);
-                }
-                // Nested paths: simplified for tests
+            if let Some(FieldPathSegment::Field(f)) = path.first()
+                && path.len() == 1
+            {
+                self.fields.insert((entity.0, f.to_string()), value);
             }
+            // Nested paths: simplified for tests
         }
 
         fn add_condition(&mut self, entity: &EntityRef, mut cond: ActiveCondition) {
@@ -878,7 +878,7 @@ mod tests {
             type_name: &str,
             fields: rustc_hash::FxHashMap<Name, Value>,
         ) -> EntityRef {
-            let id = self.next_condition_id as u64; // reuse counter for test simplicity
+            let id = self.next_condition_id; // reuse counter for test simplicity
             self.next_condition_id += 1;
             // Store entity type as a field for test inspection
             self.fields

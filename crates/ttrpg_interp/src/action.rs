@@ -175,19 +175,19 @@ fn execute_pipeline(
     }
 
     // Cost deduction (skip if explicitly free)
-    if let Some(cost) = cost {
-        if !cost.free {
-            // Collect cost modifiers from conditions on the actor
-            let effective_cost =
-                collect_and_apply_cost_modifiers(env, actor, action_name, cost, call_span)?;
-            if let Some(ref eff) = effective_cost {
-                match deduct_costs(env, action_name, eff, call_span)? {
-                    CostOutcome::Proceed => {}
-                    CostOutcome::ActionFailed => return Ok(abort_value),
-                }
+    if let Some(cost) = cost
+        && !cost.free
+    {
+        // Collect cost modifiers from conditions on the actor
+        let effective_cost =
+            collect_and_apply_cost_modifiers(env, actor, action_name, cost, call_span)?;
+        if let Some(ref eff) = effective_cost {
+            match deduct_costs(env, action_name, eff, call_span)? {
+                CostOutcome::Proceed => {}
+                CostOutcome::ActionFailed => return Ok(abort_value),
             }
-            // else: cost was overridden to free by a modifier
         }
+        // else: cost was overridden to free by a modifier
     }
 
     // Execute resolve block

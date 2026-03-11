@@ -212,10 +212,10 @@ pub fn find_package(
     for dir in search_dirs {
         let pkg_dir = dir.join(package_name);
         let manifest_path = pkg_dir.join(MANIFEST_FILENAME);
-        if manifest_path.is_file() {
-            if let Ok(manifest) = load_manifest(&manifest_path) {
-                return Some((manifest, pkg_dir));
-            }
+        if manifest_path.is_file()
+            && let Ok(manifest) = load_manifest(&manifest_path)
+        {
+            return Some((manifest, pkg_dir));
         }
     }
     None

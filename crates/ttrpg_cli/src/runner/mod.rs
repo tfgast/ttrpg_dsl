@@ -70,11 +70,11 @@ pub(super) fn render_runtime_error(
     e: &RuntimeError,
     source_map: &Option<MultiSourceMap>,
 ) -> CliError {
-    if let (Some(span), Some(sm)) = (e.span, source_map.as_ref()) {
-        if !span.is_dummy() {
-            let diag = Diagnostic::error(&e.message, span);
-            return CliError::Rendered(sm.render(&diag));
-        }
+    if let (Some(span), Some(sm)) = (e.span, source_map.as_ref())
+        && !span.is_dummy()
+    {
+        let diag = Diagnostic::error(&e.message, span);
+        return CliError::Rendered(sm.render(&diag));
     }
     CliError::Message(format!("runtime error: {}", e.message))
 }
@@ -310,11 +310,11 @@ impl Runner {
         }
 
         // Check for `source [-s] <<DELIM`
-        if trimmed.starts_with("source ") || trimmed == "source" {
-            if let Some(heredoc) = Self::parse_source_heredoc(trimmed) {
-                self.heredoc = Some(heredoc);
-                return Ok(());
-            }
+        if (trimmed.starts_with("source ") || trimmed == "source")
+            && let Some(heredoc) = Self::parse_source_heredoc(trimmed)
+        {
+            self.heredoc = Some(heredoc);
+            return Ok(());
         }
 
         // Check for explicit backslash continuation
@@ -344,11 +344,11 @@ impl Runner {
         }
 
         // Check for `source [-s] <<DELIM`
-        if trimmed.starts_with("source ") || trimmed == "source" {
-            if let Some(heredoc) = Self::parse_source_heredoc(trimmed) {
-                self.heredoc = Some(heredoc);
-                return Ok(());
-            }
+        if (trimmed.starts_with("source ") || trimmed == "source")
+            && let Some(heredoc) = Self::parse_source_heredoc(trimmed)
+        {
+            self.heredoc = Some(heredoc);
+            return Ok(());
         }
 
         self.exec_inner(line)

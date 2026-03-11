@@ -67,115 +67,105 @@ impl Runner {
 
         // Fill defaults for missing params (using self.eval on default exprs)
         for p in &event_decl.params {
-            if !param_map.contains_key(&p.name) {
-                if p.default.is_some() {
-                    // Evaluate the default expression through the standard eval path
-                    let cov_rc = self.coverage_rc();
-                    let mut interp = TrackedInterpreter::new(
-                        &self.program,
-                        &self.type_env,
-                        &self.game_state,
-                        &self.source_map,
-                    )?;
-                    if let Some(cov) = cov_rc {
-                        interp.interp.set_coverage(cov);
-                    }
-                    let state = RefCellState(&self.game_state);
-                    let mut handler = CliHandler::new(
-                        &self.game_state,
-                        &self.reverse_handles,
-                        &mut self.rng,
-                        &mut self.roll_queue,
-                        &mut self.prompt_queue,
-                        &self.unit_suffixes,
-                    )
-                    .quiet(self.quiet)
-                    .interactive(self.interactive);
-                    let bindings: rustc_hash::FxHashMap<Name, Value> = self
-                        .variables
+            if !param_map.contains_key(&p.name)
+                && let Some(default_expr) = &p.default
+            {
+                // Evaluate the default expression through the standard eval path
+                let cov_rc = self.coverage_rc();
+                let mut interp = TrackedInterpreter::new(
+                    &self.program,
+                    &self.type_env,
+                    &self.game_state,
+                    &self.source_map,
+                )?;
+                if let Some(cov) = cov_rc {
+                    interp.interp.set_coverage(cov);
+                }
+                let state = RefCellState(&self.game_state);
+                let mut handler = CliHandler::new(
+                    &self.game_state,
+                    &self.reverse_handles,
+                    &mut self.rng,
+                    &mut self.roll_queue,
+                    &mut self.prompt_queue,
+                    &self.unit_suffixes,
+                )
+                .quiet(self.quiet)
+                .interactive(self.interactive);
+                let bindings: rustc_hash::FxHashMap<Name, Value> =
+                    self.variables
                         .iter()
                         .map(|(name, val)| (Name::from(name.as_str()), val.clone()))
                         .chain(self.handles.iter().map(|(name, entity)| {
                             (Name::from(name.as_str()), Value::Entity(*entity))
                         }))
                         .collect();
-                    let val = interp
-                        .evaluate_expr_with_bindings(
-                            &state,
-                            &mut handler,
-                            p.default.as_ref().unwrap(),
-                            bindings,
-                        )
-                        .map_err(|e| {
-                            for line in handler.log.drain(..) {
-                                self.output.push(line);
-                            }
-                            render_runtime_error(&e, &self.source_map)
-                        })?;
-                    for line in handler.log.drain(..) {
-                        self.output.push(line);
-                    }
-                    param_map.insert(p.name.clone(), val);
+                let val = interp
+                    .evaluate_expr_with_bindings(&state, &mut handler, default_expr, bindings)
+                    .map_err(|e| {
+                        for line in handler.log.drain(..) {
+                            self.output.push(line);
+                        }
+                        render_runtime_error(&e, &self.source_map)
+                    })?;
+                for line in handler.log.drain(..) {
+                    self.output.push(line);
                 }
+                param_map.insert(p.name.clone(), val);
             }
         }
 
         // Evaluate derived fields (event body defaults) with params in scope
         let mut all_fields = param_map.clone();
         for f in &event_decl.fields {
-            if !all_fields.contains_key(&f.name) {
-                if f.default.is_some() {
-                    let cov_rc = self.coverage_rc();
-                    let mut interp = TrackedInterpreter::new(
-                        &self.program,
-                        &self.type_env,
-                        &self.game_state,
-                        &self.source_map,
-                    )?;
-                    if let Some(cov) = cov_rc {
-                        interp.interp.set_coverage(cov);
-                    }
-                    let state = RefCellState(&self.game_state);
-                    let mut handler = CliHandler::new(
-                        &self.game_state,
-                        &self.reverse_handles,
-                        &mut self.rng,
-                        &mut self.roll_queue,
-                        &mut self.prompt_queue,
-                        &self.unit_suffixes,
-                    )
-                    .quiet(self.quiet)
-                    .interactive(self.interactive);
-                    // Include params so derived fields can reference them
-                    let mut bindings: rustc_hash::FxHashMap<Name, Value> = self
-                        .variables
+            if !all_fields.contains_key(&f.name)
+                && let Some(default_expr) = &f.default
+            {
+                let cov_rc = self.coverage_rc();
+                let mut interp = TrackedInterpreter::new(
+                    &self.program,
+                    &self.type_env,
+                    &self.game_state,
+                    &self.source_map,
+                )?;
+                if let Some(cov) = cov_rc {
+                    interp.interp.set_coverage(cov);
+                }
+                let state = RefCellState(&self.game_state);
+                let mut handler = CliHandler::new(
+                    &self.game_state,
+                    &self.reverse_handles,
+                    &mut self.rng,
+                    &mut self.roll_queue,
+                    &mut self.prompt_queue,
+                    &self.unit_suffixes,
+                )
+                .quiet(self.quiet)
+                .interactive(self.interactive);
+                // Include params so derived fields can reference them
+                let mut bindings: rustc_hash::FxHashMap<Name, Value> =
+                    self.variables
                         .iter()
                         .map(|(name, val)| (Name::from(name.as_str()), val.clone()))
                         .chain(self.handles.iter().map(|(name, entity)| {
                             (Name::from(name.as_str()), Value::Entity(*entity))
                         }))
                         .collect();
-                    for (name, val) in &all_fields {
-                        bindings.insert(name.clone(), val.clone());
-                    }
-                    let val = interp
-                        .evaluate_expr_with_bindings(
-                            &state,
-                            &mut handler,
-                            f.default.as_ref().unwrap(),
-                            bindings,
-                        )
-                        .map_err(|e| {
-                            for line in handler.log.drain(..) {
-                                self.output.push(line);
-                            }
-                            render_runtime_error(&e, &self.source_map)
-                        })?;
-                    for line in handler.log.drain(..) {
-                        self.output.push(line);
-                    }
-                    all_fields.insert(f.name.clone(), val);
+                for (name, val) in &all_fields {
+                    bindings.insert(name.clone(), val.clone());
                 }
+                let val = interp
+                    .evaluate_expr_with_bindings(&state, &mut handler, default_expr, bindings)
+                    .map_err(|e| {
+                        for line in handler.log.drain(..) {
+                            self.output.push(line);
+                        }
+                        render_runtime_error(&e, &self.source_map)
+                    })?;
+                for line in handler.log.drain(..) {
+                    self.output.push(line);
+                }
+                all_fields.insert(f.name.clone(), val);
             }
         }
 

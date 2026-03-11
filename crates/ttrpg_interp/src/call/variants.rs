@@ -1,6 +1,6 @@
 use std::collections::BTreeMap;
 
-use ttrpg_ast::ast::{Arg, Param};
+use ttrpg_ast::ast::{Arg, Param, WithClause};
 use ttrpg_ast::{Name, Span};
 use ttrpg_checker::env::{DeclInfo, ParamInfo};
 
@@ -19,24 +19,24 @@ fn find_variant_ast_fields(env: &Env, enum_name: &str, variant_name: &str) -> Ve
     for item in &env.interp.program.items {
         if let TopLevel::System(system) = &item.node {
             for decl in &system.decls {
-                if let DeclKind::Enum(e) = &decl.node {
-                    if e.name == enum_name {
-                        for v in &e.variants {
-                            if v.name == variant_name {
-                                if let Some(ref fields) = v.fields {
-                                    return fields
-                                        .iter()
-                                        .map(|f| Param {
-                                            name: f.name.clone(),
-                                            ty: f.ty.clone(),
-                                            default: f.default.clone(),
-                                            with_groups: Default::default(),
-                                            span: f.span,
-                                        })
-                                        .collect();
-                                }
-                                return Vec::new();
+                if let DeclKind::Enum(e) = &decl.node
+                    && e.name == enum_name
+                {
+                    for v in &e.variants {
+                        if v.name == variant_name {
+                            if let Some(ref fields) = v.fields {
+                                return fields
+                                    .iter()
+                                    .map(|f| Param {
+                                        name: f.name.clone(),
+                                        ty: f.ty.clone(),
+                                        default: f.default.clone(),
+                                        with_groups: WithClause::default(),
+                                        span: f.span,
+                                    })
+                                    .collect();
                             }
+                            return Vec::new();
                         }
                     }
                 }

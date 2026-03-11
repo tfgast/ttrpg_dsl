@@ -585,21 +585,19 @@ fn collect_enum(e: &EnumDecl, env: &mut TypeEnv, diagnostics: &mut Vec<Diagnosti
     }
 
     // EffectSource must have a plain `Unknown` variant (no fields).
-    if e.name == "EffectSource" {
-        if let Some(DeclInfo::Enum(info)) = env.types.get(&e.name) {
-            if !info
-                .variants
-                .iter()
-                .any(|v| v.name == "Unknown" && v.fields.is_empty())
-            {
-                // Use the first variant's span as best-effort location
-                if let Some(first_variant) = e.variants.first() {
-                    diagnostics.push(Diagnostic::error(
-                        "`EffectSource` must have a plain `Unknown` variant (no fields)",
-                        first_variant.span,
-                    ));
-                }
-            }
+    if e.name == "EffectSource"
+        && let Some(DeclInfo::Enum(info)) = env.types.get(&e.name)
+        && !info
+            .variants
+            .iter()
+            .any(|v| v.name == "Unknown" && v.fields.is_empty())
+    {
+        // Use the first variant's span as best-effort location
+        if let Some(first_variant) = e.variants.first() {
+            diagnostics.push(Diagnostic::error(
+                "`EffectSource` must have a plain `Unknown` variant (no fields)",
+                first_variant.span,
+            ));
         }
     }
 }
@@ -1133,23 +1131,23 @@ fn collect_action(
         }
 
         // Check for name collision with a non-action function
-        if let Some(existing_fn) = env.functions.get(a.name.as_str()) {
-            if existing_fn.kind != FnKind::Action {
-                diagnostics.push(Diagnostic::error(
-                    format!(
-                        "action `{}` conflicts with existing {} of the same name",
-                        a.name,
-                        match existing_fn.kind {
-                            FnKind::Function => "function",
-                            FnKind::Derive => "derive",
-                            FnKind::Mechanic => "mechanic",
-                            FnKind::Table => "table",
-                            _ => "declaration",
-                        }
-                    ),
-                    span,
-                ));
-            }
+        if let Some(existing_fn) = env.functions.get(a.name.as_str())
+            && existing_fn.kind != FnKind::Action
+        {
+            diagnostics.push(Diagnostic::error(
+                format!(
+                    "action `{}` conflicts with existing {} of the same name",
+                    a.name,
+                    match existing_fn.kind {
+                        FnKind::Function => "function",
+                        FnKind::Derive => "derive",
+                        FnKind::Mechanic => "mechanic",
+                        FnKind::Table => "table",
+                        _ => "declaration",
+                    }
+                ),
+                span,
+            ));
         }
     }
 
@@ -1584,10 +1582,10 @@ pub fn validate_option_extends(
     for item in &program.items {
         if let TopLevel::System(system) = &item.node {
             for decl in &system.decls {
-                if let DeclKind::Option(o) = &decl.node {
-                    if let Some(ref parent) = o.extends {
-                        extends_map.insert(o.name.clone(), (parent.clone(), decl.span));
-                    }
+                if let DeclKind::Option(o) = &decl.node
+                    && let Some(ref parent) = o.extends
+                {
+                    extends_map.insert(o.name.clone(), (parent.clone(), decl.span));
                 }
             }
         }
@@ -1662,12 +1660,12 @@ pub fn validate_condition_extends(
     for item in &program.items {
         if let TopLevel::System(system) = &item.node {
             for decl in &system.decls {
-                if let DeclKind::Condition(c) = &decl.node {
-                    if !c.extends.is_empty() {
-                        let parents: Vec<(Name, Span)> =
-                            c.extends.iter().map(|s| (s.node.clone(), s.span)).collect();
-                        extends_map.insert(c.name.clone(), parents);
-                    }
+                if let DeclKind::Condition(c) = &decl.node
+                    && !c.extends.is_empty()
+                {
+                    let parents: Vec<(Name, Span)> =
+                        c.extends.iter().map(|s| (s.node.clone(), s.span)).collect();
+                    extends_map.insert(c.name.clone(), parents);
                 }
             }
         }

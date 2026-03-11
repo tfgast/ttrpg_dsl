@@ -71,7 +71,7 @@ pub fn resolve_modules(
 
         // Attach source file provenance
         if let Some(files) = system_files.get(sys_name) {
-            info.source_files = files.clone();
+            info.source_files.clone_from(files);
         }
 
         // Tracks (namespace, name) → (span, is_action) for duplicate detection.
@@ -227,14 +227,14 @@ pub fn resolve_modules(
                 }
 
                 // Check alias vs own declaration (all namespaces including variants)
-                if let Some(sys_info) = module_map.systems.get(sys_name) {
-                    if system_has_name(sys_info, alias) {
-                        diagnostics.push(Diagnostic::error(
-                            format!("alias \"{alias}\" conflicts with declaration \"{alias}\""),
-                            import.span,
-                        ));
-                        continue;
-                    }
+                if let Some(sys_info) = module_map.systems.get(sys_name)
+                    && system_has_name(sys_info, alias)
+                {
+                    diagnostics.push(Diagnostic::error(
+                        format!("alias \"{alias}\" conflicts with declaration \"{alias}\""),
+                        import.span,
+                    ));
+                    continue;
                 }
 
                 aliases.insert(alias.clone(), (import.system_name.clone(), import.span));
@@ -254,11 +254,11 @@ pub fn resolve_modules(
             if let Some(ref alias) = import.alias {
                 let mut shadowed_system = None;
                 for target in &accepted_targets {
-                    if let Some(sys_info) = module_map.systems.get(target.as_str()) {
-                        if system_has_name(sys_info, alias) {
-                            shadowed_system = Some(target.to_string());
-                            break;
-                        }
+                    if let Some(sys_info) = module_map.systems.get(target.as_str())
+                        && system_has_name(sys_info, alias)
+                    {
+                        shadowed_system = Some(target.to_string());
+                        break;
                     }
                 }
                 if let Some(source_system) = shadowed_system {

@@ -139,12 +139,12 @@ pub(crate) fn eval_call(
                 }
             }
             // Action method call: entity.Action(args)
-            if let Some(fn_info) = env.interp.type_env.lookup_fn(field) {
-                if fn_info.kind == FnKind::Action {
-                    let fn_info = fn_info.clone();
-                    let object_val = eval_expr(env, object)?;
-                    return dispatch_action_method(env, &fn_info, object_val, args, call_span);
-                }
+            if let Some(fn_info) = env.interp.type_env.lookup_fn(field)
+                && fn_info.kind == FnKind::Action
+            {
+                let fn_info = fn_info.clone();
+                let object_val = eval_expr(env, object)?;
+                return dispatch_action_method(env, &fn_info, object_val, args, call_span);
             }
             // Method call: evaluate the object and dispatch
             let object_val = eval_expr(env, object)?;
@@ -153,11 +153,11 @@ pub(crate) fn eval_call(
                 return construct_enum_variant(env, enum_name, field, args, call_span);
             }
             // Struct field holding a fn ref: entry.resolve(args)
-            if let Value::Struct { ref fields, .. } = object_val {
-                if let Some(Value::FnRef(fn_name)) = fields.get(field.as_str()) {
-                    let fn_name = fn_name.clone();
-                    return dispatch_fn_ref(env, &fn_name, args, call_span);
-                }
+            if let Value::Struct { ref fields, .. } = object_val
+                && let Some(Value::FnRef(fn_name)) = fields.get(field.as_str())
+            {
+                let fn_name = fn_name.clone();
+                return dispatch_fn_ref(env, &fn_name, args, call_span);
             }
             eval_method_call(env, object_val, field, args, call_span)
         }

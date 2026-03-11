@@ -343,20 +343,19 @@ fn eval_ident(env: &mut Env, name: &str, expr: &Spanned<ExprKind>) -> Result<Val
         .or_else(|| env.interp.type_env.unique_variant_owner(name).cloned());
     if let Some(enum_name) = resolved {
         // Look up the variant info to check if it has fields
-        if let Some(DeclInfo::Enum(enum_info)) = env.interp.type_env.types.get(enum_name.as_str()) {
-            if let Some(variant) = enum_info.variants.iter().find(|v| v.name == name) {
-                if variant.fields.is_empty() {
-                    // Fieldless variant — can be used as a value directly
-                    return Ok(Value::EnumVariant {
-                        enum_name: enum_name.clone(),
-                        variant: Name::from(name),
-                        fields: BTreeMap::new(),
-                    });
-                }
-                // Variant with fields — this will be handled as a Call
-                // Fall through to error
-            }
+        if let Some(DeclInfo::Enum(enum_info)) = env.interp.type_env.types.get(enum_name.as_str())
+            && let Some(variant) = enum_info.variants.iter().find(|v| v.name == name)
+            && variant.fields.is_empty()
+        {
+            // Fieldless variant — can be used as a value directly
+            return Ok(Value::EnumVariant {
+                enum_name: enum_name.clone(),
+                variant: Name::from(name),
+                fields: BTreeMap::new(),
+            });
         }
+        // Variant with fields — this will be handled as a Call
+        // Fall through to error
     }
 
     // 3. Check if it's a condition name (bare use = no args, but materialize defaults)
@@ -388,12 +387,11 @@ fn eval_ident(env: &mut Env, name: &str, expr: &Spanned<ExprKind>) -> Result<Val
     }
     // Fallback for CLI eval expressions that weren't checker-resolved:
     // if the name is a FnKind::Function with no with-constraints, treat it as a fn ref.
-    if let Some(fn_info) = env.interp.type_env.lookup_fn(name) {
-        if fn_info.kind == FnKind::Function
-            && fn_info.params.iter().all(|p| p.with_groups.is_empty())
-        {
-            return Ok(Value::FnRef(Name::from(name)));
-        }
+    if let Some(fn_info) = env.interp.type_env.lookup_fn(name)
+        && fn_info.kind == FnKind::Function
+        && fn_info.params.iter().all(|p| p.with_groups.is_empty())
+    {
+        return Ok(Value::FnRef(Name::from(name)));
     }
 
     // 5. Check if it's an enum type name (for qualified access like `Duration.Rounds`)

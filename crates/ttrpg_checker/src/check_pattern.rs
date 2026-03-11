@@ -120,18 +120,17 @@ impl Checker<'_> {
                         self.resolve_bare_variant_in_pattern(name, scrutinee_ty, pattern.span)
                     {
                         // Reject bare pattern for variants with payload fields
-                        if let Some(DeclInfo::Enum(info)) = self.env.types.get(resolved) {
-                            if let Some(var_info) = info.variants.iter().find(|v| v.name == *name) {
-                                if !var_info.fields.is_empty() {
-                                    self.error(
+                        if let Some(DeclInfo::Enum(info)) = self.env.types.get(resolved)
+                            && let Some(var_info) = info.variants.iter().find(|v| v.name == *name)
+                            && !var_info.fields.is_empty()
+                        {
+                            self.error(
                                         format!(
                                             "variant `{}` has {} field(s); use destructuring pattern `{}(...)` or a wildcard",
                                             name, var_info.fields.len(), name
                                         ),
                                         pattern.span,
                                     );
-                                }
-                            }
                         }
                     }
                 } else if !starts_lowercase
@@ -304,25 +303,22 @@ impl Checker<'_> {
                 if self.env.variant_to_enums.contains_key(name) {
                     if let Some(ref resolved) =
                         self.resolve_bare_variant_in_pattern(name, scrutinee_ty, pattern.span)
+                        && let Some(DeclInfo::Enum(info)) = self.env.types.get(resolved)
+                        && let Some(var_info) = info.variants.iter().find(|v| v.name == *name)
                     {
-                        if let Some(DeclInfo::Enum(info)) = self.env.types.get(resolved) {
-                            if let Some(var_info) = info.variants.iter().find(|v| v.name == *name) {
-                                if sub_patterns.len() != var_info.fields.len() {
-                                    self.error(
-                                        format!(
-                                            "variant `{}` has {} field(s), found {} in pattern",
-                                            name,
-                                            var_info.fields.len(),
-                                            sub_patterns.len()
-                                        ),
-                                        pattern.span,
-                                    );
-                                }
-                                for (sub, field) in sub_patterns.iter().zip(var_info.fields.iter())
-                                {
-                                    self.check_pattern_inner(sub, &field.1, true, false);
-                                }
-                            }
+                        if sub_patterns.len() != var_info.fields.len() {
+                            self.error(
+                                format!(
+                                    "variant `{}` has {} field(s), found {} in pattern",
+                                    name,
+                                    var_info.fields.len(),
+                                    sub_patterns.len()
+                                ),
+                                pattern.span,
+                            );
+                        }
+                        for (sub, field) in sub_patterns.iter().zip(var_info.fields.iter()) {
+                            self.check_pattern_inner(sub, &field.1, true, false);
                         }
                     }
                 } else {

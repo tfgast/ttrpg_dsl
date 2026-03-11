@@ -75,20 +75,20 @@ fn ose_saves_has_table_and_mechanic() {
     let mut has_mechanic = false;
 
     for item in &program.items {
-        if let TopLevel::System(sys) = &item.node {
-            if sys.name == "OSE Saves" {
-                for decl in &sys.decls {
-                    match &decl.node {
-                        DeclKind::Table(t) if t.name == "saving_throws" => {
-                            has_table = true;
-                            assert_eq!(t.params.len(), 2);
-                        }
-                        DeclKind::Mechanic(f) if f.name == "saving_throw_check" => {
-                            has_mechanic = true;
-                            assert_eq!(f.params.len(), 2);
-                        }
-                        _ => {}
+        if let TopLevel::System(sys) = &item.node
+            && sys.name == "OSE Saves"
+        {
+            for decl in &sys.decls {
+                match &decl.node {
+                    DeclKind::Table(t) if t.name == "saving_throws" => {
+                        has_table = true;
+                        assert_eq!(t.params.len(), 2);
                     }
+                    DeclKind::Mechanic(f) if f.name == "saving_throw_check" => {
+                        has_mechanic = true;
+                        assert_eq!(f.params.len(), 2);
+                    }
+                    _ => {}
                 }
             }
         }
@@ -105,16 +105,16 @@ fn ose_saves_table_has_all_entries() {
     let program = compile_ose_saves();
 
     for item in &program.items {
-        if let TopLevel::System(sys) = &item.node {
-            if sys.name == "OSE Saves" {
-                for decl in &sys.decls {
-                    if let DeclKind::Table(t) = &decl.node {
-                        if t.name == "saving_throws" {
-                            // 13 categories × varying tiers = 49 entries
-                            assert_eq!(t.entries.len(), 49);
-                            return;
-                        }
-                    }
+        if let TopLevel::System(sys) = &item.node
+            && sys.name == "OSE Saves"
+        {
+            for decl in &sys.decls {
+                if let DeclKind::Table(t) = &decl.node
+                    && t.name == "saving_throws"
+                {
+                    // 13 categories × varying tiers = 49 entries
+                    assert_eq!(t.entries.len(), 49);
+                    return;
                 }
             }
         }

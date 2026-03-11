@@ -179,13 +179,12 @@ impl Checker<'_> {
         // Check if it's an enum variant (may be unique or ambiguous)
         if let Some(enum_name) = self.resolve_bare_variant_with_hint(name, span, hint) {
             // Only bare (no-payload) variants can be used as identifiers
-            if let Some(DeclInfo::Enum(info)) = self.env.types.get(&enum_name) {
-                if let Some(variant) = info.variants.iter().find(|v| v.name == name) {
-                    if variant.fields.is_empty() {
-                        self.check_name_visible(name, Namespace::Variant, span);
-                        return Ty::Enum(enum_name);
-                    }
-                }
+            if let Some(DeclInfo::Enum(info)) = self.env.types.get(&enum_name)
+                && let Some(variant) = info.variants.iter().find(|v| v.name == name)
+                && variant.fields.is_empty()
+            {
+                self.check_name_visible(name, Namespace::Variant, span);
+                return Ty::Enum(enum_name);
             }
         } else if self.is_known_variant(name) {
             // Ambiguity error was already emitted by resolve_bare_variant
@@ -209,24 +208,24 @@ impl Checker<'_> {
 
         // Check if it's a function reference (bare function name in value position).
         // Only FnKind::Function is allowed; functions with `with` constraints are rejected.
-        if let Some(fn_info) = self.env.lookup_fn(name) {
-            if fn_info.kind == crate::env::FnKind::Function {
-                let has_with = fn_info.params.iter().any(|p| !p.with_groups.is_empty());
-                if has_with {
-                    self.error(
+        if let Some(fn_info) = self.env.lookup_fn(name)
+            && fn_info.kind == crate::env::FnKind::Function
+        {
+            let has_with = fn_info.params.iter().any(|p| !p.with_groups.is_empty());
+            if has_with {
+                self.error(
                         format!(
                             "cannot take a reference to function `{name}` because it has `with` constraints on its parameters"
                         ),
                         span,
                     );
-                    return Ty::Error;
-                }
-                self.check_name_visible(name, Namespace::Function, span);
-                let param_tys: Vec<Ty> = fn_info.params.iter().map(|p| p.ty.clone()).collect();
-                let ret_ty = fn_info.return_type.clone();
-                self.resolved_fn_refs.insert(span, Name::from(name));
-                return Ty::Fn(param_tys, Box::new(ret_ty));
+                return Ty::Error;
             }
+            self.check_name_visible(name, Namespace::Function, span);
+            let param_tys: Vec<Ty> = fn_info.params.iter().map(|p| p.ty.clone()).collect();
+            let ret_ty = fn_info.return_type.clone();
+            self.resolved_fn_refs.insert(span, Name::from(name));
+            return Ty::Fn(param_tys, Box::new(ret_ty));
         }
 
         // Enum type names resolve as values to support qualified variant access
@@ -246,12 +245,11 @@ impl Checker<'_> {
         }
 
         // Check if it's a module alias (e.g., `Core` from `use "Core" as Core`)
-        if let Some(ref current) = self.current_system {
-            if let Some(aliases) = self.env.system_aliases.get(current) {
-                if aliases.contains_key(name) {
-                    return Ty::ModuleAlias(Name::from(name));
-                }
-            }
+        if let Some(ref current) = self.current_system
+            && let Some(aliases) = self.env.system_aliases.get(current)
+            && aliases.contains_key(name)
+        {
+            return Ty::ModuleAlias(Name::from(name));
         }
 
         self.error(format!("undefined variable `{name}`"), span);
@@ -496,10 +494,10 @@ impl Checker<'_> {
             return true;
         }
         // Same-type unit types are comparable
-        if let (Ty::UnitType(na), Ty::UnitType(nb)) = (a, b) {
-            if na == nb {
-                return true;
-            }
+        if let (Ty::UnitType(na), Ty::UnitType(nb)) = (a, b)
+            && na == nb
+        {
+            return true;
         }
         // none (Option(Error)) is comparable with any Option(T)
         match (a, b) {
@@ -627,26 +625,26 @@ impl Checker<'_> {
         let result_ty = self.resolve_field(&obj_ty, &resolved_field, span);
 
         // If this resolved to a group reference, check narrowing for optional groups.
-        if let Ty::OptionalGroupRef(ref entity_name, ref group_name) = result_ty {
-            if !self.env.is_group_required(entity_name, group_name) {
-                let group_name = group_name.clone();
-                if let Some(path_key) = self.extract_path_key(object) {
-                    if !self.scope.is_group_narrowed(&path_key, &group_name) {
-                        self.error(
+        if let Ty::OptionalGroupRef(ref entity_name, ref group_name) = result_ty
+            && !self.env.is_group_required(entity_name, group_name)
+        {
+            let group_name = group_name.clone();
+            if let Some(path_key) = self.extract_path_key(object) {
+                if !self.scope.is_group_narrowed(&path_key, &group_name) {
+                    self.error(
                             format!(
                                 "access to optional group `{group_name}` on `{path_key}` requires a `has` guard or `with` constraint"
                             ),
                             span,
                         );
-                    }
-                } else {
-                    self.error(
+                }
+            } else {
+                self.error(
                         format!(
                             "access to optional group `{group_name}` requires a `has` guard or `with` constraint"
                         ),
                         span,
                     );
-                }
             }
         }
 
@@ -657,18 +655,18 @@ impl Checker<'_> {
         match obj_ty {
             Ty::Struct(name) | Ty::Entity(name) | Ty::UnitType(name) => {
                 // Check for event payload synthetic structs
-                if let Some(event_name) = name.strip_prefix("__event_") {
-                    if let Some(event_info) = self.env.events.get(event_name) {
-                        if let Some((_, ty)) = event_info.fields.iter().find(|(n, _)| n == field) {
-                            return ty.clone();
-                        }
-                        // Also check event params
-                        if let Some(param) = event_info.params.iter().find(|p| p.name == field) {
-                            return param.ty.clone();
-                        }
-                        self.error(format!("event `{event_name}` has no field `{field}`"), span);
-                        return Ty::Error;
+                if let Some(event_name) = name.strip_prefix("__event_")
+                    && let Some(event_info) = self.env.events.get(event_name)
+                {
+                    if let Some((_, ty)) = event_info.fields.iter().find(|(n, _)| n == field) {
+                        return ty.clone();
                     }
+                    // Also check event params
+                    if let Some(param) = event_info.params.iter().find(|p| p.name == field) {
+                        return param.ty.clone();
+                    }
+                    self.error(format!("event `{event_name}` has no field `{field}`"), span);
+                    return Ty::Error;
                 }
 
                 // Check for optional group access on entities
@@ -678,21 +676,19 @@ impl Checker<'_> {
                     return Ty::OptionalGroupRef(name.clone(), Name::from(field));
                 }
 
-                if let Some(fields) = self.env.lookup_fields(name) {
-                    if let Some(fi) = fields.iter().find(|f| f.name == field) {
-                        return fi.ty.clone();
-                    }
+                if let Some(fields) = self.env.lookup_fields(name)
+                    && let Some(fi) = fields.iter().find(|f| f.name == field)
+                {
+                    return fi.ty.clone();
                 }
 
                 // Check for flattened included-group field
-                if matches!(obj_ty, Ty::Entity(_)) {
-                    if let Some(group_name) = self.env.lookup_flattened_field(name, field) {
-                        if let Some(group) = self.env.lookup_optional_group(name, group_name) {
-                            if let Some(fi) = group.fields.iter().find(|f| f.name == field) {
-                                return fi.ty.clone();
-                            }
-                        }
-                    }
+                if matches!(obj_ty, Ty::Entity(_))
+                    && let Some(group_name) = self.env.lookup_flattened_field(name, field)
+                    && let Some(group) = self.env.lookup_optional_group(name, group_name)
+                    && let Some(fi) = group.fields.iter().find(|f| f.name == field)
+                {
+                    return fi.ty.clone();
                 }
 
                 self.error(format!("type `{name}` has no field `{field}`"), span);
@@ -722,10 +718,10 @@ impl Checker<'_> {
                     if let Some(fi) = group.fields.iter().find(|f| f.name == field) {
                         return fi.ty.clone();
                     }
-                } else if let Some(group) = self.env.lookup_group(group_name) {
-                    if let Some(fi) = group.fields.iter().find(|f| f.name == field) {
-                        return fi.ty.clone();
-                    }
+                } else if let Some(group) = self.env.lookup_group(group_name)
+                    && let Some(fi) = group.fields.iter().find(|f| f.name == field)
+                {
+                    return fi.ty.clone();
                 }
                 self.error(
                     format!("optional group `{group_name}` has no field `{field}`"),
@@ -771,29 +767,29 @@ impl Checker<'_> {
             }
             Ty::BudgetSpec => {
                 // BudgetSpec is registered as a built-in struct; look up fields there.
-                if let Some(fields) = self.env.lookup_fields("BudgetSpec") {
-                    if let Some(fi) = fields.iter().find(|f| f.name == field) {
-                        return fi.ty.clone();
-                    }
+                if let Some(fields) = self.env.lookup_fields("BudgetSpec")
+                    && let Some(fi) = fields.iter().find(|f| f.name == field)
+                {
+                    return fi.ty.clone();
                 }
                 self.error(format!("BudgetSpec has no field `{field}`"), span);
                 Ty::Error
             }
             // Qualified enum variant: EnumType.Variant (namespace access)
             Ty::EnumType(enum_name) => {
-                if let Some(DeclInfo::Enum(info)) = self.env.types.get(enum_name) {
-                    if let Some(variant) = info.variants.iter().find(|v| v.name == field) {
-                        if !variant.fields.is_empty() {
-                            self.error(
+                if let Some(DeclInfo::Enum(info)) = self.env.types.get(enum_name)
+                    && let Some(variant) = info.variants.iter().find(|v| v.name == field)
+                {
+                    if !variant.fields.is_empty() {
+                        self.error(
                                 format!(
                                     "variant `{field}` has payload fields and must be called as a constructor"
                                 ),
                                 span,
                             );
-                            return Ty::Error;
-                        }
-                        return Ty::Enum(enum_name.clone());
+                        return Ty::Error;
                     }
+                    return Ty::Enum(enum_name.clone());
                 }
                 self.error(format!("enum `{enum_name}` has no variant `{field}`"), span);
                 Ty::Error

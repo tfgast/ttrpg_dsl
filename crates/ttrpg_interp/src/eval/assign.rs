@@ -135,16 +135,14 @@ fn eval_assign_direct(
 /// If the first path segment is a flattened included-group field, insert the
 /// group name as a prefix so the mutation targets the correct nested struct.
 fn expand_flattened_path(env: &Env, entity: &EntityRef, path: &mut Vec<FieldPathSegment>) {
-    if let Some(FieldPathSegment::Field(field_name)) = path.first() {
-        if let Some(entity_type) = env.state.entity_type_name(entity) {
-            if let Some(group_name) = env
-                .interp
-                .type_env
-                .lookup_flattened_field(&entity_type, field_name)
-            {
-                path.insert(0, FieldPathSegment::Field(group_name.clone()));
-            }
-        }
+    if let Some(FieldPathSegment::Field(field_name)) = path.first()
+        && let Some(entity_type) = env.state.entity_type_name(entity)
+        && let Some(group_name) = env
+            .interp
+            .type_env
+            .lookup_flattened_field(&entity_type, field_name)
+    {
+        path.insert(0, FieldPathSegment::Field(group_name.clone()));
     }
 }
 
@@ -160,10 +158,10 @@ fn eval_assign_entity(
     let mut path = lvalue_segments_to_field_path(env, segments, span)?;
 
     // Apply group alias resolution from the checker
-    if let Some((seg_idx, real_name)) = env.interp.type_env.resolved_lvalue_aliases.get(&span) {
-        if *seg_idx < path.len() {
-            path[*seg_idx] = FieldPathSegment::Field(real_name.clone());
-        }
+    if let Some((seg_idx, real_name)) = env.interp.type_env.resolved_lvalue_aliases.get(&span)
+        && *seg_idx < path.len()
+    {
+        path[*seg_idx] = FieldPathSegment::Field(real_name.clone());
     }
 
     expand_flattened_path(env, &entity, &mut path);

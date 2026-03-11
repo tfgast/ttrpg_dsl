@@ -193,16 +193,16 @@ impl Checker<'_> {
                 return;
             }
             // Direct variable reassignment (e.g. `x = 2`): binding must be mutable
-            if let Some(binding) = self.scope.lookup(&target.root) {
-                if !binding.mutable {
-                    self.error(
-                        format!("cannot reassign immutable binding `{}`", target.root),
-                        span,
-                    );
-                    // Still check value expression for other errors
-                    self.check_expr(value);
-                    return;
-                }
+            if let Some(binding) = self.scope.lookup(&target.root)
+                && !binding.mutable
+            {
+                self.error(
+                    format!("cannot reassign immutable binding `{}`", target.root),
+                    span,
+                );
+                // Still check value expression for other errors
+                self.check_expr(value);
+                return;
             }
         } else {
             // Field/index mutation (e.g. `target.HP += 5`)
@@ -223,17 +223,17 @@ impl Checker<'_> {
 
                 // Trigger payload: direct fields are immutable, but deep paths
                 // (e.g. trigger.entity.HP) are allowed for entity state mutation
-                if !binding.mutable {
-                    if let Ty::Struct(ref s) = binding.ty {
-                        if s.starts_with("__event_") && target.segments.len() <= 1 {
-                            self.error(
-                                format!("cannot mutate field of trigger payload `{}`", target.root),
-                                span,
-                            );
-                            self.check_expr(value);
-                            return;
-                        }
-                    }
+                if !binding.mutable
+                    && let Ty::Struct(ref s) = binding.ty
+                    && s.starts_with("__event_")
+                    && target.segments.len() <= 1
+                {
+                    self.error(
+                        format!("cannot mutate field of trigger payload `{}`", target.root),
+                        span,
+                    );
+                    self.check_expr(value);
+                    return;
                 }
             }
 
@@ -343,17 +343,16 @@ impl Checker<'_> {
                     };
                     current = self.resolve_field(&current, &resolved_name, lvalue.span);
                     // Check narrowing for optional group access
-                    if let Ty::OptionalGroupRef(ref entity_name, ref group_name) = current {
-                        if !self.env.is_group_required(entity_name, group_name)
-                            && !self.scope.is_group_narrowed(&path_key, group_name)
-                        {
-                            self.error(
+                    if let Ty::OptionalGroupRef(ref entity_name, ref group_name) = current
+                        && !self.env.is_group_required(entity_name, group_name)
+                        && !self.scope.is_group_narrowed(&path_key, group_name)
+                    {
+                        self.error(
                                     format!(
                                         "access to optional group `{group_name}` on `{path_key}` requires a `has` guard or `with` constraint"
                                     ),
                                     lvalue.span,
                                 );
-                        }
                     }
                     path_key = format!("{path_key}.{name}");
                 }
@@ -708,10 +707,10 @@ impl Checker<'_> {
         // Check for duplicate args
         let mut seen = std::collections::HashSet::new();
         for arg in args {
-            if let Some(ref name) = arg.name {
-                if !seen.insert(name.clone()) {
-                    self.error(format!("duplicate argument `{name}` in emit"), arg.span);
-                }
+            if let Some(ref name) = arg.name
+                && !seen.insert(name.clone())
+            {
+                self.error(format!("duplicate argument `{name}` in emit"), arg.span);
             }
         }
 
@@ -736,18 +735,17 @@ impl Checker<'_> {
                 continue;
             }
 
-            if let Some(ref name) = arg.name {
-                if let Some(param) = event_info.params.iter().find(|p| p.name == *name) {
-                    if !self.types_compatible(&arg_ty, &param.ty) {
-                        self.error(
-                            format!(
-                                "argument `{}` has type {}, expected {}",
-                                name, arg_ty, param.ty
-                            ),
-                            arg.span,
-                        );
-                    }
-                }
+            if let Some(ref name) = arg.name
+                && let Some(param) = event_info.params.iter().find(|p| p.name == *name)
+                && !self.types_compatible(&arg_ty, &param.ty)
+            {
+                self.error(
+                    format!(
+                        "argument `{}` has type {}, expected {}",
+                        name, arg_ty, param.ty
+                    ),
+                    arg.span,
+                );
             }
         }
 

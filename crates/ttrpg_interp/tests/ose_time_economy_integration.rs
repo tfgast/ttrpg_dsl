@@ -75,29 +75,29 @@ fn ose_time_economy_has_expected_decls() {
     let mut has_training_cost = false;
 
     for item in &program.items {
-        if let TopLevel::System(sys) = &item.node {
-            if sys.name == "OSE Time Economy" {
-                for decl in &sys.decls {
-                    match &decl.node {
-                        DeclKind::Enum(e) if e.name == "LightSourceKind" => has_light_enum = true,
-                        DeclKind::Enum(e) if e.name == "ArmourKind" => has_armour_enum = true,
-                        DeclKind::Table(t) if t.name == "light_source_turns" => {
-                            has_light_table = true;
-                        }
-                        DeclKind::Table(t) if t.name == "coin_gp_value_x100" => {
-                            has_coin_table = true;
-                        }
-                        DeclKind::Table(t) if t.name == "armour_weight_cn" => {
-                            has_armour_table = true;
-                        }
-                        DeclKind::Const(c) if c.name == "REST_INTERVAL_TURNS" => {
-                            has_rest_interval = true;
-                        }
-                        DeclKind::Derive(d) if d.name == "training_cost_gp" => {
-                            has_training_cost = true;
-                        }
-                        _ => {}
+        if let TopLevel::System(sys) = &item.node
+            && sys.name == "OSE Time Economy"
+        {
+            for decl in &sys.decls {
+                match &decl.node {
+                    DeclKind::Enum(e) if e.name == "LightSourceKind" => has_light_enum = true,
+                    DeclKind::Enum(e) if e.name == "ArmourKind" => has_armour_enum = true,
+                    DeclKind::Table(t) if t.name == "light_source_turns" => {
+                        has_light_table = true;
                     }
+                    DeclKind::Table(t) if t.name == "coin_gp_value_x100" => {
+                        has_coin_table = true;
+                    }
+                    DeclKind::Table(t) if t.name == "armour_weight_cn" => {
+                        has_armour_table = true;
+                    }
+                    DeclKind::Const(c) if c.name == "REST_INTERVAL_TURNS" => {
+                        has_rest_interval = true;
+                    }
+                    DeclKind::Derive(d) if d.name == "training_cost_gp" => {
+                        has_training_cost = true;
+                    }
+                    _ => {}
                 }
             }
         }

@@ -37,22 +37,18 @@ pub(super) fn eval_field_access(
                 return Ok(val);
             }
             // Flattened included-group field: look up group, read struct, extract field
-            if let Some(entity_type) = env.state.entity_type_name(entity_ref) {
-                if let Some(group_name) = env
+            if let Some(entity_type) = env.state.entity_type_name(entity_ref)
+                && let Some(group_name) = env
                     .interp
                     .type_env
                     .lookup_flattened_field(&entity_type, field)
-                {
-                    if let Some(Value::Struct {
-                        fields: group_fields,
-                        ..
-                    }) = env.state.read_field(entity_ref, group_name)
-                    {
-                        if let Some(val) = group_fields.get(field) {
-                            return Ok(val.clone());
-                        }
-                    }
-                }
+                && let Some(Value::Struct {
+                    fields: group_fields,
+                    ..
+                }) = env.state.read_field(entity_ref, group_name)
+                && let Some(val) = group_fields.get(field)
+            {
+                return Ok(val.clone());
             }
             Err(RuntimeError::with_span(
                 format!("entity {} has no field '{}'", entity_ref.0, field),
@@ -128,26 +124,24 @@ pub(super) fn eval_field_access(
                         (matching.len() == 1).then(|| matching[0].clone())
                     })
                 });
-            if let Some(enum_name) = resolved_variant {
-                if let Some(DeclInfo::Enum(enum_info)) =
+            if let Some(enum_name) = resolved_variant
+                && let Some(DeclInfo::Enum(enum_info)) =
                     env.interp.type_env.types.get(enum_name.as_str())
-                {
-                    if let Some(variant) = enum_info.variants.iter().find(|v| v.name == field) {
-                        if variant.fields.is_empty() {
-                            return Ok(Value::EnumVariant {
-                                enum_name,
-                                variant: Name::from(field),
-                                fields: BTreeMap::new(),
-                            });
-                        }
-                        return Err(RuntimeError::with_span(
-                            format!(
-                                "variant '{enum_name}.{field}' has fields and must be called as a constructor"
-                            ),
-                            expr.span,
-                        ));
-                    }
+                && let Some(variant) = enum_info.variants.iter().find(|v| v.name == field)
+            {
+                if variant.fields.is_empty() {
+                    return Ok(Value::EnumVariant {
+                        enum_name,
+                        variant: Name::from(field),
+                        fields: BTreeMap::new(),
+                    });
                 }
+                return Err(RuntimeError::with_span(
+                    format!(
+                        "variant '{enum_name}.{field}' has fields and must be called as a constructor"
+                    ),
+                    expr.span,
+                ));
             }
 
             // 3. Condition reference (bare use → materialize defaults)
@@ -176,22 +170,21 @@ pub(super) fn eval_field_access(
         Value::EnumNamespace(enum_name) => {
             if let Some(DeclInfo::Enum(enum_info)) =
                 env.interp.type_env.types.get(enum_name.as_str())
+                && let Some(variant) = enum_info.variants.iter().find(|v| v.name == field)
             {
-                if let Some(variant) = enum_info.variants.iter().find(|v| v.name == field) {
-                    if variant.fields.is_empty() {
-                        return Ok(Value::EnumVariant {
-                            enum_name: enum_name.clone(),
-                            variant: Name::from(field),
-                            fields: BTreeMap::new(),
-                        });
-                    }
-                    return Err(RuntimeError::with_span(
-                        format!(
-                            "enum variant '{enum_name}.{field}' has fields and must be called as a function"
-                        ),
-                        expr.span,
-                    ));
+                if variant.fields.is_empty() {
+                    return Ok(Value::EnumVariant {
+                        enum_name: enum_name.clone(),
+                        variant: Name::from(field),
+                        fields: BTreeMap::new(),
+                    });
                 }
+                return Err(RuntimeError::with_span(
+                    format!(
+                        "enum variant '{enum_name}.{field}' has fields and must be called as a function"
+                    ),
+                    expr.span,
+                ));
             }
             Err(RuntimeError::with_span(
                 format!("enum '{enum_name}' has no variant '{field}'"),

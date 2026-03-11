@@ -19,10 +19,10 @@ fn compile_osric_initiative() -> (ttrpg_ast::ast::Program, ttrpg_checker::CheckR
 /// Extract all DeclKind items from the "OSRIC Initiative" system block.
 fn get_initiative_decls(program: &ttrpg_ast::ast::Program) -> &[ttrpg_ast::Spanned<DeclKind>] {
     for item in &program.items {
-        if let TopLevel::System(sys) = &item.node {
-            if sys.name == "OSRIC Initiative" {
-                return &sys.decls;
-            }
+        if let TopLevel::System(sys) = &item.node
+            && sys.name == "OSRIC Initiative"
+        {
+            return &sys.decls;
         }
     }
     panic!("no system block named 'OSRIC Initiative' found");
@@ -30,10 +30,10 @@ fn get_initiative_decls(program: &ttrpg_ast::ast::Program) -> &[ttrpg_ast::Spann
 
 fn get_spells_decls(program: &ttrpg_ast::ast::Program) -> &[ttrpg_ast::Spanned<DeclKind>] {
     for item in &program.items {
-        if let TopLevel::System(sys) = &item.node {
-            if sys.name == "OSRIC Spells" {
-                return &sys.decls;
-            }
+        if let TopLevel::System(sys) = &item.node
+            && sys.name == "OSRIC Spells"
+        {
+            return &sys.decls;
         }
     }
     panic!("no system block named 'OSRIC Spells' found");

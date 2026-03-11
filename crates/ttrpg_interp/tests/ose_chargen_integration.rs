@@ -76,22 +76,22 @@ fn ose_chargen_has_expected_decls() {
     let mut has_starting_spells_table = false;
 
     for item in &program.items {
-        if let TopLevel::System(sys) = &item.node {
-            if sys.name == "OSE Chargen" {
-                for decl in &sys.decls {
-                    match &decl.node {
-                        DeclKind::Mechanic(m) if m.name == "roll_ability" => {
-                            has_roll_ability = true;
-                        }
-                        DeclKind::Mechanic(m) if m.name == "roll_starting_hp" => {
-                            has_roll_starting_hp = true;
-                        }
-                        DeclKind::Table(t) if t.name == "character_thac0" => has_thac0_table = true,
-                        DeclKind::Table(t) if t.name == "available_starting_spells" => {
-                            has_starting_spells_table = true;
-                        }
-                        _ => {}
+        if let TopLevel::System(sys) = &item.node
+            && sys.name == "OSE Chargen"
+        {
+            for decl in &sys.decls {
+                match &decl.node {
+                    DeclKind::Mechanic(m) if m.name == "roll_ability" => {
+                        has_roll_ability = true;
                     }
+                    DeclKind::Mechanic(m) if m.name == "roll_starting_hp" => {
+                        has_roll_starting_hp = true;
+                    }
+                    DeclKind::Table(t) if t.name == "character_thac0" => has_thac0_table = true,
+                    DeclKind::Table(t) if t.name == "available_starting_spells" => {
+                        has_starting_spells_table = true;
+                    }
+                    _ => {}
                 }
             }
         }

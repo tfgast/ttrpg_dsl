@@ -23,13 +23,13 @@ pub(super) fn eval_unary(
 ) -> Result<Value, RuntimeError> {
     let val = eval_expr(env, operand)?;
     // Unit type negation
-    if op == UnaryOp::Neg {
-        if let Some((name, field, n)) = as_unit_value(&val, env.interp.type_env) {
-            let result = n.checked_neg().ok_or_else(|| {
-                RuntimeError::with_span("integer overflow in unit negation", expr.span)
-            })?;
-            return Ok(make_unit_value(name, field, result));
-        }
+    if op == UnaryOp::Neg
+        && let Some((name, field, n)) = as_unit_value(&val, env.interp.type_env)
+    {
+        let result = n.checked_neg().ok_or_else(|| {
+            RuntimeError::with_span("integer overflow in unit negation", expr.span)
+        })?;
+        return Ok(make_unit_value(name, field, result));
     }
     match (op, &val) {
         (UnaryOp::Neg, Value::Int(n)) => n
@@ -166,12 +166,12 @@ pub(super) fn coerce_roll_result(val: Value) -> Value {
 /// If `val` is a `Value::Struct` whose name is registered as a unit type in the
 /// type environment, return `(unit_type_name, field_name, int_value)`.
 fn as_unit_value(val: &Value, type_env: &ttrpg_checker::env::TypeEnv) -> Option<(Name, Name, i64)> {
-    if let Value::Struct { name, fields } = val {
-        if let Some(DeclInfo::Unit(info)) = type_env.types.get(name.as_str()) {
-            let field_name = &info.fields[0].name;
-            if let Some(Value::Int(n)) = fields.get(field_name.as_str()) {
-                return Some((name.clone(), field_name.clone(), *n));
-            }
+    if let Value::Struct { name, fields } = val
+        && let Some(DeclInfo::Unit(info)) = type_env.types.get(name.as_str())
+    {
+        let field_name = &info.fields[0].name;
+        if let Some(Value::Int(n)) = fields.get(field_name.as_str()) {
+            return Some((name.clone(), field_name.clone(), *n));
         }
     }
     None
@@ -319,21 +319,21 @@ fn eval_mul(
     expr: &Spanned<ExprKind>,
 ) -> Result<Value, RuntimeError> {
     // Unit type scaling: Int * unit or unit * Int
-    if let Some((name, field, uval)) = as_unit_value(lhs, type_env) {
-        if let Value::Int(n) = rhs {
-            let result = uval.checked_mul(*n).ok_or_else(|| {
-                RuntimeError::with_span("integer overflow in unit multiplication", expr.span)
-            })?;
-            return Ok(make_unit_value(name, field, result));
-        }
+    if let Some((name, field, uval)) = as_unit_value(lhs, type_env)
+        && let Value::Int(n) = rhs
+    {
+        let result = uval.checked_mul(*n).ok_or_else(|| {
+            RuntimeError::with_span("integer overflow in unit multiplication", expr.span)
+        })?;
+        return Ok(make_unit_value(name, field, result));
     }
-    if let Some((name, field, uval)) = as_unit_value(rhs, type_env) {
-        if let Value::Int(n) = lhs {
-            let result = n.checked_mul(uval).ok_or_else(|| {
-                RuntimeError::with_span("integer overflow in unit multiplication", expr.span)
-            })?;
-            return Ok(make_unit_value(name, field, result));
-        }
+    if let Some((name, field, uval)) = as_unit_value(rhs, type_env)
+        && let Value::Int(n) = lhs
+    {
+        let result = n.checked_mul(uval).ok_or_else(|| {
+            RuntimeError::with_span("integer overflow in unit multiplication", expr.span)
+        })?;
+        return Ok(make_unit_value(name, field, result));
     }
     match (lhs, rhs) {
         (Value::Int(a), Value::Int(b)) => a.checked_mul(*b).map(Value::Int).ok_or_else(|| {
@@ -362,13 +362,12 @@ fn eval_div(
     // Unit type division: same-type → Float
     if let (Some((n1, _, a)), Some((n2, _, b))) =
         (as_unit_value(lhs, type_env), as_unit_value(rhs, type_env))
+        && n1 == n2
     {
-        if n1 == n2 {
-            if b == 0 {
-                return Err(RuntimeError::with_span("division by zero", expr.span));
-            }
-            return Ok(Value::Float(a as f64 / b as f64));
+        if b == 0 {
+            return Err(RuntimeError::with_span("division by zero", expr.span));
         }
+        return Ok(Value::Float(a as f64 / b as f64));
     }
     match (lhs, rhs) {
         // Int / Int → Float (not integer division)
@@ -416,22 +415,21 @@ fn eval_floor_div(
     // Unit div Unit (same type) → Int (floor ratio)
     if let (Some((n1, _, a)), Some((n2, _, b))) =
         (as_unit_value(lhs, type_env), as_unit_value(rhs, type_env))
+        && n1 == n2
     {
-        if n1 == n2 {
-            if b == 0 {
-                return Err(RuntimeError::with_span("division by zero", expr.span));
-            }
-            return Ok(Value::Int(a.div_euclid(b)));
+        if b == 0 {
+            return Err(RuntimeError::with_span("division by zero", expr.span));
         }
+        return Ok(Value::Int(a.div_euclid(b)));
     }
     // Unit div Int → Unit (scale down)
-    if let Some((name, field, a)) = as_unit_value(lhs, type_env) {
-        if let Value::Int(b) = rhs {
-            if *b == 0 {
-                return Err(RuntimeError::with_span("division by zero", expr.span));
-            }
-            return Ok(make_unit_value(name, field, a.div_euclid(*b)));
+    if let Some((name, field, a)) = as_unit_value(lhs, type_env)
+        && let Value::Int(b) = rhs
+    {
+        if *b == 0 {
+            return Err(RuntimeError::with_span("division by zero", expr.span));
         }
+        return Ok(make_unit_value(name, field, a.div_euclid(*b)));
     }
     match (lhs, rhs) {
         (Value::Int(a), Value::Int(b)) => {

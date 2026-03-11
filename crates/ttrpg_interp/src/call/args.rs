@@ -165,19 +165,17 @@ fn try_eval_with_hint(
 ) -> Result<Value, RuntimeError> {
     // Only attempt hint-based resolution for bare idents that aren't already in scope
     // and don't have a checker resolution.
-    if let ExprKind::Ident(name) = &expr.node {
-        if env.lookup(name).is_none()
-            && !env
-                .interp
-                .type_env
-                .resolved_variants
-                .contains_key(&expr.span)
-            && env.interp.type_env.unique_variant_owner(name).is_none()
-        {
-            if let Some(val) = try_resolve_variant_from_hint(env, name, hint) {
-                return Ok(val);
-            }
-        }
+    if let ExprKind::Ident(name) = &expr.node
+        && env.lookup(name).is_none()
+        && !env
+            .interp
+            .type_env
+            .resolved_variants
+            .contains_key(&expr.span)
+        && env.interp.type_env.unique_variant_owner(name).is_none()
+        && let Some(val) = try_resolve_variant_from_hint(env, name, hint)
+    {
+        return Ok(val);
     }
     eval_expr(env, expr)
 }

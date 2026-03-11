@@ -74,11 +74,11 @@ pub fn format_value(val: &Value, units: &UnitSuffixes) -> String {
 
         Value::Struct { name, fields } => {
             // Unit types with a suffix: display as e.g. "30ft" instead of "Feet { value: 30 }"
-            if let Some(suffix) = units.get(name) {
-                if fields.len() == 1 {
-                    let val = fields.values().next().unwrap();
-                    return format!("{}{}", format_value(val, units), suffix);
-                }
+            if let Some(suffix) = units.get(name)
+                && fields.len() == 1
+            {
+                let val = fields.values().next().unwrap();
+                return format!("{}{}", format_value(val, units), suffix);
             }
             let inner: Vec<String> = fields
                 .iter()

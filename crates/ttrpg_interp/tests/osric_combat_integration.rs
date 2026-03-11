@@ -23,10 +23,10 @@ fn compile_osric_combat() -> (ttrpg_ast::ast::Program, ttrpg_checker::CheckResul
 
 fn get_combat_decls(program: &ttrpg_ast::ast::Program) -> &[ttrpg_ast::Spanned<DeclKind>] {
     for item in &program.items {
-        if let TopLevel::System(sys) = &item.node {
-            if sys.name == "OSRIC Combat" {
-                return &sys.decls;
-            }
+        if let TopLevel::System(sys) = &item.node
+            && sys.name == "OSRIC Combat"
+        {
+            return &sys.decls;
         }
     }
     panic!("no system block named 'OSRIC Combat' found");

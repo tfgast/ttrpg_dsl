@@ -56,23 +56,23 @@ fn ose_wilderness_has_expected_decls() {
     let mut has_starvation_penalty = false;
 
     for item in &program.items {
-        if let TopLevel::System(sys) = &item.node {
-            if sys.name == "OSE Wilderness" {
-                for decl in &sys.decls {
-                    match &decl.node {
-                        DeclKind::Enum(e) if e.name == "WildernessTerrainKind" => {
-                            has_terrain_enum = true;
-                            assert_eq!(e.variants.len(), 11);
-                        }
-                        DeclKind::Table(_) => table_count += 1,
-                        DeclKind::Mechanic(m) if m.name == "terrain_lost_check" => {
-                            has_lost_check = true;
-                        }
-                        DeclKind::Derive(d) if d.name == "starvation_penalty" => {
-                            has_starvation_penalty = true;
-                        }
-                        _ => {}
+        if let TopLevel::System(sys) = &item.node
+            && sys.name == "OSE Wilderness"
+        {
+            for decl in &sys.decls {
+                match &decl.node {
+                    DeclKind::Enum(e) if e.name == "WildernessTerrainKind" => {
+                        has_terrain_enum = true;
+                        assert_eq!(e.variants.len(), 11);
                     }
+                    DeclKind::Table(_) => table_count += 1,
+                    DeclKind::Mechanic(m) if m.name == "terrain_lost_check" => {
+                        has_lost_check = true;
+                    }
+                    DeclKind::Derive(d) if d.name == "starvation_penalty" => {
+                        has_starvation_penalty = true;
+                    }
+                    _ => {}
                 }
             }
         }

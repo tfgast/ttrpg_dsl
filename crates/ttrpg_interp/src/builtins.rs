@@ -753,10 +753,10 @@ fn remove_condition_instances(
             &instance.params,
             crate::pipeline::LifecycleKind::OnRemove,
         );
-        if let Err(e) = lifecycle_result {
-            if first_error.is_none() {
-                first_error = Some(e);
-            }
+        if let Err(e) = lifecycle_result
+            && first_error.is_none()
+        {
+            first_error = Some(e);
         }
 
         // Phase 3: Always remove the condition, even if on_remove errored
@@ -768,10 +768,9 @@ fn remove_condition_instances(
         };
         if let Err(e) =
             validate_mutation_response(env.handler.handle(effect), "RemoveCondition", span)
+            && first_error.is_none()
         {
-            if first_error.is_none() {
-                first_error = Some(e);
-            }
+            first_error = Some(e);
         }
 
         // Phase 4: Auto-cleanup suspension records keyed to this condition
@@ -894,10 +893,10 @@ fn builtin_revoke(env: &mut Env, args: &[Value], span: Span) -> Result<Value, Ru
             &instance.params,
             crate::pipeline::LifecycleKind::OnRemove,
         );
-        if let Err(e) = lifecycle_result {
-            if first_error.is_none() {
-                first_error = Some(e);
-            }
+        if let Err(e) = lifecycle_result
+            && first_error.is_none()
+        {
+            first_error = Some(e);
         }
 
         // Always remove
@@ -1307,7 +1306,7 @@ fn builtin_process_periodic_conditions(
         ));
     }
 
-    for combatant_val in combatants.iter() {
+    for combatant_val in &combatants {
         let bearer: EntityRef = match combatant_val {
             Value::Entity(e) => *e,
             _ => continue,

@@ -17,10 +17,10 @@ fn compile_osric_weapon_spec() -> (ttrpg_ast::ast::Program, ttrpg_checker::Check
 
 fn get_weapon_spec_decls(program: &ttrpg_ast::ast::Program) -> &[ttrpg_ast::Spanned<DeclKind>] {
     for item in &program.items {
-        if let TopLevel::System(sys) = &item.node {
-            if sys.name == "OSRIC Weapon Specialisation" {
-                return &sys.decls;
-            }
+        if let TopLevel::System(sys) = &item.node
+            && sys.name == "OSRIC Weapon Specialisation"
+        {
+            return &sys.decls;
         }
     }
     panic!("no system block named 'OSRIC Weapon Specialisation' found");

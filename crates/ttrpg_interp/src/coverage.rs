@@ -333,10 +333,11 @@ fn collect_action_lines(
     lines: &mut HashSet<usize>,
 ) {
     collect_block_lines(&action.resolve, file_id, line_starts, lines);
-    if let Some(ref req) = action.requires {
-        if req.span.file == file_id && !req.span.is_dummy() {
-            lines.insert(byte_to_line(req.span.start as usize, line_starts));
-        }
+    if let Some(ref req) = action.requires
+        && req.span.file == file_id
+        && !req.span.is_dummy()
+    {
+        lines.insert(byte_to_line(req.span.start as usize, line_starts));
     }
 }
 

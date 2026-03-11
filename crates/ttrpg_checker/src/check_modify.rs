@@ -210,10 +210,10 @@ impl Checker<'_> {
             &clause.bindings,
             |name| {
                 // Check receiver name first
-                if let Some(ref recv) = fn_info.receiver {
-                    if recv.name == name {
-                        return Some(recv.ty.clone());
-                    }
+                if let Some(ref recv) = fn_info.receiver
+                    && recv.name == name
+                {
+                    return Some(recv.ty.clone());
                 }
                 fn_info
                     .params
@@ -487,20 +487,20 @@ impl Checker<'_> {
                         });
                         let mut binding_ty: Option<Ty> = None;
                         for fn_name in &match_set {
-                            if let Some(fi) = self.env.functions.get(fn_name) {
-                                if let Some(p) = fi.params.iter().find(|p| p.name == binding.name) {
-                                    match &binding_ty {
-                                        None => binding_ty = Some(p.ty.clone()),
-                                        Some(existing) => {
-                                            if !self.types_compatible(existing, &p.ty) {
-                                                self.error(
+                            if let Some(fi) = self.env.functions.get(fn_name)
+                                && let Some(p) = fi.params.iter().find(|p| p.name == binding.name)
+                            {
+                                match &binding_ty {
+                                    None => binding_ty = Some(p.ty.clone()),
+                                    Some(existing) => {
+                                        if !self.types_compatible(existing, &p.ty) {
+                                            self.error(
                                                     format!(
                                                         "selector binding `{}` has inconsistent types across matched functions: {} vs {}",
                                                         binding.name, existing, p.ty
                                                     ),
                                                     binding.span,
                                                 );
-                                            }
                                         }
                                     }
                                 }

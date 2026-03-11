@@ -18,10 +18,10 @@ fn compile_osric_turn_undead() -> (ttrpg_ast::ast::Program, ttrpg_checker::Check
 
 fn get_turn_undead_decls(program: &ttrpg_ast::ast::Program) -> &[ttrpg_ast::Spanned<DeclKind>] {
     for item in &program.items {
-        if let TopLevel::System(sys) = &item.node {
-            if sys.name == "OSRIC Turn Undead" {
-                return &sys.decls;
-            }
+        if let TopLevel::System(sys) = &item.node
+            && sys.name == "OSRIC Turn Undead"
+        {
+            return &sys.decls;
         }
     }
     panic!("no system block named 'OSRIC Turn Undead' found");

@@ -42,12 +42,12 @@ fn osric_spells_has_all_tables() {
 
     let mut table_names = Vec::new();
     for item in &program.items {
-        if let TopLevel::System(sys) = &item.node {
-            if sys.name == "OSRIC Spells" {
-                for decl in &sys.decls {
-                    if let DeclKind::Table(t) = &decl.node {
-                        table_names.push(t.name.to_string());
-                    }
+        if let TopLevel::System(sys) = &item.node
+            && sys.name == "OSRIC Spells"
+        {
+            for decl in &sys.decls {
+                if let DeclKind::Table(t) = &decl.node {
+                    table_names.push(t.name.to_string());
                 }
             }
         }
@@ -83,12 +83,12 @@ fn osric_spells_has_dispatch_derives() {
 
     let mut derive_names = Vec::new();
     for item in &program.items {
-        if let TopLevel::System(sys) = &item.node {
-            if sys.name == "OSRIC Spells" {
-                for decl in &sys.decls {
-                    if let DeclKind::Derive(f) = &decl.node {
-                        derive_names.push(f.name.to_string());
-                    }
+        if let TopLevel::System(sys) = &item.node
+            && sys.name == "OSRIC Spells"
+        {
+            for decl in &sys.decls {
+                if let DeclKind::Derive(f) = &decl.node {
+                    derive_names.push(f.name.to_string());
                 }
             }
         }

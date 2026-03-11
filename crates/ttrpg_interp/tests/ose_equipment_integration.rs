@@ -75,24 +75,24 @@ fn ose_equipment_has_expected_decls() {
     let mut has_random_weapon_table = false;
 
     for item in &program.items {
-        if let TopLevel::System(sys) = &item.node {
-            if sys.name == "OSE Equipment" {
-                for decl in &sys.decls {
-                    match &decl.node {
-                        DeclKind::Const(c) if c.name == "STANDARD_ADVENTURING_GEAR" => {
-                            has_standard_gear = true;
-                        }
-                        DeclKind::Derive(d) if d.name == "default_starting_armour" => {
-                            has_default_armour = true;
-                        }
-                        DeclKind::Table(t) if t.name == "equipment_package" => {
-                            has_equipment_package_table = true;
-                        }
-                        DeclKind::Table(t) if t.name == "random_starting_weapon" => {
-                            has_random_weapon_table = true;
-                        }
-                        _ => {}
+        if let TopLevel::System(sys) = &item.node
+            && sys.name == "OSE Equipment"
+        {
+            for decl in &sys.decls {
+                match &decl.node {
+                    DeclKind::Const(c) if c.name == "STANDARD_ADVENTURING_GEAR" => {
+                        has_standard_gear = true;
                     }
+                    DeclKind::Derive(d) if d.name == "default_starting_armour" => {
+                        has_default_armour = true;
+                    }
+                    DeclKind::Table(t) if t.name == "equipment_package" => {
+                        has_equipment_package_table = true;
+                    }
+                    DeclKind::Table(t) if t.name == "random_starting_weapon" => {
+                        has_random_weapon_table = true;
+                    }
+                    _ => {}
                 }
             }
         }

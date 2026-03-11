@@ -70,10 +70,10 @@ impl Runner {
         for item in &self.program.items {
             if let TopLevel::System(system) = &item.node {
                 for decl in &system.decls {
-                    if let DeclKind::Entity(entity_decl) = &decl.node {
-                        if entity_decl.name == entity_type {
-                            return Some(entity_decl.fields.clone());
-                        }
+                    if let DeclKind::Entity(entity_decl) = &decl.node
+                        && entity_decl.name == entity_type
+                    {
+                        return Some(entity_decl.fields.clone());
                     }
                 }
             }
@@ -151,15 +151,15 @@ impl Runner {
         for item in &self.program.items {
             if let TopLevel::System(system) = &item.node {
                 for decl in &system.decls {
-                    if let DeclKind::Entity(entity_decl) = &decl.node {
-                        if entity_decl.name == entity_type {
-                            for group in &entity_decl.optional_groups {
-                                if group.name == group_name {
-                                    if group.is_external_ref {
-                                        return self.find_group_decl_fields(group_name);
-                                    }
-                                    return Some(group.fields.clone());
+                    if let DeclKind::Entity(entity_decl) = &decl.node
+                        && entity_decl.name == entity_type
+                    {
+                        for group in &entity_decl.optional_groups {
+                            if group.name == group_name {
+                                if group.is_external_ref {
+                                    return self.find_group_decl_fields(group_name);
                                 }
+                                return Some(group.fields.clone());
                             }
                         }
                     }
@@ -173,10 +173,10 @@ impl Runner {
         for item in &self.program.items {
             if let TopLevel::System(system) = &item.node {
                 for decl in &system.decls {
-                    if let DeclKind::Group(group_decl) = &decl.node {
-                        if group_decl.name == group_name {
-                            return Some(group_decl.fields.clone());
-                        }
+                    if let DeclKind::Group(group_decl) = &decl.node
+                        && group_decl.name == group_name
+                    {
+                        return Some(group_decl.fields.clone());
                     }
                 }
             }

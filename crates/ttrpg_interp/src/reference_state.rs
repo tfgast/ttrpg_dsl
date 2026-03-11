@@ -461,16 +461,17 @@ impl WritableState for GameState {
         let still_has_freeze = records.iter().any(|r| r.freeze_durations);
 
         // If durations were frozen and this removal ends that, bump applied_at
-        if had_freeze && !still_has_freeze {
-            if let Some(freeze_start) = self.duration_freeze_start.remove(&entity.0) {
-                let now = self.game_time;
-                if let Some(conds) = self.conditions.get_mut(&entity.0) {
-                    for cond in conds.iter_mut() {
-                        // Per-condition rule: applied_at += now - max(applied_at, freeze_start)
-                        let effective_start = cond.applied_at.max(freeze_start);
-                        if now > effective_start {
-                            cond.applied_at += now - effective_start;
-                        }
+        if had_freeze
+            && !still_has_freeze
+            && let Some(freeze_start) = self.duration_freeze_start.remove(&entity.0)
+        {
+            let now = self.game_time;
+            if let Some(conds) = self.conditions.get_mut(&entity.0) {
+                for cond in conds.iter_mut() {
+                    // Per-condition rule: applied_at += now - max(applied_at, freeze_start)
+                    let effective_start = cond.applied_at.max(freeze_start);
+                    if now > effective_start {
+                        cond.applied_at += now - effective_start;
                     }
                 }
             }

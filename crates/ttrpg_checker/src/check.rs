@@ -134,12 +134,12 @@ impl<'a> Checker<'a> {
             Some(enum_name)
         } else {
             // Try to disambiguate via expected-type hint
-            if let Some(hinted) = enum_name_from_hint(hint) {
-                if owners.iter().any(|o| o == hinted) {
-                    let n = Name::from(hinted);
-                    self.resolved_variants.insert(span, n.clone());
-                    return Some(n);
-                }
+            if let Some(hinted) = enum_name_from_hint(hint)
+                && owners.iter().any(|o| o == hinted)
+            {
+                let n = Name::from(hinted);
+                self.resolved_variants.insert(span, n.clone());
+                return Some(n);
             }
             let qualified: Vec<String> = owners.iter().map(|e| format!("{e}.{variant}")).collect();
             let owners_display: Vec<&str> = owners.iter().map(|o| o.as_str()).collect();

@@ -41,15 +41,15 @@ fn osric_class_has_class_def_derive() {
 
     let mut found = false;
     for item in &program.items {
-        if let TopLevel::System(sys) = &item.node {
-            if sys.name == "OSRIC Classes" {
-                for decl in &sys.decls {
-                    if let DeclKind::Derive(f) = &decl.node {
-                        if f.name == "class_def" {
-                            assert_eq!(f.params.len(), 1);
-                            found = true;
-                        }
-                    }
+        if let TopLevel::System(sys) = &item.node
+            && sys.name == "OSRIC Classes"
+        {
+            for decl in &sys.decls {
+                if let DeclKind::Derive(f) = &decl.node
+                    && f.name == "class_def"
+                {
+                    assert_eq!(f.params.len(), 1);
+                    found = true;
                 }
             }
         }
@@ -63,22 +63,22 @@ fn osric_class_has_xp_table() {
 
     let mut found = false;
     for item in &program.items {
-        if let TopLevel::System(sys) = &item.node {
-            if sys.name == "OSRIC Classes" {
-                for decl in &sys.decls {
-                    if let DeclKind::Table(t) = &decl.node {
-                        if t.name == "xp_for_level" {
-                            assert_eq!(t.params.len(), 2);
-                            // 10 classes × varying levels = 186 entries
-                            assert_eq!(
-                                t.entries.len(),
-                                186,
-                                "expected 186 xp_for_level entries, got {}",
-                                t.entries.len()
-                            );
-                            found = true;
-                        }
-                    }
+        if let TopLevel::System(sys) = &item.node
+            && sys.name == "OSRIC Classes"
+        {
+            for decl in &sys.decls {
+                if let DeclKind::Table(t) = &decl.node
+                    && t.name == "xp_for_level"
+                {
+                    assert_eq!(t.params.len(), 2);
+                    // 10 classes × varying levels = 186 entries
+                    assert_eq!(
+                        t.entries.len(),
+                        186,
+                        "expected 186 xp_for_level entries, got {}",
+                        t.entries.len()
+                    );
+                    found = true;
                 }
             }
         }
@@ -92,15 +92,15 @@ fn osric_class_has_check_level_up_derive() {
 
     let mut found = false;
     for item in &program.items {
-        if let TopLevel::System(sys) = &item.node {
-            if sys.name == "OSRIC Classes" {
-                for decl in &sys.decls {
-                    if let DeclKind::Derive(f) = &decl.node {
-                        if f.name == "check_level_up" {
-                            assert_eq!(f.params.len(), 3);
-                            found = true;
-                        }
-                    }
+        if let TopLevel::System(sys) = &item.node
+            && sys.name == "OSRIC Classes"
+        {
+            for decl in &sys.decls {
+                if let DeclKind::Derive(f) = &decl.node
+                    && f.name == "check_level_up"
+                {
+                    assert_eq!(f.params.len(), 3);
+                    found = true;
                 }
             }
         }

@@ -302,16 +302,16 @@ impl ScopeStack {
     /// Narrow an entity-typed variable to a specific entity type.
     /// Re-binds the variable in the current scope with the narrowed type.
     pub fn narrow_entity_type(&mut self, var: Name, entity_type: Name) {
-        if let Some(binding) = self.lookup(&var).cloned() {
-            if binding.ty.is_entity() {
-                self.bind(
-                    var,
-                    VarBinding {
-                        ty: Ty::Entity(entity_type),
-                        ..binding
-                    },
-                );
-            }
+        if let Some(binding) = self.lookup(&var).cloned()
+            && binding.ty.is_entity()
+        {
+            self.bind(
+                var,
+                VarBinding {
+                    ty: Ty::Entity(entity_type),
+                    ..binding
+                },
+            );
         }
     }
 
@@ -331,10 +331,10 @@ impl ScopeStack {
     pub fn is_group_narrowed(&self, var: &str, group: &str) -> bool {
         let root = var.split('.').next().unwrap_or(var);
         for scope in self.scopes.iter().rev() {
-            if let Some(groups) = scope.narrowed_groups.get(var) {
-                if groups.contains(group) {
-                    return true;
-                }
+            if let Some(groups) = scope.narrowed_groups.get(var)
+                && groups.contains(group)
+            {
+                return true;
             }
             // Stop at the scope that binds this variable — narrowing from
             // outer scopes applies to the outer binding, not a shadowed one.

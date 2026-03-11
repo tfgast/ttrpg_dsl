@@ -656,10 +656,10 @@ impl TypeEnv {
             _ => None,
         };
 
-        if let Some(field) = alias_field {
-            if fields.contains(field) {
-                return Some(Name::from(field));
-            }
+        if let Some(field) = alias_field
+            && fields.contains(field)
+        {
+            return Some(Name::from(field));
         }
 
         None

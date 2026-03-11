@@ -48,10 +48,10 @@ fn compile_ose_thief() -> ttrpg_ast::ast::Program {
 fn get_ose_decls(program: &ttrpg_ast::ast::Program) -> Vec<&ttrpg_ast::Spanned<DeclKind>> {
     let mut decls = Vec::new();
     for item in &program.items {
-        if let TopLevel::System(sys) = &item.node {
-            if sys.name == "OSE" {
-                decls.extend(sys.decls.iter());
-            }
+        if let TopLevel::System(sys) = &item.node
+            && sys.name == "OSE"
+        {
+            decls.extend(sys.decls.iter());
         }
     }
     decls

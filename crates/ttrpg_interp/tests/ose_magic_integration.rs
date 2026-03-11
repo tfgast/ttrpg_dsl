@@ -72,28 +72,28 @@ fn ose_magic_has_expected_declarations() {
     let mut has_undead_rank_from_hd = false;
 
     for item in &program.items {
-        if let TopLevel::System(sys) = &item.node {
-            if sys.name == "OSE Magic" {
-                for decl in &sys.decls {
-                    match &decl.node {
-                        DeclKind::Table(t) if t.name == "spell_slots" => {
-                            has_spell_slots_table = true;
-                            assert_eq!(t.params.len(), 2);
-                        }
-                        DeclKind::Derive(f) if f.name == "can_cast" => {
-                            has_can_cast = true;
-                        }
-                        DeclKind::Derive(f) if f.name == "total_spell_slots" => {
-                            has_total_spell_slots = true;
-                        }
-                        DeclKind::Derive(f) if f.name == "turn_undead_result" => {
-                            has_turn_undead_result = true;
-                        }
-                        DeclKind::Derive(f) if f.name == "undead_rank_from_hd" => {
-                            has_undead_rank_from_hd = true;
-                        }
-                        _ => {}
+        if let TopLevel::System(sys) = &item.node
+            && sys.name == "OSE Magic"
+        {
+            for decl in &sys.decls {
+                match &decl.node {
+                    DeclKind::Table(t) if t.name == "spell_slots" => {
+                        has_spell_slots_table = true;
+                        assert_eq!(t.params.len(), 2);
                     }
+                    DeclKind::Derive(f) if f.name == "can_cast" => {
+                        has_can_cast = true;
+                    }
+                    DeclKind::Derive(f) if f.name == "total_spell_slots" => {
+                        has_total_spell_slots = true;
+                    }
+                    DeclKind::Derive(f) if f.name == "turn_undead_result" => {
+                        has_turn_undead_result = true;
+                    }
+                    DeclKind::Derive(f) if f.name == "undead_rank_from_hd" => {
+                        has_undead_rank_from_hd = true;
+                    }
+                    _ => {}
                 }
             }
         }

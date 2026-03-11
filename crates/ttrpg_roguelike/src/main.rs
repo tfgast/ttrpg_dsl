@@ -84,10 +84,11 @@ impl Game {
             if read_hp(state, &monster) <= 0 {
                 continue;
             }
-            if let Some((mx, my)) = read_position(state, &monster) {
-                if mx == x && my == y {
-                    return Some(monster);
-                }
+            if let Some((mx, my)) = read_position(state, &monster)
+                && mx == x
+                && my == y
+            {
+                return Some(monster);
             }
         }
         None
@@ -224,10 +225,10 @@ fn run_game_loop(
 
         if game.game_over {
             // Wait for q to quit
-            if let Event::Key(key) = event::read()? {
-                if key.code == KeyCode::Char('q') {
-                    return Ok(());
-                }
+            if let Event::Key(key) = event::read()?
+                && key.code == KeyCode::Char('q')
+            {
+                return Ok(());
             }
             continue;
         }

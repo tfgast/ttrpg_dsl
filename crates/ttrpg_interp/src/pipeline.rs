@@ -970,14 +970,14 @@ fn collect_result_changes(old: &Value, new: &Value, _fn_info: &FnInfo) -> Vec<Fi
     {
         let mut changes = Vec::new();
         for (name, old_val) in old_fields {
-            if let Some(new_val) = new_fields.get(name) {
-                if old_val != new_val {
-                    changes.push(FieldChange {
-                        name: name.clone(),
-                        old: old_val.clone(),
-                        new: new_val.clone(),
-                    });
-                }
+            if let Some(new_val) = new_fields.get(name)
+                && old_val != new_val
+            {
+                changes.push(FieldChange {
+                    name: name.clone(),
+                    old: old_val.clone(),
+                    new: new_val.clone(),
+                });
             }
         }
         return changes;

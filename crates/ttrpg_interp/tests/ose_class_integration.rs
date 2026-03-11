@@ -72,15 +72,15 @@ fn ose_class_has_xp_group_enum() {
 
     let mut found = false;
     for item in &program.items {
-        if let TopLevel::System(sys) = &item.node {
-            if sys.name == "OSE" {
-                for decl in &sys.decls {
-                    if let DeclKind::Enum(e) = &decl.node {
-                        if e.name == "XpGroup" {
-                            assert_eq!(e.variants.len(), 13);
-                            found = true;
-                        }
-                    }
+        if let TopLevel::System(sys) = &item.node
+            && sys.name == "OSE"
+        {
+            for decl in &sys.decls {
+                if let DeclKind::Enum(e) = &decl.node
+                    && e.name == "XpGroup"
+                {
+                    assert_eq!(e.variants.len(), 13);
+                    found = true;
                 }
             }
         }
@@ -96,19 +96,19 @@ fn ose_class_has_table_and_derives() {
     let mut derive_names = Vec::new();
 
     for item in &program.items {
-        if let TopLevel::System(sys) = &item.node {
-            if sys.name == "OSE Classes" {
-                for decl in &sys.decls {
-                    match &decl.node {
-                        DeclKind::Table(t) if t.name == "xp_table" => {
-                            has_table = true;
-                            assert_eq!(t.params.len(), 2);
-                        }
-                        DeclKind::Derive(f) => {
-                            derive_names.push(f.name.as_str());
-                        }
-                        _ => {}
+        if let TopLevel::System(sys) = &item.node
+            && sys.name == "OSE Classes"
+        {
+            for decl in &sys.decls {
+                match &decl.node {
+                    DeclKind::Table(t) if t.name == "xp_table" => {
+                        has_table = true;
+                        assert_eq!(t.params.len(), 2);
                     }
+                    DeclKind::Derive(f) => {
+                        derive_names.push(f.name.as_str());
+                    }
+                    _ => {}
                 }
             }
         }

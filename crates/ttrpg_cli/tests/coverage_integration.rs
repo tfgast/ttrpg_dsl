@@ -483,10 +483,10 @@ fn extract_line_coverage_pct(report: &str) -> f64 {
     for line in report.lines() {
         if let Some(start) = line.find("lines covered (") {
             let rest = &line[start + "lines covered (".len()..];
-            if let Some(end) = rest.find('%') {
-                if let Ok(pct) = rest[..end].parse::<f64>() {
-                    return pct;
-                }
+            if let Some(end) = rest.find('%')
+                && let Ok(pct) = rest[..end].parse::<f64>()
+            {
+                return pct;
             }
         }
     }

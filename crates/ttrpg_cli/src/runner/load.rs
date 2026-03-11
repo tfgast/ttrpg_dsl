@@ -122,19 +122,17 @@ impl Runner {
 
         // Try finding manifest in cwd itself (cwd IS the package)
         let manifest_path = cwd.join(manifest::MANIFEST_FILENAME);
-        if manifest_path.is_file() {
-            if let Ok(pkg_manifest) = manifest::load_manifest(&manifest_path) {
-                if pkg_manifest.package.name == pkg_name {
-                    let resolved = pkg_manifest
-                        .resolve_target(target)
-                        .map_err(|e| CliError::Message(e.to_string()))?;
+        if manifest_path.is_file()
+            && let Ok(pkg_manifest) = manifest::load_manifest(&manifest_path)
+            && pkg_manifest.package.name == pkg_name
+        {
+            let resolved = pkg_manifest
+                .resolve_target(target)
+                .map_err(|e| CliError::Message(e.to_string()))?;
 
-                    let paths: Vec<PathBuf> =
-                        resolved.entry_paths.iter().map(|p| cwd.join(p)).collect();
+            let paths: Vec<PathBuf> = resolved.entry_paths.iter().map(|p| cwd.join(p)).collect();
 
-                    return Ok(Some(paths));
-                }
-            }
+            return Ok(Some(paths));
         }
 
         // If `:target` was explicit, it must be a package — report error.

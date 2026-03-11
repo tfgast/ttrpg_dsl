@@ -21,13 +21,13 @@ impl Checker<'_> {
             return Ty::Error;
         }
         if let Ty::Enum(ref name) = arg_ty {
-            if let Some(DeclInfo::Enum(info)) = self.env.types.get(name.as_str()) {
-                if !info.ordered {
-                    self.error(
-                        format!("`ordinal` requires an ordered enum, but `{name}` is not ordered"),
-                        span,
-                    );
-                }
+            if let Some(DeclInfo::Enum(info)) = self.env.types.get(name.as_str())
+                && !info.ordered
+            {
+                self.error(
+                    format!("`ordinal` requires an ordered enum, but `{name}` is not ordered"),
+                    span,
+                );
             }
             return Ty::Int;
         }
@@ -63,15 +63,15 @@ impl Checker<'_> {
             );
             return Ty::Error;
         };
-        if let Some(DeclInfo::Enum(info)) = self.env.types.get(enum_name.as_str()) {
-            if !info.ordered {
-                self.error(
-                    format!(
-                        "`from_ordinal` requires an ordered enum, but `{enum_name}` is not ordered"
-                    ),
-                    span,
-                );
-            }
+        if let Some(DeclInfo::Enum(info)) = self.env.types.get(enum_name.as_str())
+            && !info.ordered
+        {
+            self.error(
+                format!(
+                    "`from_ordinal` requires an ordered enum, but `{enum_name}` is not ordered"
+                ),
+                span,
+            );
         }
         if !idx_ty.is_int_like() {
             self.error(
@@ -114,15 +114,15 @@ impl Checker<'_> {
             );
             return Ty::Error;
         };
-        if let Some(DeclInfo::Enum(info)) = self.env.types.get(enum_name.as_str()) {
-            if !info.ordered {
-                self.error(
-                    format!(
-                        "`try_from_ordinal` requires an ordered enum, but `{enum_name}` is not ordered"
-                    ),
-                    span,
-                );
-            }
+        if let Some(DeclInfo::Enum(info)) = self.env.types.get(enum_name.as_str())
+            && !info.ordered
+        {
+            self.error(
+                format!(
+                    "`try_from_ordinal` requires an ordered enum, but `{enum_name}` is not ordered"
+                ),
+                span,
+            );
         }
         if !idx_ty.is_int_like() {
             self.error(

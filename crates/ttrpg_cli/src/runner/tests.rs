@@ -4394,13 +4394,13 @@ fn emit_fires_hooks() {
     let mut runner = Runner::new();
     load_snippet(
         &mut runner,
-        r#"
+        r"
         entity Character { hp: int = 10 }
         event Ping(target: Character) {}
         hook PingHook on target: Character (trigger: Ping(target: target)) {
             target.hp -= 1
         }
-        "#,
+        ",
     );
 
     runner.exec("spawn Character hero").unwrap();

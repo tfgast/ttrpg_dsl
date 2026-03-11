@@ -17,10 +17,10 @@ fn compile_osric_core() -> (ttrpg_ast::ast::Program, ttrpg_checker::CheckResult)
 /// Extract all DeclKind items from the "OSRIC" system block.
 fn get_decls(program: &ttrpg_ast::ast::Program) -> &[ttrpg_ast::Spanned<DeclKind>] {
     for item in &program.items {
-        if let TopLevel::System(sys) = &item.node {
-            if sys.name == "OSRIC" {
-                return &sys.decls;
-            }
+        if let TopLevel::System(sys) = &item.node
+            && sys.name == "OSRIC"
+        {
+            return &sys.decls;
         }
     }
     panic!("no system block named 'OSRIC' found");

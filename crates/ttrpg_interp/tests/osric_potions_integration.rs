@@ -17,10 +17,10 @@ fn compile_osric() -> (ttrpg_ast::ast::Program, ttrpg_checker::CheckResult) {
 
 fn get_potions_decls(program: &ttrpg_ast::ast::Program) -> &[ttrpg_ast::Spanned<DeclKind>] {
     for item in &program.items {
-        if let TopLevel::System(sys) = &item.node {
-            if sys.name == "OSRIC Potions" {
-                return &sys.decls;
-            }
+        if let TopLevel::System(sys) = &item.node
+            && sys.name == "OSRIC Potions"
+        {
+            return &sys.decls;
         }
     }
     panic!("no system block named 'OSRIC Potions' found");

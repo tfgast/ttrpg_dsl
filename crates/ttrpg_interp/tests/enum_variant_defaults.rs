@@ -187,8 +187,7 @@ fn required_field_after_default_is_error() {
         errors
             .iter()
             .any(|e| e.contains("default") && e.contains("must come last")),
-        "expected error about defaults coming last, got: {:?}",
-        errors
+        "expected error about defaults coming last, got: {errors:?}"
     );
 }
 
@@ -209,7 +208,6 @@ fn missing_required_field_is_still_error() {
     let errors = compile_errors(src);
     assert!(
         errors.iter().any(|e| e.contains("missing required field")),
-        "expected missing required field error, got: {:?}",
-        errors
+        "expected missing required field error, got: {errors:?}"
     );
 }

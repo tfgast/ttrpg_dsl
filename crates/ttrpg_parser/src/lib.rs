@@ -354,15 +354,15 @@ system "Core" {
         let result = parse_multi(&sources);
 
         for item in &result.program.items {
-            if let TopLevel::System(sys) = &item.node {
-                if sys.name == "B" {
-                    // B's span should start at 0, not at some rebased offset
-                    assert_eq!(
-                        item.span.start, 0,
-                        "system B's span.start should be 0 (local offset), got {}",
-                        item.span.start,
-                    );
-                }
+            if let TopLevel::System(sys) = &item.node
+                && sys.name == "B"
+            {
+                // B's span should start at 0, not at some rebased offset
+                assert_eq!(
+                    item.span.start, 0,
+                    "system B's span.start should be 0 (local offset), got {}",
+                    item.span.start,
+                );
             }
         }
     }

@@ -42,85 +42,84 @@ impl Checker<'_> {
 
         // Check if the field is a type in the target system
         if let Some(sys_info) = self.modules.and_then(|m| m.systems.get(&target)) {
-            if sys_info.types.contains(field) {
-                if let Some(decl) = self.env.types.get(field) {
-                    return match decl {
-                        DeclInfo::Enum(_) => Ty::EnumType(Name::from(field)),
-                        DeclInfo::Struct(_) | DeclInfo::Entity(_) | DeclInfo::Unit(_) => {
-                            self.error(format!("type `{field}` cannot be used as a value"), span);
-                            Ty::Error
-                        }
-                    };
-                }
+            if sys_info.types.contains(field)
+                && let Some(decl) = self.env.types.get(field)
+            {
+                return match decl {
+                    DeclInfo::Enum(_) => Ty::EnumType(Name::from(field)),
+                    DeclInfo::Struct(_) | DeclInfo::Entity(_) | DeclInfo::Unit(_) => {
+                        self.error(format!("type `{field}` cannot be used as a value"), span);
+                        Ty::Error
+                    }
+                };
             }
 
             // Check if the field is a bare enum variant in the target system
-            if sys_info.variants.contains(field) {
-                if let Some(owners) = self.env.variant_to_enums.get(field) {
-                    // Filter to enums that belong to this system
-                    let matching: Vec<&Name> = owners
-                        .iter()
-                        .filter(|e| sys_info.types.contains(e.as_str()))
-                        .collect();
-                    let enum_name = match matching.len() {
-                        1 => matching[0],
-                        2.. => {
-                            let qualified: Vec<String> = matching
-                                .iter()
-                                .map(|e| format!("{alias}.{e}.{field}"))
-                                .collect();
-                            self.error(
+            if sys_info.variants.contains(field)
+                && let Some(owners) = self.env.variant_to_enums.get(field)
+            {
+                // Filter to enums that belong to this system
+                let matching: Vec<&Name> = owners
+                    .iter()
+                    .filter(|e| sys_info.types.contains(e.as_str()))
+                    .collect();
+                let enum_name = match matching.len() {
+                    1 => matching[0],
+                    2.. => {
+                        let qualified: Vec<String> = matching
+                            .iter()
+                            .map(|e| format!("{alias}.{e}.{field}"))
+                            .collect();
+                        self.error(
                                 format!(
                                     "variant `{}` is ambiguous in system \"{}\" (alias `{}`); use a qualified form: {}",
                                     field, target, alias, qualified.join(", ")
                                 ),
                                 span,
                             );
-                            return Ty::Error;
-                        }
-                        _ => {
-                            self.error(
+                        return Ty::Error;
+                    }
+                    _ => {
+                        self.error(
                                 format!(
                                     "variant `{field}` is not defined by any enum in system \"{target}\" (alias `{alias}`)"
                                 ),
                                 span,
                             );
-                            return Ty::Error;
-                        }
-                    };
-                    if let Some(DeclInfo::Enum(info)) = self.env.types.get(enum_name.as_str()) {
-                        if let Some(variant) = info.variants.iter().find(|v| v.name == field) {
-                            if variant.fields.is_empty() {
-                                self.resolved_variants.insert(span, enum_name.clone());
-                                return Ty::Enum(enum_name.clone());
-                            }
-                            self.error(
+                        return Ty::Error;
+                    }
+                };
+                if let Some(DeclInfo::Enum(info)) = self.env.types.get(enum_name.as_str())
+                    && let Some(variant) = info.variants.iter().find(|v| v.name == field)
+                {
+                    if variant.fields.is_empty() {
+                        self.resolved_variants.insert(span, enum_name.clone());
+                        return Ty::Enum(enum_name.clone());
+                    }
+                    self.error(
                                 format!(
                                     "variant `{field}` has payload fields and must be called as a constructor"
                                 ),
                                 span,
                             );
-                            return Ty::Error;
-                        }
-                    }
+                    return Ty::Error;
                 }
             }
 
             // Check if the field is a condition in the target system
-            if sys_info.conditions.contains(field) {
-                if let Some(cond_info) = self.env.conditions.get(field) {
-                    let required_params =
-                        cond_info.params.iter().filter(|p| !p.has_default).count();
-                    if required_params > 0 {
-                        self.error(
+            if sys_info.conditions.contains(field)
+                && let Some(cond_info) = self.env.conditions.get(field)
+            {
+                let required_params = cond_info.params.iter().filter(|p| !p.has_default).count();
+                if required_params > 0 {
+                    self.error(
                             format!(
                                 "condition `{field}` requires {required_params} parameter(s); use `{alias}.{field}(...)` to supply them"
                             ),
                             span,
                         );
-                    }
-                    return Ty::Condition;
                 }
+                return Ty::Condition;
             }
         }
 
@@ -155,10 +154,10 @@ impl Checker<'_> {
 
         if let Some(sys_info) = self.modules.and_then(|m| m.systems.get(&target)) {
             // Check if it's a condition call
-            if sys_info.conditions.contains(field) {
-                if let Some(cond_info) = self.env.conditions.get(field).cloned() {
-                    return self.check_alias_condition_call(field, &cond_info.params, args, span);
-                }
+            if sys_info.conditions.contains(field)
+                && let Some(cond_info) = self.env.conditions.get(field).cloned()
+            {
+                return self.check_alias_condition_call(field, &cond_info.params, args, span);
             }
 
             // Check if it's a function call
@@ -168,47 +167,47 @@ impl Checker<'_> {
             }
 
             // Check if it's an enum variant constructor
-            if sys_info.variants.contains(field) {
-                if let Some(owners) = self.env.variant_to_enums.get(field) {
-                    // Filter to enums that belong to this system
-                    let matching: Vec<&Name> = owners
-                        .iter()
-                        .filter(|e| sys_info.types.contains(e.as_str()))
-                        .collect();
-                    let enum_name = match matching.len() {
-                        1 => matching[0].clone(),
-                        2.. => {
-                            let qualified: Vec<String> = matching
-                                .iter()
-                                .map(|e| format!("{alias}.{e}.{field}"))
-                                .collect();
-                            self.error(
+            if sys_info.variants.contains(field)
+                && let Some(owners) = self.env.variant_to_enums.get(field)
+            {
+                // Filter to enums that belong to this system
+                let matching: Vec<&Name> = owners
+                    .iter()
+                    .filter(|e| sys_info.types.contains(e.as_str()))
+                    .collect();
+                let enum_name = match matching.len() {
+                    1 => matching[0].clone(),
+                    2.. => {
+                        let qualified: Vec<String> = matching
+                            .iter()
+                            .map(|e| format!("{alias}.{e}.{field}"))
+                            .collect();
+                        self.error(
                                 format!(
                                     "variant `{}` is ambiguous in system \"{}\" (alias `{}`); use a qualified form: {}",
                                     field, target, alias, qualified.join(", ")
                                 ),
                                 span,
                             );
-                            for arg in args {
-                                self.check_expr(&arg.value);
-                            }
-                            return Ty::Error;
+                        for arg in args {
+                            self.check_expr(&arg.value);
                         }
-                        _ => {
-                            self.error(
+                        return Ty::Error;
+                    }
+                    _ => {
+                        self.error(
                                 format!(
                                     "variant `{field}` is not defined by any enum in system \"{target}\" (alias `{alias}`)"
                                 ),
                                 span,
                             );
-                            for arg in args {
-                                self.check_expr(&arg.value);
-                            }
-                            return Ty::Error;
+                        for arg in args {
+                            self.check_expr(&arg.value);
                         }
-                    };
-                    return self.check_enum_constructor(&enum_name, field, args, span);
-                }
+                        return Ty::Error;
+                    }
+                };
+                return self.check_enum_constructor(&enum_name, field, args, span);
             }
         }
 

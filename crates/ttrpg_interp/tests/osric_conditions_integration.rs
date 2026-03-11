@@ -25,10 +25,10 @@ fn compile_osric_conditions() -> (ttrpg_ast::ast::Program, ttrpg_checker::CheckR
 
 fn get_conditions_decls(program: &ttrpg_ast::ast::Program) -> &[ttrpg_ast::Spanned<DeclKind>] {
     for item in &program.items {
-        if let TopLevel::System(sys) = &item.node {
-            if sys.name == "OSRIC Conditions" {
-                return &sys.decls;
-            }
+        if let TopLevel::System(sys) = &item.node
+            && sys.name == "OSRIC Conditions"
+        {
+            return &sys.decls;
         }
     }
     panic!("no system block named 'OSRIC Conditions' found");
@@ -127,15 +127,15 @@ fn osric_conditions_simple_have_no_params() {
     ];
 
     for item in decls {
-        if let DeclKind::Condition(c) = &item.node {
-            if simple.contains(&&*c.name) {
-                assert!(
-                    c.params.is_empty(),
-                    "condition {} should have no params but has {}",
-                    c.name,
-                    c.params.len()
-                );
-            }
+        if let DeclKind::Condition(c) = &item.node
+            && simple.contains(&&*c.name)
+        {
+            assert!(
+                c.params.is_empty(),
+                "condition {} should have no params but has {}",
+                c.name,
+                c.params.len()
+            );
         }
     }
 }
@@ -145,12 +145,12 @@ fn osric_conditions_concealed_has_level_param() {
     let (program, _) = compile_osric_conditions();
     let decls = get_conditions_decls(&program);
     for item in decls {
-        if let DeclKind::Condition(c) = &item.node {
-            if &*c.name == "Concealed" {
-                assert_eq!(c.params.len(), 1, "Concealed should have 1 param");
-                assert_eq!(&*c.params[0].name, "level");
-                return;
-            }
+        if let DeclKind::Condition(c) = &item.node
+            && &*c.name == "Concealed"
+        {
+            assert_eq!(c.params.len(), 1, "Concealed should have 1 param");
+            assert_eq!(&*c.params[0].name, "level");
+            return;
         }
     }
     panic!("Concealed condition not found");
@@ -161,12 +161,12 @@ fn osric_conditions_cover_has_penalty_param() {
     let (program, _) = compile_osric_conditions();
     let decls = get_conditions_decls(&program);
     for item in decls {
-        if let DeclKind::Condition(c) = &item.node {
-            if &*c.name == "Cover" {
-                assert_eq!(c.params.len(), 1, "Cover should have 1 param");
-                assert_eq!(&*c.params[0].name, "penalty");
-                return;
-            }
+        if let DeclKind::Condition(c) = &item.node
+            && &*c.name == "Cover"
+        {
+            assert_eq!(c.params.len(), 1, "Cover should have 1 param");
+            assert_eq!(&*c.params[0].name, "penalty");
+            return;
         }
     }
     panic!("Cover condition not found");

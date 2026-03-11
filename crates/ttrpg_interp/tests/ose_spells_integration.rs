@@ -72,22 +72,22 @@ fn ose_spells_has_expected_decls() {
     let mut has_spell_damage_table = false;
 
     for item in &program.items {
-        if let TopLevel::System(sys) = &item.node {
-            if sys.name == "OSE Spells" {
-                for decl in &sys.decls {
-                    match &decl.node {
-                        DeclKind::Enum(e) if e.name == "SpellSaveType" => {
-                            has_spell_save_enum = true;
-                            assert_eq!(e.variants.len(), 6);
-                        }
-                        DeclKind::Table(t) if t.name == "spell_save_type" => {
-                            has_spell_save_table = true;
-                        }
-                        DeclKind::Table(t) if t.name == "spell_damage_dice" => {
-                            has_spell_damage_table = true;
-                        }
-                        _ => {}
+        if let TopLevel::System(sys) = &item.node
+            && sys.name == "OSE Spells"
+        {
+            for decl in &sys.decls {
+                match &decl.node {
+                    DeclKind::Enum(e) if e.name == "SpellSaveType" => {
+                        has_spell_save_enum = true;
+                        assert_eq!(e.variants.len(), 6);
                     }
+                    DeclKind::Table(t) if t.name == "spell_save_type" => {
+                        has_spell_save_table = true;
+                    }
+                    DeclKind::Table(t) if t.name == "spell_damage_dice" => {
+                        has_spell_damage_table = true;
+                    }
+                    _ => {}
                 }
             }
         }

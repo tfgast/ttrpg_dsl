@@ -41,12 +41,12 @@ fn osric_saves_has_all_tables() {
 
     let mut table_names = Vec::new();
     for item in &program.items {
-        if let TopLevel::System(sys) = &item.node {
-            if sys.name == "OSRIC Saves" {
-                for decl in &sys.decls {
-                    if let DeclKind::Table(t) = &decl.node {
-                        table_names.push(t.name.as_str());
-                    }
+        if let TopLevel::System(sys) = &item.node
+            && sys.name == "OSRIC Saves"
+        {
+            for decl in &sys.decls {
+                if let DeclKind::Table(t) = &decl.node {
+                    table_names.push(t.name.as_str());
                 }
             }
         }
@@ -84,15 +84,15 @@ fn osric_saves_has_dispatch_derive() {
 
     let mut found = false;
     for item in &program.items {
-        if let TopLevel::System(sys) = &item.node {
-            if sys.name == "OSRIC Saves" {
-                for decl in &sys.decls {
-                    if let DeclKind::Derive(f) = &decl.node {
-                        if f.name == "saving_throws_for" {
-                            assert_eq!(f.params.len(), 2, "saving_throws_for should take 2 params");
-                            found = true;
-                        }
-                    }
+        if let TopLevel::System(sys) = &item.node
+            && sys.name == "OSRIC Saves"
+        {
+            for decl in &sys.decls {
+                if let DeclKind::Derive(f) = &decl.node
+                    && f.name == "saving_throws_for"
+                {
+                    assert_eq!(f.params.len(), 2, "saving_throws_for should take 2 params");
+                    found = true;
                 }
             }
         }
@@ -118,24 +118,23 @@ fn osric_saves_table_entry_counts() {
     ];
 
     for item in &program.items {
-        if let TopLevel::System(sys) = &item.node {
-            if sys.name == "OSRIC Saves" {
-                for decl in &sys.decls {
-                    if let DeclKind::Table(t) = &decl.node {
-                        if let Some(&(_, expected)) = expected_counts
-                            .iter()
-                            .find(|(name, _)| *name == t.name.as_str())
-                        {
-                            assert_eq!(
-                                t.entries.len(),
-                                expected,
-                                "{} should have {} entries, got {}",
-                                t.name,
-                                expected,
-                                t.entries.len()
-                            );
-                        }
-                    }
+        if let TopLevel::System(sys) = &item.node
+            && sys.name == "OSRIC Saves"
+        {
+            for decl in &sys.decls {
+                if let DeclKind::Table(t) = &decl.node
+                    && let Some(&(_, expected)) = expected_counts
+                        .iter()
+                        .find(|(name, _)| *name == t.name.as_str())
+                {
+                    assert_eq!(
+                        t.entries.len(),
+                        expected,
+                        "{} should have {} entries, got {}",
+                        t.name,
+                        expected,
+                        t.entries.len()
+                    );
                 }
             }
         }

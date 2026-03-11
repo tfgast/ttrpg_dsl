@@ -18,10 +18,10 @@ fn compile_osric_equipment() -> (ttrpg_ast::ast::Program, ttrpg_checker::CheckRe
 /// Extract all DeclKind items from the "OSRIC Equipment" system block.
 fn get_equipment_decls(program: &ttrpg_ast::ast::Program) -> &[ttrpg_ast::Spanned<DeclKind>] {
     for item in &program.items {
-        if let TopLevel::System(sys) = &item.node {
-            if sys.name == "OSRIC Equipment" {
-                return &sys.decls;
-            }
+        if let TopLevel::System(sys) = &item.node
+            && sys.name == "OSRIC Equipment"
+        {
+            return &sys.decls;
         }
     }
     panic!("no system block named 'OSRIC Equipment' found");
@@ -30,10 +30,10 @@ fn get_equipment_decls(program: &ttrpg_ast::ast::Program) -> &[ttrpg_ast::Spanne
 /// Extract all DeclKind items from the "OSRIC" core system block.
 fn get_core_decls(program: &ttrpg_ast::ast::Program) -> &[ttrpg_ast::Spanned<DeclKind>] {
     for item in &program.items {
-        if let TopLevel::System(sys) = &item.node {
-            if sys.name == "OSRIC" {
-                return &sys.decls;
-            }
+        if let TopLevel::System(sys) = &item.node
+            && sys.name == "OSRIC"
+        {
+            return &sys.decls;
         }
     }
     panic!("no system block named 'OSRIC' found");

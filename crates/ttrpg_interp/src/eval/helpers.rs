@@ -54,15 +54,15 @@ pub(super) fn find_optional_group_fields<'a>(
     for item in &env.interp.program.items {
         if let TopLevel::System(system) = &item.node {
             for decl in &system.decls {
-                if let DeclKind::Entity(entity_decl) = &decl.node {
-                    if entity_decl.name == entity_type {
-                        for group in &entity_decl.optional_groups {
-                            if group.name == group_name {
-                                if group.is_external_ref {
-                                    return find_group_decl_fields(env, group_name);
-                                }
-                                return Some(group.fields.as_slice());
+                if let DeclKind::Entity(entity_decl) = &decl.node
+                    && entity_decl.name == entity_type
+                {
+                    for group in &entity_decl.optional_groups {
+                        if group.name == group_name {
+                            if group.is_external_ref {
+                                return find_group_decl_fields(env, group_name);
                             }
+                            return Some(group.fields.as_slice());
                         }
                     }
                 }
@@ -76,10 +76,10 @@ pub(super) fn find_group_decl_fields<'a>(env: &'a Env, group_name: &str) -> Opti
     for item in &env.interp.program.items {
         if let TopLevel::System(system) = &item.node {
             for decl in &system.decls {
-                if let DeclKind::Group(group_decl) = &decl.node {
-                    if group_decl.name == group_name {
-                        return Some(group_decl.fields.as_slice());
-                    }
+                if let DeclKind::Group(group_decl) = &decl.node
+                    && group_decl.name == group_name
+                {
+                    return Some(group_decl.fields.as_slice());
                 }
             }
         }
@@ -129,11 +129,10 @@ fn find_field_def_and_remaining<'a>(
                             group.fields.as_slice()
                         };
                         // Next segment should be a field within the group
-                        if let Some(FieldPathSegment::Field(field_name)) = path.get(1) {
-                            if let Some(field) = group_fields.iter().find(|f| f.name == *field_name)
-                            {
-                                return Some((field, 2));
-                            }
+                        if let Some(FieldPathSegment::Field(field_name)) = path.get(1)
+                            && let Some(field) = group_fields.iter().find(|f| f.name == *field_name)
+                        {
+                            return Some((field, 2));
                         }
                     }
                 }
@@ -203,14 +202,14 @@ pub(super) fn find_entity_defaults(env: &Env, entity_name: &str) -> Vec<(Name, S
     for item in &env.interp.program.items {
         if let TopLevel::System(system) = &item.node {
             for decl in &system.decls {
-                if let DeclKind::Entity(e) = &decl.node {
-                    if e.name == entity_name {
-                        return e
-                            .fields
-                            .iter()
-                            .filter_map(|f| f.default.as_ref().map(|d| (f.name.clone(), d.clone())))
-                            .collect();
-                    }
+                if let DeclKind::Entity(e) = &decl.node
+                    && e.name == entity_name
+                {
+                    return e
+                        .fields
+                        .iter()
+                        .filter_map(|f| f.default.as_ref().map(|d| (f.name.clone(), d.clone())))
+                        .collect();
                 }
             }
         }
@@ -223,15 +222,15 @@ pub(super) fn find_required_groups(env: &Env, entity_name: &str) -> Vec<Name> {
     for item in &env.interp.program.items {
         if let TopLevel::System(system) = &item.node {
             for decl in &system.decls {
-                if let DeclKind::Entity(e) = &decl.node {
-                    if e.name == entity_name {
-                        return e
-                            .optional_groups
-                            .iter()
-                            .filter(|g| g.is_required)
-                            .map(|g| g.name.clone())
-                            .collect();
-                    }
+                if let DeclKind::Entity(e) = &decl.node
+                    && e.name == entity_name
+                {
+                    return e
+                        .optional_groups
+                        .iter()
+                        .filter(|g| g.is_required)
+                        .map(|g| g.name.clone())
+                        .collect();
                 }
             }
         }
@@ -248,10 +247,10 @@ fn find_struct_field<'a>(
     for item in items {
         if let TopLevel::System(system) = &item.node {
             for decl in &system.decls {
-                if let DeclKind::Struct(s) = &decl.node {
-                    if s.name == struct_name {
-                        return s.fields.iter().find(|f| f.name == field_name);
-                    }
+                if let DeclKind::Struct(s) = &decl.node
+                    && s.name == struct_name
+                {
+                    return s.fields.iter().find(|f| f.name == field_name);
                 }
             }
         }
@@ -562,19 +561,17 @@ pub(crate) fn eval_expr_with_hint(
     expr: &Spanned<ExprKind>,
     hint: &Ty,
 ) -> Result<Value, crate::RuntimeError> {
-    if let ExprKind::Ident(name) = &expr.node {
-        if env.lookup(name).is_none()
-            && !env
-                .interp
-                .type_env
-                .resolved_variants
-                .contains_key(&expr.span)
-            && env.interp.type_env.unique_variant_owner(name).is_none()
-        {
-            if let Some(val) = try_resolve_variant_from_hint(env, name, hint) {
-                return Ok(val);
-            }
-        }
+    if let ExprKind::Ident(name) = &expr.node
+        && env.lookup(name).is_none()
+        && !env
+            .interp
+            .type_env
+            .resolved_variants
+            .contains_key(&expr.span)
+        && env.interp.type_env.unique_variant_owner(name).is_none()
+        && let Some(val) = try_resolve_variant_from_hint(env, name, hint)
+    {
+        return Ok(val);
     }
     eval_expr(env, expr)
 }

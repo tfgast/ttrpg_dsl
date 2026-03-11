@@ -278,7 +278,7 @@ impl EffectHandler for CliHandler<'_> {
                 let name = self.entity_name(&entity);
                 let field_str = format_path(&path, self.unit_suffixes);
                 let old = adapter::read_at_path(&*self.game_state.borrow(), &entity, &path)
-                    .unwrap_or_else(|| match op {
+                    .unwrap_or(match op {
                         AssignOp::PlusEq | AssignOp::MinusEq => Value::Int(0),
                         AssignOp::Eq => Value::Void,
                     });

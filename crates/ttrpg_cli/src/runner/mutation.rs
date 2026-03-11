@@ -309,17 +309,16 @@ impl Runner {
 
         // Validate type compatibility (only for plain assignment; compound ops
         // produce a new value from the existing field so the RHS is a delta)
-        if assign_op == AssignOp::Eq {
-            if let Some(ref ty) = expected_ty {
-                if !value_matches_ty(&val, ty, Some(&*self.game_state.borrow())) {
-                    return Err(CliError::Message(format!(
-                        "type mismatch for field '{}': expected {}, got {}",
-                        display_path.split('.').next_back().unwrap_or("?"),
-                        ty.display(),
-                        value_type_display(&val)
-                    )));
-                }
-            }
+        if assign_op == AssignOp::Eq
+            && let Some(ref ty) = expected_ty
+            && !value_matches_ty(&val, ty, Some(&*self.game_state.borrow()))
+        {
+            return Err(CliError::Message(format!(
+                "type mismatch for field '{}': expected {}, got {}",
+                display_path.split('.').next_back().unwrap_or("?"),
+                ty.display(),
+                value_type_display(&val)
+            )));
         }
 
         // Resolve resource bounds and compute the final (possibly clamped) value

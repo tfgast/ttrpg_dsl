@@ -77,36 +77,36 @@ fn ose_exploration_has_expected_decls() {
     let mut has_wandering_roll = false;
 
     for item in &program.items {
-        if let TopLevel::System(sys) = &item.node {
-            if sys.name == "OSE Exploration" {
-                for decl in &sys.decls {
-                    match &decl.node {
-                        DeclKind::Enum(e) if e.name == "ExplorationAction" => {
-                            has_action_enum = true;
-                            assert_eq!(e.variants.len(), 6);
-                        }
-                        DeclKind::Enum(e) if e.name == "ExplorationPhase" => {
-                            has_phase_enum = true;
-                            assert_eq!(e.variants.len(), 6);
-                        }
-                        DeclKind::Enum(e) if e.name == "ExplorationActionPhase" => {
-                            has_action_phase_enum = true;
-                            assert_eq!(e.variants.len(), 14);
-                        }
-                        DeclKind::Const(c) if c.name == "EXPLORATION_TURN_PHASES" => {
-                            has_turn_phases_derive = true;
-                        }
-                        DeclKind::Table(t) if t.name == "exploration_action_phases" => {
-                            has_action_phases_table = true;
-                        }
-                        DeclKind::Derive(d) if d.name == "skip_exploration_phase" => {
-                            has_skip_phase_derive = true;
-                        }
-                        DeclKind::Mechanic(m) if m.name == "wandering_monster_roll" => {
-                            has_wandering_roll = true;
-                        }
-                        _ => {}
+        if let TopLevel::System(sys) = &item.node
+            && sys.name == "OSE Exploration"
+        {
+            for decl in &sys.decls {
+                match &decl.node {
+                    DeclKind::Enum(e) if e.name == "ExplorationAction" => {
+                        has_action_enum = true;
+                        assert_eq!(e.variants.len(), 6);
                     }
+                    DeclKind::Enum(e) if e.name == "ExplorationPhase" => {
+                        has_phase_enum = true;
+                        assert_eq!(e.variants.len(), 6);
+                    }
+                    DeclKind::Enum(e) if e.name == "ExplorationActionPhase" => {
+                        has_action_phase_enum = true;
+                        assert_eq!(e.variants.len(), 14);
+                    }
+                    DeclKind::Const(c) if c.name == "EXPLORATION_TURN_PHASES" => {
+                        has_turn_phases_derive = true;
+                    }
+                    DeclKind::Table(t) if t.name == "exploration_action_phases" => {
+                        has_action_phases_table = true;
+                    }
+                    DeclKind::Derive(d) if d.name == "skip_exploration_phase" => {
+                        has_skip_phase_derive = true;
+                    }
+                    DeclKind::Mechanic(m) if m.name == "wandering_monster_roll" => {
+                        has_wandering_roll = true;
+                    }
+                    _ => {}
                 }
             }
         }

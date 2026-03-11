@@ -45,38 +45,38 @@ impl Checker<'_> {
             }
         }
         // Validate that alias doesn't shadow an existing field or group on the entity type
-        if let Some(alias_name) = alias {
-            if let Ty::Entity(ent_name) = &entity_ty {
-                if let Some(fields) = self.env.lookup_fields(ent_name) {
-                    if fields.iter().any(|f| f.name == *alias_name) {
-                        self.error(
-                            format!("alias `{alias_name}` shadows a field on entity `{ent_name}`"),
-                            span,
-                        );
-                    }
-                }
-                if self
-                    .env
-                    .lookup_flattened_field(ent_name, alias_name)
-                    .is_some()
-                {
-                    self.error(
-                        format!("alias `{alias_name}` shadows a field on entity `{ent_name}`"),
-                        span,
-                    );
-                }
-                if self
-                    .env
-                    .lookup_optional_group(ent_name, alias_name)
-                    .is_some()
-                {
-                    self.error(
-                        format!(
-                            "alias `{alias_name}` shadows an optional group on entity `{ent_name}`"
-                        ),
-                        span,
-                    );
-                }
+        if let Some(alias_name) = alias
+            && let Ty::Entity(ent_name) = &entity_ty
+        {
+            if let Some(fields) = self.env.lookup_fields(ent_name)
+                && fields.iter().any(|f| f.name == *alias_name)
+            {
+                self.error(
+                    format!("alias `{alias_name}` shadows a field on entity `{ent_name}`"),
+                    span,
+                );
+            }
+            if self
+                .env
+                .lookup_flattened_field(ent_name, alias_name)
+                .is_some()
+            {
+                self.error(
+                    format!("alias `{alias_name}` shadows a field on entity `{ent_name}`"),
+                    span,
+                );
+            }
+            if self
+                .env
+                .lookup_optional_group(ent_name, alias_name)
+                .is_some()
+            {
+                self.error(
+                    format!(
+                        "alias `{alias_name}` shadows an optional group on entity `{ent_name}`"
+                    ),
+                    span,
+                );
             }
         }
         Ty::Bool

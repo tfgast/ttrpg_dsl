@@ -155,10 +155,10 @@ pub fn run_repl(vi_mode: bool, coverage: bool, interactive: bool) {
         .with_edit_mode(edit_mode);
 
     // Add file-backed history if possible
-    if let Some(path) = history_path() {
-        if let Ok(history) = FileBackedHistory::with_file(1000, path) {
-            editor = editor.with_history(Box::new(history));
-        }
+    if let Some(path) = history_path()
+        && let Ok(history) = FileBackedHistory::with_file(1000, path)
+    {
+        editor = editor.with_history(Box::new(history));
     }
 
     let mut prompt = TtrpgPrompt {

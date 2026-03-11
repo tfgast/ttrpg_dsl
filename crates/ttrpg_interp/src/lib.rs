@@ -42,13 +42,13 @@ pub(crate) fn select_action_overload<'a>(
     }
 
     // Exact match on receiver type
-    if let Some(etype) = entity_type {
-        if let Some(decl) = overloads.iter().find(|a| match &a.receiver_type.node {
+    if let Some(etype) = entity_type
+        && let Some(decl) = overloads.iter().find(|a| match &a.receiver_type.node {
             TypeExpr::Named(n) => n == etype,
             _ => false,
-        }) {
-            return Some(decl);
-        }
+        })
+    {
+        return Some(decl);
     }
 
     // Generic `entity` fallback
@@ -620,10 +620,10 @@ impl<'a, 'p> Env<'a, 'p> {
     /// Record a coverage hit for the given span. No-op when coverage is disabled.
     #[inline]
     pub fn record_coverage(&self, span: Span) {
-        if let Some(ref cov) = self.interp.coverage {
-            if !span.is_dummy() {
-                cov.borrow_mut().hit_spans.insert((span.file.0, span.start));
-            }
+        if let Some(ref cov) = self.interp.coverage
+            && !span.is_dummy()
+        {
+            cov.borrow_mut().hit_spans.insert((span.file.0, span.start));
         }
     }
 
