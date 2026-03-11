@@ -112,7 +112,7 @@ system "OSRIC Conditions" {
         modify [#attack_resolution](target: bearer) {
             attack_mod = attack_mod - 4
         }
-        modify character_best_saves(char: bearer) {
+        modify entity_best_saves(target: bearer) {
             result = SavingThrows {
                 aimed_magic: max(2, result.aimed_magic - 4),
                 breath: max(2, result.breath - 4),

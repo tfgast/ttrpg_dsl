@@ -65,14 +65,14 @@ assert_eq invis_result.total_mod, 0
 // ── Invisible on character: +4 to all saving throws ────────────
 
 spawn Character invis_save_tgt { name: "InvisibleSaver", classes: [ClassLevel { class: Fighter, level: 1 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 10, hp: 10 } }
-let invis_save_base = character_best_saves(invis_save_tgt)
+let invis_save_base = entity_best_saves(invis_save_tgt)
 call apply_condition(invis_save_tgt, Invisible, Duration.Indefinite)
 
-assert_eq character_best_saves(invis_save_tgt).aimed_magic, max(2, invis_save_base.aimed_magic - 4)
-assert_eq character_best_saves(invis_save_tgt).breath, max(2, invis_save_base.breath - 4)
-assert_eq character_best_saves(invis_save_tgt).death_paralysis_poison, max(2, invis_save_base.death_paralysis_poison - 4)
-assert_eq character_best_saves(invis_save_tgt).petrification_polymorph, max(2, invis_save_base.petrification_polymorph - 4)
-assert_eq character_best_saves(invis_save_tgt).spells, max(2, invis_save_base.spells - 4)
+assert_eq entity_best_saves(invis_save_tgt).aimed_magic, max(2, invis_save_base.aimed_magic - 4)
+assert_eq entity_best_saves(invis_save_tgt).breath, max(2, invis_save_base.breath - 4)
+assert_eq entity_best_saves(invis_save_tgt).death_paralysis_poison, max(2, invis_save_base.death_paralysis_poison - 4)
+assert_eq entity_best_saves(invis_save_tgt).petrification_polymorph, max(2, invis_save_base.petrification_polymorph - 4)
+assert_eq entity_best_saves(invis_save_tgt).spells, max(2, invis_save_base.spells - 4)
 
 // ── Invisible causes miss on borderline roll ────────────────────
 

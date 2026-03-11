@@ -1,0 +1,336 @@
+// Polymorph prototype — testing the suspend + summon pattern
+//
+// Tests whether transformations can be modeled by:
+// 1. Suspending the original entity (off-board)
+// 2. Spawning a form entity with new stats but original's HP
+// 3. Linking form back to original via a Polymorphed condition
+// 4. On removal: despawn form, restore original, sync HP
+//
+// Note: `let` bindings are immutable, so entity field mutations
+// must happen inside functions that receive entities as params.
+
+// ── Test 1: Full polymorph cycle (Character → Monster) ───────
+source -s <<END
+entity Character {
+    name: string
+    hp: int
+    max_hp: int
+    ac: int = 10
+    level: int = 1
+}
+
+entity Monster {
+    name: string
+    hp: int
+    max_hp: int
+    ac: int = 10
+}
+
+condition Polymorphed(original: Character, suspension_key: int) on bearer: Monster
+    stacking first
+{
+    on_remove {
+        original.hp = bearer.hp
+        remove_suspension_source(original, source_id: suspension_key)
+        despawn(bearer)
+    }
+}
+
+// All-in-one: polymorph, take damage, revert, return original's HP.
+function test_polymorph_cycle(target: Character, damage: int) -> int {
+    suspend_with_source(target, source_id: 1001,
+        Presence.OffBoard, freeze_turns: true, freeze_durations: true)
+
+    let form = Monster {
+        name: "Troll",
+        hp: target.hp,
+        max_hp: target.max_hp,
+        ac: 16
+    }
+    apply_condition(form, Polymorphed(original: target, suspension_key: 1001),
+        Duration.Indefinite)
+
+    // Apply damage via helper (let bindings are immutable)
+    damage_entity(form, damage)
+
+    // Revert
+    remove_condition(form, "Polymorphed")
+
+    target.hp
+}
+
+function damage_entity(target: Monster, amount: int) {
+    target.hp = target.hp - amount
+}
+END
+
+spawn Character hero { name: "Merlin", hp: 30, max_hp: 30, ac: 15, level: 7 }
+
+assert is_suspended(hero) == false
+assert hero.hp == 30
+
+let final_hp = test_polymorph_cycle(hero, 12)
+assert final_hp == 18
+
+assert is_suspended(hero) == false
+assert hero.hp == 18
+assert hero.ac == 15
+
+
+// ── Test 2: Inline entity construction in polymorph ──────────
+source -s <<END
+enum Duration {
+    Rounds(count: int),
+    Indefinite
+}
+
+entity Character {
+    name: string
+    hp: int
+    max_hp: int
+    ac: int = 10
+}
+
+entity Monster {
+    name: string
+    hp: int
+    max_hp: int
+    ac: int = 10
+}
+
+condition Polymorphed(original: Character, suspension_key: int) on bearer: Monster
+    stacking first
+{
+    on_remove {
+        original.hp = bearer.hp
+        remove_suspension_source(original, source_id: suspension_key)
+        despawn(bearer)
+    }
+}
+
+function damage_monster(target: Monster, amount: int) {
+    target.hp = target.hp - amount
+}
+
+function test_eagle_polymorph(target: Character, damage: int) -> int {
+    suspend_with_source(target, source_id: 5001,
+        Presence.OffBoard, freeze_turns: true, freeze_durations: true)
+
+    let form = Monster {
+        name: "Giant Eagle",
+        hp: target.hp,
+        max_hp: target.max_hp,
+        ac: 13
+    }
+    apply_condition(form, Polymorphed(original: target, suspension_key: 5001),
+        Duration.Rounds(count: 10))
+
+    damage_monster(form, damage)
+    remove_condition(form, "Polymorphed")
+
+    target.hp
+}
+END
+
+spawn Character druid { name: "Druid", hp: 40, max_hp: 40, ac: 12 }
+
+let druid_hp = test_eagle_polymorph(druid, 15)
+assert druid_hp == 25
+assert is_suspended(druid) == false
+assert druid.hp == 25
+assert druid.ac == 12
+
+
+// ── Test 3: Flesh to Stone (suspend only, no form) ──────────
+source -s <<END
+entity Character {
+    name: string
+    hp: int
+    max_hp: int
+}
+
+condition Petrified on bearer: entity
+    stacking first
+{
+    on_apply {
+        suspend(bearer, Presence.OnMap, freeze_turns: true, freeze_durations: true)
+    }
+}
+END
+
+spawn Character victim { name: "Unlucky", hp: 15, max_hp: 15 }
+
+call apply_condition(victim, Petrified, Duration.Indefinite)
+
+assert is_suspended(victim) == true
+assert is_off_board(victim) == false
+assert are_turns_frozen(victim) == true
+
+call remove_condition(victim, "Petrified")
+
+assert is_suspended(victim) == false
+assert victim.hp == 15
+
+
+// ── Test 4: Suspended entity field access ────────────────────
+source -s <<END
+entity Character {
+    name: string
+    hp: int
+    max_hp: int
+    level: int = 1
+}
+
+function suspend_and_read(target: Character, key: int) -> int {
+    suspend_with_source(target, source_id: key,
+        Presence.OffBoard, freeze_turns: true, freeze_durations: true)
+    target.level
+}
+
+function write_suspended(target: Character) {
+    target.hp = 99
+}
+END
+
+spawn Character test_char { name: "Test", hp: 10, max_hp: 10, level: 5 }
+
+let lvl = suspend_and_read(test_char, 3001)
+assert lvl == 5
+
+call write_suspended(test_char)
+assert test_char.hp == 99
+
+call remove_suspension_source(test_char, source_id: 3001)
+assert is_suspended(test_char) == false
+
+
+// ── Test 5: Lethal damage while polymorphed ──────────────────
+source -s <<END
+entity Character {
+    name: string
+    hp: int
+    max_hp: int
+}
+
+entity Monster {
+    name: string
+    hp: int
+    max_hp: int
+}
+
+condition Polymorphed(original: Character, suspension_key: int) on bearer: Monster
+    stacking first
+{
+    on_remove {
+        original.hp = bearer.hp
+        remove_suspension_source(original, source_id: suspension_key)
+        despawn(bearer)
+    }
+}
+
+function damage_monster(target: Monster, amount: int) {
+    target.hp = target.hp - amount
+}
+
+function test_lethal_polymorph(target: Character) -> int {
+    suspend_with_source(target, source_id: 9001,
+        Presence.OffBoard, freeze_turns: true, freeze_durations: true)
+
+    let form = Monster {
+        name: "Bear",
+        hp: target.hp,
+        max_hp: target.max_hp
+    }
+    apply_condition(form, Polymorphed(original: target, suspension_key: 9001),
+        Duration.Indefinite)
+
+    // Overkill the form
+    damage_monster(form, 25)
+
+    remove_condition(form, "Polymorphed")
+
+    target.hp
+}
+END
+
+spawn Character doomed { name: "Doomed", hp: 20, max_hp: 20 }
+
+let doomed_hp = test_lethal_polymorph(doomed)
+assert doomed_hp == -5
+assert is_suspended(doomed) == false
+assert doomed.hp == -5
+
+
+// ── Test 6: Sequential form changes (Shape Change pattern) ───
+source -s <<END
+entity Character {
+    name: string
+    hp: int
+    max_hp: int
+    ac: int = 10
+}
+
+entity Monster {
+    name: string
+    hp: int
+    max_hp: int
+    ac: int = 10
+}
+
+condition Polymorphed(original: Character, suspension_key: int) on bearer: Monster
+    stacking first
+{
+    on_remove {
+        original.hp = bearer.hp
+        remove_suspension_source(original, source_id: suspension_key)
+        despawn(bearer)
+    }
+}
+
+function damage_monster(target: Monster, amount: int) {
+    target.hp = target.hp - amount
+}
+
+function do_polymorph(target: Character, form_name: string, form_ac: int, key: int) -> Monster {
+    suspend_with_source(target, source_id: key,
+        Presence.OffBoard, freeze_turns: true, freeze_durations: true)
+
+    let form = Monster {
+        name: form_name,
+        hp: target.hp,
+        max_hp: target.max_hp,
+        ac: form_ac
+    }
+    apply_condition(form, Polymorphed(original: target, suspension_key: key),
+        Duration.Indefinite)
+    form
+}
+
+function revert(form: Monster) {
+    remove_condition(form, "Polymorphed")
+}
+
+// Bear -> revert -> Eagle -> revert
+function test_double_polymorph(target: Character) -> int {
+    // First form: bear
+    let bear = do_polymorph(target, "Bear", 14, 7001)
+    damage_monster(bear, 10)
+    revert(bear)
+
+    // target should now have 40-10 = 30 HP
+    // Second form: eagle
+    let eagle = do_polymorph(target, "Eagle", 13, 7002)
+    damage_monster(eagle, 5)
+    revert(eagle)
+
+    target.hp
+}
+END
+
+spawn Character shapechanger { name: "ShapeChanger", hp: 40, max_hp: 40 }
+
+let sc_hp = test_double_polymorph(shapechanger)
+// 40 - 10 (bear) - 5 (eagle) = 25
+assert sc_hp == 25
+assert shapechanger.hp == 25
+assert is_suspended(shapechanger) == false

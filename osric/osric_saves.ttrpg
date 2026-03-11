@@ -226,6 +226,23 @@ system "OSRIC Saves" {
 
 
     // ========================================================
+    //  ENTITY SAVE LOOKUP (unified)
+    //
+    //  Dispatches to character_best_saves or monster_best_saves
+    //  based on entity type. Conditions that modify saves
+    //  across entity types should target this derive.
+    // ========================================================
+
+    derive entity_best_saves(target: entity) -> SavingThrows {
+        if target is Character {
+            character_best_saves(target)
+        } else {
+            monster_best_saves(target)
+        }
+    }
+
+
+    // ========================================================
     //  SHARED SAVE HELPERS
     // ========================================================
 
@@ -303,7 +320,7 @@ system "OSRIC Saves" {
     ) -> option<bool> {
         resolve {
             if let some(cat) = category {
-                let saves = character_best_saves(saver)
+                let saves = entity_best_saves(saver)
 
                 // Stalwart bonus: dwarves/gnomes/halflings vs aimed magic, poison, spells
                 let stalwart = if has_stalwart(saver.ancestry) && is_stalwart_category(cat) {
@@ -334,7 +351,7 @@ system "OSRIC Saves" {
     ) -> option<bool> {
         resolve {
             if let some(cat) = category {
-                let saves = monster_best_saves(saver)
+                let saves = entity_best_saves(saver)
                 some(roll_saving_throw(saves, cat, bonus))
             } else {
                 some(false)

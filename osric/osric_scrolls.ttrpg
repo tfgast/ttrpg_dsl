@@ -435,10 +435,10 @@ system "OSRIC Scrolls" {
         }
     }
 
-    condition ScrollMagicWarding on bearer: Character
+    condition ScrollMagicWarding on bearer: entity
         stacking first
     {
-        modify character_best_saves(char: bearer) {
+        modify entity_best_saves(target: bearer) {
             result = SavingThrows {
                 aimed_magic: max(2, result.aimed_magic - 2),
                 breath: result.breath,
@@ -449,10 +449,10 @@ system "OSRIC Scrolls" {
         }
     }
 
-    condition ScrollPetrifactionWarding on bearer: Character
+    condition ScrollPetrifactionWarding on bearer: entity
         stacking first
     {
-        modify character_best_saves(char: bearer) {
+        modify entity_best_saves(target: bearer) {
             result = SavingThrows {
                 aimed_magic: result.aimed_magic,
                 breath: result.breath,
@@ -463,10 +463,10 @@ system "OSRIC Scrolls" {
         }
     }
 
-    condition ScrollPolymorphWarding on bearer: Character
+    condition ScrollPolymorphWarding on bearer: entity
         stacking first
     {
-        modify character_best_saves(char: bearer) {
+        modify entity_best_saves(target: bearer) {
             result = SavingThrows {
                 aimed_magic: result.aimed_magic,
                 breath: result.breath,
@@ -477,10 +477,10 @@ system "OSRIC Scrolls" {
         }
     }
 
-    condition ScrollPossessionWarding on bearer: Character
+    condition ScrollPossessionWarding on bearer: entity
         stacking first
     {
-        modify character_best_saves(char: bearer) {
+        modify entity_best_saves(target: bearer) {
             result = SavingThrows {
                 aimed_magic: result.aimed_magic,
                 breath: result.breath,

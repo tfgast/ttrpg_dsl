@@ -725,13 +725,13 @@ system "OSRIC Potions" {
     //  custom condition for the AC/save bonuses.
     // ========================================================
 
-    condition PotionInvulnerability(save_bonus: int) on bearer: Character
+    condition PotionInvulnerability(save_bonus: int) on bearer: entity
         stacking first
     {
         modify effective_target_ac(target: bearer) {
             ac_mod = ac_mod + 2
         }
-        modify character_best_saves(char: bearer) {
+        modify entity_best_saves(target: bearer) {
             result = SavingThrows {
                 aimed_magic: max(2, result.aimed_magic - save_bonus),
                 breath: max(2, result.breath - save_bonus),

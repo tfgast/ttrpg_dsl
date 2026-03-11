@@ -50,8 +50,8 @@ assert_eq character_movement(speed_move), Feet { value: 240 }
 spawn Character invulnerable { name: "Knight", classes: [ClassLevel { class: Fighter, level: 1 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 20, hp: 20 } }
 call apply_condition(invulnerable, PotionInvulnerability(save_bonus: 2), Duration.Indefinite)
 assert_eq effective_target_ac(invulnerable), 12
-assert_eq character_best_saves(invulnerable).aimed_magic, 14
-assert_eq character_best_saves(invulnerable).spells, 15
+assert_eq entity_best_saves(invulnerable).aimed_magic, 14
+assert_eq entity_best_saves(invulnerable).spells, 15
 
 // ── resolve_potion_invulnerability grants broader protection ────
 

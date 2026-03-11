@@ -43,10 +43,10 @@ assert_eq acid_guard.hp, 20
 // ── Magic warding improves relevant saves ───────────────────────
 
 spawn Character magic_guard { name: "Magic Guard", classes: [ClassLevel { class: Fighter, level: 1 }], abilities: { STR: 12, INT: 10, WIS: 10, DEX: 12, CON: 12, CHA: 10 }, HitPoints { max_hp: 20, hp: 20 } }
-let magic_base = character_best_saves(magic_guard)
+let magic_base = entity_best_saves(magic_guard)
 call apply_condition(magic_guard, ScrollMagicWarding, Duration.Indefinite)
-assert_eq character_best_saves(magic_guard).aimed_magic, max(2, magic_base.aimed_magic - 2)
-assert_eq character_best_saves(magic_guard).spells, max(2, magic_base.spells - 2)
+assert_eq entity_best_saves(magic_guard).aimed_magic, max(2, magic_base.aimed_magic - 2)
+assert_eq entity_best_saves(magic_guard).spells, max(2, magic_base.spells - 2)
 
 // ── Undead warding suppresses undead attacks ────────────────────
 
