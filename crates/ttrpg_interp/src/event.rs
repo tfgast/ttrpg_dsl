@@ -107,6 +107,16 @@ pub fn what_triggers(
 
         // For each candidate entity, try to match trigger bindings
         for candidate in candidates {
+            if !receiver_matches_constraints(
+                interp,
+                state,
+                *candidate,
+                &reaction_decl.receiver_type,
+                &reaction_decl.receiver_with_groups,
+            ) {
+                continue;
+            }
+
             if !match_trigger_bindings(
                 &mut env,
                 &reaction_decl.trigger.bindings,
@@ -198,6 +208,16 @@ pub fn find_matching_hooks(
         let hook_decl = &interp.program.hooks[hook_name];
 
         for candidate in candidates {
+            if !receiver_matches_constraints(
+                interp,
+                state,
+                *candidate,
+                &hook_decl.receiver_type,
+                &hook_decl.receiver_with_groups,
+            ) {
+                continue;
+            }
+
             if !match_trigger_bindings(
                 &mut env,
                 &hook_decl.trigger.bindings,
@@ -221,6 +241,44 @@ pub fn find_matching_hooks(
 }
 
 // ── Trigger matching ────────────────────────────────────────────
+
+fn receiver_matches_constraints(
+    interp: &Interpreter,
+    state: &dyn StateProvider,
+    candidate: EntityRef,
+    receiver_type: &ttrpg_ast::Spanned<ttrpg_ast::ast::TypeExpr>,
+    with_clause: &ttrpg_ast::ast::WithClause,
+) -> bool {
+    match interp.type_env.resolve_type(receiver_type) {
+        Ty::Entity(expected) => {
+            if let Some(actual) = state.entity_type_name(&candidate)
+                && actual != expected
+            {
+                return false;
+            }
+        }
+        Ty::AnyEntity => {}
+        Ty::Error => {}
+        _ => return false,
+    }
+
+    if with_clause.groups.is_empty() {
+        return true;
+    }
+
+    let has_group = |group_name: &str| state.read_field(&candidate, group_name).is_some();
+    if with_clause.disjunctive {
+        with_clause
+            .groups
+            .iter()
+            .any(|group| has_group(&group.name))
+    } else {
+        with_clause
+            .groups
+            .iter()
+            .all(|group| has_group(&group.name))
+    }
+}
 
 /// Match a reaction's trigger bindings against event payload.
 ///
@@ -549,7 +607,8 @@ mod tests {
     use ttrpg_ast::ast::*;
     use ttrpg_ast::{Name, Span, Spanned};
     use ttrpg_checker::env::{
-        ConditionInfo, EventInfo, FnInfo, FnKind, ParamInfo, TriggerInfo, TypeEnv,
+        ConditionInfo, DeclInfo, EntityInfo, EventInfo, FnInfo, FnKind, OptionalGroupInfo,
+        ParamInfo, TriggerInfo, TypeEnv,
     };
     use ttrpg_checker::ty::Ty;
 
@@ -562,6 +621,7 @@ mod tests {
         fields: HashMap<(u64, String), Value>,
         conditions: HashMap<u64, Vec<ActiveCondition>>,
         turn_budgets: HashMap<u64, BTreeMap<Name, Value>>,
+        entity_types: HashMap<u64, Name>,
         enabled_options: Vec<Name>,
     }
 
@@ -571,6 +631,7 @@ mod tests {
                 fields: HashMap::new(),
                 conditions: HashMap::new(),
                 turn_budgets: HashMap::new(),
+                entity_types: HashMap::new(),
                 enabled_options: Vec::new(),
             }
         }
@@ -585,6 +646,9 @@ mod tests {
         }
         fn read_turn_budget(&self, entity: &EntityRef) -> Option<BTreeMap<Name, Value>> {
             self.turn_budgets.get(&entity.0).cloned()
+        }
+        fn entity_type_name(&self, entity: &EntityRef) -> Option<Name> {
+            self.entity_types.get(&entity.0).cloned()
         }
         fn read_enabled_options(&self) -> Vec<Name> {
             self.enabled_options.clone()
@@ -677,6 +741,24 @@ mod tests {
             name: "EventPayload".into(),
             fields: map,
         }
+    }
+
+    fn insert_entity_type(type_env: &mut TypeEnv, name: &str, optional_groups: Vec<&str>) {
+        type_env.types.insert(
+            Name::from(name),
+            DeclInfo::Entity(EntityInfo {
+                name: Name::from(name),
+                fields: vec![],
+                optional_groups: optional_groups
+                    .into_iter()
+                    .map(|group_name| OptionalGroupInfo {
+                        name: Name::from(group_name),
+                        fields: vec![],
+                        required: false,
+                    })
+                    .collect(),
+            }),
+        );
     }
 
     // ── Test 7: Trigger matching with named bindings ─────────
@@ -1325,6 +1407,152 @@ mod tests {
         assert_eq!(result.triggerable[0].reactor, EntityRef(1));
 
         // Nothing suppressed
+        assert_eq!(result.suppressed.len(), 0);
+    }
+
+    #[test]
+    fn hook_matching_respects_receiver_type_and_with_groups() {
+        let program = program_with_decls(vec![
+            DeclKind::Event(EventDecl {
+                name: "RoundStart".into(),
+                params: vec![],
+                fields: vec![],
+            }),
+            DeclKind::Hook(
+                HookDecl::new(
+                    "TrackCasting",
+                    "actor",
+                    spanned(TypeExpr::Named("Character".into())),
+                    TriggerExpr {
+                        event_name: "RoundStart".into(),
+                        bindings: vec![],
+                        span: dummy_span(),
+                    },
+                    spanned(vec![]),
+                )
+                .with_receiver_groups(WithClause {
+                    groups: vec![GroupConstraint {
+                        name: "Spellcasting".into(),
+                        alias: Some("sc".into()),
+                    }],
+                    disjunctive: false,
+                }),
+            ),
+        ]);
+
+        let mut type_env = TypeEnv::new();
+        insert_entity_type(&mut type_env, "Character", vec!["Spellcasting"]);
+        insert_entity_type(&mut type_env, "Monster", vec!["Spellcasting"]);
+        type_env.events.insert(
+            "RoundStart".into(),
+            EventInfo {
+                name: "RoundStart".into(),
+                params: vec![],
+                fields: vec![],
+                builtin: false,
+            },
+        );
+
+        populate_triggers(&program, &mut type_env);
+        let interp = Interpreter::new(&program, &type_env).unwrap();
+        let mut state = TestState::new();
+        state.conditions.insert(1, vec![]);
+        state.conditions.insert(2, vec![]);
+        state.conditions.insert(3, vec![]);
+        state.entity_types.insert(1, "Character".into());
+        state.entity_types.insert(2, "Character".into());
+        state.entity_types.insert(3, "Monster".into());
+        state.fields.insert(
+            (1, "Spellcasting".into()),
+            Value::Struct {
+                name: "Spellcasting".into(),
+                fields: BTreeMap::new(),
+            },
+        );
+        state.fields.insert(
+            (3, "Spellcasting".into()),
+            Value::Struct {
+                name: "Spellcasting".into(),
+                fields: BTreeMap::new(),
+            },
+        );
+
+        let payload = make_payload(vec![]);
+        let candidates = vec![EntityRef(1), EntityRef(2), EntityRef(3)];
+
+        let result =
+            find_matching_hooks(&interp, &state, "RoundStart", &payload, &candidates).unwrap();
+
+        assert_eq!(result.hooks.len(), 1);
+        assert_eq!(result.hooks[0].name, "TrackCasting");
+        assert_eq!(result.hooks[0].target, EntityRef(1));
+    }
+
+    #[test]
+    fn reaction_matching_respects_receiver_with_groups() {
+        let program = program_with_decls(vec![
+            DeclKind::Event(EventDecl {
+                name: "RoundStart".into(),
+                params: vec![],
+                fields: vec![],
+            }),
+            DeclKind::Reaction(
+                ReactionDecl::new(
+                    "CounterspellReady",
+                    "reactor",
+                    spanned(TypeExpr::Named("Character".into())),
+                    TriggerExpr {
+                        event_name: "RoundStart".into(),
+                        bindings: vec![],
+                        span: dummy_span(),
+                    },
+                    spanned(vec![]),
+                )
+                .with_receiver_groups(WithClause {
+                    groups: vec![GroupConstraint {
+                        name: "Spellcasting".into(),
+                        alias: None,
+                    }],
+                    disjunctive: false,
+                }),
+            ),
+        ]);
+
+        let mut type_env = TypeEnv::new();
+        insert_entity_type(&mut type_env, "Character", vec!["Spellcasting"]);
+        type_env.events.insert(
+            "RoundStart".into(),
+            EventInfo {
+                name: "RoundStart".into(),
+                params: vec![],
+                fields: vec![],
+                builtin: false,
+            },
+        );
+
+        populate_triggers(&program, &mut type_env);
+        let interp = Interpreter::new(&program, &type_env).unwrap();
+        let mut state = TestState::new();
+        state.conditions.insert(1, vec![]);
+        state.conditions.insert(2, vec![]);
+        state.entity_types.insert(1, "Character".into());
+        state.entity_types.insert(2, "Character".into());
+        state.fields.insert(
+            (1, "Spellcasting".into()),
+            Value::Struct {
+                name: "Spellcasting".into(),
+                fields: BTreeMap::new(),
+            },
+        );
+
+        let payload = make_payload(vec![]);
+        let candidates = vec![EntityRef(1), EntityRef(2)];
+
+        let result = what_triggers(&interp, &state, "RoundStart", &payload, &candidates).unwrap();
+
+        assert_eq!(result.triggerable.len(), 1);
+        assert_eq!(result.triggerable[0].name, "CounterspellReady");
+        assert_eq!(result.triggerable[0].reactor, EntityRef(1));
         assert_eq!(result.suppressed.len(), 0);
     }
 }
