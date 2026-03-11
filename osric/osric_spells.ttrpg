@@ -773,9 +773,9 @@ system "OSRIC Spells" {
     //  signal healing, damage, and condition application.
     // ========================================================
 
-    event SpellHealed(caster: Character, target: Character, spell_name: string, amount: int) {}
+    event SpellHealed(caster: entity, target: entity, spell_name: string, amount: int) {}
     event SpellDamaged(caster: entity, target: entity, spell_name: string, amount: int) {}
-    event SpellApplied(caster: Character, target: entity, spell_name: string) {}
+    event SpellApplied(caster: entity, target: entity, spell_name: string) {}
     event SpellDispelled(target: entity, condition_name: string, dispeller_level: int) {}
 
 
@@ -843,7 +843,7 @@ system "OSRIC Spells" {
     // target. Successful save halves, vetoed save (magic
     // resistance) skips entirely.
     function resolve_save_or_half_damage(
-        caster: Character,
+        caster: entity,
         targets: list<entity>,
         spell_name: string,
         total_damage: int,
@@ -862,7 +862,7 @@ system "OSRIC Spells" {
     // No-save damage rolled per target (Magic Missile archetype).
     // Each target gets an independent roll of damage_dice.
     function resolve_no_save_damage_each(
-        caster: Character,
+        caster: entity,
         targets: list<entity>,
         spell_name: string,
         damage_dice: DiceExpr,
@@ -879,7 +879,7 @@ system "OSRIC Spells" {
     // Applies the given condition with the specified duration
     // to every target in the list. No saving throw.
     function resolve_no_save_condition(
-        caster: Character,
+        caster: entity,
         targets: list<entity>,
         spell_name: string,
         cond: Condition,
@@ -896,7 +896,7 @@ system "OSRIC Spells" {
     // Each target gets a saving throw; on failure the condition
     // is applied. Vetoed saves (magic resistance) skip entirely.
     function resolve_save_negates_condition(
-        caster: Character,
+        caster: entity,
         targets: list<entity>,
         spell_name: string,
         cond: Condition,
@@ -919,7 +919,7 @@ system "OSRIC Spells" {
     // heal_unconscious() (condition transitions); conscious
     // targets via heal_damage() (capped at max HP).
     // For other entities: always uses heal_damage().
-    function resolve_heal_target(caster: Character, target: entity, spell_name: string, healing: int) {
+    function resolve_heal_target(caster: entity, target: entity, spell_name: string, healing: int) {
         if target is Character {
             if target.hp <= 0 {
                 heal_unconscious(target, healing)

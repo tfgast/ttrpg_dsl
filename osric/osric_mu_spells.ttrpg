@@ -85,7 +85,7 @@ system "OSRIC MU Spells" {
     // Resolve Fireball. Prompts the host for area occupants,
     // rolls damage once (caster_level d6), then applies to each
     // target via save-or-half helper.
-    function resolve_fireball(caster: Character, placement: Placement) {
+    function resolve_fireball(caster: entity, placement: Placement) {
         let cl = caster_level(caster, Arcane)
         let targets = area_occupants(placement, FIREBALL_DEF.area)
         let total_damage = roll(dice(cl, 6)).total
@@ -96,7 +96,7 @@ system "OSRIC MU Spells" {
     // entry per missile — caller decides target allocation by
     // repeating the same target for multiple missiles aimed at it.
     // Each entry gets one missile (1d4+1 damage, auto-hit, no save).
-    function resolve_magic_missile(caster: Character, targets: list<entity>) {
+    function resolve_magic_missile(caster: entity, targets: list<entity>) {
         resolve_no_save_damage_each(caster, targets, "Magic Missile", 1d4 + 1)
     }
 
@@ -173,7 +173,7 @@ system "OSRIC MU Spells" {
     // processes by HD category from weakest to strongest. Uses
     // entity_hit_dice() for both Characters and Monsters.
     // Host should return targets sorted weakest-first.
-    function resolve_sleep(caster: Character, placement: Placement) {
+    function resolve_sleep(caster: entity, placement: Placement) {
         let targets = area_occupants(placement, SLEEP_DEF.area)
         let cl = caster_level(caster, Arcane)
         let duration_rounds = 5 * cl
@@ -225,7 +225,7 @@ system "OSRIC MU Spells" {
 
     // Resolve Dispel Magic (MU version). Prompts for area
     // occupants, then uses the shared dispel logic.
-    function resolve_dispel_magic_mu(caster: Character, placement: Placement) {
+    function resolve_dispel_magic_mu(caster: entity, placement: Placement) {
         let cl = caster_level(caster, Arcane)
         let targets = area_occupants(placement, DISPEL_MAGIC_MU_DEF.area)
         resolve_dispel_magic_on_targets(cl, targets)

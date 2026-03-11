@@ -52,7 +52,7 @@ system "OSRIC Cleric Spells" {
         description: "The target creature regains 1d8 hit points, up to its normal maximum."
     }
 
-    function resolve_cure_light_wounds(caster: Character, target: entity) {
+    function resolve_cure_light_wounds(caster: entity, target: entity) {
         let healing = roll(1d8).total
         resolve_heal_target(caster, target, "Cure Light Wounds", healing)
     }
@@ -81,7 +81,7 @@ system "OSRIC Cleric Spells" {
         description: "The touched target creature takes 1d8 hit points of magical damage."
     }
 
-    function resolve_cause_light_wounds(caster: Character, target: entity) {
+    function resolve_cause_light_wounds(caster: entity, target: entity) {
         let damage = roll(1d8).total
         target.TakeDamage(caster, damage)
         emit SpellDamaged(caster: caster, target: target, spell_name: "Cause Light Wounds", amount: damage)
@@ -119,7 +119,7 @@ system "OSRIC Cleric Spells" {
         description: "Selected creatures gain +1 to hit and +5% to morale checks for 6 rounds."
     }
 
-    function resolve_bless(caster: Character, targets: list<entity>) {
+    function resolve_bless(caster: entity, targets: list<entity>) {
         let cl = caster_level(caster, Divine)
         resolve_no_save_condition(caster, targets, "Bless", Blessed, Duration.Rounds(6),
             EffectSource.Spell(name: "Bless", caster_level: cl))
@@ -156,7 +156,7 @@ system "OSRIC Cleric Spells" {
         description: "Chosen creatures suffer -1 to hit and -5% to morale checks for 6 rounds."
     }
 
-    function resolve_curse(caster: Character, targets: list<entity>) {
+    function resolve_curse(caster: entity, targets: list<entity>) {
         let cl = caster_level(caster, Divine)
         resolve_save_negates_condition(caster, targets, "Curse", Cursed, Duration.Rounds(6),
             EffectSource.Spell(name: "Curse", caster_level: cl))
@@ -204,7 +204,7 @@ system "OSRIC Cleric Spells" {
     // Resolve Hold Person. Each target saves vs spells (mental)
     // with a modifier based on total target count.
     // Duration = 4 + caster's cleric level rounds.
-    function resolve_hold_person(caster: Character, targets: list<entity>) {
+    function resolve_hold_person(caster: entity, targets: list<entity>) {
         if !hold_person_target_count_is_valid(len(targets)) {
             error("Hold Person must target 1-3 creatures")
         }
@@ -252,7 +252,7 @@ system "OSRIC Cleric Spells" {
 
     // Resolve Dispel Magic (Cleric version). Prompts for area
     // occupants, then uses the shared dispel logic.
-    function resolve_dispel_magic_cleric(caster: Character, placement: Placement) {
+    function resolve_dispel_magic_cleric(caster: entity, placement: Placement) {
         let cl = caster_level(caster, Divine)
         let targets = area_occupants(placement, DISPEL_MAGIC_CLERIC_DEF.area)
         resolve_dispel_magic_on_targets(cl, targets)
@@ -288,7 +288,7 @@ system "OSRIC Cleric Spells" {
     // Resolve Remove Curse. Removes the first condition tagged
     // with #curse from the target. If no curse-tagged conditions
     // exist, the spell has no effect.
-    function resolve_remove_curse(caster: Character, target: entity) {
+    function resolve_remove_curse(caster: entity, target: entity) {
         for cond in conditions(target) {
             if "curse" in cond.tags {
                 remove_condition(target, cond)
@@ -331,7 +331,7 @@ system "OSRIC Cleric Spells" {
 
     // Resolve Bestow Curse. Target saves vs spells; on failure
     // the BestowedCurse condition is applied permanently.
-    function resolve_bestow_curse(caster: Character, target: entity) {
+    function resolve_bestow_curse(caster: entity, target: entity) {
         let cl = caster_level(caster, Divine)
         let source = EffectSource.Spell(name: "Bestow Curse", caster_level: cl)
         let result = target.ResistSpell(category: some(SpellsUnlisted))
@@ -371,7 +371,7 @@ system "OSRIC Cleric Spells" {
     // Resolve Neutralise Poison. Removes all conditions tagged
     // with #poison from the target. Also removes conditions whose
     // source is EffectSource.Poison.
-    function resolve_neutralise_poison(caster: Character, target: entity) {
+    function resolve_neutralise_poison(caster: entity, target: entity) {
         for cond in conditions(target) {
             if "poison" in cond.tags {
                 remove_condition(target, cond)

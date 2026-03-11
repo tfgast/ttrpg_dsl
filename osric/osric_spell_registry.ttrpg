@@ -71,7 +71,7 @@ system "OSRIC Spell Registry" {
     //  element from the list.
     // ========================================================
 
-    function resolve_spell(id: SpellId, caster: Character, targets: list<entity>) {
+    function resolve_spell(id: SpellId, caster: entity, targets: list<entity>) {
         match id {
             SpellId.CureLightWounds => {
                 let target = targets.first().unwrap()
@@ -137,7 +137,7 @@ system "OSRIC Spell Registry" {
     //  beyond Placement — call their resolve functions directly.
     // ========================================================
 
-    function resolve_area_spell(id: SpellId, caster: Character, placement: Placement) {
+    function resolve_area_spell(id: SpellId, caster: entity, placement: Placement) {
         match id {
             // Instant AoE spells — prompt for occupants internally
             SpellId.Fireball => {

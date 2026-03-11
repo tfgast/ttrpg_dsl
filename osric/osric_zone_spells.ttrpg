@@ -453,7 +453,7 @@ system "OSRIC Zone Spells" {
     // --- Silence 15' Radius resolve ---
     // Creates a stationary or entity-anchored 15' silence sphere.
     // Duration: 2 rounds per caster level.
-    function resolve_silence_15(caster: Character, placement: Placement) {
+    function resolve_silence_15(caster: entity, placement: Placement) {
         let cl = caster_level(caster, Divine)
         let source = EffectSource.Spell(name: "Silence 15' Radius", caster_level: cl)
         let anchor_entity = match placement.anchor {
@@ -478,7 +478,7 @@ system "OSRIC Zone Spells" {
 
     // --- Protection from Evil 10' Radius resolve ---
     // Always anchored to the caster. Duration: 2 rounds per level.
-    function resolve_protection_from_evil_10(caster: Character, placement: Placement) {
+    function resolve_protection_from_evil_10(caster: entity, placement: Placement) {
         let cl = caster_level(caster, Divine)
         let source = EffectSource.Spell(name: "Protection from Evil 10' Radius", caster_level: cl)
         let anchor_entity = match placement.anchor {
@@ -501,7 +501,7 @@ system "OSRIC Zone Spells" {
     // Creates a stationary wall of fire. Wall dimensions scale
     // with caster level (20 sq ft per level). The host provides
     // orientation for wall placement via Placement.orientation.
-    function resolve_wall_of_fire(caster: Character, placement: Placement) {
+    function resolve_wall_of_fire(caster: entity, placement: Placement) {
         let cl = caster_level(caster, Arcane)
         let source = EffectSource.Spell(name: "Wall of Fire", caster_level: cl)
         let wall_length = Feet { value: 20 * cl }
@@ -520,7 +520,7 @@ system "OSRIC Zone Spells" {
     // Creates a stationary sphere of whirling blades.
     // Radius is fixed at cast time (5ft to 20ft, chosen by caster).
     // Duration: 3 rounds per caster level.
-    function resolve_blade_barrier(caster: Character, placement: Placement, radius: Feet) {
+    function resolve_blade_barrier(caster: entity, placement: Placement, radius: Feet) {
         let cl = caster_level(caster, Divine)
         let source = EffectSource.Spell(name: "Blade Barrier", caster_level: cl)
         let zone = Zone {
@@ -538,7 +538,7 @@ system "OSRIC Zone Spells" {
     // Inscribes a triggered zone on a surface. The glyph_type
     // string selects the damage element (e.g. "Fire", "Lightning",
     // "Ice", "Acid") and is encoded in the source name.
-    function resolve_glyph_of_warding(caster: Character, placement: Placement, glyph_type: string) {
+    function resolve_glyph_of_warding(caster: entity, placement: Placement, glyph_type: string) {
         let cl = caster_level(caster, Divine)
         let spell_name = "Glyph of Warding (" + glyph_type + ")"
         let source = EffectSource.Spell(name: spell_name, caster_level: cl)
