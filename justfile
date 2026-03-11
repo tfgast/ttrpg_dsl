@@ -51,18 +51,37 @@ run *ARGS:
 test-scripts:
     #!/usr/bin/env bash
     set -euo pipefail
+    total=0
+    passed=0
     failed=0
+    failed_scripts=()
     for script in osric/tests/*.ttrpg-cli ose/tests/*.ttrpg-cli tests/*.ttrpg-cli; do
         [ -f "$script" ] || continue
+        total=$((total + 1))
         echo "── $script ──"
         if cargo run --quiet --bin ttrpg -- --quiet run "$script"; then
             echo "  PASS"
+            passed=$((passed + 1))
         else
             echo "  FAIL"
-            failed=1
+            failed=$((failed + 1))
+            failed_scripts+=("$script")
         fi
     done
-    exit $failed
+    echo ""
+    echo "═══════════════════════════════════════"
+    if [ $failed -eq 0 ]; then
+        echo "  ✓ All $total test scripts passed"
+    else
+        echo "  $passed passed, $failed failed out of $total test scripts"
+        echo ""
+        echo "  Failed:"
+        for s in "${failed_scripts[@]}"; do
+            echo "    • $s"
+        done
+    fi
+    echo "═══════════════════════════════════════"
+    [ $failed -eq 0 ]
 
 # ── Fuzzing ──────────────────────────────────────────────────────
 # Use malloc_limit_mb instead of rss_limit_mb to avoid false-positive
