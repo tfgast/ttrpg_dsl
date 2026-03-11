@@ -698,10 +698,13 @@ system "OSRIC Conditions" {
     //  Per 1.8.5.2 (Ray of Enfeeblement).
     // ========================================================
 
-    condition Enfeebled(reduction: int) on bearer: entity
+    condition Enfeebled(reduction: int) on bearer: Character
         stacking first
     {
         tags: #physical
+        modify effective_ability(character: bearer, ability: STR) {
+            result = max(3, result * (100 - reduction) div 100)
+        }
     }
 
 

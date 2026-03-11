@@ -21,6 +21,18 @@ use "OSRIC"
 system "OSRIC Ability" {
 
     // ========================================================
+    //  EFFECTIVE ABILITY SCORE
+    // ========================================================
+
+    // Returns the effective ability score for a character, after
+    // condition modifiers. All gameplay code (combat, saves, skills)
+    // should call this instead of reading abilities[] directly.
+    // Character creation / validation reads raw abilities[].
+    derive effective_ability(character: Character, ability: Ability) -> int {
+        character.abilities[ability]
+    }
+
+    // ========================================================
     //  STRENGTH
     // ========================================================
 
@@ -152,7 +164,7 @@ system "OSRIC Ability" {
     // Monks do not receive STR bonuses to hit (OSRIC 3.0, p.51).
     derive effective_str_to_hit(attacker: Character) -> int {
         if any([cl.class == Monk for cl in attacker.classes]) { 0 } else {
-            let score = attacker.abilities[STR]
+            let score = effective_ability(attacker, STR)
             if score == 18 {
                 if attacker has ExceptionalStrength as es {
                     exc_str_to_hit(attacker.es.percentile)
@@ -170,7 +182,7 @@ system "OSRIC Ability" {
     // Instead they get monk_weapon_damage() — applied in resolve_melee_attack.
     derive effective_str_damage(attacker: Character) -> int {
         if any([cl.class == Monk for cl in attacker.classes]) { 0 } else {
-            let score = attacker.abilities[STR]
+            let score = effective_ability(attacker, STR)
             if score == 18 {
                 if attacker has ExceptionalStrength as es {
                     exc_str_damage(attacker.es.percentile)
@@ -185,7 +197,7 @@ system "OSRIC Ability" {
 
     // Composite: effective STR encumbrance allowance (lbs).
     derive effective_str_encumbrance(character: Character) -> int {
-        let score = character.abilities[STR]
+        let score = effective_ability(character, STR)
         if score == 18 {
             if character has ExceptionalStrength as es {
                 exc_str_encumbrance(character.es.percentile)

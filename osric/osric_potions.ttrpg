@@ -578,7 +578,13 @@ system "OSRIC Potions" {
 
     condition PotionGiantStrength(giant_type: GiantStrengthType) on bearer: Character
         stacking first
-    {}
+    {
+        // Giant strength sets effective STR to superhuman (19),
+        // which grants +3 to-hit and +6 damage via existing tables.
+        modify effective_ability(character: bearer, ability: STR) {
+            result = max(result, 19)
+        }
+    }
 
     function resolve_potion_giant_strength(drinker: Character, giant_type: GiantStrengthType) {
         let source = EffectSource.Item(name: "Potion of Giant Strength")

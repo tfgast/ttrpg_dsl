@@ -1,0 +1,109 @@
+// OSRIC effective_ability integration tests
+//
+// Tests the effective_ability derive and its modification by conditions:
+//   - Baseline: effective_ability returns raw score
+//   - Enfeebled: reduces effective STR by percentage
+//   - PotionGiantStrength: sets effective STR to 19 (superhuman)
+//   - Downstream derives (effective_str_to_hit, effective_str_damage) respond
+
+load osric/*.ttrpg
+
+// ── Baseline: effective_ability returns the raw score ──────────
+
+spawn Character ea_base { name: "Baseline", classes: [ClassLevel { class: Fighter, level: 1 }], abilities: { STR: 16, INT: 12, WIS: 12, DEX: 14, CON: 12, CHA: 12 }, HitPoints { max_hp: 10, hp: 10 } }
+
+assert_eq effective_ability(ea_base, STR), 16
+assert_eq effective_ability(ea_base, DEX), 14
+assert_eq effective_ability(ea_base, INT), 12
+
+// STR 16 → str_to_hit = 0, str_damage = +1 (from tables)
+assert_eq effective_str_to_hit(ea_base), 0
+assert_eq effective_str_damage(ea_base), 1
+
+
+// ── Enfeebled: reduces effective STR by percentage ────────────
+// reduction=50 → STR 16 * (100-50)/100 = 16 * 50/100 = 8
+// STR 8 → str_to_hit = 0, str_damage = 0
+
+spawn Character ea_enfeebled { name: "Enfeebled", classes: [ClassLevel { class: Fighter, level: 1 }], abilities: { STR: 16, INT: 12, WIS: 12, DEX: 14, CON: 12, CHA: 12 }, HitPoints { max_hp: 10, hp: 10 } }
+call apply_condition(ea_enfeebled, Enfeebled(reduction: 50), Duration.Indefinite)
+
+assert_eq effective_ability(ea_enfeebled, STR), 8
+// Other abilities unaffected
+assert_eq effective_ability(ea_enfeebled, DEX), 14
+// Downstream derives pick up the reduced score
+assert_eq effective_str_to_hit(ea_enfeebled), 0
+assert_eq effective_str_damage(ea_enfeebled), 0
+
+
+// ── Enfeebled with high reduction floors at 3 ─────────────────
+// reduction=95 → STR 16 * 5/100 = 0, but floored to 3
+// STR 3 → str_to_hit = -3, str_damage = -1
+
+spawn Character ea_enfeebled_floor { name: "EnfeebledFloor", classes: [ClassLevel { class: Fighter, level: 1 }], abilities: { STR: 16, INT: 12, WIS: 12, DEX: 14, CON: 12, CHA: 12 }, HitPoints { max_hp: 10, hp: 10 } }
+call apply_condition(ea_enfeebled_floor, Enfeebled(reduction: 95), Duration.Indefinite)
+
+assert_eq effective_ability(ea_enfeebled_floor, STR), 3
+assert_eq effective_str_to_hit(ea_enfeebled_floor), -3
+assert_eq effective_str_damage(ea_enfeebled_floor), -1
+
+
+// ── Enfeebled removal restores effective STR ──────────────────
+
+spawn Character ea_enfeebled_remove { name: "EnfeebledRemove", classes: [ClassLevel { class: Fighter, level: 1 }], abilities: { STR: 16, INT: 12, WIS: 12, DEX: 14, CON: 12, CHA: 12 }, HitPoints { max_hp: 10, hp: 10 } }
+call apply_condition(ea_enfeebled_remove, Enfeebled(reduction: 50), Duration.Indefinite)
+assert_eq effective_ability(ea_enfeebled_remove, STR), 8
+
+call remove_condition(ea_enfeebled_remove, "Enfeebled")
+assert_eq effective_ability(ea_enfeebled_remove, STR), 16
+assert_eq effective_str_to_hit(ea_enfeebled_remove), 0
+assert_eq effective_str_damage(ea_enfeebled_remove), 1
+
+
+// ── PotionGiantStrength: sets effective STR to 19 ─────────────
+// STR 12 → effective 19 with Hill giant strength
+// STR 19 → str_to_hit = +3, str_damage = +6
+
+spawn Character ea_giant { name: "GiantStr", classes: [ClassLevel { class: Fighter, level: 1 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 10, hp: 10 } }
+
+// Baseline: STR 12 → to_hit 0, damage 0
+assert_eq effective_ability(ea_giant, STR), 12
+assert_eq effective_str_to_hit(ea_giant), 0
+assert_eq effective_str_damage(ea_giant), 0
+
+call apply_condition(ea_giant, PotionGiantStrength(giant_type: Hill), Duration.Rounds(10))
+
+assert_eq effective_ability(ea_giant, STR), 19
+assert_eq effective_str_to_hit(ea_giant), 3
+assert_eq effective_str_damage(ea_giant), 6
+
+
+// ── PotionGiantStrength on already-strong character ───────────
+// STR 19 already → max(19, 19) = 19 (no downgrade)
+
+spawn Character ea_giant_strong { name: "StrongGiant", classes: [ClassLevel { class: Fighter, level: 1 }], abilities: { STR: 18, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 10, hp: 10 }, ExceptionalStrength { percentile: 100 } }
+
+// Baseline: STR 18 with exc 100 → to_hit = +3 (from exc table), damage = +6 (from exc table)
+let strong_base_hit = effective_str_to_hit(ea_giant_strong)
+let strong_base_dmg = effective_str_damage(ea_giant_strong)
+
+call apply_condition(ea_giant_strong, PotionGiantStrength(giant_type: Hill), Duration.Rounds(10))
+
+// STR 19 (from potion) ≥ 18 so effective_ability = 19
+// But exceptional strength derives check score == 18 first,
+// so with score 19 they fall through to str_to_hit(19) = +3, str_damage(19) = +6
+assert_eq effective_ability(ea_giant_strong, STR), 19
+assert_eq effective_str_to_hit(ea_giant_strong), 3
+assert_eq effective_str_damage(ea_giant_strong), 6
+
+
+// ── Raw abilities unchanged by conditions ─────────────────────
+// Verify that the underlying abilities map is not mutated
+
+spawn Character ea_raw { name: "RawCheck", classes: [ClassLevel { class: Fighter, level: 1 }], abilities: { STR: 14, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 10, hp: 10 } }
+call apply_condition(ea_raw, Enfeebled(reduction: 50), Duration.Indefinite)
+
+// Effective is modified
+assert_eq effective_ability(ea_raw, STR), 7
+// Raw score untouched
+assert_eq ea_raw.abilities[STR], 14

@@ -398,7 +398,7 @@ system "OSRIC Thief Skills" {
         let thief_classes = [cl for cl in char.classes if class_def(cl.class).has_thief_skills]
         if len(thief_classes) > 0 {
             let cl = first(thief_classes).unwrap()
-            effective_thief_skill(cl.class, skill, cl.level, char.abilities[DEX], char.ancestry)
+            effective_thief_skill(cl.class, skill, cl.level, effective_ability(char, DEX), char.ancestry)
         } else {
             0
         }

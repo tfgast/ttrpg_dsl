@@ -221,7 +221,7 @@ system "OSRIC Character" {
     // Base surprise adjustment from DEX.
     // EncumbranceState condition modifies the result.
     derive character_surprise_adj(character: Character) -> int {
-        dex_surprise(character.abilities[DEX])
+        dex_surprise(effective_ability(character, DEX))
     }
 
     // Compute encumbrance surprise adjustment.

@@ -440,7 +440,7 @@ system "OSRIC Combat" {
             // Monks use level-based AC (class feature) and never receive DEX AC bonus.
             // Conditions that set include_dex = false are no-ops for monks.
             let base_ac = if is_class(target, Monk) { monk_ac(class_level_for(target, Monk).unwrap()) } else { base_armor_ac(target) }
-            let dex_bonus = if include_dex && !is_class(target, Monk) { dex_ac_adj(target.abilities[DEX]) } else { 0 }
+            let dex_bonus = if include_dex && !is_class(target, Monk) { dex_ac_adj(effective_ability(target, DEX)) } else { 0 }
             let shield_bonus = if include_shield { base_shield_bonus(target) } else { 0 }
             base_ac + dex_bonus + shield_bonus + ac_mod
         } else if target is Monster {
@@ -547,7 +547,7 @@ system "OSRIC Combat" {
         // Monk weapon damage bonus replaces STR damage (OSRIC 3.0, pp.52-54).
         let monk_dmg = if is_class(attacker, Monk) {
             let base = monk_weapon_damage(class_level_for(attacker, Monk).unwrap())
-            if attacker.abilities[STR] >= 15 { base } else { max(0, base - 1) }
+            if effective_ability(attacker, STR) >= 15 { base } else { max(0, base - 1) }
         } else { 0 }
         let spec_dmg = melee_spec_damage_mod(attacker, weapon)
         let dmg_mod = str_dmg + monk_dmg + spec_dmg + weapon_bonus + damage_mod
@@ -585,7 +585,7 @@ system "OSRIC Combat" {
         weapon_material: WeaponMaterial = WeaponMaterial.Normal
     ) -> AttackResult #attack_resolution {
         let bthb_val = character_bthb(attacker)
-        let dex_mod = dex_missile(attacker.abilities[DEX])
+        let dex_mod = dex_missile(effective_ability(attacker, DEX))
         let spec_hit = missile_spec_hit_mod(attacker, weapon)
         let wdef = missile_weapon_def(weapon)
         let range_mod = missile_range_penalty(distance, wdef.range_increment)
@@ -601,7 +601,7 @@ system "OSRIC Combat" {
         let str_dmg = if wdef.is_hurled { effective_str_damage(attacker) } else { 0 }
         let monk_dmg = if wdef.is_hurled && is_class(attacker, Monk) {
             let base = monk_weapon_damage(class_level_for(attacker, Monk).unwrap())
-            if attacker.abilities[STR] >= 15 { base } else { max(0, base - 1) }
+            if effective_ability(attacker, STR) >= 15 { base } else { max(0, base - 1) }
         } else { 0 }
         let spec_dmg = missile_spec_damage_mod(attacker, weapon)
         let dmg_mod = str_dmg + monk_dmg + spec_dmg + weapon_bonus + damage_mod
@@ -967,7 +967,7 @@ system "OSRIC Combat" {
     // DEX bonus + movement rate bonus + any condition-based attack_mod.
     derive unarmed_attacker_mod(attacker: entity, attacker_move: int) -> int {
         let dex_mod = if attacker is Character {
-            unarmed_attacker_dex_mod(attacker.abilities[DEX])
+            unarmed_attacker_dex_mod(effective_ability(attacker, DEX))
         } else { 0 }
         dex_mod + unarmed_attacker_move_mod(attacker_move)
     }
@@ -1123,7 +1123,7 @@ system "OSRIC Combat" {
     // Monsters: 4-8 HD → +1, 9+ HD → +2.
     derive overbearing_attacker_str_mod(attacker: entity) -> int {
         if attacker is Character {
-            let score = attacker.abilities[STR]
+            let score = effective_ability(attacker, STR)
             if score >= 16 {
                 if score == 18 && attacker has ExceptionalStrength {
                     2
@@ -1150,7 +1150,7 @@ system "OSRIC Combat" {
     // Monsters: 4-8 HD → -1, 9+ HD → -2.
     derive overbearing_defender_str_mod(defender: entity) -> int {
         if defender is Character {
-            let score = defender.abilities[STR]
+            let score = effective_ability(defender, STR)
             if score >= 16 {
                 if score == 18 && defender has ExceptionalStrength {
                     -2
@@ -1990,7 +1990,7 @@ system "OSRIC Combat" {
         resolve {
             let primary_weapon = wielded_melee(attacker).unwrap()
             let offhand_weapon = wielded_off_melee(attacker).unwrap()
-            let dex = attacker.abilities[DEX]
+            let dex = effective_ability(attacker, DEX)
             let primary_penalty = two_weapon_primary_penalty(dex)
             let offhand_penalty = two_weapon_offhand_penalty(dex)
             let primary_wb = wielded_item_magic_bonus(attacker.wielded_main.unwrap())

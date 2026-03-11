@@ -324,14 +324,14 @@ system "OSRIC Saves" {
 
                 // Stalwart bonus: dwarves/gnomes/halflings vs aimed magic, poison, spells
                 let stalwart = if has_stalwart(saver.ancestry) && is_stalwart_category(cat) {
-                    stalwart_save_bonus(saver.abilities[CON])
+                    stalwart_save_bonus(effective_ability(saver, CON))
                 } else {
                     0
                 }
 
                 // Wisdom bonus: mental saves only (charm, hold, etc.)
                 let mental = if is_mental {
-                    wis_mental_save(saver.abilities[WIS])
+                    wis_mental_save(effective_ability(saver, WIS))
                 } else {
                     0
                 }

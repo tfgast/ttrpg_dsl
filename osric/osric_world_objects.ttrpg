@@ -216,7 +216,7 @@ system "OSRIC World Objects" {
     // Compute the effective minor test threshold for a character,
     // accounting for exceptional strength.
     derive effective_str_minor(actor: Character) -> int {
-        let score = actor.abilities[STR]
+        let score = effective_ability(actor, STR)
         if score == 18 {
             if actor has ExceptionalStrength as es {
                 exc_str_minor_test(actor.es.percentile)
@@ -228,7 +228,7 @@ system "OSRIC World Objects" {
 
     // Compute the extraordinary minor test threshold.
     derive effective_str_extraordinary(actor: Character) -> int {
-        let score = actor.abilities[STR]
+        let score = effective_ability(actor, STR)
         if score == 18 {
             if actor has ExceptionalStrength as es {
                 exc_str_minor_extraordinary(actor.es.percentile)
