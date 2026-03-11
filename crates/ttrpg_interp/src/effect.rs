@@ -157,6 +157,14 @@ pub enum Effect {
         entity: EntityRef,
         source_id: u64,
     },
+    TransferConditions {
+        from: EntityRef,
+        to: EntityRef,
+        tag: Name,
+        /// Condition instance to exclude (e.g., the currently-removing condition).
+        /// None when called outside a lifecycle block.
+        exclude_instance: Option<u64>,
+    },
 
     // ── Decision effects ────────────────────────────────────
     DeductCost {
@@ -292,6 +300,7 @@ pub enum EffectKind {
     RemoveEntity,
     AddSuspension,
     RemoveSuspensionSource,
+    TransferConditions,
 }
 
 impl EffectKind {
@@ -321,6 +330,7 @@ impl EffectKind {
             Effect::RemoveEntity { .. } => EffectKind::RemoveEntity,
             Effect::AddSuspension { .. } => EffectKind::AddSuspension,
             Effect::RemoveSuspensionSource { .. } => EffectKind::RemoveSuspensionSource,
+            Effect::TransferConditions { .. } => EffectKind::TransferConditions,
         }
     }
 }

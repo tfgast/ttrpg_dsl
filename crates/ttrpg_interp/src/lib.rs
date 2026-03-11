@@ -549,6 +549,10 @@ pub(crate) struct Env<'a, 'p> {
     /// Uses a counter (not bool) so that hooks triggered via `emit` inside
     /// a lifecycle block can temporarily clear it.
     pub in_lifecycle_block: u32,
+    /// Stack of condition instance IDs for active lifecycle blocks.
+    /// Pushed before entering on_apply/on_remove, popped on exit.
+    /// Used by transfer_conditions to exclude the currently-removing condition.
+    pub lifecycle_condition_stack: Vec<u64>,
     /// Pre-allocated condition token for the currently-being-applied condition.
     /// Set before `on_apply` runs so lifecycle blocks can reference the
     /// upcoming condition instance (e.g. for suspension records).
@@ -575,6 +579,7 @@ impl<'a, 'p> Env<'a, 'p> {
             current_invocation_id: None,
             emit_depth: 0,
             in_lifecycle_block: 0,
+            lifecycle_condition_stack: Vec::new(),
             current_condition_token: None,
             return_value: None,
         }

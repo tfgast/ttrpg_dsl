@@ -49,6 +49,7 @@ pub(crate) fn call_builtin(
         "are_turns_frozen" => builtin_are_turns_frozen(env, &args, span),
         "are_durations_frozen" => builtin_are_durations_frozen(env, &args, span),
         "condition_token" => builtin_condition_token(env, &args, span),
+        "transfer_conditions" => builtin_transfer_conditions(env, &args, span),
         "process_periodic_conditions" => builtin_process_periodic_conditions(env, &args, span),
         _ => Err(RuntimeError::with_span(
             format!("unknown builtin function '{name}'"),
@@ -580,6 +581,7 @@ fn builtin_apply_condition(
         target,
         &cond_args,
         crate::pipeline::LifecycleKind::OnApply,
+        token.0,
     );
     env.current_condition_token = saved_token;
     lifecycle_result?;
@@ -752,6 +754,7 @@ fn remove_condition_instances(
             target,
             &instance.params,
             crate::pipeline::LifecycleKind::OnRemove,
+            instance.id,
         );
         if let Err(e) = lifecycle_result
             && first_error.is_none()
@@ -892,6 +895,7 @@ fn builtin_revoke(env: &mut Env, args: &[Value], span: Span) -> Result<Value, Ru
             *entity,
             &instance.params,
             crate::pipeline::LifecycleKind::OnRemove,
+            instance.id,
         );
         if let Err(e) = lifecycle_result
             && first_error.is_none()
@@ -1273,6 +1277,53 @@ fn type_name(val: &Value) -> &'static str {
         Value::EnumNamespace(_) => "EnumNamespace",
         Value::ModuleAlias(_) => "ModuleAlias",
     }
+}
+
+// ── transfer_conditions ─────────────────────────────────────────
+
+/// `transfer_conditions(from: entity, to: entity, tag: string) -> unit`
+///
+/// Moves all active conditions on `from` that have `tag` in their tag set to `to`.
+/// Does NOT fire on_apply/on_remove or host gates. Allowed in lifecycle blocks.
+fn builtin_transfer_conditions(
+    env: &mut Env,
+    args: &[Value],
+    span: Span,
+) -> Result<Value, RuntimeError> {
+    let (from, to, tag) = match (args.first(), args.get(1), args.get(2)) {
+        (Some(Value::Entity(from)), Some(Value::Entity(to)), Some(Value::Str(tag))) => {
+            (*from, *to, tag.clone())
+        }
+        _ => {
+            return Err(RuntimeError::with_span(
+                "transfer_conditions() requires (entity, entity, string)",
+                span,
+            ));
+        }
+    };
+
+    // Runtime tag validation: ensure the tag is declared
+    if !env.interp.program.tags.contains(tag.as_str()) {
+        return Err(RuntimeError::with_span(
+            format!(
+                "transfer_conditions: unknown tag `{tag}` — \
+                 no `tag {tag}` declaration found in the program"
+            ),
+            span,
+        ));
+    }
+
+    // Read lifecycle condition stack to get exclude_instance
+    let exclude_instance = env.lifecycle_condition_stack.last().copied();
+
+    let effect = Effect::TransferConditions {
+        from,
+        to,
+        tag: Name::from(tag.as_str()),
+        exclude_instance,
+    };
+    validate_mutation_response(env.handler.handle(effect), "TransferConditions", span)?;
+    Ok(Value::Void)
 }
 
 // ── process_periodic_conditions ──────────────────────────────────

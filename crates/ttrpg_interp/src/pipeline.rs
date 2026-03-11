@@ -148,8 +148,10 @@ pub(crate) fn execute_lifecycle_blocks(
     bearer: crate::state::EntityRef,
     params: &BTreeMap<Name, Value>,
     kind: LifecycleKind,
+    condition_instance_id: u64,
 ) -> Result<(), RuntimeError> {
     let chain = collect_ancestor_order(env.interp.program, condition_name);
+    env.lifecycle_condition_stack.push(condition_instance_id);
     env.in_lifecycle_block += 1;
 
     let result = (|| {
@@ -175,6 +177,7 @@ pub(crate) fn execute_lifecycle_blocks(
     })();
 
     env.in_lifecycle_block -= 1;
+    env.lifecycle_condition_stack.pop();
     result
 }
 

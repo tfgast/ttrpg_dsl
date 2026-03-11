@@ -161,6 +161,16 @@ pub fn register_builtins() -> Vec<FnInfo> {
             Ty::Bool,
         ),
         builtin("condition_token", vec![], Ty::Int),
+        // Condition transfer (for polymorph patterns)
+        builtin(
+            "transfer_conditions",
+            vec![
+                param("from", Ty::AnyEntity),
+                param("to", Ty::AnyEntity),
+                param("tag", Ty::String),
+            ],
+            Ty::Unit,
+        ),
         // Periodic condition processing
         builtin(
             "process_periodic_conditions",

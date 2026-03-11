@@ -435,6 +435,27 @@ impl Checker<'_> {
             self.check_builtin_permissions(name, span);
         }
 
+        // Special-case: validate tag string literal for transfer_conditions/process_periodic_conditions
+        if fn_info.kind == FnKind::Builtin
+            && matches!(name, "transfer_conditions" | "process_periodic_conditions")
+        {
+            let tag_idx = if name == "transfer_conditions" { 2 } else { 1 };
+            if let Some(tag_arg) = args.get(tag_idx)
+                && let ExprKind::StringLit(ref tag_str) = tag_arg.value.node
+            {
+                let tag_name: ttrpg_ast::Name = tag_str.as_str().into();
+                if !self.env.tags.contains(&tag_name) {
+                    self.error(
+                        format!(
+                            "undeclared tag `{tag_str}` in {name}() — \
+                             no `tag {tag_str}` declaration found"
+                        ),
+                        tag_arg.value.span,
+                    );
+                }
+            }
+        }
+
         // Reject direct reaction/hook calls
         if fn_info.kind == FnKind::Reaction || fn_info.kind == FnKind::Hook {
             let kind_name = if fn_info.kind == FnKind::Reaction {

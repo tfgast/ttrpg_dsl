@@ -580,6 +580,28 @@ impl EffectHandler for CliHandler<'_> {
                 ));
                 Response::Acknowledged
             }
+
+            Effect::TransferConditions {
+                from,
+                to,
+                tag,
+                exclude_instance,
+            } => {
+                let from_name = self.entity_name(&from);
+                let to_name = self.entity_name(&to);
+                adapter::apply_transfer_conditions(
+                    &mut *self.game_state.borrow_mut(),
+                    &from,
+                    &to,
+                    &tag,
+                    exclude_instance,
+                    &rustc_hash::FxHashMap::default(), // Bearer type check skipped in CLI
+                );
+                self.log(format!(
+                    "[TransferConditions] {from_name} -> {to_name} tag={tag}"
+                ));
+                Response::Acknowledged
+            }
         }
     }
 }

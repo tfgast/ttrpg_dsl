@@ -4,6 +4,9 @@ use std::collections::HashSet;
 use ttrpg_ast::Name;
 use ttrpg_ast::ast::AssignOp;
 
+use rustc_hash::FxHashMap;
+use ttrpg_checker::ty::Ty;
+
 use crate::RuntimeError;
 use crate::effect::FieldPathSegment;
 use crate::effect::{Effect, EffectHandler, EffectKind, Response};
@@ -33,6 +36,10 @@ use crate::value::Value;
 pub struct StateAdapter<S: WritableState> {
     state: RefCell<S>,
     pass_through: HashSet<EffectKind>,
+    /// Receiver types for conditions, used by TransferConditions for bearer
+    /// type compatibility checks. Maps condition name → receiver Ty.
+    /// Empty means skip bearer type checking.
+    condition_receiver_types: FxHashMap<Name, Ty>,
 }
 
 impl<S: WritableState> StateAdapter<S> {
@@ -41,7 +48,14 @@ impl<S: WritableState> StateAdapter<S> {
         StateAdapter {
             state: RefCell::new(state),
             pass_through: HashSet::new(),
+            condition_receiver_types: FxHashMap::default(),
         }
+    }
+
+    /// Set condition receiver types for bearer type compatibility checks
+    /// during transfer_conditions. Build from TypeEnv.conditions.
+    pub fn set_condition_receiver_types(&mut self, types: FxHashMap<Name, Ty>) {
+        self.condition_receiver_types = types;
     }
 
     /// Mark an effect kind as pass-through. Mutation effects of this
@@ -161,7 +175,7 @@ pub struct AdaptedHandler<'a, S: WritableState, H: EffectHandler> {
 }
 
 /// The mutation effect kinds.
-const MUTATION_KINDS: [EffectKind; 14] = [
+const MUTATION_KINDS: [EffectKind; 15] = [
     EffectKind::MutateField,
     EffectKind::ApplyCondition,
     EffectKind::RemoveCondition,
@@ -176,6 +190,7 @@ const MUTATION_KINDS: [EffectKind; 14] = [
     EffectKind::RemoveEntity,
     EffectKind::AddSuspension,
     EffectKind::RemoveSuspensionSource,
+    EffectKind::TransferConditions,
 ];
 
 fn is_mutation(kind: EffectKind) -> bool {
@@ -211,7 +226,11 @@ impl<S: WritableState, H: EffectHandler> EffectHandler for AdaptedHandler<'_, S,
                 let response = self.inner.handle(effect.clone());
                 match &response {
                     Response::Acknowledged => {
-                        apply_mutation(&mut *self.adapter.state.borrow_mut(), &effect);
+                        apply_mutation(
+                            &mut *self.adapter.state.borrow_mut(),
+                            &effect,
+                            &self.adapter.condition_receiver_types,
+                        );
                     }
                     Response::Override(override_val) => {
                         apply_mutation_with_override(
@@ -232,7 +251,11 @@ impl<S: WritableState, H: EffectHandler> EffectHandler for AdaptedHandler<'_, S,
                 response
             } else {
                 // Intercepted: apply locally, return Acknowledged
-                apply_mutation(&mut *self.adapter.state.borrow_mut(), &effect);
+                apply_mutation(
+                    &mut *self.adapter.state.borrow_mut(),
+                    &effect,
+                    &self.adapter.condition_receiver_types,
+                );
                 Response::Acknowledged
             }
         } else {
@@ -300,7 +323,11 @@ fn apply_spawn<S: WritableState>(state: &mut S, effect: &Effect) -> EntityRef {
     }
 }
 
-fn apply_mutation<S: WritableState>(state: &mut S, effect: &Effect) {
+fn apply_mutation<S: WritableState>(
+    state: &mut S,
+    effect: &Effect,
+    condition_receiver_types: &FxHashMap<Name, Ty>,
+) {
     match effect {
         Effect::MutateField {
             entity,
@@ -418,7 +445,75 @@ fn apply_mutation<S: WritableState>(state: &mut S, effect: &Effect) {
         Effect::RemoveSuspensionSource { entity, source_id } => {
             state.remove_suspension_source(entity, *source_id);
         }
+        Effect::TransferConditions {
+            from,
+            to,
+            tag,
+            exclude_instance,
+        } => {
+            apply_transfer_conditions(state, from, to, tag, *exclude_instance, condition_receiver_types);
+        }
         _ => {} // Not a mutation effect
+    }
+}
+
+/// Apply a transfer_conditions effect to writable state.
+///
+/// Public so that host effect handlers (e.g., CliHandler) can reuse the logic.
+#[allow(clippy::implicit_hasher)]
+pub fn apply_transfer_conditions<S: WritableState>(
+    state: &mut S,
+    from: &EntityRef,
+    to: &EntityRef,
+    tag: &Name,
+    exclude_instance: Option<u64>,
+    condition_receiver_types: &FxHashMap<Name, Ty>,
+) {
+    // Same-entity no-op
+    if from == to {
+        return;
+    }
+
+    // Verify both entities exist before any mutations
+    let from_conditions = match state.read_conditions(from) {
+        Some(conds) => conds,
+        None => return,
+    };
+    if state.read_conditions(to).is_none() {
+        return; // Destination doesn't exist — no-op, no conditions lost
+    }
+
+    let target_type_name = state.entity_type_name(to);
+
+    // Collect matching conditions (snapshot before mutation)
+    let to_transfer: Vec<ActiveCondition> = from_conditions
+        .into_iter()
+        .filter(|cond| {
+            // Must have the matching tag
+            if !cond.tags.contains(tag) {
+                return false;
+            }
+            // Exclude the currently-removing condition instance
+            if exclude_instance == Some(cond.id) {
+                return false;
+            }
+            // Bearer type compatibility check
+            if !condition_receiver_types.is_empty()
+                && let Some(Ty::Entity(name)) = condition_receiver_types.get(&cond.name)
+                && let Some(ref target_name) = target_type_name
+                && name != target_name
+            {
+                return false; // Incompatible — skip
+            }
+            true
+        })
+        .collect();
+
+    // Transfer: remove from source, add to destination with updated bearer
+    for mut cond in to_transfer {
+        state.remove_condition_by_id(from, cond.id);
+        cond.bearer = *to;
+        state.add_condition(to, cond);
     }
 }
 
@@ -510,9 +605,9 @@ fn apply_mutation_with_override<S: WritableState>(
         }
         Effect::RevokeGroup { .. } => {
             // No meaningful override for revoke; fall through to normal
-            apply_mutation(state, effect);
+            apply_mutation(state, effect, &FxHashMap::default());
         }
-        _ => apply_mutation(state, effect),
+        _ => apply_mutation(state, effect, &FxHashMap::default()),
     }
 }
 

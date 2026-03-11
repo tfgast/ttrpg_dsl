@@ -677,11 +677,10 @@ impl Checker<'_> {
                     );
                 }
             }
-            "despawn" => {
+            "despawn" | "transfer_conditions" => {
                 if !self.scope.allows_mutation() {
                     self.error(
-                        "despawn() can only be called in function, action, reaction, or hook blocks"
-                            .to_string(),
+                        format!("{name}() can only be called in function, action, reaction, hook, or lifecycle blocks"),
                         span,
                     );
                 }
