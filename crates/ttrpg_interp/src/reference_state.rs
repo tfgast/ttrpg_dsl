@@ -990,6 +990,62 @@ mod tests {
         assert_eq!(state.distance(999, 1000), None);
     }
 
+    // ── RefCellState: delegation regression tests ─────────────
+    //
+    // These cover methods that previously fell through to
+    // StateProvider trait defaults instead of delegating to GameState.
+
+    fn dir_handle(v: &Value) -> u64 {
+        match v {
+            Value::Direction(dv) => dv.0,
+            _ => panic!("expected Direction value"),
+        }
+    }
+
+    #[test]
+    fn refcell_state_delegates_direction_eq() {
+        let mut gs = GameState::new();
+        let d1 = gs.register_direction(GridPosition(0, 0), GridPosition(1, 0));
+        let d2 = gs.register_direction(GridPosition(0, 0), GridPosition(1, 0));
+        let d3 = gs.register_direction(GridPosition(0, 0), GridPosition(0, 1));
+        let cell = RefCell::new(gs);
+        let state = RefCellState(&cell);
+
+        // Same direction vector → equal
+        assert!(state.direction_eq(dir_handle(&d1), dir_handle(&d2)));
+        // Different direction → not equal
+        assert!(!state.direction_eq(dir_handle(&d1), dir_handle(&d3)));
+        // Unknown handles → not equal (matches GameState behaviour)
+        assert!(!state.direction_eq(999, 1000));
+    }
+
+    #[test]
+    fn refcell_state_delegates_read_game_time() {
+        let mut gs = GameState::new();
+        assert_eq!(StateProvider::read_game_time(&gs), 0);
+        WritableState::set_game_time(&mut gs, 42);
+
+        let cell = RefCell::new(gs);
+        let state = RefCellState(&cell);
+
+        // Must read 42 via delegation, not the trait default of 0
+        assert_eq!(state.read_game_time(), 42);
+    }
+
+    #[test]
+    fn refcell_state_delegates_resolve_position() {
+        let mut gs = GameState::new();
+        let pos_val = gs.register_position(GridPosition(7, -3));
+
+        let cell = RefCell::new(gs);
+        let state = RefCellState(&cell);
+
+        // Must return the coordinates, not the trait default of None
+        assert_eq!(state.resolve_position(pos_handle(&pos_val)), Some((7, -3)));
+        // Unknown handle → None
+        assert_eq!(state.resolve_position(999), None);
+    }
+
     // ── GameState: entity ids are unique ───────────────────────
 
     #[test]
