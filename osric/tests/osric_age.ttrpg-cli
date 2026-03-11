@@ -1,0 +1,150 @@
+// OSRIC Age integration tests
+//
+// Covers age_category lookup, cumulative age stat modifiers,
+// starting age bases, and age_loses_exceptional_str.
+
+load osric/*.ttrpg
+
+// ── age_category ────────────────────────────────────────────────
+
+// Human: Youth < 20, Adult 20, Grizzled 40, Elder 60, Ancient 90
+assert_eq age_category(Human, 15), Youth
+assert_eq age_category(Human, 19), Youth
+assert_eq age_category(Human, 20), Adult
+assert_eq age_category(Human, 39), Adult
+assert_eq age_category(Human, 40), Grizzled
+assert_eq age_category(Human, 59), Grizzled
+assert_eq age_category(Human, 60), Elder
+assert_eq age_category(Human, 89), Elder
+assert_eq age_category(Human, 90), Ancient
+assert_eq age_category(Human, 120), Ancient
+
+// Elf: long-lived, Adult at 175, Grizzled at 550
+assert_eq age_category(Elf, 130), Youth
+assert_eq age_category(Elf, 175), Adult
+assert_eq age_category(Elf, 550), Grizzled
+assert_eq age_category(Elf, 875), Elder
+assert_eq age_category(Elf, 1200), Ancient
+
+// Dwarf: Adult at 51, Grizzled at 150
+assert_eq age_category(Dwarf, 50), Youth
+assert_eq age_category(Dwarf, 51), Adult
+assert_eq age_category(Dwarf, 150), Grizzled
+assert_eq age_category(Dwarf, 250), Elder
+assert_eq age_category(Dwarf, 350), Ancient
+
+// Half-Orc: shortest-lived, Adult at 16
+assert_eq age_category(HalfOrc, 15), Youth
+assert_eq age_category(HalfOrc, 16), Adult
+assert_eq age_category(HalfOrc, 30), Grizzled
+assert_eq age_category(HalfOrc, 45), Elder
+assert_eq age_category(HalfOrc, 60), Ancient
+
+// ── cumulative age stat modifiers ───────────────────────────────
+
+// Youth: Str 0, Dex 0, Con +1, Int 0, Wis -1
+assert_eq age_str_adj(Youth), 0
+assert_eq age_dex_adj(Youth), 0
+assert_eq age_con_adj(Youth), 1
+assert_eq age_int_adj(Youth), 0
+assert_eq age_wis_adj(Youth), -1
+
+// Adult: Str +1, Dex 0, Con +1, Int 0, Wis 0
+assert_eq age_str_adj(Adult), 1
+assert_eq age_dex_adj(Adult), 0
+assert_eq age_con_adj(Adult), 1
+assert_eq age_int_adj(Adult), 0
+assert_eq age_wis_adj(Adult), 0
+
+// Grizzled: Str 0, Dex 0, Con 0, Int +1, Wis +1
+assert_eq age_str_adj(Grizzled), 0
+assert_eq age_dex_adj(Grizzled), 0
+assert_eq age_con_adj(Grizzled), 0
+assert_eq age_int_adj(Grizzled), 1
+assert_eq age_wis_adj(Grizzled), 1
+
+// Elder: Str -2, Dex -2, Con -1, Int +1, Wis +2
+assert_eq age_str_adj(Elder), -2
+assert_eq age_dex_adj(Elder), -2
+assert_eq age_con_adj(Elder), -1
+assert_eq age_int_adj(Elder), 1
+assert_eq age_wis_adj(Elder), 2
+
+// Ancient: Str -3, Dex -3, Con -2, Int +2, Wis +3
+assert_eq age_str_adj(Ancient), -3
+assert_eq age_dex_adj(Ancient), -3
+assert_eq age_con_adj(Ancient), -2
+assert_eq age_int_adj(Ancient), 2
+assert_eq age_wis_adj(Ancient), 3
+
+// ── apply_age_mods ──────────────────────────────────────────────
+
+let base = { STR: 14, DEX: 12, CON: 13, INT: 10, WIS: 11, CHA: 9 }
+
+// Youth: Con +1, Wis -1
+let youth_mods = apply_age_mods(base, Youth)
+assert_eq youth_mods[STR], 14
+assert_eq youth_mods[DEX], 12
+assert_eq youth_mods[CON], 14
+assert_eq youth_mods[INT], 10
+assert_eq youth_mods[WIS], 10
+assert_eq youth_mods[CHA], 9
+
+// Elder: Str -2, Dex -2, Con -1, Int +1, Wis +2
+let elder_mods = apply_age_mods(base, Elder)
+assert_eq elder_mods[STR], 12
+assert_eq elder_mods[DEX], 10
+assert_eq elder_mods[CON], 12
+assert_eq elder_mods[INT], 11
+assert_eq elder_mods[WIS], 13
+assert_eq elder_mods[CHA], 9
+
+// Ancient: Str -3, Dex -3, Con -2, Int +2, Wis +3
+let ancient_mods = apply_age_mods(base, Ancient)
+assert_eq ancient_mods[STR], 11
+assert_eq ancient_mods[DEX], 9
+assert_eq ancient_mods[CON], 11
+assert_eq ancient_mods[INT], 12
+assert_eq ancient_mods[WIS], 14
+assert_eq ancient_mods[CHA], 9
+
+// ── age_loses_exceptional_str ───────────────────────────────────
+
+assert age_loses_exceptional_str(Youth) == false
+assert age_loses_exceptional_str(Adult) == false
+assert age_loses_exceptional_str(Grizzled)
+assert age_loses_exceptional_str(Elder)
+assert age_loses_exceptional_str(Ancient)
+
+// ── starting_age_base ───────────────────────────────────────────
+
+// Human
+assert_eq starting_age_base(Human, Fighter), 15
+assert_eq starting_age_base(Human, Cleric), 20
+assert_eq starting_age_base(Human, MagicUser), 24
+assert_eq starting_age_base(Human, Thief), 20
+
+// Elf
+assert_eq starting_age_base(Elf, Fighter), 130
+assert_eq starting_age_base(Elf, Cleric), 500
+assert_eq starting_age_base(Elf, MagicUser), 150
+
+// Dwarf
+assert_eq starting_age_base(Dwarf, Cleric), 250
+assert_eq starting_age_base(Dwarf, Fighter), 40
+assert_eq starting_age_base(Dwarf, Thief), 75
+
+// ── Character entity has age field ──────────────────────────────
+
+rolls clear
+rolls 8 3 2 3 2 2
+let aged_char = build_character(
+    "Old Warrior",
+    Human,
+    [Class.Fighter],
+    TrueNeutral,
+    { STR: 16, DEX: 10, CON: 12, INT: 10, WIS: 13, CHA: 10 },
+    55
+)
+assert_eq aged_char.age, 55
+assert_eq age_category(aged_char.ancestry, aged_char.age), Grizzled

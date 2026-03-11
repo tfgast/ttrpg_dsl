@@ -10,6 +10,7 @@
 // ============================================================
 
 import "osric_ability.ttrpg"
+import "osric_age.ttrpg"
 import "osric_character.ttrpg"
 import "osric_class.ttrpg"
 import "osric_core.ttrpg"
@@ -22,6 +23,7 @@ import "osric_weapon_spec.ttrpg"
 
 use "OSRIC"
 use "OSRIC Ability"
+use "OSRIC Age"
 use "OSRIC Character"
 use "OSRIC Classes"
 use "OSRIC Saves"
@@ -403,7 +405,8 @@ system "OSRIC Chargen" {
         ancestry: Ancestry,
         classes: list<Class>,
         alignment: Alignment,
-        abilities: map<Ability, int>
+        abilities: map<Ability, int>,
+        age: int = 20
     ) -> Character {
         let classing_mode = if len(classes) > 1 { ClassingMode.Multi } else { ClassingMode.Single }
         let class_levels = [ClassLevel { class: c, level: 1, xp: 0 } for c in classes]
@@ -441,6 +444,7 @@ system "OSRIC Chargen" {
             ancestry: ancestry,
             alignment: alignment,
             abilities: abilities,
+            age: age,
             HitPoints { max_hp: hp, hp: hp },
             base_movement: base_movement(ancestry),
             hp_rolls: hp_rolls,
@@ -559,8 +563,12 @@ system "OSRIC Chargen" {
         let valid_aligns = valid_alignments(classes)
         let alignment = choose_alignment(valid_aligns)
 
-        // --- Step 5: Name ---
+        // --- Step 5: Starting age ---
+        let primary = first(classes).unwrap()
+        let age = starting_age(ancestry, primary)
+
+        // --- Step 6: Name ---
         let name = choose_name()
-        build_character(name, ancestry, classes, alignment, abilities)
+        build_character(name, ancestry, classes, alignment, abilities, age)
     }
 }

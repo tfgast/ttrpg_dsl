@@ -11,6 +11,9 @@ path = "osric_core.ttrpg"
 [entries.ability]
 path = "osric_ability.ttrpg"
 
+[entries.age]
+path = "osric_age.ttrpg"
+
 [entries.afflictions]
 path = "osric_afflictions.ttrpg"
 
@@ -111,6 +114,7 @@ path = "osric_zone_spells.ttrpg"
 entries = [
     "core",
     "ability",
+    "age",
     "afflictions",
     "bestiary",
     "character",
@@ -149,6 +153,7 @@ entries = [
 entries = [
     "core",
     "ability",
+    "age",
     "character",
     "chargen",
     "class",

@@ -200,7 +200,7 @@ fn osric_core_has_all_enums() {
         "missing SpellUseLimit enum"
     );
 
-    assert_eq!(enums.len(), 36, "expected 36 enums, got {enums:?}");
+    assert_eq!(enums.len(), 37, "expected 37 enums, got {enums:?}");
 }
 
 #[test]
@@ -352,7 +352,7 @@ fn osric_core_has_all_structs() {
         "missing SpellLikeEntry struct"
     );
 
-    assert_eq!(structs.len(), 18, "expected 18 structs, got {structs:?}");
+    assert_eq!(structs.len(), 19, "expected 19 structs, got {structs:?}");
 }
 
 // ── Unit type ──────────────────────────────────────────────────
@@ -419,6 +419,7 @@ fn character_entity_fields() {
         "ancestry",
         "alignment",
         "abilities",
+        "age",
         "base_movement",
         "drain_history",
         "hp_rolls",

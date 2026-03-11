@@ -110,6 +110,10 @@ system "OSRIC" {
 
     enum EncumbranceTier ordered { Unencumbered, Light, Moderate, Heavy, Overloaded }
 
+    // --- Age categories (§1.2) ---
+
+    enum AgeCategory ordered { Youth, Adult, Grizzled, Elder, Ancient }
+
     // --- Damage types ---
 
     enum DamageType { Slashing, Piercing, Blunt, Fire, Cold, Lightning, Acid, Poison, Corrosion }
@@ -389,6 +393,13 @@ system "OSRIC" {
 
     // --- Ability score range limits per ancestry ---
 
+    struct AgeThresholds {
+        adult: int
+        grizzled: int
+        elder: int
+        ancient: int
+    }
+
     struct AbilityRange {
         min: int
         max: int
@@ -578,6 +589,7 @@ system "OSRIC" {
         ancestry: Ancestry = Ancestry.Human
         alignment: Alignment = Alignment.TrueNeutral
         abilities: map<Ability, int>
+        age: int = 20
         include HitPoints
         base_movement: Feet = 120ft
         drain_history: list<DrainEvent> = []

@@ -1,0 +1,270 @@
+// ============================================================
+// OSRIC 3.0 Age — age categories, thresholds, and stat modifiers
+//
+// Each ancestry has five age categories (Youth through Ancient)
+// with different age thresholds but identical stat modifiers.
+// Modifiers are cumulative: apply ALL thresholds passed through.
+//
+// Special rules:
+//   - Exceptional Strength is lost at Grizzled (drops to 18)
+//   - Age adjustments are ignored if they would push a score
+//     above or below ancestry limits (except Wisdom, which can
+//     exceed the ancestral maximum)
+//
+// Reference: OSRIC 3.0 Player Guide, §1.2.1–1.2.7
+// ============================================================
+
+import "osric_core.ttrpg"
+
+use "OSRIC"
+
+system "OSRIC Age" {
+
+    // ========================================================
+    //  AGE THRESHOLDS PER ANCESTRY
+    //
+    //  The "adult" threshold is also the boundary between
+    //  Youth and Adult.  Youth is any age below adult.
+    // ========================================================
+
+    derive age_thresholds(ancestry: Ancestry) -> AgeThresholds {
+        match ancestry {
+            Dwarf    => AgeThresholds { adult: 51,  grizzled: 150, elder: 250, ancient: 350 },
+            Elf      => AgeThresholds { adult: 175, grizzled: 550, elder: 875, ancient: 1200 },
+            Gnome    => AgeThresholds { adult: 90,  grizzled: 300, elder: 450, ancient: 600 },
+            HalfElf  => AgeThresholds { adult: 40,  grizzled: 100, elder: 175, ancient: 250 },
+            HalfOrc  => AgeThresholds { adult: 16,  grizzled: 30,  elder: 45,  ancient: 60 },
+            Halfling => AgeThresholds { adult: 33,  grizzled: 68,  elder: 101, ancient: 144 },
+            Human    => AgeThresholds { adult: 20,  grizzled: 40,  elder: 60,  ancient: 90 }
+        }
+    }
+
+    // ========================================================
+    //  AGE CATEGORY LOOKUP
+    // ========================================================
+
+    derive age_category(ancestry: Ancestry, age: int) -> AgeCategory {
+        let t = age_thresholds(ancestry)
+        if age >= t.ancient {
+            Ancient
+        } else if age >= t.elder {
+            Elder
+        } else if age >= t.grizzled {
+            Grizzled
+        } else if age >= t.adult {
+            Adult
+        } else {
+            Youth
+        }
+    }
+
+    // ========================================================
+    //  CUMULATIVE AGE STAT MODIFIERS
+    //
+    //  Per-transition modifiers (same for all ancestries):
+    //    Youth:    Str  0, Dex  0, Con +1, Int  0, Wis -1, Cha 0
+    //    Adult:    Str +1, Dex  0, Con  0, Int  0, Wis +1, Cha 0
+    //    Grizzled: Str -1, Dex  0, Con -1, Int +1, Wis +1, Cha 0
+    //    Elder:    Str -2, Dex -2, Con -1, Int  0, Wis +1, Cha 0
+    //    Ancient:  Str -1, Dex -1, Con -1, Int +1, Wis +1, Cha 0
+    //
+    //  Cumulative totals returned here:
+    //    Youth:    Str  0, Dex  0, Con +1, Int  0, Wis -1
+    //    Adult:    Str +1, Dex  0, Con +1, Int  0, Wis  0
+    //    Grizzled: Str  0, Dex  0, Con  0, Int +1, Wis +1
+    //    Elder:    Str -2, Dex -2, Con -1, Int +1, Wis +2
+    //    Ancient:  Str -3, Dex -3, Con -2, Int +2, Wis +3
+    // ========================================================
+
+    derive age_str_adj(cat: AgeCategory) -> int {
+        match cat {
+            Youth    =>  0,
+            Adult    =>  1,
+            Grizzled =>  0,
+            Elder    => -2,
+            Ancient  => -3
+        }
+    }
+
+    derive age_dex_adj(cat: AgeCategory) -> int {
+        match cat {
+            Youth    =>  0,
+            Adult    =>  0,
+            Grizzled =>  0,
+            Elder    => -2,
+            Ancient  => -3
+        }
+    }
+
+    derive age_con_adj(cat: AgeCategory) -> int {
+        match cat {
+            Youth    =>  1,
+            Adult    =>  1,
+            Grizzled =>  0,
+            Elder    => -1,
+            Ancient  => -2
+        }
+    }
+
+    derive age_int_adj(cat: AgeCategory) -> int {
+        match cat {
+            Youth    => 0,
+            Adult    => 0,
+            Grizzled => 1,
+            Elder    => 1,
+            Ancient  => 2
+        }
+    }
+
+    derive age_wis_adj(cat: AgeCategory) -> int {
+        match cat {
+            Youth    => -1,
+            Adult    =>  0,
+            Grizzled =>  1,
+            Elder    =>  2,
+            Ancient  =>  3
+        }
+    }
+
+    // Apply cumulative age adjustments to an ability score map.
+    // Does NOT enforce ancestry limits here — caller should clamp
+    // if needed (age adjustments are ignored when they would push
+    // scores outside ancestry limits, except Wisdom).
+    derive apply_age_mods(
+        abilities: map<Ability, int>,
+        cat: AgeCategory
+    ) -> map<Ability, int> {
+        {
+            STR: abilities[STR] + age_str_adj(cat),
+            DEX: abilities[DEX] + age_dex_adj(cat),
+            CON: abilities[CON] + age_con_adj(cat),
+            INT: abilities[INT] + age_int_adj(cat),
+            WIS: abilities[WIS] + age_wis_adj(cat),
+            CHA: abilities[CHA]
+        }
+    }
+
+    // Whether exceptional strength is lost at this age category.
+    // At Grizzled or older, exceptional Str drops to plain 18.
+    derive age_loses_exceptional_str(cat: AgeCategory) -> bool {
+        cat >= Grizzled
+    }
+
+    // ========================================================
+    //  STARTING AGE BY CLASS (§1.2.1–1.2.7)
+    //
+    //  Each ancestry has a base age plus a class-dependent die
+    //  roll.  For multi-class, use the class with the highest
+    //  starting age (per AD&D convention).
+    //
+    //  Returns the base age; caller adds the die roll.
+    // ========================================================
+
+    // Starting age base by ancestry + class.
+    // The die portion is handled separately (rolled in chargen).
+    derive starting_age_base(ancestry: Ancestry, class: Class) -> int {
+        match ancestry {
+            Dwarf => match class {
+                Cleric   => 250,
+                Thief    => 75,
+                Assassin => 75,
+                _        => 40
+            },
+            Elf => match class {
+                Cleric   => 500,
+                MagicUser => 150,
+                Thief    => 100,
+                Assassin => 100,
+                _        => 130
+            },
+            Gnome => match class {
+                Cleric      => 300,
+                Illusionist => 100,
+                Thief       => 80,
+                Assassin    => 80,
+                _           => 60
+            },
+            HalfElf => match class {
+                Cleric      => 40,
+                Druid       => 40,
+                MagicUser   => 30,
+                Illusionist => 30,
+                _           => 22
+            },
+            HalfOrc => match class {
+                Cleric   => 20,
+                Thief    => 20,
+                Assassin => 20,
+                _        => 13
+            },
+            Halfling => match class {
+                Druid    => 40,
+                Thief    => 40,
+                Assassin => 40,
+                _        => 20
+            },
+            Human => match class {
+                Cleric      => 20,
+                Druid       => 20,
+                Monk        => 20,
+                Thief       => 20,
+                Assassin    => 20,
+                MagicUser   => 24,
+                Illusionist => 24,
+                _           => 15
+            }
+        }
+    }
+
+    // Starting age die roll by ancestry + class.
+    // Returns the result of rolling the appropriate dice.
+    function roll_starting_age_bonus(ancestry: Ancestry, class: Class) -> int {
+        match ancestry {
+            Dwarf => match class {
+                Cleric   => roll(2d20).total,
+                Thief    => roll(3d6).total,
+                Assassin => roll(3d6).total,
+                _        => roll(5d4).total
+            },
+            Elf => match class {
+                Cleric   => roll(10d10).total,
+                _        => roll(5d6).total
+            },
+            Gnome => match class {
+                Cleric      => roll(3d12).total,
+                Illusionist => roll(2d12).total,
+                _           => roll(5d4).total
+            },
+            HalfElf => match class {
+                Cleric      => roll(2d4).total,
+                Druid       => roll(2d4).total,
+                MagicUser   => roll(2d8).total,
+                Illusionist => roll(2d8).total,
+                Thief       => roll(3d8).total,
+                Assassin    => roll(3d8).total,
+                _           => roll(3d4).total
+            },
+            HalfOrc => match class {
+                Thief    => roll(2d4).total,
+                Assassin => roll(2d4).total,
+                _        => roll(1d4).total
+            },
+            Halfling => match class {
+                Thief    => roll(2d4).total,
+                Assassin => roll(2d4).total,
+                _        => roll(3d4).total
+            },
+            Human => match class {
+                MagicUser   => roll(2d8).total,
+                Illusionist => roll(2d8).total,
+                _           => roll(1d4).total
+            }
+        }
+    }
+
+    // Compute starting age for a character.
+    // For multi-class, uses the first class in the list.
+    function starting_age(ancestry: Ancestry, class: Class) -> int {
+        starting_age_base(ancestry, class) + roll_starting_age_bonus(ancestry, class)
+    }
+}
