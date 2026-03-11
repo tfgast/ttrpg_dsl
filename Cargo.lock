@@ -2019,6 +2019,7 @@ name = "ttrpg_parser"
 version = "0.1.0"
 dependencies = [
  "rustc-hash",
+ "tempfile",
  "ttrpg_ast",
  "ttrpg_lexer",
 ]

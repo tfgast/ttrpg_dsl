@@ -6,5 +6,4 @@ pub mod highlighter;
 pub mod manifest;
 pub mod repl;
 pub mod runner;
-pub mod source_resolve;
 pub mod validator;

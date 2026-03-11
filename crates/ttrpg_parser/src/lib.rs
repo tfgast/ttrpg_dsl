@@ -5,6 +5,7 @@ pub mod lower;
 pub mod parser;
 mod pattern;
 pub mod resolve;
+pub mod source_resolve;
 mod stmt;
 mod types;
 

@@ -302,7 +302,7 @@ fn resolve_and_read_files(
     }
 
     // Use the source resolver to follow `import` directives transitively.
-    match ttrpg_cli::source_resolve::resolve_sources(&paths) {
+    match ttrpg_parser::source_resolve::resolve_sources(&paths) {
         Ok(resolved) => (resolved.sources, resolved.diagnostics),
         Err(e) => {
             eprintln!("{e}");

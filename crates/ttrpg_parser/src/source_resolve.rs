@@ -12,7 +12,7 @@ use std::path::{Path, PathBuf};
 
 use rustc_hash::FxHashSet;
 use ttrpg_ast::FileId;
-use ttrpg_parser::Diagnostic;
+use crate::Diagnostic;
 
 /// Error from the source resolver.
 #[derive(Debug)]
@@ -103,7 +103,7 @@ pub fn resolve_sources(entrypoints: &[PathBuf]) -> Result<ResolvedSources, Resol
 
         // Extract imports
         let file_id = FileId(sources.len() as u32);
-        let (imports, mut parse_diags) = ttrpg_parser::extract_imports(&content, file_id);
+        let (imports, mut parse_diags) = crate::extract_imports(&content, file_id);
         diagnostics.append(&mut parse_diags);
 
         // Resolve each import path relative to the current file's directory
