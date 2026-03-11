@@ -81,7 +81,7 @@ pub fn register_builtins() -> Vec<FnInfo> {
                     with_disjunctive: false,
                 },
             ],
-            Ty::Unit,
+            Ty::Option(Box::new(Ty::Int)),
         ),
         builtin(
             "remove_condition",

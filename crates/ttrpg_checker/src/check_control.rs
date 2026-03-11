@@ -332,7 +332,7 @@ impl Checker<'_> {
     pub(crate) fn check_arm_body(&mut self, body: &ArmBody, hint: Option<&Ty>) -> Ty {
         match body {
             ArmBody::Expr(expr) => self.check_expr_expecting(expr, hint),
-            ArmBody::Block(block) => self.check_block(block),
+            ArmBody::Block(block) => self.check_block_with_tail_hint(block, hint),
         }
     }
 }

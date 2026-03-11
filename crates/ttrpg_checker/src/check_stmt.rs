@@ -81,7 +81,15 @@ impl Checker<'_> {
                 Ty::Unit
             }
             StmtKind::Expr(expr) => {
-                let ty = if is_last && hint.is_some() {
+                let ty = if is_last
+                    && matches!(hint, Some(Ty::Unit))
+                    && is_discardable_unit_tail_expr(expr)
+                {
+                    // Unit-returning blocks may end in a statement-like effect call
+                    // whose result is meant to be ignored.
+                    self.check_expr_expecting(expr, hint);
+                    Ty::Unit
+                } else if is_last && hint.is_some() {
                     self.check_expr_expecting(expr, hint)
                 } else {
                     self.check_expr(expr)
@@ -957,5 +965,15 @@ impl Checker<'_> {
         self.scope.push(BlockKind::Inner);
         self.check_block(body);
         self.scope.pop();
+    }
+}
+
+fn is_discardable_unit_tail_expr(expr: &Spanned<ExprKind>) -> bool {
+    match &expr.node {
+        ExprKind::Paren(inner) => is_discardable_unit_tail_expr(inner),
+        ExprKind::Call { callee, .. } => {
+            matches!(&callee.node, ExprKind::Ident(name) if name == "apply_condition")
+        }
+        _ => false,
     }
 }

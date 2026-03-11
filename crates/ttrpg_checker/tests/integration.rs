@@ -2681,6 +2681,26 @@ system "test" {
     );
 }
 
+#[test]
+fn test_apply_condition_returns_option_int() {
+    let source = r#"
+system "test" {
+    entity Character { hp: int }
+    condition Stunned on bearer: Character {}
+    action Bash on actor: Character (target: Character) {
+        cost { action }
+        resolve {
+            let applied: option<int> = apply_condition(target, Stunned, Duration.Indefinite)
+            if applied.is_some() {
+                actor.hp = actor.hp + applied.unwrap()
+            }
+        }
+    }
+}
+"#;
+    expect_no_errors(source);
+}
+
 // ── Issue 1: Immutable let bindings reject field/index mutation ──
 
 #[test]

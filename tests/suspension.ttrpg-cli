@@ -174,3 +174,11 @@ assert tracked.saved_token > 0
 let conds = conditions(tracked)
 assert_eq conds.len(), 1
 assert_eq conds[0].id, tracked.saved_token
+
+// apply_condition() now returns the same token as option<int>
+spawn Character tracked2 { name: "Tracked 2", hp: 10 }
+let applied = apply_condition(tracked2, Tracked, Duration.Indefinite)
+assert applied.is_some()
+let conds2 = conditions(tracked2)
+assert_eq conds2.len(), 1
+assert_eq applied.unwrap(), conds2[0].id

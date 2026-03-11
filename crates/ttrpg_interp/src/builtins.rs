@@ -475,7 +475,10 @@ fn builtin_roll(env: &mut Env, args: &[Value], span: Span) -> Result<Value, Runt
 
 // ── apply_condition ────────────────────────────────────────────
 
-/// `apply_condition(target: Entity, condition: Condition, duration: Duration) -> None`
+/// `apply_condition(target: Entity, condition: Condition, duration: Duration) -> option<int>`
+///
+/// Returns `some(id)` when the condition is activated, or `none` if the host
+/// vetoes the application at either gate.
 ///
 /// Two-phase lifecycle:
 /// 1. Emit `ConditionApplyGate` — if host vetoes, return early (no condition)
@@ -551,7 +554,10 @@ fn builtin_apply_condition(
                         if !value_matches_ty(val, &param.ty) {
                             eprintln!(
                                 "apply_condition: param '{}' of condition '{}' expected type {:?}, got {:?}",
-                                param.name, cond_name, param.ty, type_name(val)
+                                param.name,
+                                cond_name,
+                                param.ty,
+                                type_name(val)
                             );
                             ok = false;
                         }
@@ -594,7 +600,7 @@ fn builtin_apply_condition(
         tags: tags.clone(),
     };
     match env.handler.handle(gate) {
-        Response::Vetoed => return Ok(Value::Void),
+        Response::Vetoed => return Ok(Value::Option(None)),
         Response::Acknowledged => {}
         other => {
             return Err(RuntimeError::with_span(
@@ -629,8 +635,16 @@ fn builtin_apply_condition(
         tags,
         condition_id: token.0,
     };
-    validate_mutation_response(env.handler.handle(effect), "ApplyCondition", span)?;
-    Ok(Value::Void)
+    match env.handler.handle(effect) {
+        Response::Acknowledged | Response::Override(_) => {
+            Ok(Value::Option(Some(Box::new(Value::Int(token.0 as i64)))))
+        }
+        Response::Vetoed => Ok(Value::Option(None)),
+        other => Err(RuntimeError::with_span(
+            format!("protocol error: unsupported response for ApplyCondition: {other:?}"),
+            span,
+        )),
+    }
 }
 
 // ── remove_condition ───────────────────────────────────────────

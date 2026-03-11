@@ -147,6 +147,16 @@ impl GameState {
         self.next_invocation_id = id;
     }
 
+    /// Get the current condition id counter.
+    pub fn next_condition_id(&self) -> u64 {
+        self.next_condition_id
+    }
+
+    /// Set the condition id counter (for persistence round-trips).
+    pub fn set_next_condition_id(&mut self, id: u64) {
+        self.next_condition_id = id;
+    }
+
     pub fn apply_condition(&mut self, entity: &EntityRef, name: &str, args: ConditionArgs) {
         if !self.entities.contains_key(&entity.0) {
             return;
@@ -618,7 +628,7 @@ impl StateProvider for RefCellState<'_> {
 
 // ── TrackedInterpreter ─────────────────────────────────────────
 
-/// RAII wrapper that persists the interpreter's invocation counter
+/// RAII wrapper that persists the interpreter's ID counters
 /// back to GameState on drop.
 ///
 /// Created via [`TrackedInterpreter::new`] with individual field references
@@ -629,25 +639,29 @@ pub struct TrackedInterpreter<'a, 'p> {
 }
 
 impl<'a, 'p> TrackedInterpreter<'a, 'p> {
-    /// Create an interpreter whose invocation counter is seeded from GameState.
-    /// The counter is persisted back to GameState when this wrapper is dropped,
-    /// ensuring IDs never collide across calls.
+    /// Create an interpreter whose ID counters are seeded from GameState.
+    /// The counters are persisted back to GameState when this wrapper is
+    /// dropped, ensuring IDs never collide across calls.
     pub fn new(
         program: &'p Program,
         type_env: &'p TypeEnv,
         game_state: &'a RefCell<GameState>,
     ) -> Result<Self, RuntimeError> {
-        let start = game_state.borrow().next_invocation_id();
-        let interp = Interpreter::new_with_invocation_start(program, type_env, start)?;
+        let state = game_state.borrow();
+        let invocation_start = state.next_invocation_id();
+        let condition_start = state.next_condition_id();
+        drop(state);
+        let interp =
+            Interpreter::new_with_counters(program, type_env, invocation_start, condition_start)?;
         Ok(TrackedInterpreter { interp, game_state })
     }
 }
 
 impl Drop for TrackedInterpreter<'_, '_> {
     fn drop(&mut self) {
-        self.game_state
-            .borrow_mut()
-            .set_next_invocation_id(self.interp.next_invocation_id());
+        let mut state = self.game_state.borrow_mut();
+        state.set_next_invocation_id(self.interp.next_invocation_id());
+        state.set_next_condition_id(self.interp.next_condition_id());
     }
 }
 
@@ -661,6 +675,9 @@ impl<'p> std::ops::Deref for TrackedInterpreter<'_, 'p> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use ttrpg_ast::ast::Program;
+    use ttrpg_checker::env::TypeEnv;
+
     use crate::value::{duration_variant, effect_source_unknown};
     use std::collections::BTreeSet;
 
@@ -1414,6 +1431,36 @@ mod tests {
 
         state.set_next_invocation_id(100);
         assert_eq!(state.next_invocation_id(), 100);
+    }
+
+    #[test]
+    fn next_condition_id_counter() {
+        let mut state = GameState::new();
+        assert_eq!(state.next_condition_id(), 1);
+
+        state.set_next_condition_id(100);
+        assert_eq!(state.next_condition_id(), 100);
+    }
+
+    #[test]
+    fn tracked_interpreter_persists_condition_counter() {
+        let program = Program::default();
+        let type_env = TypeEnv::new();
+        let game_state = RefCell::new(GameState::new());
+        game_state.borrow_mut().set_next_invocation_id(10);
+        game_state.borrow_mut().set_next_condition_id(20);
+
+        {
+            let tracked = TrackedInterpreter::new(&program, &type_env, &game_state).unwrap();
+            assert_eq!(tracked.next_invocation_id(), 10);
+            assert_eq!(tracked.next_condition_id(), 20);
+            let _ = tracked.alloc_invocation_id().unwrap();
+            let _ = tracked.alloc_condition_id().unwrap();
+        }
+
+        let state = game_state.borrow();
+        assert_eq!(state.next_invocation_id(), 11);
+        assert_eq!(state.next_condition_id(), 21);
     }
 
     // ── Suspension tests ──────────────────────────────────────────

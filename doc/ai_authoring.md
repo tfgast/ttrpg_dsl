@@ -1158,7 +1158,7 @@ function resolve_sleep(caster: entity, targets: list<entity>) {
 
 **`EffectSource` — condition provenance:**
 
-`EffectSource` is a user-defined enum (like `Duration`) that tags conditions with their origin. The engine requires a plain `Unknown` variant. `apply_condition()` accepts an optional 4th argument; when omitted, it defaults to `EffectSource.Unknown`.
+`EffectSource` is a user-defined enum (like `Duration`) that tags conditions with their origin. The engine requires a plain `Unknown` variant. `apply_condition()` returns `option<int>` (`some(id)` on success, `none` if the host vetoes) and accepts an optional 4th argument for the source; when omitted, it defaults to `EffectSource.Unknown`.
 
 ```ttrpg-snippet
 enum EffectSource {

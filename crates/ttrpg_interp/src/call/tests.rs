@@ -1216,7 +1216,7 @@ fn builtin_apply_condition_emits_effect() {
         ],
     });
     let result = crate::eval::eval_expr(&mut env, &expr).unwrap();
-    assert_eq!(result, Value::Void);
+    assert_eq!(result, Value::Option(Some(Box::new(Value::Int(1)))));
 
     // Now emits ConditionApplyGate first, then ApplyCondition
     assert_eq!(handler.log.len(), 2);
@@ -2377,7 +2377,55 @@ fn apply_condition_accepts_vetoed_response() {
         ],
     });
     let result = crate::eval::eval_expr(&mut env, &expr).unwrap();
-    assert_eq!(result, Value::Void);
+    assert_eq!(result, Value::Option(None));
+}
+
+#[test]
+fn apply_condition_returns_none_when_final_apply_is_vetoed() {
+    let program = program_with_decls(vec![]);
+    let type_env = type_env_with_builtins();
+    let interp = Interpreter::new(&program, &type_env).unwrap();
+    let state = TestState::new();
+    let mut handler =
+        ScriptedHandler::with_responses(vec![Response::Acknowledged, Response::Vetoed]);
+    let mut env = make_env(&state, &mut handler, &interp);
+
+    env.bind("target".into(), Value::Entity(EntityRef(1)));
+    env.bind(
+        "cond".into(),
+        Value::Condition {
+            name: "Prone".into(),
+            args: BTreeMap::new(),
+        },
+    );
+    env.bind("dur".into(), {
+        let mut f = BTreeMap::new();
+        f.insert("count".into(), Value::Int(3));
+        duration_variant_with("Rounds", f)
+    });
+
+    let expr = spanned(ExprKind::Call {
+        callee: Box::new(spanned(ExprKind::Ident("apply_condition".into()))),
+        args: vec![
+            Arg {
+                name: None,
+                value: spanned(ExprKind::Ident("target".into())),
+                span: dummy_span(),
+            },
+            Arg {
+                name: None,
+                value: spanned(ExprKind::Ident("cond".into())),
+                span: dummy_span(),
+            },
+            Arg {
+                name: None,
+                value: spanned(ExprKind::Ident("dur".into())),
+                span: dummy_span(),
+            },
+        ],
+    });
+    let result = crate::eval::eval_expr(&mut env, &expr).unwrap();
+    assert_eq!(result, Value::Option(None));
 }
 
 #[test]

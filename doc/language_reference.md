@@ -766,7 +766,7 @@ emit EventName(param: value)       // fire event (named args only)
 ### Entity & Conditions
 `apply_condition(target, cond, duration [, source])` `remove_condition(target, cond)` `conditions(entity)` `has_condition(entity, name)` `transfer_conditions(from, to, tag)`
 
-The optional 4th argument to `apply_condition` is an `EffectSource` value (defaults to `EffectSource.Unknown`). Access it on active conditions via `.source`.
+`apply_condition(...)` returns `option<int>`: `some(id)` when the condition is applied, `none` if the host vetoes it. The optional 4th argument is an `EffectSource` value (defaults to `EffectSource.Unknown`). Access the stored source on active conditions via `.source`.
 
 `has_condition(entity, "Prone")` returns `true` if the entity has an active condition with that name. Shorthand for `any([c.name == "Prone" for c in conditions(entity)])`.
 
@@ -775,7 +775,7 @@ The optional 4th argument to `apply_condition` is an `EffectSource` value (defau
 Condition names are first-class values of type `Condition`. They can be stored in variables and passed as function parameters:
 ```
 let c = Prone                           // Condition value
-apply_condition(target, c, Duration.Indefinite)
+let applied = apply_condition(target, c, Duration.Indefinite)
 
 function apply_cond(t: entity, c: Condition, dur: Duration) {
     apply_condition(t, c, dur)

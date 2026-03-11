@@ -554,7 +554,8 @@ enum Duration {
 // If the ruleset does not define EffectSource, a minimal built-in
 // fallback with only `Unknown` is provided.
 //
-// apply_condition() accepts an optional 4th argument of type
+// apply_condition() returns option<int> (some(id) on success, none if
+// vetoed by the host) and accepts an optional 4th argument of type
 // EffectSource. When omitted, the source defaults to Unknown.
 //
 // Example:

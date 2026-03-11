@@ -557,7 +557,7 @@ impl<'a> Checker<'a> {
 
         // Check resolve block against declared return type.
         // Synthetic actions (from lowered moves) bypass this check.
-        let body_ty = self.check_block(&a.resolve);
+        let body_ty = self.check_block_with_tail_hint(&a.resolve, Some(&declared_return_ty));
         if !a.synthetic && !body_ty.is_error() {
             if a.return_type.is_some() {
                 // Action declares a return type — resolve block must match
@@ -785,7 +785,7 @@ impl<'a> Checker<'a> {
         );
 
         // Check body — reactions/hooks cannot return a value
-        let body_ty = self.check_block(body);
+        let body_ty = self.check_block_with_tail_hint(body, Some(&Ty::Unit));
         if !body_ty.is_error() && body_ty != Ty::Unit {
             self.error(
                 format!(

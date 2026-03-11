@@ -275,7 +275,12 @@ impl<'p> Interpreter<'p> {
 
         let mut env = Env::new(state, handler, self);
         let span = Span::dummy();
-        action::execute_action(&mut env, &action_decl, actor, named_args, span)
+        let result = action::execute_action(&mut env, &action_decl, actor, named_args, span)?;
+        if action_decl.return_type.is_some() {
+            Ok(result)
+        } else {
+            Ok(Value::Void)
+        }
     }
 
     /// Execute a named reaction through the full pipeline.
@@ -299,7 +304,8 @@ impl<'p> Interpreter<'p> {
 
         let mut env = Env::new(state, handler, self);
         let span = Span::dummy();
-        action::execute_reaction(&mut env, &reaction_decl, reactor, event_payload, span)
+        action::execute_reaction(&mut env, &reaction_decl, reactor, event_payload, span)?;
+        Ok(Value::Void)
     }
 
     /// Evaluate a named mechanic function with pre-evaluated arguments.
@@ -497,7 +503,8 @@ impl<'p> Interpreter<'p> {
 
         let mut env = Env::new(state, handler, self);
         let span = Span::dummy();
-        action::execute_hook(&mut env, &hook_decl, target, event_payload, span)
+        action::execute_hook(&mut env, &hook_decl, target, event_payload, span)?;
+        Ok(Value::Void)
     }
 
     /// Fire all hooks that match an event, executing each one.
@@ -1792,8 +1799,12 @@ system "test" {
         let val = interp
             .execute_action(&state, &mut handler, "TestMove", actor, vec![])
             .unwrap();
-        // Strong hit (total 12 >= 10) → 100
-        assert_eq!(val, Value::Int(100));
+        // Lowered moves expose a regular action publicly, so no return type means void.
+        assert_eq!(val, Value::Void);
+        assert!(handler
+            .log
+            .iter()
+            .any(|e| matches!(e, Effect::RollDice { .. })));
     }
 
     // ── End-to-end: struct spread (..base) ──

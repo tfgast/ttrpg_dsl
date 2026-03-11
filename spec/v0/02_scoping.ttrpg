@@ -1163,6 +1163,7 @@ hook Regenerate on creature: Character (
 // Available in action, reaction, hook (blocks that can mutate):
 //   apply_condition(target: entity, cond: Condition, duration: Duration
 //                   [, source: EffectSource])
+//       Returns option<int>: some(id) if applied, none if vetoed by the host.
 //       Optional 4th argument: EffectSource metadata for the condition.
 //       Defaults to EffectSource.Unknown when omitted.
 //       Accessible on the resulting ActiveCondition via `.source`.
