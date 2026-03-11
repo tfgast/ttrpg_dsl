@@ -392,7 +392,7 @@ spawn Character bs_mult_tgt { name: "Target", classes: [ClassLevel { class: Figh
 
 rolls clear
 rolls 18 3
-let bs_mult = resolve_melee_attack(bs_mult_atk, bs_mult_tgt, Dagger, 0, RollMode.Normal, false, 3)
+let bs_mult = resolve_melee_attack(bs_mult_atk, bs_mult_tgt, Dagger, 0, damage_mult: 3)
 assert_eq bs_mult.outcome, AttackOutcome.Hit
 assert_eq bs_mult.damage, 9
 
