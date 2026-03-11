@@ -1,5 +1,3 @@
-use crate::effects::RefCellState;
-
 use super::*;
 
 impl Runner {

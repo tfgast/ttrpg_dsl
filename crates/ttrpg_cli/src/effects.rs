@@ -1,20 +1,17 @@
 use std::cell::RefCell;
-use std::collections::{BTreeMap, HashMap, VecDeque};
+use std::collections::{HashMap, VecDeque};
 use std::io;
 
 use nu_ansi_term::Color;
 use rand::Rng;
 use rand::rngs::StdRng;
 use ttrpg_ast::DiceFilter;
-use ttrpg_ast::Name;
 use ttrpg_ast::ast::AssignOp;
 use ttrpg_checker::ty::Ty;
 use ttrpg_interp::adapter;
 use ttrpg_interp::effect::{ActionOutcome, Effect, EffectHandler, Response};
 use ttrpg_interp::reference_state::GameState;
-use ttrpg_interp::state::{
-    ConditionArgs, EntityRef, StateProvider, SuspensionRecord, WritableState,
-};
+use ttrpg_interp::state::{ConditionArgs, EntityRef, StateProvider, SuspensionRecord, WritableState};
 use ttrpg_interp::value::{DiceExpr, RollResult, Value};
 
 use crate::format::{UnitSuffixes, format_dice_expr, format_path, format_value};
@@ -40,74 +37,6 @@ impl EffectHandler for MinimalHandler {
             }
             _ => Response::Acknowledged,
         }
-    }
-}
-
-// ── RefCellState ────────────────────────────────────────────────
-
-/// A `StateProvider` that delegates to `&RefCell<GameState>` with
-/// short-lived borrows.
-///
-/// Needed because the interpreter takes `&dyn StateProvider` while
-/// the `CliHandler` writes to the same `GameState`. The interpreter
-/// never reads state during a handler call, so borrows never overlap
-/// at runtime.
-pub struct RefCellState<'a>(pub &'a RefCell<GameState>);
-
-impl StateProvider for RefCellState<'_> {
-    fn read_field(&self, entity: &EntityRef, field: &str) -> Option<Value> {
-        self.0.borrow().read_field(entity, field)
-    }
-
-    fn read_conditions(
-        &self,
-        entity: &EntityRef,
-    ) -> Option<Vec<ttrpg_interp::state::ActiveCondition>> {
-        self.0.borrow().read_conditions(entity)
-    }
-
-    fn read_turn_budget(&self, entity: &EntityRef) -> Option<BTreeMap<Name, Value>> {
-        self.0.borrow().read_turn_budget(entity)
-    }
-
-    fn read_enabled_options(&self) -> Vec<Name> {
-        self.0.borrow().read_enabled_options()
-    }
-
-    fn position_eq(&self, a: u64, b: u64) -> bool {
-        self.0.borrow().position_eq(a, b)
-    }
-
-    fn distance(&self, a: u64, b: u64) -> Option<i64> {
-        self.0.borrow().distance(a, b)
-    }
-
-    fn entity_type_name(&self, entity: &EntityRef) -> Option<Name> {
-        self.0.borrow().entity_type_name(entity).cloned()
-    }
-
-    fn all_entities(&self) -> Vec<EntityRef> {
-        self.0.borrow().all_entities()
-    }
-
-    fn entities_in_play(&self) -> Vec<EntityRef> {
-        self.0.borrow().entities_in_play()
-    }
-
-    fn is_suspended(&self, entity: &EntityRef) -> bool {
-        self.0.borrow().is_suspended(entity)
-    }
-
-    fn is_off_board(&self, entity: &EntityRef) -> bool {
-        self.0.borrow().is_off_board(entity)
-    }
-
-    fn are_turns_frozen(&self, entity: &EntityRef) -> bool {
-        self.0.borrow().are_turns_frozen(entity)
-    }
-
-    fn are_durations_frozen(&self, entity: &EntityRef) -> bool {
-        self.0.borrow().are_durations_frozen(entity)
     }
 }
 
@@ -951,10 +880,14 @@ fn apply_dice_filter(dice: &mut [i64], filter: &Option<DiceFilter>) -> Vec<i64> 
 
 #[cfg(test)]
 mod tests {
+    use std::collections::BTreeMap;
+
     use super::*;
     use rand::SeedableRng;
     use rustc_hash::FxHashMap;
     use ttrpg_interp::effect::FieldPathSegment;
+    use ttrpg_interp::reference_state::RefCellState;
+    use ttrpg_interp::state::StateProvider;
 
     #[test]
     fn acknowledges_action_started() {

@@ -484,13 +484,13 @@ impl Runner {
             &self.program,
             &self.type_env,
             &self.game_state,
-            &self.source_map,
-        )?;
+        )
+        .map_err(|e| render_runtime_error(&e, &self.source_map))?;
         if let Some(cov) = cov_rc {
             interp.interp.set_coverage(cov);
         }
 
-        let state = crate::effects::RefCellState(&self.game_state);
+        let state = RefCellState(&self.game_state);
         let mut handler = crate::effects::CliHandler::new(
             &self.game_state,
             &self.reverse_handles,

@@ -76,8 +76,8 @@ impl Runner {
                     &self.program,
                     &self.type_env,
                     &self.game_state,
-                    &self.source_map,
-                )?;
+                )
+                .map_err(|e| render_runtime_error(&e, &self.source_map))?;
                 if let Some(cov) = cov_rc {
                     interp.interp.set_coverage(cov);
                 }
@@ -126,8 +126,8 @@ impl Runner {
                     &self.program,
                     &self.type_env,
                     &self.game_state,
-                    &self.source_map,
-                )?;
+                )
+                .map_err(|e| render_runtime_error(&e, &self.source_map))?;
                 if let Some(cov) = cov_rc {
                     interp.interp.set_coverage(cov);
                 }
@@ -181,8 +181,8 @@ impl Runner {
             &self.program,
             &self.type_env,
             &self.game_state,
-            &self.source_map,
-        )?;
+        )
+        .map_err(|e| render_runtime_error(&e, &self.source_map))?;
         if let Some(cov) = cov_rc {
             interp.interp.set_coverage(cov);
         }

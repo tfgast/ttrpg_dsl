@@ -19,8 +19,10 @@ use ttrpg_interp::state::{EntityRef, StateProvider, WritableState};
 use ttrpg_interp::value::Value;
 
 use crate::commands::{self, Command};
-use crate::effects::{CliHandler, RefCellState};
+use crate::effects::CliHandler;
 use crate::format::{UnitSuffixes, format_value};
+
+use ttrpg_interp::reference_state::{RefCellState, TrackedInterpreter};
 
 mod assert;
 mod config;
@@ -468,8 +470,8 @@ impl Runner {
             &self.program,
             &self.type_env,
             &self.game_state,
-            &self.source_map,
-        )?;
+        )
+        .map_err(|e| render_runtime_error(&e, &self.source_map))?;
         if let Some(cov) = cov_rc {
             interp.interp.set_coverage(cov);
         }
@@ -615,44 +617,3 @@ impl Default for Runner {
     }
 }
 
-/// RAII wrapper that persists the interpreter's invocation counter
-/// back to GameState on drop.
-///
-/// Created via [`TrackedInterpreter::new`] with individual field references
-/// so that callers retain mutable access to other `Runner` fields.
-pub(super) struct TrackedInterpreter<'a, 'p> {
-    pub(super) interp: Interpreter<'p>,
-    game_state: &'a RefCell<GameState>,
-}
-
-impl<'a, 'p> TrackedInterpreter<'a, 'p> {
-    /// Create an interpreter whose invocation counter is seeded from GameState.
-    /// The counter is persisted back to GameState when this wrapper is dropped,
-    /// ensuring IDs never collide across calls.
-    pub fn new(
-        program: &'p Program,
-        type_env: &'p TypeEnv,
-        game_state: &'a RefCell<GameState>,
-        source_map: &Option<MultiSourceMap>,
-    ) -> Result<Self, CliError> {
-        let start = game_state.borrow().next_invocation_id();
-        let interp = Interpreter::new_with_invocation_start(program, type_env, start)
-            .map_err(|e| render_runtime_error(&e, source_map))?;
-        Ok(TrackedInterpreter { interp, game_state })
-    }
-}
-
-impl Drop for TrackedInterpreter<'_, '_> {
-    fn drop(&mut self) {
-        self.game_state
-            .borrow_mut()
-            .set_next_invocation_id(self.interp.next_invocation_id());
-    }
-}
-
-impl<'p> std::ops::Deref for TrackedInterpreter<'_, 'p> {
-    type Target = Interpreter<'p>;
-    fn deref(&self) -> &Self::Target {
-        &self.interp
-    }
-}

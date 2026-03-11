@@ -1,8 +1,13 @@
+use std::cell::RefCell;
 use std::collections::{BTreeMap, HashMap, HashSet};
 
 use rustc_hash::FxHashMap;
 use ttrpg_ast::Name;
+use ttrpg_ast::ast::Program;
+use ttrpg_checker::env::TypeEnv;
 
+use crate::Interpreter;
+use crate::RuntimeError;
 use crate::effect::FieldPathSegment;
 use crate::state::{
     ActiveCondition, ConditionArgs, ConditionToken, EntityRef, InvocationId, Presence,
@@ -531,6 +536,125 @@ fn write_nested(current: &mut Value, path: &[FieldPathSegment], value: Value) {
             }
             _ => {}
         },
+    }
+}
+
+// ── RefCellState ────────────────────────────────────────────────
+
+/// A `StateProvider` that delegates to `&RefCell<GameState>` with
+/// short-lived borrows.
+///
+/// Needed because the interpreter takes `&dyn StateProvider` while
+/// the host writes to the same `GameState`. The interpreter
+/// never reads state during a handler call, so borrows never overlap
+/// at runtime.
+pub struct RefCellState<'a>(pub &'a RefCell<GameState>);
+
+impl StateProvider for RefCellState<'_> {
+    fn read_field(&self, entity: &EntityRef, field: &str) -> Option<Value> {
+        self.0.borrow().read_field(entity, field)
+    }
+
+    fn read_conditions(&self, entity: &EntityRef) -> Option<Vec<ActiveCondition>> {
+        self.0.borrow().read_conditions(entity)
+    }
+
+    fn read_turn_budget(&self, entity: &EntityRef) -> Option<BTreeMap<Name, Value>> {
+        self.0.borrow().read_turn_budget(entity)
+    }
+
+    fn read_enabled_options(&self) -> Vec<Name> {
+        self.0.borrow().read_enabled_options()
+    }
+
+    fn position_eq(&self, a: u64, b: u64) -> bool {
+        self.0.borrow().position_eq(a, b)
+    }
+
+    fn direction_eq(&self, a: u64, b: u64) -> bool {
+        self.0.borrow().direction_eq(a, b)
+    }
+
+    fn distance(&self, a: u64, b: u64) -> Option<i64> {
+        self.0.borrow().distance(a, b)
+    }
+
+    fn read_game_time(&self) -> u64 {
+        self.0.borrow().read_game_time()
+    }
+
+    fn entity_type_name(&self, entity: &EntityRef) -> Option<Name> {
+        self.0.borrow().entity_type_name(entity).cloned()
+    }
+
+    fn resolve_position(&self, handle: u64) -> Option<(i64, i64)> {
+        StateProvider::resolve_position(&*self.0.borrow(), handle)
+    }
+
+    fn all_entities(&self) -> Vec<EntityRef> {
+        self.0.borrow().all_entities()
+    }
+
+    fn entities_in_play(&self) -> Vec<EntityRef> {
+        self.0.borrow().entities_in_play()
+    }
+
+    fn is_suspended(&self, entity: &EntityRef) -> bool {
+        self.0.borrow().is_suspended(entity)
+    }
+
+    fn is_off_board(&self, entity: &EntityRef) -> bool {
+        self.0.borrow().is_off_board(entity)
+    }
+
+    fn are_turns_frozen(&self, entity: &EntityRef) -> bool {
+        self.0.borrow().are_turns_frozen(entity)
+    }
+
+    fn are_durations_frozen(&self, entity: &EntityRef) -> bool {
+        self.0.borrow().are_durations_frozen(entity)
+    }
+}
+
+// ── TrackedInterpreter ─────────────────────────────────────────
+
+/// RAII wrapper that persists the interpreter's invocation counter
+/// back to GameState on drop.
+///
+/// Created via [`TrackedInterpreter::new`] with individual field references
+/// so that callers retain mutable access to other host fields.
+pub struct TrackedInterpreter<'a, 'p> {
+    pub interp: Interpreter<'p>,
+    game_state: &'a RefCell<GameState>,
+}
+
+impl<'a, 'p> TrackedInterpreter<'a, 'p> {
+    /// Create an interpreter whose invocation counter is seeded from GameState.
+    /// The counter is persisted back to GameState when this wrapper is dropped,
+    /// ensuring IDs never collide across calls.
+    pub fn new(
+        program: &'p Program,
+        type_env: &'p TypeEnv,
+        game_state: &'a RefCell<GameState>,
+    ) -> Result<Self, RuntimeError> {
+        let start = game_state.borrow().next_invocation_id();
+        let interp = Interpreter::new_with_invocation_start(program, type_env, start)?;
+        Ok(TrackedInterpreter { interp, game_state })
+    }
+}
+
+impl Drop for TrackedInterpreter<'_, '_> {
+    fn drop(&mut self) {
+        self.game_state
+            .borrow_mut()
+            .set_next_invocation_id(self.interp.next_invocation_id());
+    }
+}
+
+impl<'p> std::ops::Deref for TrackedInterpreter<'_, 'p> {
+    type Target = Interpreter<'p>;
+    fn deref(&self) -> &Self::Target {
+        &self.interp
     }
 }
 
