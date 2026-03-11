@@ -38,9 +38,8 @@ assert_eq NEUTRALISE_POISON_DEF.level, 4
 // ── AoE position helper ────────────────────────────────────────
 // AoE spells now take Placement and prompt for area occupants.
 
-spawn Zone _dm_zone { name: "_dm", source: EffectSource.Unknown, shape: ZoneShape.Radius(radius: 1ft) }
-place _dm_zone 0 0
-let _p = Placement { anchor: AnchorPoint.AtPosition(position: _dm_zone.center), position: _dm_zone.center }
+pos _pos 0 0
+let _p = Placement { anchor: AnchorPoint.AtPosition(position: _pos), position: _pos }
 
 // ── Dispel Magic (Cleric): successful dispel ─────────────────────
 

@@ -71,11 +71,9 @@ assert_eq mm_target_ranger_b.hp, 6
 
 // ── AoE position helper ────────────────────────────────────────
 // AoE spells now take Placement and prompt for area occupants.
-// Create a reusable placement from a dummy zone position.
 
-spawn Zone _aoe_zone { name: "_aoe", source: EffectSource.Unknown, shape: ZoneShape.Radius(radius: 1ft) }
-place _aoe_zone 0 0
-let _p = Placement { anchor: AnchorPoint.AtPosition(position: _aoe_zone.center), position: _aoe_zone.center }
+pos _pos 0 0
+let _p = Placement { anchor: AnchorPoint.AtPosition(position: _pos), position: _pos }
 
 // ── Fireball resolve: character targets ─────────────────────────
 
