@@ -84,7 +84,7 @@ impl Runner {
                     return Err(CliError::Message(format!("invalid field entry: {entry}")));
                 }
 
-                let val = if let Some(&ent) = self.handles.get(val_str) {
+                let val = if let Some(ent) = self.handles.get(val_str) {
                     Value::Entity(ent)
                 } else {
                     let (parsed, diags) = ttrpg_parser::parse_expr(val_str);
@@ -109,7 +109,7 @@ impl Runner {
                     let state = RefCellState(&self.game_state);
                     let mut handler = CliHandler::new(
                         &self.game_state,
-                        &self.reverse_handles,
+                        self.handles.by_entity(),
                         &mut self.rng,
                         &mut self.roll_queue,
                         &mut self.prompt_queue,
@@ -166,7 +166,7 @@ impl Runner {
             }
 
             // Try handle resolution first, then fall back to expression eval
-            let val = if let Some(&ent) = self.handles.get(val_str) {
+            let val = if let Some(ent) = self.handles.get(val_str) {
                 Value::Entity(ent)
             } else {
                 let (parsed, diags) = ttrpg_parser::parse_expr(val_str);
@@ -187,7 +187,7 @@ impl Runner {
                 let state = RefCellState(&self.game_state);
                 let mut handler = CliHandler::new(
                     &self.game_state,
-                    &self.reverse_handles,
+                    self.handles.by_entity(),
                     &mut self.rng,
                     &mut self.roll_queue,
                     &mut self.prompt_queue,

@@ -14,6 +14,7 @@ use ttrpg_checker::env::{DeclInfo, FnKind, TypeEnv};
 use ttrpg_interp::Interpreter;
 use ttrpg_interp::coverage::{self, CoverageData};
 use ttrpg_interp::effect::FieldPathSegment;
+use ttrpg_interp::handle_registry::HandleRegistry;
 use ttrpg_interp::reference_state::GameState;
 use ttrpg_interp::state::{EntityRef, StateProvider, WritableState};
 use ttrpg_interp::value::Value;
@@ -104,8 +105,7 @@ pub struct Runner {
     diagnostics: Vec<Diagnostic>,
     source_map: Option<MultiSourceMap>,
     output: Vec<String>,
-    handles: HashMap<String, EntityRef>,
-    reverse_handles: HashMap<EntityRef, String>,
+    handles: HandleRegistry,
     variables: HashMap<String, Value>,
     rng: StdRng,
     roll_queue: VecDeque<i64>,
@@ -133,8 +133,7 @@ impl Runner {
             diagnostics: Vec::new(),
             source_map: None,
             output: Vec::new(),
-            handles: HashMap::new(),
-            reverse_handles: HashMap::new(),
+            handles: HandleRegistry::new(),
             variables: HashMap::new(),
             rng: StdRng::from_os_rng(),
             roll_queue: VecDeque::new(),
@@ -151,7 +150,7 @@ impl Runner {
 
     /// Returns all handle names (for tab completion).
     pub fn handle_names(&self) -> Vec<String> {
-        self.handles.keys().cloned().collect()
+        self.handles.names().map(|s| s.to_string()).collect()
     }
 
     /// Returns all entity type names (for tab completion).
@@ -225,7 +224,7 @@ impl Runner {
     pub fn handle_type(&self, handle: &str) -> Option<String> {
         let entity = self.handles.get(handle)?;
         let gs = self.game_state.borrow();
-        gs.entity_type_name(entity).map(|s| s.to_string())
+        gs.entity_type_name(&entity).map(|s| s.to_string())
     }
 
     /// Returns optional group names for a given entity type (for tab completion).
@@ -475,7 +474,7 @@ impl Runner {
         let state = RefCellState(&self.game_state);
         let mut handler = CliHandler::new(
             &self.game_state,
-            &self.reverse_handles,
+            self.handles.by_entity(),
             &mut self.rng,
             &mut self.roll_queue,
             &mut self.prompt_queue,
@@ -490,7 +489,7 @@ impl Runner {
             .chain(
                 self.handles
                     .iter()
-                    .map(|(name, entity)| (Name::from(name.as_str()), Value::Entity(*entity))),
+                    .map(|(name, entity)| (Name::from(name), Value::Entity(*entity))),
             )
             .collect();
         let result = interp
@@ -515,7 +514,6 @@ impl Runner {
     fn resolve_handle(&self, name: &str) -> Result<EntityRef, CliError> {
         self.handles
             .get(name)
-            .copied()
             .ok_or_else(|| CliError::Message(format!("unknown handle: {name}")))
     }
 

@@ -37,7 +37,7 @@ impl Runner {
         let state = RefCellState(&self.game_state);
         let mut handler = crate::effects::CliHandler::new(
             &self.game_state,
-            &self.reverse_handles,
+            self.handles.by_entity(),
             &mut self.rng,
             &mut self.roll_queue,
             &mut self.prompt_queue,
@@ -51,7 +51,7 @@ impl Runner {
             .chain(
                 self.handles
                     .iter()
-                    .map(|(name, entity)| (Name::from(name.as_str()), Value::Entity(*entity))),
+                    .map(|(name, entity)| (Name::from(name), Value::Entity(*entity))),
             )
             .collect();
         let val = interp

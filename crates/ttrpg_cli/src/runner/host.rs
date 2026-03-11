@@ -81,7 +81,7 @@ impl Runner {
                 let state = RefCellState(&self.game_state);
                 let mut handler = CliHandler::new(
                     &self.game_state,
-                    &self.reverse_handles,
+                    self.handles.by_entity(),
                     &mut self.rng,
                     &mut self.roll_queue,
                     &mut self.prompt_queue,
@@ -94,7 +94,7 @@ impl Runner {
                         .iter()
                         .map(|(name, val)| (Name::from(name.as_str()), val.clone()))
                         .chain(self.handles.iter().map(|(name, entity)| {
-                            (Name::from(name.as_str()), Value::Entity(*entity))
+                            (Name::from(name), Value::Entity(*entity))
                         }))
                         .collect();
                 let val = interp
@@ -128,7 +128,7 @@ impl Runner {
                 let state = RefCellState(&self.game_state);
                 let mut handler = CliHandler::new(
                     &self.game_state,
-                    &self.reverse_handles,
+                    self.handles.by_entity(),
                     &mut self.rng,
                     &mut self.roll_queue,
                     &mut self.prompt_queue,
@@ -142,7 +142,7 @@ impl Runner {
                         .iter()
                         .map(|(name, val)| (Name::from(name.as_str()), val.clone()))
                         .chain(self.handles.iter().map(|(name, entity)| {
-                            (Name::from(name.as_str()), Value::Entity(*entity))
+                            (Name::from(name), Value::Entity(*entity))
                         }))
                         .collect();
                 for (name, val) in &all_fields {
@@ -179,7 +179,7 @@ impl Runner {
         let state = RefCellState(&self.game_state);
         let mut handler = CliHandler::new(
             &self.game_state,
-            &self.reverse_handles,
+            self.handles.by_entity(),
             &mut self.rng,
             &mut self.roll_queue,
             &mut self.prompt_queue,
@@ -497,14 +497,14 @@ impl Runner {
     ) -> Result<(), CliError> {
         // Look up handles for readable output
         let target_handle = self
-            .reverse_handles
-            .get(&target)
-            .cloned()
+            .handles
+            .name_of(&target)
+            .map(|s| s.to_string())
             .unwrap_or_else(|| format!("#{}", target.0));
         let zone_handle = self
-            .reverse_handles
-            .get(&zone)
-            .cloned()
+            .handles
+            .name_of(&zone)
+            .map(|s| s.to_string())
             .unwrap_or_else(|| format!("#{}", zone.0));
         self.cmd_emit(&format!(
             "{event_name}(target: {target_handle}, zone: {zone_handle})"

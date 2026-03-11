@@ -27,7 +27,7 @@ impl Runner {
             )));
         }
 
-        if self.handles.contains_key(handle) {
+        if self.handles.contains(handle) {
             return Err(CliError::Message(format!(
                 "handle '{handle}' already exists"
             )));
@@ -126,7 +126,6 @@ impl Runner {
             .collect();
         let entity = self.game_state.borrow_mut().add_entity(entity_type, fields);
         self.handles.insert(handle.to_string(), entity);
-        self.reverse_handles.insert(entity, handle.to_string());
 
         for (group_name, struct_val) in prepared_groups {
             self.game_state.borrow_mut().write_field(
@@ -301,7 +300,7 @@ impl Runner {
         };
 
         // Parse and evaluate the RHS expression (try handle resolution first)
-        let val = if let Some(&ent) = self.handles.get(rhs) {
+        let val = if let Some(ent) = self.handles.get(rhs) {
             Value::Entity(ent)
         } else {
             self.eval(rhs)?
@@ -332,7 +331,7 @@ impl Runner {
             let state = RefCellState(&self.game_state);
             let mut handler = CliHandler::new(
                 &self.game_state,
-                &self.reverse_handles,
+                self.handles.by_entity(),
                 &mut self.rng,
                 &mut self.roll_queue,
                 &mut self.prompt_queue,
@@ -401,8 +400,7 @@ impl Runner {
                 "entity for handle '{handle}' not found in state"
             )));
         }
-        self.handles.remove(handle);
-        self.reverse_handles.remove(&entity);
+        self.handles.remove_by_name(handle);
         self.output.push(format!("destroyed {handle}"));
         Ok(())
     }

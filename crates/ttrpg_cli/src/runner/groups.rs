@@ -106,7 +106,7 @@ impl Runner {
                 let state = RefCellState(&self.game_state);
                 let mut handler = CliHandler::new(
                     &self.game_state,
-                    &self.reverse_handles,
+                    self.handles.by_entity(),
                     &mut self.rng,
                     &mut self.roll_queue,
                     &mut self.prompt_queue,
@@ -210,7 +210,7 @@ impl Runner {
                 let state = RefCellState(&self.game_state);
                 let mut handler = CliHandler::new(
                     &self.game_state,
-                    &self.reverse_handles,
+                    self.handles.by_entity(),
                     &mut self.rng,
                     &mut self.roll_queue,
                     &mut self.prompt_queue,
