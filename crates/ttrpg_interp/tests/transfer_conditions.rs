@@ -734,3 +734,67 @@ system "test" {
     assert_eq!(m_conds.len(), 1);
     assert_eq!(m_conds[0].name.as_str(), "ForAll");
 }
+
+// ═══════════════════════════════════════════════════════════════
+// 12. apply_condition skips when bearer type is incompatible
+// ═══════════════════════════════════════════════════════════════
+
+#[test]
+fn apply_condition_skips_incompatible_bearer_type() {
+    let source = r#"
+system "test" {
+    entity Character { hp: int }
+    entity Monster { hp: int }
+
+    condition CharOnly on bearer: Character stacking all {}
+    condition ForAll on bearer: entity stacking all {}
+
+    function apply_char_only(target: entity) {
+        apply_condition(target, CharOnly(), Duration.Indefinite)
+    }
+    function apply_for_all(target: entity) {
+        apply_condition(target, ForAll(), Duration.Indefinite)
+    }
+}
+"#;
+    let (program, result) = setup(source);
+    let interp = Interpreter::new(&program, &result.env).unwrap();
+    let mut state = GameState::new();
+    let c = make_entity(&mut state, "Character", 20);
+    let m = make_entity(&mut state, "Monster", 20);
+
+    let mut receiver_types = FxHashMap::default();
+    for (name, info) in &result.env.conditions {
+        receiver_types.insert(name.clone(), info.receiver_type.clone());
+    }
+
+    let mut adapter = StateAdapter::new(state);
+    adapter.set_condition_receiver_types(receiver_types);
+    let mut handler = ScriptedHandler::new();
+    adapter.run(&mut handler, |state, handler| {
+        // CharOnly on Character — should succeed
+        interp
+            .evaluate_function(state, handler, "apply_char_only", vec![Value::Entity(c)])
+            .unwrap();
+        // CharOnly on Monster — should be skipped (incompatible)
+        interp
+            .evaluate_function(state, handler, "apply_char_only", vec![Value::Entity(m)])
+            .unwrap();
+        // ForAll on Monster — should succeed (bearer: entity)
+        interp
+            .evaluate_function(state, handler, "apply_for_all", vec![Value::Entity(m)])
+            .unwrap();
+    });
+
+    let state = adapter.into_inner();
+
+    // Character should have CharOnly
+    let c_conds = state.read_conditions(&c).unwrap();
+    assert_eq!(c_conds.len(), 1);
+    assert_eq!(c_conds[0].name.as_str(), "CharOnly");
+
+    // Monster should only have ForAll (CharOnly was skipped)
+    let m_conds = state.read_conditions(&m).unwrap();
+    assert_eq!(m_conds.len(), 1);
+    assert_eq!(m_conds[0].name.as_str(), "ForAll");
+}

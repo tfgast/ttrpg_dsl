@@ -351,6 +351,21 @@ fn apply_mutation<S: WritableState>(
             tags,
             condition_id,
         } => {
+            // Bearer type compatibility: skip if target entity type doesn't match
+            // the condition's declared receiver_type (Ty::AnyEntity always passes)
+            if let Some(Ty::Entity(expected)) = condition_receiver_types.get(condition)
+            {
+                if let Some(ref actual) = state.entity_type_name(target) {
+                    if expected != actual {
+                        eprintln!(
+                            "apply_condition: skipping '{}' on entity {:?} — \
+                             bearer type '{}' incompatible with declared '{}'",
+                            condition, target, actual, expected
+                        );
+                        return;
+                    }
+                }
+            }
             let applied_at = state.read_game_time();
             state.add_condition(
                 target,
