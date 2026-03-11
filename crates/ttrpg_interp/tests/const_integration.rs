@@ -3,8 +3,8 @@
 //! Runtime const evaluation coverage has moved to `tests/const.ttrpg-cli`.
 //! These Rust tests now keep only checker-only rejection cases.
 
-use ttrpg_ast::diagnostic::Severity;
 use ttrpg_ast::FileId;
+use ttrpg_ast::diagnostic::Severity;
 
 fn compile_errors(source: &str) -> Vec<String> {
     let (program, parse_errors) = ttrpg_parser::parse(source, FileId::SYNTH);

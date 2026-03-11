@@ -4,8 +4,8 @@
 //! These Rust tests keep only pipeline construction and checker-only rejection
 //! cases that still belong next to the interpreter.
 
-use ttrpg_ast::diagnostic::Severity;
 use ttrpg_ast::FileId;
+use ttrpg_ast::diagnostic::Severity;
 use ttrpg_interp::Interpreter;
 
 const PROGRAM_SOURCE: &str = r#"

@@ -1,14 +1,14 @@
 use std::cell::RefCell;
 use std::collections::HashSet;
 
-use ttrpg_ast::ast::AssignOp;
 use ttrpg_ast::Name;
+use ttrpg_ast::ast::AssignOp;
 
+use crate::RuntimeError;
 use crate::effect::FieldPathSegment;
 use crate::effect::{Effect, EffectHandler, EffectKind, Response};
 use crate::state::{ActiveCondition, EntityRef, StateProvider, WritableState};
 use crate::value::Value;
-use crate::RuntimeError;
 
 // ── StateAdapter ───────────────────────────────────────────────
 
@@ -1396,12 +1396,12 @@ mod tests {
 
     #[test]
     fn integration_full_action_via_gamestate_and_adapter() {
+        use crate::Interpreter;
         use crate::action::execute_action;
         use crate::reference_state::GameState;
-        use crate::Interpreter;
-        use ttrpg_ast::ast::*;
         use ttrpg_ast::Span;
         use ttrpg_ast::Spanned;
+        use ttrpg_ast::ast::*;
         use ttrpg_checker::env::TypeEnv;
 
         fn span() -> Span {

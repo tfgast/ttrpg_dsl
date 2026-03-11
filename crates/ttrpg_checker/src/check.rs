@@ -1,9 +1,9 @@
 use rustc_hash::FxHashMap;
 use std::collections::{HashMap, HashSet};
+use ttrpg_ast::Name;
 use ttrpg_ast::ast::*;
 use ttrpg_ast::diagnostic::Diagnostic;
 use ttrpg_ast::module::ModuleMap;
-use ttrpg_ast::Name;
 use ttrpg_ast::{Span, Spanned};
 
 use crate::env::*;
@@ -1354,7 +1354,7 @@ impl<'a> Checker<'a> {
         // AnyEntity matches any Entity(_)
         match (actual, expected) {
             (Ty::Entity(_) | Ty::AnyEntity, Ty::AnyEntity) | (Ty::AnyEntity, Ty::Entity(_)) => {
-                return true
+                return true;
             }
             _ => {}
         }
@@ -1370,7 +1370,7 @@ impl<'a> Checker<'a> {
             (Ty::List(a), Ty::List(b)) => return self.types_compatible(a, b),
             (Ty::Set(a), Ty::Set(b)) => return self.types_compatible(a, b),
             (Ty::Map(ak, av), Ty::Map(bk, bv)) => {
-                return self.types_compatible(ak, bk) && self.types_compatible(av, bv)
+                return self.types_compatible(ak, bk) && self.types_compatible(av, bv);
             }
             (Ty::Option(a), Ty::Option(b)) => return self.types_compatible(a, b),
             _ => {}

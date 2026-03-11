@@ -8,15 +8,15 @@
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
 
 use rustc_hash::FxHashMap;
-use ttrpg_ast::diagnostic::Severity;
 use ttrpg_ast::DiceFilter;
 use ttrpg_ast::FileId;
+use ttrpg_ast::diagnostic::Severity;
+use ttrpg_interp::Interpreter;
 use ttrpg_interp::adapter::StateAdapter;
 use ttrpg_interp::effect::{ActionKind, Effect, EffectHandler, Response};
 use ttrpg_interp::reference_state::{GameState, GridPosition};
 use ttrpg_interp::state::{ConditionArgs, EntityRef, StateProvider};
-use ttrpg_interp::value::{duration_variant, DiceExpr, RollResult, Value};
-use ttrpg_interp::Interpreter;
+use ttrpg_interp::value::{DiceExpr, RollResult, Value, duration_variant};
 
 // ── Setup ──────────────────────────────────────────────────────
 
@@ -314,24 +314,32 @@ fn pipeline_parses_and_builds_interpreter() {
     assert_eq!(val, Value::Int(0));
 
     // Undefined names produce errors (proves index was populated correctly)
-    assert!(interp
-        .evaluate_derive(&state, &mut handler, "nonexistent", vec![])
-        .is_err());
-    assert!(interp
-        .evaluate_mechanic(&state, &mut handler, "nonexistent", vec![])
-        .is_err());
-    assert!(interp
-        .execute_action(&state, &mut handler, "Nonexistent", EntityRef(1), vec![])
-        .is_err());
-    assert!(interp
-        .execute_reaction(
-            &state,
-            &mut handler,
-            "Nonexistent",
-            EntityRef(1),
-            Value::Void
-        )
-        .is_err());
+    assert!(
+        interp
+            .evaluate_derive(&state, &mut handler, "nonexistent", vec![])
+            .is_err()
+    );
+    assert!(
+        interp
+            .evaluate_mechanic(&state, &mut handler, "nonexistent", vec![])
+            .is_err()
+    );
+    assert!(
+        interp
+            .execute_action(&state, &mut handler, "Nonexistent", EntityRef(1), vec![])
+            .is_err()
+    );
+    assert!(
+        interp
+            .execute_reaction(
+                &state,
+                &mut handler,
+                "Nonexistent",
+                EntityRef(1),
+                Value::Void
+            )
+            .is_err()
+    );
 }
 
 // ════════════════════════════════════════════════════════════════
@@ -665,10 +673,12 @@ fn attack_roll_emits_roll_dice() {
         .unwrap();
 
     // Should have emitted RollDice
-    assert!(handler
-        .log
-        .iter()
-        .any(|e| matches!(e, Effect::RollDice { .. })));
+    assert!(
+        handler
+            .log
+            .iter()
+            .any(|e| matches!(e, Effect::RollDice { .. }))
+    );
 
     // Should return a RollResult
     match val {
@@ -992,20 +1002,26 @@ fn attack_action_out_of_range() {
     assert_eq!(val, Value::Void);
 
     // RequiresCheck should have passed=false
-    assert!(handler
-        .log
-        .iter()
-        .any(|e| matches!(e, Effect::RequiresCheck { passed: false, .. })));
+    assert!(
+        handler
+            .log
+            .iter()
+            .any(|e| matches!(e, Effect::RequiresCheck { passed: false, .. }))
+    );
     // No DeductCost
-    assert!(!handler
-        .log
-        .iter()
-        .any(|e| matches!(e, Effect::DeductCost { .. })));
+    assert!(
+        !handler
+            .log
+            .iter()
+            .any(|e| matches!(e, Effect::DeductCost { .. }))
+    );
     // No RollDice
-    assert!(!handler
-        .log
-        .iter()
-        .any(|e| matches!(e, Effect::RollDice { .. })));
+    assert!(
+        !handler
+            .log
+            .iter()
+            .any(|e| matches!(e, Effect::RollDice { .. }))
+    );
     // ActionCompleted should still be present
     assert!(matches!(
         handler.log.last().unwrap(),
@@ -1060,7 +1076,7 @@ fn dodge_action() {
     assert!(handler.log.iter().any(|e| matches!(
         e,
         Effect::ApplyCondition { condition, duration, .. }
-        if condition == "Dodging" && matches!(duration, Value::EnumVariant { ref enum_name, ref variant, .. } if enum_name == "Duration" && variant == "start_of_next_turn")
+        if condition == "Dodging" && matches!(duration, Value::EnumVariant { enum_name, variant, .. } if enum_name == "Duration" && variant == "start_of_next_turn")
     )));
     assert!(matches!(
         handler.log.last().unwrap(),
@@ -1087,7 +1103,7 @@ fn disengage_action() {
     assert!(handler.log.iter().any(|e| matches!(
         e,
         Effect::ApplyCondition { condition, duration, .. }
-        if condition == "Disengaging" && matches!(duration, Value::EnumVariant { ref enum_name, ref variant, .. } if enum_name == "Duration" && variant == "end_of_turn")
+        if condition == "Disengaging" && matches!(duration, Value::EnumVariant { enum_name, variant, .. } if enum_name == "Duration" && variant == "end_of_turn")
     )));
     assert!(matches!(
         handler.log.last().unwrap(),
@@ -1296,10 +1312,12 @@ fn prone_on_attacker_disadvantage() {
     }
 
     // Verify ModifyApplied was emitted
-    assert!(handler
-        .log
-        .iter()
-        .any(|e| matches!(e, Effect::ModifyApplied { .. })));
+    assert!(
+        handler
+            .log
+            .iter()
+            .any(|e| matches!(e, Effect::ModifyApplied { .. }))
+    );
 }
 
 #[test]
@@ -1514,10 +1532,12 @@ fn prone_modifies_initial_budget() {
     }
 
     // Verify ModifyApplied was emitted
-    assert!(handler
-        .log
-        .iter()
-        .any(|e| matches!(e, Effect::ModifyApplied { .. })));
+    assert!(
+        handler
+            .log
+            .iter()
+            .any(|e| matches!(e, Effect::ModifyApplied { .. }))
+    );
 }
 
 // ════════════════════════════════════════════════════════════════
@@ -1642,16 +1662,20 @@ fn adapter_attack_applies_damage() {
     });
 
     // Verify DeductCost WAS passed through (decision effect)
-    assert!(handler
-        .log
-        .iter()
-        .any(|e| matches!(e, Effect::DeductCost { .. })));
+    assert!(
+        handler
+            .log
+            .iter()
+            .any(|e| matches!(e, Effect::DeductCost { .. }))
+    );
 
     // Verify MutateField was NOT passed through (intercepted by adapter)
-    assert!(!handler
-        .log
-        .iter()
-        .any(|e| matches!(e, Effect::MutateField { .. })));
+    assert!(
+        !handler
+            .log
+            .iter()
+            .any(|e| matches!(e, Effect::MutateField { .. }))
+    );
 
     // Verify target's HP was decremented in the GameState
     let final_state = adapter.into_inner();
@@ -1691,10 +1715,12 @@ fn saving_throw_normal_success() {
         .unwrap();
 
     assert_eq!(val, enum_variant("SaveResult", "success"));
-    assert!(handler
-        .log
-        .iter()
-        .any(|e| matches!(e, Effect::RollDice { .. })));
+    assert!(
+        handler
+            .log
+            .iter()
+            .any(|e| matches!(e, Effect::RollDice { .. }))
+    );
 }
 
 #[test]
@@ -1761,16 +1787,20 @@ fn stunned_auto_fails_str_save() {
     assert_eq!(val, enum_variant("SaveResult", "failure"));
 
     // No RollDice effect — roll was bypassed entirely
-    assert!(!handler
-        .log
-        .iter()
-        .any(|e| matches!(e, Effect::RollDice { .. })));
+    assert!(
+        !handler
+            .log
+            .iter()
+            .any(|e| matches!(e, Effect::RollDice { .. }))
+    );
 
     // ModifyApplied WAS emitted
-    assert!(handler
-        .log
-        .iter()
-        .any(|e| matches!(e, Effect::ModifyApplied { .. })));
+    assert!(
+        handler
+            .log
+            .iter()
+            .any(|e| matches!(e, Effect::ModifyApplied { .. }))
+    );
 }
 
 #[test]
@@ -1810,10 +1840,12 @@ fn stunned_does_not_affect_wis_save() {
     assert_eq!(val, enum_variant("SaveResult", "success"));
 
     // RollDice WAS emitted — WIS save is unaffected by Stunned
-    assert!(handler
-        .log
-        .iter()
-        .any(|e| matches!(e, Effect::RollDice { .. })));
+    assert!(
+        handler
+            .log
+            .iter()
+            .any(|e| matches!(e, Effect::RollDice { .. }))
+    );
 }
 
 #[test]
@@ -1856,16 +1888,20 @@ fn petrified_overrides_str_save_result() {
     assert_eq!(val, enum_variant("SaveResult", "failure"));
 
     // RollDice WAS emitted — the mechanic body ran normally
-    assert!(handler
-        .log
-        .iter()
-        .any(|e| matches!(e, Effect::RollDice { .. })));
+    assert!(
+        handler
+            .log
+            .iter()
+            .any(|e| matches!(e, Effect::RollDice { .. }))
+    );
 
     // ModifyApplied WAS emitted (Phase 2 result override)
-    assert!(handler
-        .log
-        .iter()
-        .any(|e| matches!(e, Effect::ModifyApplied { .. })));
+    assert!(
+        handler
+            .log
+            .iter()
+            .any(|e| matches!(e, Effect::ModifyApplied { .. }))
+    );
 }
 
 #[test]
@@ -1895,8 +1931,10 @@ fn auto_succeed_bypasses_roll() {
     assert_eq!(val, enum_variant("SaveResult", "success"));
 
     // No RollDice — roll was bypassed entirely
-    assert!(!handler
-        .log
-        .iter()
-        .any(|e| matches!(e, Effect::RollDice { .. })));
+    assert!(
+        !handler
+            .log
+            .iter()
+            .any(|e| matches!(e, Effect::RollDice { .. }))
+    );
 }

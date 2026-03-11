@@ -2,10 +2,10 @@ use std::collections::{BTreeMap, BTreeSet};
 use ttrpg_ast::Name;
 use ttrpg_ast::Span;
 
-use crate::effect::{Effect, Response};
-use crate::value::{DiceExpr, Value};
 use crate::Env;
 use crate::RuntimeError;
+use crate::effect::{Effect, Response};
+use crate::value::{DiceExpr, Value};
 
 // ── Builtin dispatch ───────────────────────────────────────────
 
@@ -991,13 +991,13 @@ fn builtin_budget_of(env: &mut Env, args: &[Value], span: Span) -> Result<Value,
             return Err(RuntimeError::with_span(
                 format!("budget_of() expects entity, got {}", type_name(other)),
                 span,
-            ))
+            ));
         }
         None => {
             return Err(RuntimeError::with_span(
                 "budget_of() requires 1 argument",
                 span,
-            ))
+            ));
         }
     };
     let budget = env
@@ -1292,7 +1292,7 @@ fn builtin_process_periodic_conditions(
             return Err(RuntimeError::with_span(
                 "process_periodic_conditions() requires (list<entity>, string)",
                 span,
-            ))
+            ));
         }
     };
 
@@ -1448,9 +1448,9 @@ mod tests {
 
     // ── invocation() / revoke() unit tests ──────────────────
 
+    use crate::Interpreter;
     use crate::effect::EffectHandler;
     use crate::state::{ActiveCondition, EntityRef, InvocationId, StateProvider};
-    use crate::Interpreter;
     use std::collections::VecDeque;
 
     struct TestHandler {

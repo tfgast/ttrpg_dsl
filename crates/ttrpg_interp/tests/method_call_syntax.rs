@@ -1,12 +1,12 @@
 //! Integration tests for method call syntax on collections, options, and dice.
 
 use std::collections::BTreeMap;
-use ttrpg_ast::diagnostic::Severity;
 use ttrpg_ast::FileId;
+use ttrpg_ast::diagnostic::Severity;
+use ttrpg_interp::Interpreter;
 use ttrpg_interp::effect::{Effect, EffectHandler, Response};
 use ttrpg_interp::reference_state::GameState;
 use ttrpg_interp::value::{DiceExpr, RollResult, Value};
-use ttrpg_interp::Interpreter;
 
 struct NoopHandler;
 impl EffectHandler for NoopHandler {

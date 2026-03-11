@@ -1,5 +1,5 @@
-use rand::rngs::StdRng;
 use rand::Rng;
+use rand::rngs::StdRng;
 use std::collections::BTreeMap;
 
 use ttrpg_ast::DiceFilter;

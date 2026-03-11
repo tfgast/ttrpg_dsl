@@ -1,12 +1,12 @@
 use ttrpg_ast::ast::{ActionDecl, Block, CostClause, ExprKind, HookDecl, ReactionDecl};
 use ttrpg_ast::{Name, Span, Spanned};
 
+use crate::Env;
+use crate::RuntimeError;
 use crate::effect::{ActionKind, ActionOutcome, Effect, Response};
 use crate::eval::{eval_block, eval_expr};
 use crate::state::{EntityRef, InvocationId};
 use crate::value::Value;
-use crate::Env;
-use crate::RuntimeError;
 
 // ── Shared lifecycle helpers ──────────────────────────────────
 
@@ -587,7 +587,7 @@ fn collect_and_apply_cost_modifiers(
 
     // Emit modify_applied events for any condition cost modifiers that fired
     if !cost_modifiers.is_empty() {
-        use crate::pipeline::{emit_modify_applied_events, OwnedModifier};
+        use crate::pipeline::{OwnedModifier, emit_modify_applied_events};
         let owned: Vec<OwnedModifier> = cost_modifiers
             .iter()
             .map(|m| OwnedModifier {
@@ -846,9 +846,9 @@ mod tests {
     use ttrpg_ast::{Name, Span, Spanned};
     use ttrpg_checker::env::TypeEnv;
 
+    use crate::Interpreter;
     use crate::effect::{EffectHandler, Response};
     use crate::state::{ActiveCondition, StateProvider};
-    use crate::Interpreter;
 
     // ── Test infrastructure ────────────────────────────────────
 
@@ -1257,10 +1257,12 @@ mod tests {
 
         let result = execute_action(&mut env, &action, actor, vec![], span());
         assert!(result.is_err());
-        assert!(result
-            .unwrap_err()
-            .message
-            .contains("invalid cost override"));
+        assert!(
+            result
+                .unwrap_err()
+                .message
+                .contains("invalid cost override")
+        );
     }
 
     #[test]

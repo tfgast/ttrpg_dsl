@@ -4,9 +4,9 @@ use ttrpg_ast::ast::ExprKind;
 use ttrpg_ast::{Name, Spanned};
 use ttrpg_checker::env::DeclInfo;
 
-use crate::value::Value;
 use crate::Env;
 use crate::RuntimeError;
+use crate::value::Value;
 
 use super::compare::value_eq;
 use super::dispatch::eval_expr;

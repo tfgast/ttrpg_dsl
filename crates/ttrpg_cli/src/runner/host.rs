@@ -357,9 +357,7 @@ impl Runner {
         // Parse: name x y  or  name at x,y
         let (name, rest) = split_first_token(tail);
         if name.is_empty() {
-            return Err(CliError::Message(
-                "usage: pos <name> <x> <y>".into(),
-            ));
+            return Err(CliError::Message("usage: pos <name> <x> <y>".into()));
         }
 
         // Validate name is a valid identifier
@@ -371,9 +369,7 @@ impl Runner {
 
         let rest = rest.trim();
         if rest.is_empty() {
-            return Err(CliError::Message(
-                "usage: pos <name> <x> <y>".into(),
-            ));
+            return Err(CliError::Message("usage: pos <name> <x> <y>".into()));
         }
 
         // Strip optional "at" keyword
@@ -392,8 +388,7 @@ impl Runner {
             .register_position(GridPosition(x, y));
         self.variables.insert(name.to_string(), pos_value);
 
-        self.output
-            .push(format!("{name} = Position({x}, {y})"));
+        self.output.push(format!("{name} = Position({x}, {y})"));
 
         Ok(())
     }
@@ -614,7 +609,9 @@ fn parse_coordinates(s: &str) -> Result<(i64, i64), CliError> {
     // Space-separated
     let parts: Vec<&str> = s.split_whitespace().collect();
     if parts.len() != 2 {
-        return Err(CliError::Message("expected two coordinates: <x> <y>".into()));
+        return Err(CliError::Message(
+            "expected two coordinates: <x> <y>".into(),
+        ));
     }
     let x = parts[0]
         .parse::<i64>()

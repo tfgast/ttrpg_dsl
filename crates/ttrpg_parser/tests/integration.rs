@@ -1,6 +1,6 @@
-use ttrpg_ast::ast::*;
 use ttrpg_ast::FileId;
-use ttrpg_parser::{parse, Severity, SourceMap};
+use ttrpg_ast::ast::*;
+use ttrpg_parser::{Severity, SourceMap, parse};
 
 #[test]
 fn test_parse_full_example() {

@@ -10,11 +10,11 @@
 
 use std::collections::BTreeMap;
 
-use ttrpg_ast::ast::TopLevel;
 use ttrpg_ast::Name;
+use ttrpg_ast::ast::TopLevel;
+use ttrpg_interp::Interpreter;
 use ttrpg_interp::reference_state::GameState;
 use ttrpg_interp::value::Value;
-use ttrpg_interp::Interpreter;
 
 mod osric_common;
 #[allow(unused_imports)]

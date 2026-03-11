@@ -5,9 +5,9 @@
 // Organized by spec section.
 // =============================================================================
 
-use ttrpg_ast::ast::*;
 use ttrpg_ast::FileId;
-use ttrpg_parser::{parse, SourceMap};
+use ttrpg_ast::ast::*;
+use ttrpg_parser::{SourceMap, parse};
 
 /// Helper: parse source, assert no diagnostics, return program.
 fn ok(source: &str) -> Program {

@@ -639,8 +639,7 @@ impl Parser {
     // ── Action ───────────────────────────────────────────────────
 
     fn parse_action_decl(&mut self) -> Result<ActionDecl, ()> {
-        const HELP: &str =
-            "syntax: action <name> on <self>: <Type>(<params>) { cost {...} requires {...} resolve {...} }";
+        const HELP: &str = "syntax: action <name> on <self>: <Type>(<params>) { cost {...} requires {...} resolve {...} }";
         self.expect_soft_keyword("action")?;
         let (name, _) = self.expect_ident()?;
         if !self.at_ident("on") {
@@ -811,8 +810,7 @@ impl Parser {
     // ── Reaction ─────────────────────────────────────────────────
 
     fn parse_reaction_decl(&mut self) -> Result<ReactionDecl, ()> {
-        const HELP: &str =
-            "syntax: reaction <name> on <self>: <Type>(trigger: <Event>(...)) { cost {...} resolve {...} }";
+        const HELP: &str = "syntax: reaction <name> on <self>: <Type>(trigger: <Event>(...)) { cost {...} resolve {...} }";
         self.expect_soft_keyword("reaction")?;
         let (name, _) = self.expect_ident()?;
         if !self.at_ident("on") {
@@ -1031,8 +1029,7 @@ impl Parser {
     // ── Condition ────────────────────────────────────────────────
 
     fn parse_condition_decl(&mut self) -> Result<ConditionDecl, ()> {
-        const HELP: &str =
-            "syntax: condition <name>[(<params>)] [extends <parent>] on <self>: <Type> { [tags: #a, #b] ... }";
+        const HELP: &str = "syntax: condition <name>[(<params>)] [extends <parent>] on <self>: <Type> { [tags: #a, #b] ... }";
         self.expect_soft_keyword("condition")?;
         let (name, _) = self.expect_ident()?;
         // Optional parameters: condition Frightened(source: Character) on ...
@@ -1653,8 +1650,7 @@ impl Parser {
     // ── Prompt ───────────────────────────────────────────────────
 
     fn parse_prompt_decl(&mut self) -> Result<PromptDecl, ()> {
-        const HELP: &str =
-            "syntax: prompt <name>(<params>) -> <type> { [hint: \"...\"] [suggest: <expr>] [default {...}] }";
+        const HELP: &str = "syntax: prompt <name>(<params>) -> <type> { [hint: \"...\"] [suggest: <expr>] [default {...}] }";
         self.expect_soft_keyword("prompt")?;
         let (name, _) = self.expect_ident()?;
         if !self.at(&TokenKind::LParen) {
@@ -1804,8 +1800,7 @@ impl Parser {
     // ── Move ─────────────────────────────────────────────────────
 
     fn parse_move_decl(&mut self) -> Result<MoveDecl, ()> {
-        const HELP: &str =
-            "syntax: move <name> on <self>: <Type>(<params>) { trigger: \"...\" roll: <expr> on <outcome> {...} }";
+        const HELP: &str = "syntax: move <name> on <self>: <Type>(<params>) { trigger: \"...\" roll: <expr> on <outcome> {...} }";
         self.expect_soft_keyword("move")?;
         let (name, _) = self.expect_ident()?;
         if !self.at_ident("on") {

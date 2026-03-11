@@ -4,8 +4,8 @@
 //! error and warning cases. Run `cargo insta review` after changes to update
 //! snapshots interactively.
 
-use ttrpg_ast::diagnostic::{Severity, SourceMap};
 use ttrpg_ast::FileId;
+use ttrpg_ast::diagnostic::{Severity, SourceMap};
 
 fn render_errors(source: &str) -> String {
     let (program, parse_errors) = ttrpg_parser::parse(source, FileId::SYNTH);

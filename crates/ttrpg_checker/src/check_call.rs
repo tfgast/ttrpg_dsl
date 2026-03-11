@@ -1,8 +1,8 @@
 use std::collections::HashSet;
 
-use ttrpg_ast::ast::*;
 use ttrpg_ast::Name;
 use ttrpg_ast::Spanned;
+use ttrpg_ast::ast::*;
 
 use crate::check::{Checker, Namespace};
 use crate::env::*;
@@ -104,7 +104,7 @@ impl Checker<'_> {
                 }
                 // Check if the field is a fn-ref type on a struct (e.g., entry.resolve(args))
                 if let Ty::Struct(ref struct_name) = obj_ty {
-                    if let Some(crate::env::DeclInfo::Struct(ref info)) =
+                    if let Some(crate::env::DeclInfo::Struct(info)) =
                         self.env.types.get(struct_name.as_str())
                     {
                         if let Some(field_info) = info.fields.iter().find(|f| f.name == *field) {

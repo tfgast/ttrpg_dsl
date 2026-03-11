@@ -1,5 +1,5 @@
-use ttrpg_ast::ast::*;
 use ttrpg_ast::Spanned;
+use ttrpg_ast::ast::*;
 
 use crate::check::Checker;
 use crate::scope::BlockKind;

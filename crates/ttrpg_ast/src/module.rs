@@ -1,8 +1,8 @@
 use rustc_hash::{FxHashMap, FxHashSet};
 
+use crate::Span;
 use crate::name::Name;
 use crate::span::FileId;
-use crate::Span;
 
 /// Maps system names to their declaration metadata and import relationships.
 #[derive(Clone, Debug, Default)]

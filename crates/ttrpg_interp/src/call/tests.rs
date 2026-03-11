@@ -8,7 +8,7 @@ use ttrpg_checker::ty::Ty;
 use crate::effect::{Effect, EffectHandler, Response};
 use crate::state::{ActiveCondition, EntityRef, StateProvider};
 use crate::value::{
-    duration_variant_with, effect_source_unknown, DiceExpr, PositionValue, RollResult, Value,
+    DiceExpr, PositionValue, RollResult, Value, duration_variant_with, effect_source_unknown,
 };
 use crate::{Env, Interpreter};
 

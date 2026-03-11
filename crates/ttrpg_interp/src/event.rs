@@ -1,16 +1,16 @@
 use std::collections::{BTreeMap, HashSet};
 
-use ttrpg_ast::ast::ConditionClause;
 use ttrpg_ast::Name;
+use ttrpg_ast::ast::ConditionClause;
 use ttrpg_checker::ty::Ty;
 
+use crate::Env;
+use crate::Interpreter;
+use crate::RuntimeError;
 use crate::effect::{Effect, EffectHandler, Response};
 use crate::eval::{eval_expr, value_eq};
 use crate::state::{EntityRef, StateProvider};
 use crate::value::Value;
-use crate::Env;
-use crate::Interpreter;
-use crate::RuntimeError;
 
 // ── Result types ────────────────────────────────────────────────
 
@@ -554,7 +554,7 @@ mod tests {
     use ttrpg_checker::ty::Ty;
 
     use crate::state::ActiveCondition;
-    use crate::value::{effect_source_unknown, Value};
+    use crate::value::{Value, effect_source_unknown};
 
     // ── Test infrastructure ────────────────────────────────────
 

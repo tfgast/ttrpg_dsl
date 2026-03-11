@@ -4,12 +4,12 @@
 //!   cargo build --profile profiling -p ttrpg_cli --example profile_pipeline
 //!   samply record target/profiling/examples/profile_pipeline
 
-use ttrpg_ast::diagnostic::Severity;
 use ttrpg_ast::FileId;
+use ttrpg_ast::diagnostic::Severity;
+use ttrpg_interp::Interpreter;
 use ttrpg_interp::effect::{Effect, EffectHandler, Response};
 use ttrpg_interp::reference_state::GameState;
 use ttrpg_interp::value::Value;
-use ttrpg_interp::Interpreter;
 
 static OSE_COMBAT: &str = include_str!("../../../ose/ose_combat.ttrpg");
 static DND5E: &str = include_str!("../../../examples/dnd5e_expanded.ttrpg");

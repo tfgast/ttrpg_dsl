@@ -3,8 +3,8 @@
 //! Runtime early-exit coverage has moved to `tests/return.ttrpg-cli`.
 //! These Rust tests now keep only checker-only rejection cases.
 
-use ttrpg_ast::diagnostic::Severity;
 use ttrpg_ast::FileId;
+use ttrpg_ast::diagnostic::Severity;
 
 fn setup_expect_errors(source: &str) -> Vec<String> {
     let (program, parse_errors) = ttrpg_parser::parse(source, FileId::SYNTH);

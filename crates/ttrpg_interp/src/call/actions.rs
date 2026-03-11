@@ -2,12 +2,12 @@ use ttrpg_ast::ast::Arg;
 use ttrpg_ast::{Name, Span};
 use ttrpg_checker::ty::Ty;
 
+use crate::Env;
+use crate::RuntimeError;
 use crate::action::execute_action;
 use crate::eval::eval_expr;
 use crate::select_action_overload;
 use crate::value::Value;
-use crate::Env;
-use crate::RuntimeError;
 
 use super::args::bind_args;
 

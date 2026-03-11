@@ -1,11 +1,11 @@
 use std::collections::HashSet;
 
 use rustc_hash::FxHashMap;
+use ttrpg_ast::Name;
+use ttrpg_ast::Span;
 use ttrpg_ast::ast::*;
 use ttrpg_ast::diagnostic::Diagnostic;
 use ttrpg_ast::module::ModuleMap;
-use ttrpg_ast::Name;
-use ttrpg_ast::Span;
 
 use crate::builtins::register_builtins;
 use crate::env::*;

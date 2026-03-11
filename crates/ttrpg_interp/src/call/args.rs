@@ -3,10 +3,10 @@ use ttrpg_ast::{Name, Span};
 use ttrpg_checker::env::ParamInfo;
 use ttrpg_checker::ty::Ty;
 
-use crate::eval::{eval_expr, try_resolve_variant_from_hint};
-use crate::value::Value;
 use crate::Env;
 use crate::RuntimeError;
+use crate::eval::{eval_expr, try_resolve_variant_from_hint};
+use crate::value::Value;
 
 // ── Argument binding ───────────────────────────────────────────
 

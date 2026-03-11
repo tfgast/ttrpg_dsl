@@ -3,8 +3,8 @@
 //! Runtime stacking coverage has moved to `tests/stacking.ttrpg-cli`.
 //! This Rust file now keeps only pipeline coverage for the synthetic source.
 
-use ttrpg_ast::diagnostic::Severity;
 use ttrpg_ast::FileId;
+use ttrpg_ast::diagnostic::Severity;
 use ttrpg_interp::Interpreter;
 
 fn compile(source: &str) -> (ttrpg_ast::ast::Program, ttrpg_checker::CheckResult) {

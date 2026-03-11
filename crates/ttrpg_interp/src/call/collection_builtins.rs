@@ -1,10 +1,10 @@
-use ttrpg_ast::ast::Arg;
 use ttrpg_ast::Span;
+use ttrpg_ast::ast::Arg;
 
-use crate::eval::{eval_expr, type_name};
-use crate::value::Value;
 use crate::Env;
 use crate::RuntimeError;
+use crate::eval::{eval_expr, type_name};
+use crate::value::Value;
 
 // ── Collection builtins ─────────────────────────────────────────
 
@@ -472,13 +472,13 @@ fn eval_min_max(
                             return Err(RuntimeError::with_span(
                                 format!("{name}() list contains non-int: {}", type_name(other)),
                                 call_span,
-                            ))
+                            ));
                         }
                         None => {
                             return Err(RuntimeError::with_span(
                                 format!("{name}() called on empty list"),
                                 call_span,
-                            ))
+                            ));
                         }
                     };
                     let mut result = first;
@@ -489,7 +489,7 @@ fn eval_min_max(
                                 return Err(RuntimeError::with_span(
                                     format!("{name}() list contains non-int: {}", type_name(other)),
                                     call_span,
-                                ))
+                                ));
                             }
                         }
                     }

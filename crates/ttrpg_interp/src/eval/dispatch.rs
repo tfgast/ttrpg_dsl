@@ -5,11 +5,11 @@ use ttrpg_ast::ast::{ExprKind, GroupInit, StructFieldInit};
 use ttrpg_ast::{Name, Span, Spanned};
 use ttrpg_checker::env::{DeclInfo, FnKind};
 
+use crate::Env;
+use crate::RuntimeError;
 use crate::coverage::{BranchKind, BranchPoint};
 use crate::effect::{Effect, Response};
 use crate::value::{DiceExpr, Value};
-use crate::Env;
-use crate::RuntimeError;
 
 use super::access::{eval_field_access, eval_index};
 use super::compare::match_pattern;
@@ -251,7 +251,7 @@ pub(crate) fn eval_expr(env: &mut Env, expr: &Spanned<ExprKind>) -> Result<Value
                     return Err(RuntimeError::with_span(
                         "has: expected entity value",
                         entity.span,
-                    ))
+                    ));
                 }
             };
             let has = env.state.read_field(&entity_ref, group_name).is_some();
@@ -269,7 +269,7 @@ pub(crate) fn eval_expr(env: &mut Env, expr: &Spanned<ExprKind>) -> Result<Value
                     return Err(RuntimeError::with_span(
                         "is: expected entity value",
                         entity.span,
-                    ))
+                    ));
                 }
             };
             let matches = match env.state.entity_type_name(&entity_ref) {
@@ -296,7 +296,7 @@ pub(crate) fn eval_expr(env: &mut Env, expr: &Spanned<ExprKind>) -> Result<Value
                     return Err(RuntimeError::with_span(
                         format!("unit type `{unit_name}` not found"),
                         expr.span,
-                    ))
+                    ));
                 }
             };
             let mut fields = BTreeMap::new();

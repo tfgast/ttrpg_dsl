@@ -689,13 +689,10 @@ fn desugar_modify_target(
     if let ModifyTarget::Selector(predicates) = target {
         for pred in predicates {
             match pred {
-                SelectorPredicate::Returns(ref mut ty) => {
+                SelectorPredicate::Returns(ty) => {
                     desugar_type_expr(ty, current_system, aliases, module_map, diagnostics);
                 }
-                SelectorPredicate::HasParam {
-                    ty: Some(ref mut ty),
-                    ..
-                } => {
+                SelectorPredicate::HasParam { ty: Some(ty), .. } => {
                     desugar_type_expr(ty, current_system, aliases, module_map, diagnostics);
                 }
                 _ => {}
@@ -715,7 +712,7 @@ fn desugar_modify_stmts(
     for stmt in stmts {
         match stmt {
             ModifyStmt::Let { ty, .. } => {
-                if let Some(ref mut ty_expr) = ty {
+                if let Some(ty_expr) = ty {
                     desugar_type_expr(ty_expr, current_system, aliases, module_map, diagnostics);
                 }
             }
@@ -725,7 +722,7 @@ fn desugar_modify_stmts(
                 ..
             } => {
                 desugar_modify_stmts(then_body, current_system, aliases, module_map, diagnostics);
-                if let Some(ref mut else_stmts) = else_body {
+                if let Some(else_stmts) = else_body {
                     desugar_modify_stmts(
                         else_stmts,
                         current_system,
@@ -801,9 +798,7 @@ fn desugar_type_expr(
                 diagnostics,
             );
             match &mut texpr.node {
-                TypeExpr::List(ref mut inner)
-                | TypeExpr::Set(ref mut inner)
-                | TypeExpr::OptionType(ref mut inner) => {
+                TypeExpr::List(inner) | TypeExpr::Set(inner) | TypeExpr::OptionType(inner) => {
                     **inner = inner_clone;
                 }
                 _ => unreachable!(),
@@ -826,7 +821,7 @@ fn desugar_type_expr(
                 module_map,
                 diagnostics,
             );
-            if let TypeExpr::Map(ref mut k, ref mut v) = &mut texpr.node {
+            if let TypeExpr::Map(k, v) = &mut texpr.node {
                 **k = k_clone;
                 **v = v_clone;
             }
@@ -838,8 +833,8 @@ fn desugar_type_expr(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use ttrpg_ast::diagnostic::Severity;
     use ttrpg_ast::Spanned;
+    use ttrpg_ast::diagnostic::Severity;
 
     fn make_program(items: Vec<Spanned<TopLevel>>) -> Program {
         let mut p = Program {
@@ -951,9 +946,11 @@ mod tests {
             .filter(|d| d.severity == Severity::Error)
             .collect();
         assert!(!errors.is_empty(), "expected collision error");
-        assert!(errors
-            .iter()
-            .any(|d| d.message.contains("duplicate type \"Ability\"")));
+        assert!(
+            errors
+                .iter()
+                .any(|d| d.message.contains("duplicate type \"Ability\""))
+        );
     }
 
     #[test]
@@ -1044,9 +1041,11 @@ mod tests {
         }];
 
         let (_map, diags) = resolve_modules(&mut program, &file_systems);
-        assert!(diags
-            .iter()
-            .any(|d| d.message.contains("unknown system \"Unknown\"")));
+        assert!(
+            diags
+                .iter()
+                .any(|d| d.message.contains("unknown system \"Unknown\""))
+        );
     }
 
     #[test]
@@ -1067,9 +1066,11 @@ mod tests {
             .iter()
             .filter(|d| d.severity == Severity::Warning)
             .collect();
-        assert!(warnings
-            .iter()
-            .any(|d| d.message.contains("imports itself")));
+        assert!(
+            warnings
+                .iter()
+                .any(|d| d.message.contains("imports itself"))
+        );
     }
 
     #[test]
@@ -1097,9 +1098,11 @@ mod tests {
         }];
 
         let (_map, diags) = resolve_modules(&mut program, &file_systems);
-        assert!(diags
-            .iter()
-            .any(|d| d.message.contains("duplicate alias \"X\"")));
+        assert!(
+            diags
+                .iter()
+                .any(|d| d.message.contains("duplicate alias \"X\""))
+        );
     }
 
     #[test]
@@ -1158,9 +1161,10 @@ mod tests {
         }];
 
         let (_map, diags) = resolve_modules(&mut program, &file_systems);
-        assert!(diags.iter().any(|d| d
-            .message
-            .contains("alias \"Foo\" conflicts with declaration")));
+        assert!(diags.iter().any(|d| {
+            d.message
+                .contains("alias \"Foo\" conflicts with declaration")
+        }));
     }
 
     #[test]
@@ -1184,9 +1188,11 @@ mod tests {
         ];
 
         let (_map, diags) = resolve_modules(&mut program, &file_systems);
-        assert!(diags
-            .iter()
-            .any(|d| d.message.contains("no system blocks in this file")));
+        assert!(
+            diags
+                .iter()
+                .any(|d| d.message.contains("no system blocks in this file"))
+        );
     }
 
     #[test]
@@ -1239,9 +1245,11 @@ mod tests {
         }];
 
         let (_map, diags) = resolve_modules(&mut program, &file_systems);
-        assert!(diags
-            .iter()
-            .any(|d| d.message.contains("duplicate declaration `modifier`")));
+        assert!(
+            diags
+                .iter()
+                .any(|d| d.message.contains("duplicate declaration `modifier`"))
+        );
     }
 
     #[test]

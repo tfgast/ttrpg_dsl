@@ -7,10 +7,10 @@ use ttrpg_ast::{Name, Spanned};
 use ttrpg_checker::env::DeclInfo;
 use ttrpg_checker::ty::Ty;
 
+use crate::Env;
 use crate::effect::FieldPathSegment;
 use crate::state::EntityRef;
 use crate::value::Value;
-use crate::Env;
 
 use super::dispatch::eval_expr;
 

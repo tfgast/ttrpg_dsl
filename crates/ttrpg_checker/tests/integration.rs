@@ -1,7 +1,7 @@
+use ttrpg_ast::FileId;
 use ttrpg_ast::ast::DeclKind;
 use ttrpg_ast::diagnostic::SourceMap;
-use ttrpg_ast::FileId;
-use ttrpg_checker::{check, check_with_modules, CheckResult};
+use ttrpg_checker::{CheckResult, check, check_with_modules};
 
 fn check_source(source: &str) -> CheckResult {
     let (program, parse_errors) = ttrpg_parser::parse(source, FileId::SYNTH);
@@ -1954,7 +1954,9 @@ system "test" {
 "#;
     expect_errors(
         source,
-        &["is an action and can only be called from function, action, reaction, hook, or lifecycle context"],
+        &[
+            "is an action and can only be called from function, action, reaction, hook, or lifecycle context",
+        ],
     );
 }
 
@@ -4855,7 +4857,12 @@ system "test" {
     }
 }
 "#;
-    expect_errors(source, &["access to optional group `Spellcasting` on `actor` requires a `has` guard or `with` constraint"]);
+    expect_errors(
+        source,
+        &[
+            "access to optional group `Spellcasting` on `actor` requires a `has` guard or `with` constraint",
+        ],
+    );
 }
 
 #[test]
@@ -5212,7 +5219,9 @@ system "test" {
 "#;
     expect_errors(
         source,
-        &["group `CombatStats` is required on some entity types and cannot be granted on type `entity`; use a concrete entity type"],
+        &[
+            "group `CombatStats` is required on some entity types and cannot be granted on type `entity`; use a concrete entity type",
+        ],
     );
 }
 
@@ -5441,7 +5450,12 @@ system "test" {
     }
 }
 "#;
-    expect_errors(source, &["access to optional group `Spellcasting` on `caster` requires a `has` guard or `with` constraint"]);
+    expect_errors(
+        source,
+        &[
+            "access to optional group `Spellcasting` on `caster` requires a `has` guard or `with` constraint",
+        ],
+    );
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -5507,7 +5521,9 @@ system "test" {
 "#;
     expect_errors(
         source,
-        &["access to optional group `Spellcasting` on `actor.target` requires a `has` guard or `with` constraint"],
+        &[
+            "access to optional group `Spellcasting` on `actor.target` requires a `has` guard or `with` constraint",
+        ],
     );
 }
 
@@ -10589,7 +10605,9 @@ system "test" {
 "#;
     expect_errors(
         source,
-        &["is an action and can only be called from function, action, reaction, hook, or lifecycle context"],
+        &[
+            "is an action and can only be called from function, action, reaction, hook, or lifecycle context",
+        ],
     );
 }
 
@@ -10611,7 +10629,9 @@ system "test" {
 "#;
     expect_errors(
         source,
-        &["is an action and can only be called from function, action, reaction, hook, or lifecycle context"],
+        &[
+            "is an action and can only be called from function, action, reaction, hook, or lifecycle context",
+        ],
     );
 }
 
@@ -10946,7 +10966,9 @@ system "test" {
 "#;
     expect_errors(
         source,
-        &["action resolve block has type int, but actions without a return type cannot return a value"],
+        &[
+            "action resolve block has type int, but actions without a return type cannot return a value",
+        ],
     );
 }
 
@@ -11214,7 +11236,9 @@ system "test" {
 "#;
     expect_errors(
         source,
-        &["is a function and can only be called from function, action, reaction, hook, or lifecycle context"],
+        &[
+            "is a function and can only be called from function, action, reaction, hook, or lifecycle context",
+        ],
     );
 }
 
@@ -11228,7 +11252,9 @@ system "test" {
 "#;
     expect_errors(
         source,
-        &["is a function and can only be called from function, action, reaction, hook, or lifecycle context"],
+        &[
+            "is a function and can only be called from function, action, reaction, hook, or lifecycle context",
+        ],
     );
 }
 

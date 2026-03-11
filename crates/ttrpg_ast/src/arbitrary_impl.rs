@@ -6,9 +6,9 @@
 
 use arbitrary::{Arbitrary, Result, Unstructured};
 
+use crate::DiceFilter;
 use crate::ast::*;
 use crate::span::Spanned;
-use crate::DiceFilter;
 
 /// Minimum remaining bytes to allow recursive variant generation.
 const RECURSION_BUDGET: usize = 64;

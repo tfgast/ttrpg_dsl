@@ -46,7 +46,7 @@ impl Checker<'_> {
     ) -> Ty {
         match &stmt.node {
             StmtKind::Let { name, ty, value } => {
-                let bind_ty = if let Some(ref type_ann) = ty {
+                let bind_ty = if let Some(type_ann) = ty {
                     let ann_ty = self.resolve_type_validated(type_ann);
                     let val_ty = self.check_expr_expecting(value, Some(&ann_ty));
                     if !val_ty.is_error()
@@ -86,11 +86,7 @@ impl Checker<'_> {
                 } else {
                     self.check_expr(expr)
                 };
-                if is_last {
-                    ty
-                } else {
-                    Ty::Unit
-                }
+                if is_last { ty } else { Ty::Unit }
             }
             StmtKind::Grant {
                 entity,
@@ -139,7 +135,7 @@ impl Checker<'_> {
 
                 let ret_ty = self.scope.enclosing_return_type().cloned();
                 match (expr, &ret_ty) {
-                    (Some(e), Some(ref expected)) => {
+                    (Some(e), Some(expected)) => {
                         let val_ty = self.check_expr_expecting(e, Some(expected));
                         if !val_ty.is_error()
                             && !expected.is_error()

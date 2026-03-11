@@ -208,8 +208,14 @@ fn concentration_save_succeeds_keeps_spell() {
     let mut r = load_5e_concentration();
     spawn_5e(&mut r, "caster", CASTER_FIELDS);
     spawn_5e(&mut r, "ally", TARGET_FIELDS);
-    spawn_5e(&mut r, "attacker", &format!("{}, AC: 15, HP: 40, max_HP: 40",
-        "name: \"Attacker\", level: 5, abilities: { STR: 16, DEX: 12, CON: 14, INT: 8, WIS: 10, CHA: 10 }, speed: 30"));
+    spawn_5e(
+        &mut r,
+        "attacker",
+        &format!(
+            "{}, AC: 15, HP: 40, max_HP: 40",
+            "name: \"Attacker\", level: 5, abilities: { STR: 16, DEX: 12, CON: 14, INT: 8, WIS: 10, CHA: 10 }, speed: 30"
+        ),
+    );
 
     // Cast Bless
     exec(&mut r, "do CastBless(caster, [ally])");
@@ -242,8 +248,14 @@ fn concentration_save_fails_revokes_spell() {
     let mut r = load_5e_concentration();
     spawn_5e(&mut r, "caster", CASTER_FIELDS);
     spawn_5e(&mut r, "ally", TARGET_FIELDS);
-    spawn_5e(&mut r, "attacker", &format!("{}, AC: 15, HP: 40, max_HP: 40",
-        "name: \"Attacker\", level: 5, abilities: { STR: 16, DEX: 12, CON: 14, INT: 8, WIS: 10, CHA: 10 }, speed: 30"));
+    spawn_5e(
+        &mut r,
+        "attacker",
+        &format!(
+            "{}, AC: 15, HP: 40, max_HP: 40",
+            "name: \"Attacker\", level: 5, abilities: { STR: 16, DEX: 12, CON: 14, INT: 8, WIS: 10, CHA: 10 }, speed: 30"
+        ),
+    );
 
     // Cast Bless
     exec(&mut r, "do CastBless(caster, [ally])");

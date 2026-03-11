@@ -4,11 +4,11 @@ use ttrpg_ast::ast::{Arg, ExprKind};
 use ttrpg_ast::{Name, Span, Spanned};
 use ttrpg_checker::env::{DeclInfo, FnKind};
 
+use crate::Env;
+use crate::RuntimeError;
 use crate::builtins::call_builtin;
 use crate::eval::eval_expr;
 use crate::value::Value;
-use crate::Env;
-use crate::RuntimeError;
 
 use super::actions::{dispatch_action, dispatch_action_method};
 use super::args::bind_args;

@@ -6,11 +6,11 @@
 
 use rustc_hash::FxHashSet;
 
+use ttrpg_ast::Span;
+use ttrpg_ast::Spanned;
 use ttrpg_ast::ast::*;
 use ttrpg_ast::diagnostic::Diagnostic;
 use ttrpg_ast::name::Name;
-use ttrpg_ast::Span;
-use ttrpg_ast::Spanned;
 
 const VALID_OUTCOMES: &[&str] = &["strong_hit", "weak_hit", "miss"];
 
@@ -359,8 +359,8 @@ mod tests {
 
     #[test]
     fn existing_names_includes_tables_and_hooks() {
-        use ttrpg_ast::ast::*;
         use ttrpg_ast::Spanned;
+        use ttrpg_ast::ast::*;
 
         let dummy_span = ttrpg_ast::Span::dummy();
 

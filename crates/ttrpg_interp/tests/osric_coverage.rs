@@ -8,8 +8,8 @@ use std::cell::RefCell;
 use std::rc::Rc;
 
 use ttrpg_ast::diagnostic::MultiSourceMap;
-use ttrpg_interp::coverage::{self, CoverageData, CoverageSource};
 use ttrpg_interp::Interpreter;
+use ttrpg_interp::coverage::{self, CoverageData, CoverageSource};
 
 mod osric_common;
 use osric_common::*;

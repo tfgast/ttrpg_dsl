@@ -3,8 +3,8 @@
 //! Runtime prompt/default coverage has moved to `tests/prompt_default.ttrpg-cli`.
 //! This Rust test keeps only the checker-only type validation.
 
-use ttrpg_ast::diagnostic::Severity;
 use ttrpg_ast::FileId;
+use ttrpg_ast::diagnostic::Severity;
 
 fn compile_expect_errors(source: &str) -> Vec<String> {
     let (program, parse_errors) = ttrpg_parser::parse(source, FileId::SYNTH);

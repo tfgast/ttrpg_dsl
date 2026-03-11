@@ -7,10 +7,10 @@
 use std::collections::BTreeMap;
 
 use ttrpg_ast::diagnostic::Severity;
+use ttrpg_interp::Interpreter;
 use ttrpg_interp::effect::{Effect, EffectHandler, Response};
 use ttrpg_interp::reference_state::GameState;
 use ttrpg_interp::value::Value;
-use ttrpg_interp::Interpreter;
 
 struct NoopHandler;
 impl EffectHandler for NoopHandler {

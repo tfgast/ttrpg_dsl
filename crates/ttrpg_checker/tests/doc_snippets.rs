@@ -8,8 +8,8 @@
 //! - `doc/few_shot_examples.ttrpg`: full file must parse, lower, and type-check
 //!   with zero errors.
 
-use ttrpg_ast::diagnostic::{Severity, SourceMap};
 use ttrpg_ast::FileId;
+use ttrpg_ast::diagnostic::{Severity, SourceMap};
 
 static AI_AUTHORING_MD: &str = include_str!("../../../doc/ai_authoring.md");
 static FEW_SHOT_TTRPG: &str = include_str!("../../../doc/few_shot_examples.ttrpg");

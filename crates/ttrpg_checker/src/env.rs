@@ -3,11 +3,11 @@ use std::collections::{HashMap, HashSet};
 use rustc_hash::{FxHashMap, FxHashSet};
 
 use crate::ty::Ty;
-use ttrpg_ast::ast::{ModifyClauseId, TypeExpr};
-use ttrpg_ast::diagnostic::Diagnostic;
 use ttrpg_ast::Name;
 use ttrpg_ast::Span;
 use ttrpg_ast::Spanned;
+use ttrpg_ast::ast::{ModifyClauseId, TypeExpr};
+use ttrpg_ast::diagnostic::Diagnostic;
 
 /// What kind of declaration a type name refers to.
 #[derive(Debug, Clone)]

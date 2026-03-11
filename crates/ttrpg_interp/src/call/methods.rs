@@ -1,11 +1,11 @@
-use ttrpg_ast::ast::Arg;
 use ttrpg_ast::Span;
+use ttrpg_ast::ast::Arg;
 
+use crate::Env;
+use crate::RuntimeError;
 use crate::effect::{Effect, Response};
 use crate::eval::{eval_expr, type_name};
 use crate::value::{DiceExpr, Value};
-use crate::Env;
-use crate::RuntimeError;
 
 // ── Method dispatch ─────────────────────────────────────────────
 
@@ -38,19 +38,20 @@ fn eval_option_method(
     span: Span,
 ) -> Result<Value, RuntimeError> {
     match method {
-        "unwrap" => {
-            match value {
-                Value::Option(Some(inner)) => Ok(*inner),
-                Value::Option(None) | Value::Void => Err(RuntimeError::with_span(
-                    "called unwrap() on a none value",
-                    span,
-                )),
-                _ => unreachable!(),
-            }
-        }
+        "unwrap" => match value {
+            Value::Option(Some(inner)) => Ok(*inner),
+            Value::Option(None) | Value::Void => Err(RuntimeError::with_span(
+                "called unwrap() on a none value",
+                span,
+            )),
+            _ => unreachable!(),
+        },
         "unwrap_or" => {
             if args.is_empty() {
-                return Err(RuntimeError::with_span("unwrap_or() requires 1 argument", span));
+                return Err(RuntimeError::with_span(
+                    "unwrap_or() requires 1 argument",
+                    span,
+                ));
             }
             let default_val = eval_expr(env, &args[0].value)?;
             match value {
@@ -59,20 +60,16 @@ fn eval_option_method(
                 _ => unreachable!(),
             }
         }
-        "is_some" => {
-            match value {
-                Value::Option(Some(_)) => Ok(Value::Bool(true)),
-                Value::Option(None) | Value::Void => Ok(Value::Bool(false)),
-                _ => unreachable!(),
-            }
-        }
-        "is_none" => {
-            match value {
-                Value::Option(None) | Value::Void => Ok(Value::Bool(true)),
-                Value::Option(Some(_)) => Ok(Value::Bool(false)),
-                _ => unreachable!(),
-            }
-        }
+        "is_some" => match value {
+            Value::Option(Some(_)) => Ok(Value::Bool(true)),
+            Value::Option(None) | Value::Void => Ok(Value::Bool(false)),
+            _ => unreachable!(),
+        },
+        "is_none" => match value {
+            Value::Option(None) | Value::Void => Ok(Value::Bool(true)),
+            Value::Option(Some(_)) => Ok(Value::Bool(false)),
+            _ => unreachable!(),
+        },
         _ => Err(RuntimeError::with_span(
             format!(
                 "option type has no method `{method}`; available methods: unwrap, unwrap_or, is_some, is_none"
@@ -94,9 +91,13 @@ fn eval_list_method(
     };
     match method {
         "len" => Ok(Value::Int(list.len() as i64)),
-        "first" => Ok(list.into_iter().next()
+        "first" => Ok(list
+            .into_iter()
+            .next()
             .map_or(Value::Option(None), |v| Value::Option(Some(Box::new(v))))),
-        "last" => Ok(list.into_iter().next_back()
+        "last" => Ok(list
+            .into_iter()
+            .next_back()
             .map_or(Value::Option(None), |v| Value::Option(Some(Box::new(v))))),
         "reverse" => {
             let mut v = list;
@@ -105,7 +106,10 @@ fn eval_list_method(
         }
         "append" => {
             if args.is_empty() {
-                return Err(RuntimeError::with_span("append() requires 1 argument", span));
+                return Err(RuntimeError::with_span(
+                    "append() requires 1 argument",
+                    span,
+                ));
             }
             let elem = eval_expr(env, &args[0].value)?;
             let mut v = list;
@@ -114,7 +118,10 @@ fn eval_list_method(
         }
         "concat" => {
             if args.is_empty() {
-                return Err(RuntimeError::with_span("concat() requires 1 argument", span));
+                return Err(RuntimeError::with_span(
+                    "concat() requires 1 argument",
+                    span,
+                ));
             }
             let other = eval_expr(env, &args[0].value)?;
             match other {
@@ -124,7 +131,10 @@ fn eval_list_method(
                     Ok(Value::List(v))
                 }
                 _ => Err(RuntimeError::with_span(
-                    format!("concat() argument must be a list, got {}", type_name(&other)),
+                    format!(
+                        "concat() argument must be a list, got {}",
+                        type_name(&other)
+                    ),
                     span,
                 )),
             }
@@ -143,26 +153,33 @@ fn eval_list_method(
                             float_sum += *n as f64;
                         } else {
                             int_sum = int_sum.checked_add(*n).ok_or_else(|| {
-                                RuntimeError::with_span(
-                                    "integer overflow in sum()",
-                                    span,
-                                )
+                                RuntimeError::with_span("integer overflow in sum()", span)
                             })?;
                         }
                     }
                     Value::Float(f) => {
-                        if !is_float { is_float = true; float_sum = int_sum as f64; }
+                        if !is_float {
+                            is_float = true;
+                            float_sum = int_sum as f64;
+                        }
                         float_sum += f;
                     }
                     _ => {
                         return Err(RuntimeError::with_span(
-                            format!("sum() requires list of int or float, got {}", type_name(item)),
+                            format!(
+                                "sum() requires list of int or float, got {}",
+                                type_name(item)
+                            ),
                             span,
                         ));
                     }
                 }
             }
-            if is_float { Ok(Value::Float(float_sum)) } else { Ok(Value::Int(int_sum)) }
+            if is_float {
+                Ok(Value::Float(float_sum))
+            } else {
+                Ok(Value::Int(int_sum))
+            }
         }
         "any" => {
             for item in &list {
@@ -206,27 +223,33 @@ fn eval_list_method(
             let n_val = eval_expr(env, &args[0].value)?;
             let n = match &n_val {
                 Value::Int(i) => (*i).max(0) as usize,
-                _ => return Err(RuntimeError::with_span(
-                    format!("take() expects int argument, got {}", type_name(&n_val)),
-                    span,
-                )),
+                _ => {
+                    return Err(RuntimeError::with_span(
+                        format!("take() expects int argument, got {}", type_name(&n_val)),
+                        span,
+                    ));
+                }
             };
             let n = n.min(list.len());
             Ok(Value::List(list.into_iter().take(n).collect()))
         }
-        "to_set" => {
-            Ok(Value::Set(list.into_iter().collect()))
-        }
+        "to_set" => Ok(Value::Set(list.into_iter().collect())),
         "contains" => {
             if args.is_empty() {
-                return Err(RuntimeError::with_span("contains() requires 1 argument", span));
+                return Err(RuntimeError::with_span(
+                    "contains() requires 1 argument",
+                    span,
+                ));
             }
             let elem = eval_expr(env, &args[0].value)?;
             Ok(Value::Bool(list.contains(&elem)))
         }
         "remove_first" => {
             if args.is_empty() {
-                return Err(RuntimeError::with_span("remove_first() requires 1 argument", span));
+                return Err(RuntimeError::with_span(
+                    "remove_first() requires 1 argument",
+                    span,
+                ));
             }
             let elem = eval_expr(env, &args[0].value)?;
             let mut v = list;
@@ -267,7 +290,10 @@ fn eval_set_method(
         }
         "remove" => {
             if args.is_empty() {
-                return Err(RuntimeError::with_span("remove() requires 1 argument", span));
+                return Err(RuntimeError::with_span(
+                    "remove() requires 1 argument",
+                    span,
+                ));
             }
             let elem = eval_expr(env, &args[0].value)?;
             let mut new_set = set;

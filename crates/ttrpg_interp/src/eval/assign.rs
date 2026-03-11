@@ -1,11 +1,11 @@
 use ttrpg_ast::ast::{AssignOp, ExprKind, LValue, LValueSegment};
 use ttrpg_ast::{Name, Spanned};
 
+use crate::Env;
+use crate::RuntimeError;
 use crate::effect::{Effect, FieldPathSegment};
 use crate::state::{EntityRef, StateProvider};
 use crate::value::Value;
-use crate::Env;
-use crate::RuntimeError;
 
 use super::compare::value_eq;
 use super::dispatch::eval_expr;
@@ -135,7 +135,7 @@ fn eval_assign_direct(
 /// If the first path segment is a flattened included-group field, insert the
 /// group name as a prefix so the mutation targets the correct nested struct.
 fn expand_flattened_path(env: &Env, entity: &EntityRef, path: &mut Vec<FieldPathSegment>) {
-    if let Some(FieldPathSegment::Field(ref field_name)) = path.first() {
+    if let Some(FieldPathSegment::Field(field_name)) = path.first() {
         if let Some(entity_type) = env.state.entity_type_name(entity) {
             if let Some(group_name) = env
                 .interp

@@ -450,7 +450,7 @@ impl Parser {
     pub(crate) fn is_decl_start(&self) -> bool {
         matches!(
             self.peek(),
-            TokenKind::Ident(ref s) if matches!(
+            TokenKind::Ident(s) if matches!(
                 &**s,
                 "enum" | "struct" | "entity" | "function" | "derive" | "mechanic"
                 | "action" | "reaction" | "condition" | "prompt"

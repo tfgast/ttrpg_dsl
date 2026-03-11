@@ -1,6 +1,6 @@
 use std::collections::{BTreeMap, BTreeSet};
-use ttrpg_ast::ast::AssignOp;
 use ttrpg_ast::Name;
+use ttrpg_ast::ast::AssignOp;
 use ttrpg_checker::ty::Ty;
 
 use crate::state::{EntityRef, InvocationId, Presence};

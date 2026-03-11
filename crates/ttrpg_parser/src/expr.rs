@@ -1,6 +1,6 @@
 use crate::parser::Parser;
-use ttrpg_ast::ast::*;
 use ttrpg_ast::Spanned;
+use ttrpg_ast::ast::*;
 use ttrpg_lexer::TokenKind;
 
 impl Parser {

@@ -5,12 +5,12 @@
 
 use std::collections::{BTreeMap, HashMap};
 
-use ttrpg_ast::diagnostic::Severity;
 use ttrpg_ast::FileId;
+use ttrpg_ast::diagnostic::Severity;
+use ttrpg_interp::Interpreter;
 use ttrpg_interp::effect::{Effect, EffectHandler, Response};
 use ttrpg_interp::state::{ActiveCondition, EntityRef, StateProvider};
 use ttrpg_interp::value::Value;
-use ttrpg_interp::Interpreter;
 
 // ── Setup ──────────────────────────────────────────────────────
 

@@ -262,8 +262,8 @@ impl Runner {
                         let gs = self.game_state.borrow();
                         if gs.read_field(&entity, group_name).is_none() {
                             return Err(CliError::Message(format!(
-                                    "{handle}.{field} included group '{group_name}' is missing in state"
-                                )));
+                                "{handle}.{field} included group '{group_name}' is missing in state"
+                            )));
                         }
                     }
 

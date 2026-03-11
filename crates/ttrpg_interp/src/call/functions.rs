@@ -2,14 +2,14 @@ use ttrpg_ast::ast::Arg;
 use ttrpg_ast::{Name, Span, Spanned};
 use ttrpg_checker::env::ParamInfo;
 
+use crate::Env;
+use crate::RuntimeError;
 use crate::effect::{Effect, Response};
 use crate::eval::{eval_block, eval_expr};
 use crate::pipeline::{
     collect_modifiers_owned, emit_modify_applied_events, run_phase1, run_phase2,
 };
-use crate::value::{value_matches_ty, value_type_display, Value};
-use crate::Env;
-use crate::RuntimeError;
+use crate::value::{Value, value_matches_ty, value_type_display};
 
 use super::args::bind_args;
 

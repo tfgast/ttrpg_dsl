@@ -17,14 +17,14 @@
 use std::collections::BTreeMap;
 
 use rustc_hash::FxHashMap;
-use ttrpg_ast::diagnostic::Severity;
 use ttrpg_ast::FileId;
+use ttrpg_ast::diagnostic::Severity;
+use ttrpg_interp::Interpreter;
 use ttrpg_interp::adapter::StateAdapter;
 use ttrpg_interp::effect::{Effect, EffectHandler, Response};
 use ttrpg_interp::reference_state::GameState;
 use ttrpg_interp::state::StateProvider;
 use ttrpg_interp::value::Value;
-use ttrpg_interp::Interpreter;
 
 // ── Setup ──────────────────────────────────────────────────────
 

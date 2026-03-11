@@ -4,14 +4,14 @@
 //! Each benchmark isolates a single pipeline stage so regressions are
 //! immediately attributable.
 
-use criterion::{black_box, criterion_group, criterion_main, Criterion};
+use criterion::{Criterion, black_box, criterion_group, criterion_main};
 
-use ttrpg_ast::diagnostic::Severity;
 use ttrpg_ast::FileId;
+use ttrpg_ast::diagnostic::Severity;
+use ttrpg_interp::Interpreter;
 use ttrpg_interp::effect::{Effect, EffectHandler, Response};
 use ttrpg_interp::reference_state::GameState;
 use ttrpg_interp::value::Value;
-use ttrpg_interp::Interpreter;
 use ttrpg_lexer::Lexer;
 
 static SOURCE: &str = include_str!("../../../ose/ose_combat.ttrpg");
@@ -79,10 +79,12 @@ fn bench_check(c: &mut Criterion) {
     c.bench_function("check_ose_combat", |b| {
         b.iter(|| {
             let result = check(black_box(&program));
-            assert!(result
-                .diagnostics
-                .iter()
-                .all(|d| d.severity != Severity::Error));
+            assert!(
+                result
+                    .diagnostics
+                    .iter()
+                    .all(|d| d.severity != Severity::Error)
+            );
             black_box(result);
         });
     });
@@ -122,10 +124,12 @@ fn bench_full_pipeline(c: &mut Criterion) {
 
             // check
             let result = check(&program);
-            assert!(result
-                .diagnostics
-                .iter()
-                .all(|d| d.severity != Severity::Error));
+            assert!(
+                result
+                    .diagnostics
+                    .iter()
+                    .all(|d| d.severity != Severity::Error)
+            );
 
             // interpret a derive
             let interp = Interpreter::new(&program, &result.env).unwrap();

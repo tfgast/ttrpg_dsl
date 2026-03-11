@@ -3,9 +3,9 @@ use ttrpg_ast::ast::PatternKind;
 use ttrpg_ast::{Name, Spanned};
 use ttrpg_checker::env::DeclInfo;
 
+use crate::Env;
 use crate::state::StateProvider;
 use crate::value::Value;
-use crate::Env;
 
 // ── Exact cross-type int/float helpers ─────────────────────────
 

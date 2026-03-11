@@ -1,7 +1,7 @@
 use std::collections::HashSet;
 
-use ttrpg_ast::ast::*;
 use ttrpg_ast::Name;
+use ttrpg_ast::ast::*;
 
 use crate::check::Checker;
 use crate::check_call::CallKind;

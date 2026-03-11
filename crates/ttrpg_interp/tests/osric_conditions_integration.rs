@@ -8,8 +8,8 @@
 use std::collections::BTreeMap;
 
 use rustc_hash::FxHashMap;
-use ttrpg_ast::ast::{DeclKind, TopLevel};
 use ttrpg_ast::Name;
+use ttrpg_ast::ast::{DeclKind, TopLevel};
 use ttrpg_interp::reference_state::GameState;
 use ttrpg_interp::state::{ConditionArgs, StateProvider, WritableState};
 use ttrpg_interp::value::Value;

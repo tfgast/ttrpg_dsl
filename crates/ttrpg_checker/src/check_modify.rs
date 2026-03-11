@@ -1,8 +1,8 @@
 use std::collections::{HashMap, HashSet};
 
-use ttrpg_ast::ast::*;
 use ttrpg_ast::Name;
 use ttrpg_ast::Spanned;
+use ttrpg_ast::ast::*;
 
 use crate::check::{Checker, Namespace};
 use crate::env::*;
@@ -264,7 +264,7 @@ impl Checker<'_> {
                 value,
                 span: _,
             } => {
-                let bind_ty = if let Some(ref type_ann) = ty {
+                let bind_ty = if let Some(type_ann) = ty {
                     let ann_ty = self.resolve_type_validated(type_ann);
                     let val_ty = self.check_expr_expecting(value, Some(&ann_ty));
                     if !val_ty.is_error()
@@ -755,7 +755,7 @@ impl Checker<'_> {
                 value,
                 span: _,
             } => {
-                let bind_ty = if let Some(ref type_ann) = ty {
+                let bind_ty = if let Some(type_ann) = ty {
                     let ann_ty = self.resolve_type_validated(type_ann);
                     let val_ty = self.check_expr_expecting(value, Some(&ann_ty));
                     if !val_ty.is_error()

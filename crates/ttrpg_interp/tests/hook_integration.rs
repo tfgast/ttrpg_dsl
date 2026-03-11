@@ -6,12 +6,12 @@
 
 use std::collections::{BTreeMap, HashMap, VecDeque};
 
-use ttrpg_ast::diagnostic::Severity;
 use ttrpg_ast::FileId;
+use ttrpg_ast::diagnostic::Severity;
+use ttrpg_interp::Interpreter;
 use ttrpg_interp::effect::{Effect, EffectHandler, Response};
 use ttrpg_interp::state::{ActiveCondition, EntityRef, StateProvider};
 use ttrpg_interp::value::Value;
-use ttrpg_interp::Interpreter;
 
 // ── Setup ──────────────────────────────────────────────────────
 
@@ -186,10 +186,12 @@ system "test" {
     assert_eq!(val, Value::Void);
 
     // Verify no DeductCost
-    assert!(!handler
-        .log
-        .iter()
-        .any(|e| matches!(e, Effect::DeductCost { .. })));
+    assert!(
+        !handler
+            .log
+            .iter()
+            .any(|e| matches!(e, Effect::DeductCost { .. }))
+    );
     // ActionStarted + MutateField + ActionCompleted (no DeductCost)
     assert_eq!(handler.log.len(), 3);
 }

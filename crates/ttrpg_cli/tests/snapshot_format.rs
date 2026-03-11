@@ -7,7 +7,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use ttrpg_ast::DiceFilter;
-use ttrpg_cli::format::{format_value, UnitSuffixes};
+use ttrpg_cli::format::{UnitSuffixes, format_value};
 use ttrpg_interp::state::EntityRef;
 use ttrpg_interp::value::{DiceExpr, RollResult, Value};
 

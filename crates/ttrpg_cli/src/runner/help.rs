@@ -16,10 +16,7 @@ const COMMANDS: &[CommandInfo] = &[
         syntax: "load <path...>",
         description: "Load source files",
         detail: "Parse, lower, check, and build interpreter from one or more source files.\n  Glob patterns are supported. Clears previous program state.",
-        examples: &[
-            "load game.ttrpg",
-            "load spec/v0/*.ttrpg",
-        ],
+        examples: &["load game.ttrpg", "load spec/v0/*.ttrpg"],
         category: "Pipeline",
     },
     CommandInfo {
@@ -38,11 +35,7 @@ const COMMANDS: &[CommandInfo] = &[
         syntax: "eval <expr>",
         description: "Evaluate a DSL expression",
         detail: "Evaluate an expression in the current program context.\n  Spawned entity handles are available as variables.",
-        examples: &[
-            "eval 2 + 3",
-            "eval floor((16 - 10) / 2)",
-            "eval fighter.HP",
-        ],
+        examples: &["eval 2 + 3", "eval floor((16 - 10) / 2)", "eval fighter.HP"],
         category: "Pipeline",
     },
     CommandInfo {
@@ -197,10 +190,7 @@ const COMMANDS: &[CommandInfo] = &[
         syntax: "entity <name>",
         description: "Show entity type declaration",
         detail: "Display an entity type's fields, optional groups, and defaults.\n  Shows the type declaration, not a runtime instance (use 'inspect' for that).",
-        examples: &[
-            "entity Character",
-            "entity Monster",
-        ],
+        examples: &["entity Character", "entity Monster"],
         category: "Inspection",
     },
     CommandInfo {
@@ -298,10 +288,7 @@ const COMMANDS: &[CommandInfo] = &[
         syntax: "assert <expr>",
         description: "Verify expression is true",
         detail: "Evaluate an expression and fail if it is not true.",
-        examples: &[
-            "assert fighter.HP > 0",
-            "assert 2 + 3 == 5",
-        ],
+        examples: &["assert fighter.HP > 0", "assert 2 + 3 == 5"],
         category: "Testing",
     },
     CommandInfo {
@@ -309,10 +296,7 @@ const COMMANDS: &[CommandInfo] = &[
         syntax: "assert_eq <expr>, <expr>",
         description: "Verify two expressions are equal",
         detail: "Evaluate two comma-separated expressions and fail if they differ.",
-        examples: &[
-            "assert_eq fighter.HP, 30",
-            "assert_eq modifier(16), 3",
-        ],
+        examples: &["assert_eq fighter.HP, 30", "assert_eq modifier(16), 3"],
         category: "Testing",
     },
     CommandInfo {
@@ -342,10 +326,7 @@ const COMMANDS: &[CommandInfo] = &[
         syntax: "assert_err <command>",
         description: "Verify a command errors",
         detail: "Run a command and fail if it does not produce an error.\n  The command's error is suppressed on success.",
-        examples: &[
-            "assert_err destroy nonexistent",
-            "assert_err eval 1 + true",
-        ],
+        examples: &["assert_err destroy nonexistent", "assert_err eval 1 + true"],
         category: "Testing",
     },
     CommandInfo {
@@ -384,10 +365,7 @@ const COMMANDS: &[CommandInfo] = &[
         syntax: "rolls <v1 v2 ...> | clear",
         description: "Queue predetermined roll results",
         detail: "Queue specific values for upcoming dice rolls, consumed in order.\n  Use 'rolls clear' to empty the queue. RNG resumes after queue empties.",
-        examples: &[
-            "rolls 18 5 12",
-            "rolls clear",
-        ],
+        examples: &["rolls 18 5 12", "rolls clear"],
         category: "Dice Control",
     },
     CommandInfo {
@@ -447,9 +425,7 @@ const COMMANDS: &[CommandInfo] = &[
         syntax: "zone_sync",
         description: "Recompute zone membership and emit events",
         detail: "Scan all positioned entities and active zones, compute membership\n  diffs from last sync, and emit ZoneExited/ZoneEntered events in\n  protocol order (zone ID, target ID, exits before enters).\n  Uses Chebyshev distance for Radius/Sphere shapes (5ft grid scale).\n  Wall/Line/Glyph shapes are not evaluated.",
-        examples: &[
-            "zone_sync",
-        ],
+        examples: &["zone_sync"],
         category: "Host Simulation",
     },
     // Help
@@ -458,10 +434,7 @@ const COMMANDS: &[CommandInfo] = &[
         syntax: "help [<command>]",
         description: "Show this help",
         detail: "Show a summary of all commands, or detailed help for a specific command.",
-        examples: &[
-            "help",
-            "help spawn",
-        ],
+        examples: &["help", "help spawn"],
         category: "Help",
     },
 ];

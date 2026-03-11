@@ -1,10 +1,10 @@
 use std::collections::HashSet;
 
+use ttrpg_ast::Span;
 use ttrpg_ast::ast::{
     ActionDecl, Block, DeclKind, HookDecl, Program, ReactionDecl, StmtKind, TopLevel,
 };
 use ttrpg_ast::span::FileId;
-use ttrpg_ast::Span;
 
 // ── Core data types ────────────────────────────────────────────
 

@@ -4,10 +4,10 @@ use ttrpg_ast::ast::{BinOp, ExprKind, UnaryOp};
 use ttrpg_ast::{Name, Spanned};
 use ttrpg_checker::env::DeclInfo;
 
-use crate::state::StateProvider;
-use crate::value::{DiceExpr, Value};
 use crate::Env;
 use crate::RuntimeError;
+use crate::state::StateProvider;
+use crate::value::{DiceExpr, Value};
 
 use super::compare::{int_float_cmp, value_eq};
 use super::dispatch::eval_expr;

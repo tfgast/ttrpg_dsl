@@ -4,9 +4,9 @@ use ttrpg_ast::ast::{Arg, Param};
 use ttrpg_ast::{Name, Span};
 use ttrpg_checker::env::{DeclInfo, ParamInfo};
 
-use crate::value::Value;
 use crate::Env;
 use crate::RuntimeError;
+use crate::value::Value;
 
 use super::args::bind_args;
 

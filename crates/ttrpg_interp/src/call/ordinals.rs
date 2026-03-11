@@ -1,13 +1,13 @@
 use std::collections::BTreeMap;
 
-use ttrpg_ast::ast::Arg;
 use ttrpg_ast::Span;
+use ttrpg_ast::ast::Arg;
 use ttrpg_checker::env::DeclInfo;
 
-use crate::eval::{eval_expr, type_name, variant_ordinal};
-use crate::value::Value;
 use crate::Env;
 use crate::RuntimeError;
+use crate::eval::{eval_expr, type_name, variant_ordinal};
+use crate::value::Value;
 
 // ── ordinal / from_ordinal builtins ────────────────────────────
 

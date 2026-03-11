@@ -3,12 +3,12 @@
 //! Tests the full pipeline: parse → lower → check → interpret, verifying
 //! that enum variants can have fields with default values.
 
-use ttrpg_ast::diagnostic::Severity;
 use ttrpg_ast::FileId;
+use ttrpg_ast::diagnostic::Severity;
+use ttrpg_interp::Interpreter;
 use ttrpg_interp::effect::{Effect, EffectHandler, Response};
 use ttrpg_interp::reference_state::GameState;
 use ttrpg_interp::value::Value;
-use ttrpg_interp::Interpreter;
 
 // ── Setup ──────────────────────────────────────────────────────
 

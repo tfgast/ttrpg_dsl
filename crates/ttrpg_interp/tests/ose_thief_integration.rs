@@ -5,9 +5,9 @@
 //!
 //! Runtime derive/mechanic tests have been moved to ose/tests/ose_thief.ttrpg-cli.
 
+use ttrpg_ast::FileId;
 use ttrpg_ast::ast::{DeclKind, TopLevel};
 use ttrpg_ast::diagnostic::Severity;
-use ttrpg_ast::FileId;
 
 // ── Setup ──────────────────────────────────────────────────────
 

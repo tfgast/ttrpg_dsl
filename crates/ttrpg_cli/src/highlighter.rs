@@ -1,8 +1,8 @@
 use nu_ansi_term::{Color, Style};
 use reedline::{Highlighter, StyledText};
 use ttrpg_ast::FileId;
-use ttrpg_lexer::token::TokenKind;
 use ttrpg_lexer::RawLexer;
+use ttrpg_lexer::token::TokenKind;
 
 /// CLI command names that get special highlighting.
 const CLI_COMMANDS: &[&str] = &[

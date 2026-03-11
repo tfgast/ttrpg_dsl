@@ -2,10 +2,10 @@ use std::sync::{Arc, Mutex};
 
 use nu_ansi_term::{Color, Style};
 use reedline::{
-    default_emacs_keybindings, default_vi_insert_keybindings, default_vi_normal_keybindings,
     ColumnarMenu, DefaultHinter, EditMode, Emacs, FileBackedHistory, KeyCode, KeyModifiers,
     Keybindings, MenuBuilder, Prompt, PromptEditMode, PromptHistorySearch,
     PromptHistorySearchStatus, Reedline, ReedlineEvent, ReedlineMenu, Signal, Vi,
+    default_emacs_keybindings, default_vi_insert_keybindings, default_vi_normal_keybindings,
 };
 
 use crate::completer::{CompletionContext, TtrpgCompleter};

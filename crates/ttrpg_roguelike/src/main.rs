@@ -6,17 +6,17 @@ use std::collections::BTreeMap;
 use std::io;
 
 use crossterm::event::{self, Event, KeyCode, KeyEventKind};
-use rand::rngs::StdRng;
 use rand::SeedableRng;
+use rand::rngs::StdRng;
 use ttrpg_ast::Name;
+use ttrpg_interp::Interpreter;
 use ttrpg_interp::adapter::StateAdapter;
 use ttrpg_interp::reference_state::GameState;
 use ttrpg_interp::state::EntityRef;
 use ttrpg_interp::value::{DiceExpr, Value};
-use ttrpg_interp::Interpreter;
 
 use crate::map::{EntityDisplay, Map};
-use crate::state::{read_hp, read_name, read_position, spawn_creature, RoguelikeHandler};
+use crate::state::{RoguelikeHandler, read_hp, read_name, read_position, spawn_creature};
 
 // ── Game state ──────────────────────────────────────────────────
 

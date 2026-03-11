@@ -7,12 +7,12 @@ use ttrpg_ast::ast::{
 use ttrpg_ast::{Name, Span};
 use ttrpg_checker::env::FnInfo;
 
+use crate::RuntimeError;
 use crate::effect::{Effect, FieldChange, ModifySource, Phase, Response};
 use crate::eval::{eval_expr, value_eq};
 use crate::state::ActiveCondition;
 use crate::value::Value;
-use crate::RuntimeError;
-use crate::{action, event, Env, MAX_EMIT_DEPTH};
+use crate::{Env, MAX_EMIT_DEPTH, action, event};
 
 // ── Supporting types ────────────────────────────────────────────
 
@@ -600,8 +600,7 @@ pub(crate) fn run_phase1(
         env.push_scope();
 
         // Bind receiver if condition modifier
-        if let (Some(ref bearer), Some(ref recv_name)) = (&modifier.bearer, &modifier.receiver_name)
-        {
+        if let (Some(bearer), Some(recv_name)) = (&modifier.bearer, &modifier.receiver_name) {
             env.bind(recv_name.clone(), bearer.clone());
         }
 
@@ -675,8 +674,7 @@ pub(crate) fn run_phase2(
         env.push_scope();
 
         // Bind receiver if condition modifier
-        if let (Some(ref bearer), Some(ref recv_name)) = (&modifier.bearer, &modifier.receiver_name)
-        {
+        if let (Some(bearer), Some(recv_name)) = (&modifier.bearer, &modifier.receiver_name) {
             env.bind(recv_name.clone(), bearer.clone());
         }
 
@@ -820,7 +818,7 @@ fn exec_modify_stmts_phase2(
                     Value::Struct { fields, .. } => {
                         fields.insert(field.clone(), val);
                     }
-                    Value::RollResult(ref mut rr) => match field.as_str() {
+                    Value::RollResult(rr) => match field.as_str() {
                         "total" => {
                             if let Value::Int(n) = val {
                                 rr.total = n;
@@ -1127,10 +1125,10 @@ mod tests {
     use ttrpg_checker::env::{ConditionInfo, FnInfo, FnKind, ParamInfo, TypeEnv};
     use ttrpg_checker::ty::Ty;
 
+    use crate::Interpreter;
     use crate::effect::{Effect, EffectHandler, Response};
     use crate::state::{ActiveCondition, EntityRef, StateProvider};
-    use crate::value::{effect_source_unknown, Value};
-    use crate::Interpreter;
+    use crate::value::{Value, effect_source_unknown};
 
     // ── Test infrastructure ────────────────────────────────────
 

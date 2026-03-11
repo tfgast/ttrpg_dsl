@@ -667,7 +667,7 @@ mod tests {
 
     use crate::effect::{ActionKind, Effect, Response};
     use crate::state::ActiveCondition;
-    use crate::value::{effect_source_unknown, DiceExpr, RollResult};
+    use crate::value::{DiceExpr, RollResult, effect_source_unknown};
 
     // ── Test infrastructure ────────────────────────────────────
 
@@ -1108,10 +1108,12 @@ system "test" {
             Effect::RequiresCheck { passed: false, .. }
         ));
         // No mutation effects
-        assert!(!handler
-            .log
-            .iter()
-            .any(|e| matches!(e, Effect::MutateField { .. })));
+        assert!(
+            !handler
+                .log
+                .iter()
+                .any(|e| matches!(e, Effect::MutateField { .. }))
+        );
     }
 
     // ── End-to-end: derive with modify pipeline ──
@@ -1167,10 +1169,12 @@ system "test" {
         assert_eq!(val, Value::Int(20));
 
         // Should have ModifyApplied effects
-        assert!(handler
-            .log
-            .iter()
-            .any(|e| matches!(e, Effect::ModifyApplied { .. })));
+        assert!(
+            handler
+                .log
+                .iter()
+                .any(|e| matches!(e, Effect::ModifyApplied { .. }))
+        );
     }
 
     #[test]
@@ -1581,15 +1585,19 @@ system "test" {
         assert_eq!(val, Value::Void); // resolve block ends with if-then (assignment)
 
         // Verify RollDice was emitted
-        assert!(handler
-            .log
-            .iter()
-            .any(|e| matches!(e, Effect::RollDice { .. })));
+        assert!(
+            handler
+                .log
+                .iter()
+                .any(|e| matches!(e, Effect::RollDice { .. }))
+        );
         // Verify MutateField was emitted (HP damage)
-        assert!(handler
-            .log
-            .iter()
-            .any(|e| matches!(e, Effect::MutateField { .. })));
+        assert!(
+            handler
+                .log
+                .iter()
+                .any(|e| matches!(e, Effect::MutateField { .. }))
+        );
     }
 
     #[test]
@@ -1659,10 +1667,12 @@ system "test" {
             .unwrap();
 
         // No MutateField — attack missed
-        assert!(!handler
-            .log
-            .iter()
-            .any(|e| matches!(e, Effect::MutateField { .. })));
+        assert!(
+            !handler
+                .log
+                .iter()
+                .any(|e| matches!(e, Effect::MutateField { .. }))
+        );
     }
 
     #[test]

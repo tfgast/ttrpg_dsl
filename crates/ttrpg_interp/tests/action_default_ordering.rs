@@ -5,10 +5,10 @@ use std::collections::VecDeque;
 
 use rustc_hash::FxHashMap;
 use ttrpg_ast::FileId;
+use ttrpg_interp::Interpreter;
 use ttrpg_interp::effect::{Effect, EffectHandler, Response};
 use ttrpg_interp::reference_state::GameState;
 use ttrpg_interp::value::Value;
-use ttrpg_interp::Interpreter;
 
 const PROGRAM_SOURCE: &str = r#"
 system "ActionDefaultTest" {

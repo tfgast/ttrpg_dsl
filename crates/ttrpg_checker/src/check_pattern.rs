@@ -1,7 +1,7 @@
-use ttrpg_ast::ast::*;
 use ttrpg_ast::Name;
 use ttrpg_ast::Span;
 use ttrpg_ast::Spanned;
+use ttrpg_ast::ast::*;
 
 use crate::check::{Checker, Namespace};
 use crate::env::DeclInfo;
@@ -142,7 +142,7 @@ impl Checker<'_> {
                     // PascalCase name is not a known variant but scrutinee is an
                     // enum — this is almost certainly a typo, not a binding.
                     let enum_label = match scrutinee_ty {
-                        Ty::Enum(ref n) => n.as_str(),
+                        Ty::Enum(n) => n.as_str(),
                         Ty::Duration => "Duration",
                         Ty::EffectSource => "EffectSource",
                         _ => unreachable!(),
@@ -196,7 +196,7 @@ impl Checker<'_> {
                     }
                     // Check scrutinee is this enum type (Ty::Duration ≡ "Duration")
                     let s_enum_name = match scrutinee_ty {
-                        Ty::Enum(ref name) => Some(name),
+                        Ty::Enum(name) => Some(name),
                         Ty::Duration => Some(&Name::from("Duration")),
                         Ty::EffectSource => Some(&Name::from("EffectSource")),
                         _ => None,
@@ -239,7 +239,7 @@ impl Checker<'_> {
                     if let Some(var_info) = info.variants.iter().find(|v| v.name == *variant) {
                         // Check scrutinee type (Ty::Duration ≡ "Duration")
                         let s_enum_name = match scrutinee_ty {
-                            Ty::Enum(ref name) => Some(name),
+                            Ty::Enum(name) => Some(name),
                             Ty::Duration => Some(&Name::from("Duration")),
                             Ty::EffectSource => Some(&Name::from("EffectSource")),
                             _ => None,
@@ -362,7 +362,7 @@ impl Checker<'_> {
         // Ty::Duration is equivalent to Ty::Enum("Duration") when a user-defined
         // Duration enum exists (same pattern as enum_name_from_hint).
         let scrutinee_enum_name = match scrutinee_ty {
-            Ty::Enum(ref name) => Some(name.clone()),
+            Ty::Enum(name) => Some(name.clone()),
             Ty::Duration => Some(Name::from("Duration")),
             Ty::EffectSource => Some(Name::from("EffectSource")),
             _ => None,

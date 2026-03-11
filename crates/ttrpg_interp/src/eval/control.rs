@@ -4,12 +4,12 @@ use rustc_hash::FxHashMap;
 use ttrpg_ast::ast::{ArmBody, ElseBranch, ExprKind, ForIterable, PatternKind};
 use ttrpg_ast::{Span, Spanned};
 
+use crate::Env;
+use crate::RuntimeError;
 use crate::coverage::{BranchKind, BranchPoint};
 use crate::effect::{Effect, Response};
 use crate::state::EntityRef;
 use crate::value::Value;
-use crate::Env;
-use crate::RuntimeError;
 
 use ttrpg_ast::Name;
 
@@ -326,7 +326,7 @@ pub(super) fn eval_stmt(
                     return Err(RuntimeError::with_span(
                         "grant: expected entity value",
                         entity.span,
-                    ))
+                    ));
                 }
             };
 
@@ -383,7 +383,7 @@ pub(super) fn eval_stmt(
                     return Err(RuntimeError::with_span(
                         "revoke: expected entity value",
                         entity.span,
-                    ))
+                    ));
                 }
             };
 
@@ -421,7 +421,7 @@ pub(super) fn eval_stmt(
                     return Err(RuntimeError::with_span(
                         "with_budget: expected entity value",
                         entity.span,
-                    ))
+                    ));
                 }
             };
 
@@ -443,7 +443,7 @@ pub(super) fn eval_stmt(
                     return Err(RuntimeError::with_span(
                         "with_budgets: expected list of BudgetSpec",
                         specs.span,
-                    ))
+                    ));
                 }
             };
 
@@ -458,27 +458,28 @@ pub(super) fn eval_stmt(
                                 return Err(RuntimeError::with_span(
                                     "with_budgets: BudgetSpec missing entity `actor` field",
                                     specs.span,
-                                ))
+                                ));
                             }
                         };
-                        let budget =
-                            match fields.get("budget") {
-                                Some(Value::Struct {
-                                    name: bn,
-                                    fields: bf,
-                                }) if bn == "TurnBudget" => bf.clone(),
-                                _ => return Err(RuntimeError::with_span(
+                        let budget = match fields.get("budget") {
+                            Some(Value::Struct {
+                                name: bn,
+                                fields: bf,
+                            }) if bn == "TurnBudget" => bf.clone(),
+                            _ => {
+                                return Err(RuntimeError::with_span(
                                     "with_budgets: BudgetSpec missing TurnBudget `budget` field",
                                     specs.span,
-                                )),
-                            };
+                                ));
+                            }
+                        };
                         entries.push((actor, budget));
                     }
                     _ => {
                         return Err(RuntimeError::with_span(
                             "with_budgets: list elements must be BudgetSpec structs",
                             specs.span,
-                        ))
+                        ));
                     }
                 }
             }
@@ -493,7 +494,7 @@ pub(super) fn eval_stmt(
                     return Err(RuntimeError::with_span(
                         "with_cost_payer: expected entity value",
                         entity.span,
-                    ))
+                    ));
                 }
             };
 

@@ -7,12 +7,12 @@
 //! the CLI runner still cannot express directly.
 
 use ttrpg_ast::ast::{DeclKind, TopLevel};
+use ttrpg_interp::Interpreter;
 use ttrpg_interp::adapter::StateAdapter;
 use ttrpg_interp::effect::Response;
 use ttrpg_interp::reference_state::GameState;
 use ttrpg_interp::state::StateProvider;
 use ttrpg_interp::value::Value;
-use ttrpg_interp::Interpreter;
 
 mod osric_common;
 use osric_common::*;

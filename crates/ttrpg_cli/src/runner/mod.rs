@@ -3,24 +3,24 @@ use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet, VecDeque};
 use std::path::PathBuf;
 use std::rc::Rc;
 
-use rand::rngs::StdRng;
 use rand::SeedableRng;
+use rand::rngs::StdRng;
 
+use ttrpg_ast::Name;
 use ttrpg_ast::ast::{AssignOp, DeclKind, FieldDef, Program, TopLevel, TypeExpr};
 use ttrpg_ast::diagnostic::{Diagnostic, MultiSourceMap, Severity};
 use ttrpg_ast::module::ModuleMap;
-use ttrpg_ast::Name;
 use ttrpg_checker::env::{DeclInfo, FnKind, TypeEnv};
+use ttrpg_interp::Interpreter;
 use ttrpg_interp::coverage::{self, CoverageData};
 use ttrpg_interp::effect::FieldPathSegment;
 use ttrpg_interp::reference_state::GameState;
 use ttrpg_interp::state::{EntityRef, StateProvider, WritableState};
 use ttrpg_interp::value::Value;
-use ttrpg_interp::Interpreter;
 
 use crate::commands::{self, Command};
 use crate::effects::{CliHandler, RefCellState};
-use crate::format::{format_value, UnitSuffixes};
+use crate::format::{UnitSuffixes, format_value};
 
 mod assert;
 mod config;

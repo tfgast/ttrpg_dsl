@@ -11,7 +11,7 @@ use ttrpg_checker::env::{DeclInfo, EnumInfo, TypeEnv, VariantInfo};
 use crate::effect::{Effect, EffectHandler, FieldPathSegment, Response};
 use crate::state::{ActiveCondition, EntityRef, StateProvider};
 use crate::value::{
-    default_turn_budget, DiceExpr, DirectionValue, PositionValue, RollResult, Value,
+    DiceExpr, DirectionValue, PositionValue, RollResult, Value, default_turn_budget,
 };
 use crate::{Env, Interpreter};
 
@@ -4793,8 +4793,10 @@ fn grant_explicit_field_overrides_default() {
                 fields: vec![],
                 optional_groups: vec![OptionalGroup {
                     name: "Spellcasting".into(),
-                    fields: vec![FieldDef::new("cantrips", spanned(TypeExpr::Int))
-                        .with_default(spanned(ExprKind::IntLit(4)))],
+                    fields: vec![
+                        FieldDef::new("cantrips", spanned(TypeExpr::Int))
+                            .with_default(spanned(ExprKind::IntLit(4))),
+                    ],
                     is_external_ref: false,
                     is_required: false,
                     span: dummy_span(),

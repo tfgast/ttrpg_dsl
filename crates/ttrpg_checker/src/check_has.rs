@@ -1,6 +1,6 @@
-use ttrpg_ast::ast::*;
 use ttrpg_ast::Name;
 use ttrpg_ast::Spanned;
+use ttrpg_ast::ast::*;
 
 use crate::check::{Checker, Namespace};
 use crate::ty::Ty;
@@ -45,7 +45,7 @@ impl Checker<'_> {
             }
         }
         // Validate that alias doesn't shadow an existing field or group on the entity type
-        if let Some(ref alias_name) = alias {
+        if let Some(alias_name) = alias {
             if let Ty::Entity(ent_name) = &entity_ty {
                 if let Some(fields) = self.env.lookup_fields(ent_name) {
                     if fields.iter().any(|f| f.name == *alias_name) {

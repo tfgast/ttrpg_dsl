@@ -170,11 +170,7 @@ impl Map {
         let (path, _cost) = astar(&start, successors, heuristic, success)?;
 
         // path[0] is start, path[1] is first step
-        if path.len() >= 2 {
-            Some(path[1])
-        } else {
-            None
-        }
+        if path.len() >= 2 { Some(path[1]) } else { None }
     }
 }
 

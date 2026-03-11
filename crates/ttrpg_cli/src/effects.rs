@@ -3,11 +3,11 @@ use std::collections::{BTreeMap, HashMap, VecDeque};
 use std::io;
 
 use nu_ansi_term::Color;
-use rand::rngs::StdRng;
 use rand::Rng;
-use ttrpg_ast::ast::AssignOp;
+use rand::rngs::StdRng;
 use ttrpg_ast::DiceFilter;
 use ttrpg_ast::Name;
+use ttrpg_ast::ast::AssignOp;
 use ttrpg_checker::ty::Ty;
 use ttrpg_interp::adapter;
 use ttrpg_interp::effect::{ActionOutcome, Effect, EffectHandler, Response};
@@ -17,7 +17,7 @@ use ttrpg_interp::state::{
 };
 use ttrpg_interp::value::{DiceExpr, RollResult, Value};
 
-use crate::format::{format_dice_expr, format_path, format_value, UnitSuffixes};
+use crate::format::{UnitSuffixes, format_dice_expr, format_path, format_value};
 
 // ── MinimalHandler ──────────────────────────────────────────────
 
