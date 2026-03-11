@@ -29,6 +29,41 @@ use "OSRIC Spells"
 system "OSRIC MU Spells" {
 
     // ========================================================
+    //  BURNING HANDS (§1.8.5.1)
+    //
+    //  Arcane transmutation, level 1. Range: caster.
+    //  A fan of flame 5ft long in a 120-degree arc.
+    //  Deals 1 hp of fire damage per magic-user level.
+    //  No saving throw. Casting time: Fast.
+    // ========================================================
+
+    const BURNING_HANDS_DEF: SpellDef = SpellDef {
+        name: "Burning Hands",
+        class_type: Arcane,
+        school: Transmutation,
+        level: 1,
+        range: SpellRange.Special(description: "Caster (5ft fan)"),
+        duration: SpellDuration.Rounds(count: 1),
+        area: [SpellArea { shape: AreaShape.Sphere(radius: 5ft) }],
+        components: SpellComponents {},
+        casting_time: CastingTime.Fast,
+        saving_throw: SpellSave.NoSave,
+        description: "A fan of flame 5ft long in a 120-degree arc. Inflicts 1 hp of fire damage per caster level. No saving throw."
+    }
+
+    // Resolve Burning Hands. Prompts for area occupants,
+    // then deals flat damage (1 hp per caster level) to each.
+    function resolve_burning_hands(caster: entity, placement: Placement) {
+        let cl = caster_level(caster, Arcane)
+        let targets = area_occupants(placement, BURNING_HANDS_DEF.area)
+        for target in targets {
+            target.TakeDamage(caster, cl)
+            emit SpellDamaged(caster: caster, target: target, spell_name: "Burning Hands", amount: cl)
+        }
+    }
+
+
+    // ========================================================
     //  MAGIC MISSILE (§1.8.5.1)
     //
     //  Arcane evocation, level 1. Auto-hit, no save.
@@ -57,6 +92,42 @@ system "OSRIC MU Spells" {
     derive magic_missile_count(caster_level: int) -> int {
         1 + (caster_level - 1) div 2
     }
+
+    // ========================================================
+    //  SHOCKING GRASP (§1.8.5.1)
+    //
+    //  Arcane transmutation, level 1. Range: Touch.
+    //  1d8 + 1 hp per magic-user level electrical damage.
+    //  No saving throw. Touch attack required.
+    //  On miss, charge is held — caster can retry next round
+    //  via DeliverTouch. Blocks spellcasting while held.
+    //  Casting time: Fast.
+    // ========================================================
+
+    const SHOCKING_GRASP_DEF: SpellDef = SpellDef {
+        name: "Shocking Grasp",
+        class_type: Arcane,
+        school: Transmutation,
+        level: 1,
+        range: SpellRange.Touch,
+        duration: SpellDuration.Special(description: "1 touch"),
+
+        components: SpellComponents {},
+        casting_time: CastingTime.Fast,
+        saving_throw: SpellSave.NoSave,
+        description: "Imbues hand with electrical charge. Deals 1d8 + 1 hp per caster level on touch. Charge held on miss."
+    }
+
+    // Resolve Shocking Grasp. Called on successful touch —
+    // the touch attack roll is handled by FinishCasting (Touch variant).
+    function resolve_shocking_grasp(caster: entity, targets: list<entity>) {
+        let target = targets.first().unwrap()
+        let cl = caster_level(caster, Arcane)
+        let damage = roll(1d8).total + cl
+        target.TakeDamage(caster, damage)
+        emit SpellDamaged(caster: caster, target: target, spell_name: "Shocking Grasp", amount: damage)
+    }
+
 
     // ========================================================
     //  FIREBALL (§1.8.5.3)

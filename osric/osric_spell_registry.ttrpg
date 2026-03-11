@@ -107,9 +107,17 @@ system "OSRIC Spell Registry" {
             resolve: SpellResolve.Area(resolve: resolve_blade_barrier_default)
         },
         // --- Magic-User level 1 ---
+        SpellId.BurningHands => SpellEntry {
+            def: BURNING_HANDS_DEF,
+            resolve: SpellResolve.Area(resolve: resolve_burning_hands)
+        },
         SpellId.MagicMissile => SpellEntry {
             def: MAGIC_MISSILE_DEF,
             resolve: SpellResolve.Targeted(resolve: resolve_magic_missile)
+        },
+        SpellId.ShockingGrasp => SpellEntry {
+            def: SHOCKING_GRASP_DEF,
+            resolve: SpellResolve.Touch(resolve: resolve_shocking_grasp)
         },
         SpellId.Sleep => SpellEntry {
             def: SLEEP_DEF,
@@ -177,6 +185,20 @@ system "OSRIC Spell Registry" {
                 SpellResolve.Targeted(resolver) => {
                     resolver(caster, targets)
                 },
+                SpellResolve.Touch(resolver) => {
+                    let target = targets.first().unwrap()
+                    let result = resolve_touch_attack(caster, target)
+                    if result.outcome == AttackOutcome.Hit {
+                        resolver(caster, targets)
+                    } else {
+                        emit TouchAttackMissed(caster: caster, target: target, spell_name: entry.def.name)
+                        if caster has Spellcasting as sc {
+                            caster.sc.held_touch_spell = some(id)
+                        }
+                        apply_condition(caster, HoldingCharge, Duration.Indefinite)
+                        emit TouchChargeHeld(caster: caster, spell_id: id)
+                    }
+                },
                 SpellResolve.Area(resolver) => {
                     resolver(caster, placement.unwrap())
                 },
@@ -187,6 +209,40 @@ system "OSRIC Spell Registry" {
             if entry.def.concentration {
                 if caster has Spellcasting {
                     emit ConcentrationStarted(caster: caster, inv: inv)
+                }
+            }
+        }
+    }
+
+
+    // ========================================================
+    //  DELIVER TOUCH
+    //
+    //  Retry a held touch charge against a (possibly new) target.
+    //  Declared as a melee action in initiative (no casting time).
+    //  On hit: calls the spell resolver and removes the charge.
+    //  On miss: charge remains held for another attempt.
+    // ========================================================
+
+    action DeliverTouch on caster: entity with Spellcasting as sc (
+        target: entity
+    ) {
+        requires {
+            has_condition(caster, "HoldingCharge") &&
+            caster.sc.held_touch_spell != none
+        }
+        resolve {
+            let spell_id = caster.sc.held_touch_spell.unwrap()
+            let result = resolve_touch_attack(caster, target)
+            if result.outcome == AttackOutcome.Hit {
+                remove_condition(caster, HoldingCharge)
+                caster.sc.held_touch_spell = none
+                let entry = spell_registry(spell_id)
+                match entry.resolve {
+                    SpellResolve.Touch(resolver) => {
+                        resolver(caster, [target])
+                    },
+                    _ => {}
                 }
             }
         }

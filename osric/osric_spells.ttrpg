@@ -37,6 +37,7 @@ system "OSRIC Spells" {
 
     group Spellcasting {
         restricted concentrating_on: option<Invocation> = none
+        restricted held_touch_spell: option<SpellId> = none
         spell_slots: list<int> = []
         slots_used: list<int> = []
         restricted memorised_spells: list<MemorizedSpell> = []
@@ -1115,6 +1116,38 @@ system "OSRIC Spells" {
             emit SpellInterrupted(caster: caster)
         }
     }
+
+
+    // ========================================================
+    //  HELD TOUCH CHARGE
+    //
+    //  When a touch spell misses its initial attack roll, the
+    //  caster holds the charge and can retry on subsequent
+    //  rounds via DeliverTouch.
+    //
+    //  Per OSRIC §1.8.5.1 (Shocking Grasp): while holding a
+    //  charge, the caster cannot cast spells with somatic or
+    //  material components. Since nearly all spells have S or
+    //  M components, we simplify this to a full #spellcasting_gate.
+    //
+    //  HoldingCharge stores just the SpellId — the resolver
+    //  is looked up from the registry on retry. Target is not
+    //  stored; the caster can touch any creature on retry.
+    // ========================================================
+
+    event TouchAttackMissed(caster: entity, target: entity, spell_name: string) {}
+    event TouchChargeHeld(caster: entity, spell_id: SpellId) {}
+    event TouchChargeDischarged(caster: entity, spell_id: SpellId) {}
+
+    condition HoldingCharge on bearer: entity {
+        modify [#spellcasting_gate](caster: bearer) {
+            result = false
+        }
+    }
+
+    // DeliverTouch action is in osric_spell_registry.ttrpg
+    // (needs access to spell_registry for resolver lookup).
+    // Held spell ID is stored in Spellcasting.held_touch_spell.
 
 
     // ========================================================

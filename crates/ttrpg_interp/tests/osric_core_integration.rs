@@ -166,8 +166,8 @@ fn osric_core_has_all_enums() {
         "missing SpecWeapon enum"
     );
 
-    // SpellId: 18 variants (13 original + Silence15Radius, ProtectionFromEvil10Radius, WallOfFire, BladeBarrier, GlyphOfWarding)
-    assert!(enums.contains(&("SpellId", 18)), "missing SpellId enum");
+    // SpellId: 20 variants (18 + BurningHands, ShockingGrasp)
+    assert!(enums.contains(&("SpellId", 20)), "missing SpellId enum");
 
     // AreaShape: 7 variants (Radius, Sphere, Cube, Wall, Cone, Line, Special)
     assert!(enums.contains(&("AreaShape", 7)), "missing AreaShape enum");

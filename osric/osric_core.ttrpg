@@ -442,6 +442,7 @@ system "OSRIC" {
 
     enum SpellResolve {
         Targeted(resolve: fn(entity, list<entity>)),
+        Touch(resolve: fn(entity, list<entity>)),
         Area(resolve: fn(entity, Placement)),
         SelfOnly(resolve: fn(entity))
     }
@@ -480,7 +481,9 @@ system "OSRIC" {
         // Cleric level 6
         BladeBarrier,
         // Magic-User level 1
+        BurningHands,
         MagicMissile,
+        ShockingGrasp,
         Sleep,
         // Magic-User level 3
         DispelMagicMU,

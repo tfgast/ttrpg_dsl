@@ -69,6 +69,16 @@ call resolve_magic_missile(mm_caster_ranger, [mm_target_ranger_a, mm_target_rang
 assert_eq mm_target_ranger_a.hp, 7
 assert_eq mm_target_ranger_b.hp, 6
 
+// ── Burning Hands SpellDef ─────────────────────────────────────
+
+assert_eq BURNING_HANDS_DEF.level, 1
+assert_eq BURNING_HANDS_DEF.school, SpellSchool.Transmutation
+
+// ── Shocking Grasp SpellDef ────────────────────────────────────
+
+assert_eq SHOCKING_GRASP_DEF.level, 1
+assert_eq SHOCKING_GRASP_DEF.school, SpellSchool.Transmutation
+
 // ── AoE position helper ────────────────────────────────────────
 // AoE spells now take Placement and prompt for area occupants.
 
@@ -236,3 +246,93 @@ rolls clear
 rolls 2
 do mon_dispatch_caster.FinishCasting(id: MagicMissile, targets: [mon_dispatch_target])
 assert_eq mon_dispatch_target.hp, 7
+
+// ── Burning Hands resolve ─────────────────────────────────────
+// Level 3 MU: 3 hp flat damage per target, no save.
+
+spawn Character bh_caster { name: "BH Caster", classes: [ClassLevel { class: MagicUser, level: 3 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 10, hp: 10 } }
+spawn Monster bh_target_a { name: "BH Orc A", hit_dice: 1d8, max_hp: 10, hp: 10, ac: 14, morale: 7, morale_checks_made: 0, xp_value: 0, intelligence: 1, attacks: [MonsterAttack { name: "Club", damage: 1d6 }], size: Medium, special: [] }
+spawn Monster bh_target_b { name: "BH Orc B", hit_dice: 1d8, max_hp: 10, hp: 10, ac: 14, morale: 7, morale_checks_made: 0, xp_value: 0, intelligence: 1, attacks: [MonsterAttack { name: "Club", damage: 1d6 }], size: Medium, special: [] }
+
+rolls clear
+prompts [bh_target_a, bh_target_b]
+call resolve_burning_hands(bh_caster, _p)
+assert_eq bh_target_a.hp, 7
+assert_eq bh_target_b.hp, 7
+
+// Level 1 MU: 1 hp damage each.
+spawn Character bh_caster_l1 { name: "BH L1 Caster", classes: [ClassLevel { class: MagicUser, level: 1 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 4, hp: 4 } }
+spawn Monster bh_target_l1 { name: "BH Kobold", hit_dice: 1d8 - 1, max_hp: 3, hp: 3, ac: 13, morale: 7, morale_checks_made: 0, xp_value: 0, intelligence: 1, attacks: [MonsterAttack { name: "Club", damage: 1d4 }], size: Small, special: [] }
+
+rolls clear
+prompts [bh_target_l1]
+call resolve_burning_hands(bh_caster_l1, _p)
+assert_eq bh_target_l1.hp, 2
+
+// ── Burning Hands via FinishCasting ───────────────────────────
+
+spawn Character bh_dispatch_caster { name: "BH Dispatch", classes: [ClassLevel { class: MagicUser, level: 5 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 12, hp: 12 } }
+spawn Monster bh_dispatch_target { name: "BH Dispatch Orc", hit_dice: 1d8, max_hp: 15, hp: 15, ac: 14, morale: 7, morale_checks_made: 0, xp_value: 0, intelligence: 1, attacks: [MonsterAttack { name: "Club", damage: 1d6 }], size: Medium, special: [] }
+
+rolls clear
+prompts [bh_dispatch_target]
+do bh_dispatch_caster.FinishCasting(id: BurningHands, placement: some(_p))
+assert_eq bh_dispatch_target.hp, 10
+
+// ── Shocking Grasp resolve (direct) ───────────────────────────
+// Level 5 MU: 1d8 + 5 damage.
+
+spawn Character sg_caster { name: "SG Caster", classes: [ClassLevel { class: MagicUser, level: 5 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 12, hp: 12 } }
+spawn Monster sg_target { name: "SG Orc", hit_dice: 1d8, max_hp: 20, hp: 20, ac: 14, morale: 7, morale_checks_made: 0, xp_value: 0, intelligence: 1, attacks: [MonsterAttack { name: "Club", damage: 1d6 }], size: Medium, special: [] }
+
+rolls clear
+rolls 6
+call resolve_shocking_grasp(sg_caster, [sg_target])
+// 6 (d8) + 5 (level) = 11
+assert_eq sg_target.hp, 9
+
+// ── Shocking Grasp via FinishCasting (touch hit) ──────────────
+// Touch attack hits (d20 roll succeeds), spell resolves normally.
+
+spawn Character sg_touch_caster { name: "SG Touch Caster", classes: [ClassLevel { class: MagicUser, level: 3 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 10, hp: 10 }, Spellcasting {} }
+spawn Monster sg_touch_target { name: "SG Touch Orc", hit_dice: 1d8, max_hp: 15, hp: 15, ac: 10, morale: 7, morale_checks_made: 0, xp_value: 0, intelligence: 1, attacks: [MonsterAttack { name: "Club", damage: 1d6 }], size: Medium, special: [] }
+
+rolls clear
+// Touch attack d20=18 (hit vs AC 10), then d8=4 for damage
+rolls 18 4
+do sg_touch_caster.FinishCasting(id: ShockingGrasp, targets: [sg_touch_target])
+// 4 + 3 (level) = 7 damage
+assert_eq sg_touch_target.hp, 8
+assert_no_condition sg_touch_caster, HoldingCharge
+
+// ── Shocking Grasp via FinishCasting (touch miss → held charge) ──
+
+spawn Character sg_miss_caster { name: "SG Miss Caster", classes: [ClassLevel { class: MagicUser, level: 3 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 10, hp: 10 }, Spellcasting {} }
+spawn Monster sg_miss_target { name: "SG Miss Orc", hit_dice: 1d8, max_hp: 15, hp: 15, ac: 18, morale: 7, morale_checks_made: 0, xp_value: 0, intelligence: 1, attacks: [MonsterAttack { name: "Club", damage: 1d6 }], size: Medium, special: [] }
+
+rolls clear
+// Touch attack d20=5 (miss vs AC 18)
+rolls 5
+do sg_miss_caster.FinishCasting(id: ShockingGrasp, targets: [sg_miss_target])
+// No damage — charge held
+assert_eq sg_miss_target.hp, 15
+assert_condition sg_miss_caster, HoldingCharge
+
+// ── DeliverTouch retry (hit) ──────────────────────────────────
+// sg_miss_caster still holds charge; retry on a different target.
+
+spawn Monster sg_retry_target { name: "SG Retry Orc", hit_dice: 1d8, max_hp: 15, hp: 15, ac: 10, morale: 7, morale_checks_made: 0, xp_value: 0, intelligence: 1, attacks: [MonsterAttack { name: "Club", damage: 1d6 }], size: Medium, special: [] }
+
+rolls clear
+// Touch attack d20=15 (hit vs AC 10), then d8=7 for damage
+rolls 15 7
+do sg_miss_caster.DeliverTouch(target: sg_retry_target)
+// 7 + 3 (level) = 10 damage
+assert_eq sg_retry_target.hp, 5
+assert_no_condition sg_miss_caster, HoldingCharge
+
+// ── HoldingCharge blocks spellcasting ─────────────────────────
+
+spawn Character sg_gate_caster { name: "SG Gate Caster", classes: [ClassLevel { class: MagicUser, level: 3 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 10, hp: 10 }, Spellcasting {} }
+call apply_condition(sg_gate_caster, HoldingCharge, Duration.Indefinite)
+assert (can_begin_casting(sg_gate_caster)) == false

@@ -464,6 +464,45 @@ system "OSRIC Combat" {
     }
 
     // ========================================================
+    //  TOUCH ATTACK
+    //
+    //  Spell touch attack: d20 + BTHB + STR to-hit vs effective AC.
+    //  No weapon, no damage — just determines hit or miss.
+    //  Used by SpellResolve.Touch spells (Shocking Grasp, etc.).
+    //  Characters use class BTHB + STR; monsters use HD BTHB.
+    //  Tagged #attack_resolution so conditions (Blessed, etc.)
+    //  can modify the roll.
+    // ========================================================
+
+    mechanic resolve_touch_attack(
+        attacker: entity,
+        target: entity,
+        attack_mod: int = 0,
+        roll_mode: RollMode = RollMode.Normal,
+        max_damage: bool = false
+    ) -> AttackResult #attack_resolution {
+        let bthb_val = if attacker is Character {
+            character_bthb(attacker)
+        } else if attacker is Monster {
+            monster_bthb(attacker.hit_dice)
+        } else { 0 }
+
+        let str_hit = if attacker is Character {
+            effective_str_to_hit(attacker)
+        } else { 0 }
+
+        let target_ac = effective_target_ac(target)
+        let total_mod = bthb_val + str_hit + attack_mod
+        let outcome = match roll_mode {
+            RollMode.AutoHit => AttackOutcome.Hit,
+            _ => attack_roll_aac(total_mod, target_ac)
+        }
+
+        AttackResult { outcome: outcome, total_mod: total_mod, damage: 0, weapon_bonus: 0, weapon_material: WeaponMaterial.Normal }
+    }
+
+
+    // ========================================================
     //  CHARACTER ATTACK RESOLUTION
     //
     //  Entity-level mechanics that combine BTHB, ability mods,
