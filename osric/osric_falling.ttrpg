@@ -19,9 +19,11 @@
 
 import "osric_core.ttrpg"
 import "osric_saves.ttrpg"
+import "osric_combat.ttrpg"
 
 use "OSRIC"
 use "OSRIC Saves"
+use "OSRIC Combat"
 
 system "OSRIC Falling" {
 
@@ -88,6 +90,24 @@ system "OSRIC Falling" {
                 base_damage: base,
                 saved: false,
                 damage_taken: base
+            }
+        }
+    }
+
+    // Apply falling damage to a character through the standard
+    // damage pipeline. Uses DamageType.Fall so item saves and
+    // damage processing work correctly.
+    action FallDamage on target: Character (
+        distance_ft: int,
+        allow_save: bool = false,
+        save_bonus: int = 0
+    ) {
+        cost free
+        requires { target.saving_throws != none }
+        resolve {
+            let result = apply_falling_damage(distance_ft, target.saving_throws.unwrap(), allow_save, save_bonus)
+            if result.damage_taken > 0 {
+                target.TakeDamage(target, result.damage_taken, DamageType.Fall)
             }
         }
     }

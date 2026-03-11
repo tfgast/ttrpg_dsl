@@ -93,3 +93,22 @@ let short_fall = apply_falling_damage(
 assert_eq short_fall.base_damage, 0
 assert_eq short_fall.saved, false
 assert_eq short_fall.damage_taken, 0
+
+// ── FallDamage action (damage pipeline integration) ────────
+
+rolls clear
+
+// 20ft fall: 3d6 damage, rolls 3+4+5 = 12
+// TakeDamage applies DamageType.Fall through the standard pipeline
+spawn Character faller { name: "Faller", classes: [ClassLevel { class: Fighter, level: 5 }], abilities: { STR: 14, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 40, hp: 40 }, saving_throws: some(fighter_saves(5)) }
+rolls 3 4 5
+do FallDamage(faller, 20)
+assert_eq faller.hp, 28
+
+// Short fall (<10ft): no damage
+rolls clear
+spawn Character short_faller { name: "ShortFaller", classes: [ClassLevel { class: Fighter, level: 5 }], abilities: { STR: 14, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 40, hp: 40 }, saving_throws: some(fighter_saves(5)) }
+do FallDamage(short_faller, 5)
+assert_eq short_faller.hp, 40
+
+rolls clear
