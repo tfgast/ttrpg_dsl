@@ -240,6 +240,7 @@ system "OSRIC Zone Spells" {
         casting_time: CastingTime.Segments(count: 4),
         saving_throw: SpellSave.NoSave,
         reversible: false,
+        concentration: true,
         description: "Creates a wall or ring of fire. Crossing deals 2d6+1/level fire damage. Proximity deals 1d6 (10ft) or 1d3 (20ft)."
     }
 

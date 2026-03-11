@@ -6,9 +6,10 @@
 // metadata (SpellDef) and resolution strategy (SpellResolve)
 // for every implemented spell.
 //
-// cast_spell dispatches resolution through the stored function
-// reference, so callers don't need to know which targeting
-// style a spell uses.
+// FinishCasting action dispatches resolution through the stored
+// function reference, so callers don't need to know which
+// targeting style a spell uses. As an action it provides
+// invocation scope for concentration spell tracking.
 // ============================================================
 
 import "osric_character.ttrpg"
@@ -149,30 +150,44 @@ system "OSRIC Spell Registry" {
     }
 
     // ========================================================
-    //  UNIFIED CAST SPELL DISPATCH
+    //  FINISH CASTING (unified spell dispatch)
     //
     //  Routes spell resolution through the registry's stored
     //  function reference. Targeted spells use the targets
     //  parameter; area spells use placement; self-only spells
     //  use neither.
+    //
+    //  As an action, FinishCasting provides an invocation scope
+    //  so that all conditions applied by the resolve function
+    //  are tagged with the same invocation ID. For concentration
+    //  spells, the invocation is stored via ConcentrationStarted
+    //  so that BreakConcentration can revoke all effects at once.
     // ========================================================
 
-    function cast_spell(
+    action FinishCasting on caster: entity (
         id: SpellId,
-        caster: entity,
         targets: list<entity> = [],
         placement: option<Placement> = none
     ) {
-        let entry = spell_registry(id)
-        match entry.resolve {
-            SpellResolve.Targeted(resolver) => {
-                resolver(caster, targets)
-            },
-            SpellResolve.Area(resolver) => {
-                resolver(caster, placement.unwrap())
-            },
-            SpellResolve.SelfOnly(resolver) => {
-                resolver(caster)
+        cost free
+        resolve {
+            let entry = spell_registry(id)
+            let inv = invocation()
+            match entry.resolve {
+                SpellResolve.Targeted(resolver) => {
+                    resolver(caster, targets)
+                },
+                SpellResolve.Area(resolver) => {
+                    resolver(caster, placement.unwrap())
+                },
+                SpellResolve.SelfOnly(resolver) => {
+                    resolver(caster)
+                }
+            }
+            if entry.def.concentration {
+                if caster has Spellcasting {
+                    emit ConcentrationStarted(caster: caster, inv: inv)
+                }
             }
         }
     }
@@ -186,7 +201,7 @@ system "OSRIC Spell Registry" {
     //  slots, no casting time. Validates the spell is in the
     //  monster's abilities list, checks uses_remaining for PerDay
     //  abilities, decrements the use count, and routes to
-    //  cast_spell for resolution.
+    //  FinishCasting for resolution.
     // ========================================================
 
     function has_spell_ability(caster: entity, spell_id: SpellId) -> bool {
@@ -234,7 +249,7 @@ system "OSRIC Spell Registry" {
                 SpellUseLimit.AtWill => {}
             }
 
-            cast_spell(id: spell_id, caster: caster, targets: targets, placement: placement)
+            caster.FinishCasting(id: spell_id, targets: targets, placement: placement)
         }
     }
 }

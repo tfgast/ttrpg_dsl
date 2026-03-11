@@ -430,6 +430,7 @@ system "OSRIC" {
         casting_time: CastingTime
         saving_throw: SpellSave
         reversible: bool = false
+        concentration: bool = false
         description: string
     }
 

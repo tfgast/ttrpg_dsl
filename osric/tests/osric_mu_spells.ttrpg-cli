@@ -234,5 +234,5 @@ spawn Monster mon_dispatch_target { name: "Dispatch Orc", hit_dice: 1d8, max_hp:
 
 rolls clear
 rolls 2
-call cast_spell(MagicMissile, mon_dispatch_caster, targets: [mon_dispatch_target])
+do mon_dispatch_caster.FinishCasting(id: MagicMissile, targets: [mon_dispatch_target])
 assert_eq mon_dispatch_target.hp, 7

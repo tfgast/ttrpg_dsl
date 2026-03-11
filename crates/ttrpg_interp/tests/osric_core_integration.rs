@@ -311,9 +311,9 @@ fn osric_core_has_all_structs() {
         structs.contains(&("SpellComponents", 3)),
         "missing SpellComponents struct"
     );
-    // SpellDef: 12 fields
+    // SpellDef: 13 fields (added concentration)
     assert!(
-        structs.contains(&("SpellDef", 12)),
+        structs.contains(&("SpellDef", 13)),
         "missing SpellDef struct"
     );
 

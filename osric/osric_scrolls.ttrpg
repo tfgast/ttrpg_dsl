@@ -650,11 +650,11 @@ system "OSRIC Scrolls" {
                     let effect = scroll_failure_effect(effect_roll)
                     emit ScrollSpellFailed(reader: reader, spell_id: spell_id, failure_effect: effect)
                 } else {
-                    cast_spell(spell_id, reader, targets: targets)
+                    reader.FinishCasting(id: spell_id, targets: targets)
                     emit ScrollSpellCast(reader: reader, spell_id: spell_id, scroll_class: scroll_class)
                 }
             } else {
-                cast_spell(spell_id, reader, targets: targets)
+                reader.FinishCasting(id: spell_id, targets: targets)
                 emit ScrollSpellCast(reader: reader, spell_id: spell_id, scroll_class: scroll_class)
             }
         }

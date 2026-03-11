@@ -740,7 +740,7 @@ system "OSRIC Initiative" {
                     if let some(spell_id) = action.spell_id {
                         if still_casting {
                             remove_condition(action.combatant, CastingSpell)
-                            cast_spell(spell_id, action.combatant, targets: action.spell_targets)
+                            action.combatant.FinishCasting(id: spell_id, targets: action.spell_targets)
                         }
                     }
                 }
