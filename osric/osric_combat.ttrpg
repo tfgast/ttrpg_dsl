@@ -31,9 +31,18 @@ system "OSRIC Combat" {
     // ========================================================
     //  HIT POINTS GROUP
     //
-    //  Included by Character entity. hp is restricted to ensure
-    //  damage flows through TakeDamage for proper event emission
-    //  (Damaged, CreatureSlain) and damage pipeline processing.
+    //  Included by Character entity. hp is restricted so that
+    //  external systems cannot bypass this module's hp management.
+    //
+    //  Within this system, hp is mutated through these gateways:
+    //    - TakeDamage       — combat damage (deal_damage pipeline,
+    //                         Damaged/CreatureSlain events, death
+    //                         and unconsciousness transitions)
+    //    - Assassination    — instant kill (sets hp to -10 / 0)
+    //    - Bleeding         — periodic 1 HP/round loss while
+    //                         unconscious, death at -10
+    //    - heal_unconscious — restores hp and clears conditions
+    //    - heal_damage      — general healing capped at max_hp
     // ========================================================
 
     group HitPoints {
