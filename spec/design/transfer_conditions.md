@@ -1,6 +1,6 @@
 # Design: transfer_conditions Builtin
 
-**Status:** Proposed
+**Status:** Implemented
 **Last updated:** 2026-03-10
 **Related:** tdsl-re64 (polymorph/transformation support), tdsl-8nc1
 

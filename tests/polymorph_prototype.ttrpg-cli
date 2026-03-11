@@ -334,3 +334,233 @@ let sc_hp = test_double_polymorph(shapechanger)
 assert sc_hp == 25
 assert shapechanger.hp == 25
 assert is_suspended(shapechanger) == false
+
+
+// ── Test 7: transfer_conditions on polymorph revert ─────────
+// Blessed (tagged #transferable) transfers back to original on revert.
+// Poisoned (tagged #physical) stays on the form (lost on despawn).
+source -s <<END
+entity Character {
+    name: string
+    hp: int
+    max_hp: int
+}
+
+entity Monster {
+    name: string
+    hp: int
+    max_hp: int
+}
+
+tag transferable
+tag physical
+
+condition Blessed on bearer: entity stacking all {
+    tags: #transferable
+}
+
+condition Poisoned on bearer: entity stacking all {
+    tags: #physical
+}
+
+condition Polymorphed(original: Character, suspension_key: int) on bearer: Monster
+    stacking first
+{
+    on_remove {
+        transfer_conditions(bearer, original, "transferable")
+        original.hp = bearer.hp
+        remove_suspension_source(original, source_id: suspension_key)
+        despawn(bearer)
+    }
+}
+
+function do_polymorph(target: Character, key: int) -> Monster {
+    suspend_with_source(target, source_id: key,
+        Presence.OffBoard, freeze_turns: true, freeze_durations: true)
+
+    let form = Monster {
+        name: "Troll",
+        hp: target.hp,
+        max_hp: target.max_hp
+    }
+    // Transfer existing transferable conditions to the form
+    transfer_conditions(target, form, "transferable")
+    apply_condition(form, Polymorphed(original: target, suspension_key: key),
+        Duration.Indefinite)
+    form
+}
+
+function revert(form: Monster) {
+    remove_condition(form, "Polymorphed")
+}
+
+function damage_monster(target: Monster, amount: int) {
+    target.hp = target.hp - amount
+}
+END
+
+spawn Character mage { name: "Mage", hp: 30, max_hp: 30 }
+
+// Bless the mage before polymorph
+call apply_condition(mage, Blessed, Duration.Indefinite)
+assert has_condition(mage, "Blessed") == true
+
+// Polymorph — Blessed should transfer to form
+let troll = do_polymorph(mage, 8001)
+assert has_condition(troll, "Blessed") == true
+assert has_condition(mage, "Blessed") == false
+
+// Apply Poisoned on the troll form (physical — won't transfer back)
+call apply_condition(troll, Poisoned, Duration.Indefinite)
+assert has_condition(troll, "Poisoned") == true
+
+call damage_monster(troll, 7)
+
+// Revert — Blessed transfers back, Poisoned is lost with the form
+call revert(troll)
+
+assert has_condition(mage, "Blessed") == true
+assert has_condition(mage, "Poisoned") == false
+assert mage.hp == 23
+assert is_suspended(mage) == false
+
+
+// ── Test 8: Multiple transferable conditions ────────────────
+// Both Blessed and Shielded (tagged #transferable) should transfer.
+source -s <<END
+entity Character {
+    name: string
+    hp: int
+    max_hp: int
+}
+
+entity Monster {
+    name: string
+    hp: int
+    max_hp: int
+}
+
+tag transferable
+
+condition Blessed on bearer: entity stacking all {
+    tags: #transferable
+}
+
+condition Shielded on bearer: entity stacking all {
+    tags: #transferable
+}
+
+condition Polymorphed(original: Character, suspension_key: int) on bearer: Monster
+    stacking first
+{
+    on_remove {
+        transfer_conditions(bearer, original, "transferable")
+        original.hp = bearer.hp
+        remove_suspension_source(original, source_id: suspension_key)
+        despawn(bearer)
+    }
+}
+
+function do_polymorph(target: Character, key: int) -> Monster {
+    suspend_with_source(target, source_id: key,
+        Presence.OffBoard, freeze_turns: true, freeze_durations: true)
+    let form = Monster {
+        name: "Bear",
+        hp: target.hp,
+        max_hp: target.max_hp
+    }
+    transfer_conditions(target, form, "transferable")
+    apply_condition(form, Polymorphed(original: target, suspension_key: key),
+        Duration.Indefinite)
+    form
+}
+
+function revert(form: Monster) {
+    remove_condition(form, "Polymorphed")
+}
+END
+
+spawn Character cleric { name: "Cleric", hp: 25, max_hp: 25 }
+
+call apply_condition(cleric, Blessed, Duration.Indefinite)
+call apply_condition(cleric, Shielded, Duration.Indefinite)
+
+let bear = do_polymorph(cleric, 8501)
+
+// Both conditions moved to form
+assert has_condition(bear, "Blessed") == true
+assert has_condition(bear, "Shielded") == true
+assert has_condition(cleric, "Blessed") == false
+assert has_condition(cleric, "Shielded") == false
+
+// Revert — both come back
+call revert(bear)
+
+assert has_condition(cleric, "Blessed") == true
+assert has_condition(cleric, "Shielded") == true
+assert is_suspended(cleric) == false
+
+
+// ── Test 9: Condition applied to form transfers back ────────
+// A transferable condition gained during polymorph returns to original.
+source -s <<END
+entity Character {
+    name: string
+    hp: int
+    max_hp: int
+}
+
+entity Monster {
+    name: string
+    hp: int
+    max_hp: int
+}
+
+tag transferable
+
+condition Cursed on bearer: entity stacking all {
+    tags: #transferable
+}
+
+condition Polymorphed(original: Character, suspension_key: int) on bearer: Monster
+    stacking first
+{
+    on_remove {
+        transfer_conditions(bearer, original, "transferable")
+        original.hp = bearer.hp
+        remove_suspension_source(original, source_id: suspension_key)
+        despawn(bearer)
+    }
+}
+
+function do_polymorph(target: Character, key: int) -> Monster {
+    suspend_with_source(target, source_id: key,
+        Presence.OffBoard, freeze_turns: true, freeze_durations: true)
+    let form = Monster {
+        name: "Wolf",
+        hp: target.hp,
+        max_hp: target.max_hp
+    }
+    apply_condition(form, Polymorphed(original: target, suspension_key: key),
+        Duration.Indefinite)
+    form
+}
+
+function revert(form: Monster) {
+    remove_condition(form, "Polymorphed")
+}
+END
+
+spawn Character ranger { name: "Ranger", hp: 35, max_hp: 35 }
+
+let wolf = do_polymorph(ranger, 9501)
+
+// Someone curses the wolf form — it's transferable, should go back to ranger
+call apply_condition(wolf, Cursed, Duration.Indefinite)
+assert has_condition(wolf, "Cursed") == true
+
+call revert(wolf)
+
+assert has_condition(ranger, "Cursed") == true
+assert ranger.hp == 35
+assert is_suspended(ranger) == false

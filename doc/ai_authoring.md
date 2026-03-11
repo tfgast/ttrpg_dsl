@@ -578,6 +578,7 @@ Condition tags describe **what the condition is** (`#curse`, `#disease`, `#poiso
 - At most one `on_apply` and one `on_remove` per condition
 - Hook-like capabilities: mutation, dice, emit, call derives/mechanics/functions
 - **Forbidden:** `apply_condition()`, `remove_condition()`, `revoke(invocation)`, `invocation()`
+- **Allowed:** `transfer_conditions()`, `suspend()`, `condition_token()`, `despawn()`, field mutations
 - `on_apply` fires before activation — error prevents application
 - `on_remove` fires before removal — error does NOT prevent removal
 - `bearer` + condition params in scope; `invocation()` unavailable
@@ -998,7 +999,8 @@ condition Poisoned(potency: int) on bearer: Character {
 - `on_apply` fires **before** activation (modify/suppress not yet in effect). Error → condition never applied.
 - `on_remove` fires **before** removal (modify/suppress still in effect). Error → condition still removed.
 - `bearer` + condition parameters in scope. `invocation()` not available.
-- **Available in lifecycle blocks:** `suspend()` and `condition_token()` — see Suspension pattern below.
+- **Available in lifecycle blocks:** `suspend()`, `condition_token()`, `transfer_conditions()`, `despawn()` — see Suspension and Transfer patterns below.
+- `transfer_conditions()` is safe in lifecycle blocks because it skips on_apply/on_remove hooks (no reentrancy risk).
 - With `extends`, ancestor lifecycle blocks run first (DFS post-order).
 - **Design principle:** use `extends` for conditions that imply others, not `apply_condition()` in on_apply.
 
@@ -1229,6 +1231,66 @@ remove_suspension_source(target, source_id: 42)
 - **Temporal Stasis**: same as above — entity removed from all interaction
 - **On-map freeze** (e.g., paralysis variant that also pauses durations): `suspend(bearer, Presence.OnMap, freeze_turns: true, freeze_durations: true)`
 - **Astral Spell**: suspend body with OffBoard + spawn astral proxy (composes with entity construction and summoning patterns)
+
+### Condition Transfer (Polymorph Pattern)
+
+`transfer_conditions(from, to, "tag")` moves all active conditions on `from` that have `tag` in their tag set to `to`. Designed for polymorph/transformation where mental/magical conditions should follow the creature's identity between entities.
+
+**Key properties:**
+- Preserves condition identity: id, params, duration, source, tags, gained_at
+- Does NOT fire on_apply/on_remove hooks or host gates — atomic relocation
+- Allowed in lifecycle blocks (critical for the revert path in on_remove)
+- Tag must be declared; checker validates string literals at compile time
+- Same-entity calls are no-ops; nonexistent entities are no-ops
+- Bearer type incompatible conditions are skipped (stays on source)
+- Self-exclusion: in on_remove, the condition being removed is automatically excluded from transfer
+
+**Tag convention:** Tag conditions that represent mental/magical effects with `#transferable` (or similar). Physical/equipment conditions are not tagged.
+
+```ttrpg
+tag transferable
+
+condition Blessed on bearer: entity stacking all {
+    tags: #transferable
+}
+
+condition Regeneration(hp_per_round: int) on bearer: entity stacking all {
+    // No #transferable — physical trait stays with the body
+}
+
+condition Polymorphed(original: Character, suspension_key: int) on bearer: Monster
+    stacking first
+{
+    on_remove {
+        transfer_conditions(bearer, original, "transferable")
+        original.hp = bearer.hp
+        remove_suspension_source(original, source_id: suspension_key)
+        despawn(bearer)
+    }
+}
+
+function polymorph(target: Character, form_name: string, form_ac: int, key: int) -> Monster {
+    suspend_with_source(target, source_id: key,
+        Presence.OffBoard, freeze_turns: true, freeze_durations: true)
+
+    let form = Monster {
+        name: form_name,
+        hp: target.hp,
+        max_hp: target.max_hp,
+        ac: form_ac
+    }
+    transfer_conditions(target, form, "transferable")
+    apply_condition(form, Polymorphed(original: target, suspension_key: key),
+        Duration.Indefinite)
+    form
+}
+```
+
+**Transferable condition checklist** (verify before tagging as transferable):
+- Bearer type is `entity` (not `Character` or `Monster`) — ensures cross-type compatibility
+- No side effects in lifecycle hooks (`suspend()`, `spawn()`) — transfer skips hooks
+- Modify blocks target derives with `target: entity` parameters
+- Stacking policy is `stacking all` or cannot conflict on destination
 
 ### Resistance Check (guard match)
 

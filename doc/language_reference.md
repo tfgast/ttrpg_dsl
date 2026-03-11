@@ -764,11 +764,13 @@ emit EventName(param: value)       // fire event (named args only)
 `.roll()` `.multiply(factor)`
 
 ### Entity & Conditions
-`apply_condition(target, cond, duration [, source])` `remove_condition(target, cond)` `conditions(entity)` `has_condition(entity, name)`
+`apply_condition(target, cond, duration [, source])` `remove_condition(target, cond)` `conditions(entity)` `has_condition(entity, name)` `transfer_conditions(from, to, tag)`
 
 The optional 4th argument to `apply_condition` is an `EffectSource` value (defaults to `EffectSource.Unknown`). Access it on active conditions via `.source`.
 
 `has_condition(entity, "Prone")` returns `true` if the entity has an active condition with that name. Shorthand for `any([c.name == "Prone" for c in conditions(entity)])`.
+
+`transfer_conditions(from, to, "tag")` moves all active conditions on `from` that have `tag` in their tag set to `to`. Preserves condition identity (id, params, duration, source, tags). Does NOT fire lifecycle hooks or host gates — it's an atomic relocation. Allowed in lifecycle blocks (unlike apply/remove). Tag must be a declared tag name; the checker validates string literals. Same-entity calls are no-ops. Conditions with incompatible bearer types are skipped.
 
 Condition names are first-class values of type `Condition`. They can be stored in variables and passed as function parameters:
 ```
