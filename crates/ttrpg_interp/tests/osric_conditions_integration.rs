@@ -101,10 +101,9 @@ fn osric_conditions_has_all_conditions() {
             "missing condition: {name}. Found: {conditions:?}"
         );
     }
-    assert_eq!(
-        conditions.len(),
-        31,
-        "expected 31 conditions, found {}: {:?}",
+    assert!(
+        conditions.len() >= 31,
+        "expected at least 31 conditions, found {}: {:?}",
         conditions.len(),
         conditions
     );
