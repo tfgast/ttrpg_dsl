@@ -466,12 +466,8 @@ impl Runner {
             parsed.ok_or_else(|| CliError::Message("failed to parse expression".into()))?;
 
         let cov_rc = self.coverage_rc();
-        let mut interp = TrackedInterpreter::new(
-            &self.program,
-            &self.type_env,
-            &self.game_state,
-        )
-        .map_err(|e| render_runtime_error(&e, &self.source_map))?;
+        let mut interp = TrackedInterpreter::new(&self.program, &self.type_env, &self.game_state)
+            .map_err(|e| render_runtime_error(&e, &self.source_map))?;
         if let Some(cov) = cov_rc {
             interp.interp.set_coverage(cov);
         }
@@ -616,4 +612,3 @@ impl Default for Runner {
         Self::new()
     }
 }
-

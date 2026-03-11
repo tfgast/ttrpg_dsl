@@ -309,8 +309,8 @@ fn apply_mutation<S: WritableState>(state: &mut S, effect: &Effect) {
             value,
             bounds,
         } => {
-            if let Ok(final_value) = compute_field_value(state, entity, path, *op, value, bounds) {
-                state.write_field(entity, path, final_value);
+            if let Ok(result) = compute_field_value(state, entity, path, *op, value, bounds) {
+                state.write_field(entity, path, result.value);
             }
             // On arithmetic error, skip mutation — state remains unchanged.
         }
@@ -441,10 +441,9 @@ fn apply_mutation_with_override<S: WritableState>(
             bounds,
             ..
         } => {
-            if let Ok(final_value) =
-                compute_field_value(state, entity, path, *op, override_val, bounds)
+            if let Ok(result) = compute_field_value(state, entity, path, *op, override_val, bounds)
             {
-                state.write_field(entity, path, final_value);
+                state.write_field(entity, path, result.value);
             }
         }
         Effect::MutateTurnField {
@@ -517,7 +516,19 @@ fn apply_mutation_with_override<S: WritableState>(
     }
 }
 
+/// Result of computing a field mutation, including whether clamping occurred.
+#[derive(Debug, Clone)]
+pub struct MutationResult {
+    /// The final value after applying the operation and any clamping.
+    pub value: Value,
+    /// `true` if resource bounds were present and the unclamped result
+    /// differed from the clamped result.
+    pub clamped: bool,
+}
+
 /// Compute the final field value after applying op + bounds clamping.
+///
+/// Returns a [`MutationResult`] with the final value and whether clamping occurred.
 pub fn compute_field_value<S: StateProvider>(
     state: &S,
     entity: &EntityRef,
@@ -525,18 +536,28 @@ pub fn compute_field_value<S: StateProvider>(
     op: AssignOp,
     rhs: &Value,
     bounds: &Option<(Value, Value)>,
-) -> Result<Value, RuntimeError> {
-    let new_val = match op {
+) -> Result<MutationResult, RuntimeError> {
+    let unclamped = match op {
         AssignOp::Eq => rhs.clone(),
         AssignOp::PlusEq | AssignOp::MinusEq => {
             let current = read_at_path(state, entity, path).unwrap_or(Value::Int(0));
             apply_op(op, &current, rhs)?
         }
     };
-    Ok(match bounds {
-        Some((lo, hi)) => clamp_value(new_val, lo, hi),
-        None => new_val,
-    })
+    match bounds {
+        Some((lo, hi)) => {
+            let clamped_val = clamp_value(unclamped.clone(), lo, hi);
+            let was_clamped = clamped_val != unclamped;
+            Ok(MutationResult {
+                value: clamped_val,
+                clamped: was_clamped,
+            })
+        }
+        None => Ok(MutationResult {
+            value: unclamped,
+            clamped: false,
+        }),
+    }
 }
 
 /// Compute the final turn field value after applying op.
@@ -1948,9 +1969,10 @@ mod tests {
         // Correct: 0 - 2.5 = -2.5
         // Bug: returns Float(2.5) because (Int(0), Float(2.5)) hits fallback
         assert_eq!(
-            result,
+            result.value,
             Value::Float(-2.5),
-            "bug tdsl-jgk: expected 0 - 2.5 = -2.5, got {result:?}"
+            "bug tdsl-jgk: expected 0 - 2.5 = -2.5, got {:?}",
+            result.value
         );
     }
 

@@ -72,12 +72,9 @@ impl Runner {
             {
                 // Evaluate the default expression through the standard eval path
                 let cov_rc = self.coverage_rc();
-                let mut interp = TrackedInterpreter::new(
-                    &self.program,
-                    &self.type_env,
-                    &self.game_state,
-                )
-                .map_err(|e| render_runtime_error(&e, &self.source_map))?;
+                let mut interp =
+                    TrackedInterpreter::new(&self.program, &self.type_env, &self.game_state)
+                        .map_err(|e| render_runtime_error(&e, &self.source_map))?;
                 if let Some(cov) = cov_rc {
                     interp.interp.set_coverage(cov);
                 }
@@ -122,12 +119,9 @@ impl Runner {
                 && let Some(default_expr) = &f.default
             {
                 let cov_rc = self.coverage_rc();
-                let mut interp = TrackedInterpreter::new(
-                    &self.program,
-                    &self.type_env,
-                    &self.game_state,
-                )
-                .map_err(|e| render_runtime_error(&e, &self.source_map))?;
+                let mut interp =
+                    TrackedInterpreter::new(&self.program, &self.type_env, &self.game_state)
+                        .map_err(|e| render_runtime_error(&e, &self.source_map))?;
                 if let Some(cov) = cov_rc {
                     interp.interp.set_coverage(cov);
                 }
@@ -177,12 +171,8 @@ impl Runner {
 
         // Fire hooks and reactions
         let cov_rc = self.coverage_rc();
-        let mut interp = TrackedInterpreter::new(
-            &self.program,
-            &self.type_env,
-            &self.game_state,
-        )
-        .map_err(|e| render_runtime_error(&e, &self.source_map))?;
+        let mut interp = TrackedInterpreter::new(&self.program, &self.type_env, &self.game_state)
+            .map_err(|e| render_runtime_error(&e, &self.source_map))?;
         if let Some(cov) = cov_rc {
             interp.interp.set_coverage(cov);
         }

@@ -11,7 +11,9 @@ use ttrpg_checker::ty::Ty;
 use ttrpg_interp::adapter;
 use ttrpg_interp::effect::{ActionOutcome, Effect, EffectHandler, Response};
 use ttrpg_interp::reference_state::GameState;
-use ttrpg_interp::state::{ConditionArgs, EntityRef, StateProvider, SuspensionRecord, WritableState};
+use ttrpg_interp::state::{
+    ConditionArgs, EntityRef, StateProvider, SuspensionRecord, WritableState,
+};
 use ttrpg_interp::value::{DiceExpr, RollResult, Value};
 
 use crate::format::{UnitSuffixes, format_dice_expr, format_path, format_value};
@@ -211,7 +213,7 @@ impl EffectHandler for CliHandler<'_> {
                         AssignOp::PlusEq | AssignOp::MinusEq => Value::Int(0),
                         AssignOp::Eq => Value::Void,
                     });
-                let new_val = match adapter::compute_field_value(
+                let result = match adapter::compute_field_value(
                     &*self.game_state.borrow(),
                     &entity,
                     &path,
@@ -219,7 +221,7 @@ impl EffectHandler for CliHandler<'_> {
                     &value,
                     &bounds,
                 ) {
-                    Ok(v) => v,
+                    Ok(r) => r,
                     Err(e) => {
                         self.log(format!(
                             "[MutateField] {}.{}: error: {}",
@@ -231,28 +233,15 @@ impl EffectHandler for CliHandler<'_> {
                 // Write to state
                 self.game_state
                     .borrow_mut()
-                    .write_field(&entity, &path, new_val.clone());
+                    .write_field(&entity, &path, result.value.clone());
 
-                let clamped = bounds.is_some() && {
-                    // Check if clamping actually changed the value
-                    let unclamped = match op {
-                        AssignOp::Eq => value.clone(),
-                        AssignOp::PlusEq | AssignOp::MinusEq => {
-                            match adapter::apply_op(op, &old, &value) {
-                                Ok(v) => v,
-                                Err(_) => return Response::Vetoed,
-                            }
-                        }
-                    };
-                    unclamped != new_val
-                };
-                let suffix = if clamped { " (clamped)" } else { "" };
+                let suffix = if result.clamped { " (clamped)" } else { "" };
                 self.log(format!(
                     "[MutateField] {}.{}: {} -> {}{}",
                     name,
                     field_str,
                     format_value(&old, self.unit_suffixes),
-                    format_value(&new_val, self.unit_suffixes),
+                    format_value(&result.value, self.unit_suffixes),
                     suffix,
                 ));
                 Response::Acknowledged

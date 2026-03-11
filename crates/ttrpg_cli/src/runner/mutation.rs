@@ -343,7 +343,7 @@ impl Runner {
             interp.resolve_resource_bounds(&state, &mut handler, &entity, &path_segments)
         };
 
-        let final_val = {
+        let result = {
             let state = RefCellState(&self.game_state);
             ttrpg_interp::adapter::compute_field_value(
                 &state,
@@ -356,17 +356,12 @@ impl Runner {
             .map_err(|e| render_runtime_error(&e, &self.source_map))?
         };
 
-        let was_clamped = final_val != val || assign_op != AssignOp::Eq;
-        let clamped_suffix = if bounds.is_some() && assign_op == AssignOp::Eq && final_val != val {
-            " (clamped)"
-        } else {
-            ""
-        };
+        let clamped_suffix = if result.clamped { " (clamped)" } else { "" };
 
         // Write the computed value to GameState
         self.game_state
             .borrow_mut()
-            .write_field(&entity, &path_segments, final_val.clone());
+            .write_field(&entity, &path_segments, result.value.clone());
 
         let op_str = match assign_op {
             AssignOp::Eq => "=",
@@ -377,7 +372,7 @@ impl Runner {
             self.output.push(format!(
                 "{} = {}{}",
                 display_path,
-                format_value(&final_val, &self.unit_suffixes),
+                format_value(&result.value, &self.unit_suffixes),
                 clamped_suffix
             ));
         } else {
@@ -386,10 +381,9 @@ impl Runner {
                 display_path,
                 op_str,
                 format_value(&val, &self.unit_suffixes),
-                format_value(&final_val, &self.unit_suffixes)
+                format_value(&result.value, &self.unit_suffixes)
             ));
         }
-        let _ = was_clamped;
         Ok(())
     }
 
