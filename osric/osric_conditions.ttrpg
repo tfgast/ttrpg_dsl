@@ -642,6 +642,87 @@ system "OSRIC Conditions" {
 
 
     // ========================================================
+    //  CHARMED (§1.8.5.1 — Charm Person)
+    //
+    //  Target regards caster as a trusted friend and ally.
+    //  Will not fight caster, interprets words in most positive
+    //  light. Periodic saving throws based on INT. Marker
+    //  condition — specific behaviours are GM adjudicated.
+    //  Per 1.8.5.1 (Charm Person).
+    // ========================================================
+
+    condition Charmed on bearer: entity
+        stacking first
+    {
+        tags: #mental
+    }
+
+
+    // ========================================================
+    //  FRIGHTENED (§1.8.5.2 — Scare)
+    //
+    //  Frozen with terror, unable to move. If attacked, fights
+    //  in own defence but suffers -1 penalty to all attacks,
+    //  damage, and saving throws. Per 1.8.5.2 (Scare).
+    // ========================================================
+
+    condition Frightened on bearer: entity
+        stacking first
+    {
+        tags: #fear, #mental
+        modify [#attack_resolution](attacker: bearer) {
+            attack_mod = attack_mod - 1
+        }
+        modify entity_best_saves(target: bearer) {
+            result = SavingThrows {
+                aimed_magic: result.aimed_magic + 1,
+                breath: result.breath + 1,
+                death_paralysis_poison: result.death_paralysis_poison + 1,
+                petrification_polymorph: result.petrification_polymorph + 1,
+                spells: result.spells + 1
+            }
+        }
+    }
+
+
+    // ========================================================
+    //  ENFEEBLED (§1.8.5.2 — Ray of Enfeeblement)
+    //
+    //  Strength and strength-dependent effects reduced by a
+    //  percentage (25% base + 1% per caster level). Modelled
+    //  as a marker condition — mechanical STR reduction is
+    //  applied by the resolve function via direct modification
+    //  of the target's ability score. The condition tracks the
+    //  reduction amount for removal/display purposes.
+    //  Per 1.8.5.2 (Ray of Enfeeblement).
+    // ========================================================
+
+    condition Enfeebled(reduction: int) on bearer: entity
+        stacking first
+    {
+        tags: #physical
+    }
+
+
+    // ========================================================
+    //  FORGOTTEN (§1.8.5.2 — Forget)
+    //
+    //  Target has lost memory of recent events. Cannot recall
+    //  actions from the affected rounds. For spellcasters, this
+    //  may mean losing track of memorised spells (GM adjudicated).
+    //  Memories can only be restored by heal, restoration, or
+    //  wish — not subject to dispel magic. Marker condition.
+    //  Per 1.8.5.2 (Forget).
+    // ========================================================
+
+    condition Forgotten on bearer: entity
+        stacking first
+    {
+        tags: #mental
+    }
+
+
+    // ========================================================
     //  ENCUMBRANCE LIFECYCLE HELPER
     //
     //  Call after any weight or armour change to recompute the

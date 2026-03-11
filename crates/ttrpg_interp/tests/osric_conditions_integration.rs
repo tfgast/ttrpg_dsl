@@ -89,6 +89,10 @@ fn osric_conditions_has_all_conditions() {
         "FourLegged",
         "MultiArmed",
         "EncumbranceState",
+        "Charmed",
+        "Frightened",
+        "Enfeebled",
+        "Forgotten",
     ];
 
     for name in &expected {
@@ -99,8 +103,8 @@ fn osric_conditions_has_all_conditions() {
     }
     assert_eq!(
         conditions.len(),
-        27,
-        "expected 27 conditions, found {}: {:?}",
+        31,
+        "expected 31 conditions, found {}: {:?}",
         conditions.len(),
         conditions
     );

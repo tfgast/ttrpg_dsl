@@ -111,6 +111,10 @@ system "OSRIC Spell Registry" {
             def: BURNING_HANDS_DEF,
             resolve: SpellResolve.Area(resolve: resolve_burning_hands)
         },
+        SpellId.CharmPerson => SpellEntry {
+            def: CHARM_PERSON_DEF,
+            resolve: SpellResolve.Targeted(resolve: resolve_charm_person)
+        },
         SpellId.MagicMissile => SpellEntry {
             def: MAGIC_MISSILE_DEF,
             resolve: SpellResolve.Targeted(resolve: resolve_magic_missile)
@@ -122,6 +126,19 @@ system "OSRIC Spell Registry" {
         SpellId.Sleep => SpellEntry {
             def: SLEEP_DEF,
             resolve: SpellResolve.Area(resolve: resolve_sleep)
+        },
+        // --- Magic-User level 2 ---
+        SpellId.Forget => SpellEntry {
+            def: FORGET_DEF,
+            resolve: SpellResolve.Targeted(resolve: resolve_forget)
+        },
+        SpellId.RayOfEnfeeblement => SpellEntry {
+            def: RAY_OF_ENFEEBLEMENT_DEF,
+            resolve: SpellResolve.Targeted(resolve: resolve_ray_of_enfeeblement)
+        },
+        SpellId.Scare => SpellEntry {
+            def: SCARE_DEF,
+            resolve: SpellResolve.Targeted(resolve: resolve_scare)
         },
         // --- Magic-User level 3 ---
         SpellId.DispelMagicMU => SpellEntry {

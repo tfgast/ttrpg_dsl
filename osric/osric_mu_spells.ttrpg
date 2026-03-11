@@ -130,6 +130,204 @@ system "OSRIC MU Spells" {
 
 
     // ========================================================
+    //  CHARM PERSON (§1.8.5.1)
+    //
+    //  Arcane enchantment, level 1. Range: 120ft.
+    //  Target regards caster as trusted friend. Saving throw
+    //  vs spells negates (mental — WIS modifier applies).
+    //  Affects "persons" — humans and similar medium-sized
+    //  bipedal humanoids. Duration varies by target INT
+    //  (periodic saves). Casting time: Fast.
+    // ========================================================
+
+    const CHARM_PERSON_DEF: SpellDef = SpellDef {
+        name: "Charm Person",
+        class_type: Arcane,
+        school: Enchantment,
+        level: 1,
+        range: SpellRange.Distance(distance: 120ft),
+        duration: SpellDuration.Special(description: "See below (periodic saves by INT)"),
+
+        components: SpellComponents {},
+        casting_time: CastingTime.Fast,
+        saving_throw: SpellSave.Negates,
+        description: "Target regards caster as trusted friend. Periodic saves based on INT. Affects persons only."
+    }
+
+    // Resolve Charm Person. Single target, mental save negates.
+    // Duration is indefinite until a periodic save succeeds
+    // (tracked by GM). We apply Charmed with Indefinite duration
+    // to represent the ongoing effect.
+    function resolve_charm_person(caster: entity, targets: list<entity>) {
+        let cl = caster_level(caster, Arcane)
+        let source = EffectSource.Spell(name: "Charm Person", caster_level: cl)
+        for target in targets {
+            let result = target.ResistSpell(category: some(SpellsUnlisted), is_mental: true)
+            if let some(saved) = result {
+                if !saved {
+                    apply_condition(target, Charmed, Duration.Indefinite, source)
+                    emit SpellApplied(caster: caster, target: target, spell_name: "Charm Person")
+                }
+            }
+        }
+    }
+
+
+    // ========================================================
+    //  FORGET (§1.8.5.2)
+    //
+    //  Arcane enchantment, level 2. Range: 30ft.
+    //  1-4 creatures in a 20ft square area forget events of
+    //  the last round + 1 round per 3 caster levels. Save
+    //  negates with modifier based on number of targets:
+    //    1 target: -2,  2 targets: -1,  3-4 targets: 0.
+    //  Memories can only be restored by heal, restoration,
+    //  or wish — not subject to dispel magic.
+    //  Casting time: 2 segments.
+    // ========================================================
+
+    const FORGET_DEF: SpellDef = SpellDef {
+        name: "Forget",
+        class_type: Arcane,
+        school: Enchantment,
+        level: 2,
+        range: SpellRange.Distance(distance: Feet { value: 30 }),
+        duration: SpellDuration.Instantaneous,
+        area: [SpellArea { shape: AreaShape.Cube(side: 20ft) }],
+        components: SpellComponents { material: true },
+        casting_time: CastingTime.Segments(count: 2),
+        saving_throw: SpellSave.Negates,
+        description: "1-4 creatures forget events of last round + 1 round per 3 caster levels. Save modifier depends on target count."
+    }
+
+    // Save penalty based on number of Forget targets.
+    derive forget_save_bonus(num_targets: int) -> int {
+        match {
+            num_targets <= 1 => -2,
+            num_targets == 2 => -1,
+            true             => 0
+        }
+    }
+
+    // Resolve Forget. Each target saves vs spells (mental)
+    // with a penalty based on the number of targets.
+    function resolve_forget(caster: entity, targets: list<entity>) {
+        let cl = caster_level(caster, Arcane)
+        let save_bonus = forget_save_bonus(len(targets))
+        let source = EffectSource.Spell(name: "Forget", caster_level: cl)
+        for target in targets {
+            let result = target.ResistSpell(category: some(SpellsUnlisted), bonus: save_bonus, is_mental: true)
+            if let some(saved) = result {
+                if !saved {
+                    apply_condition(target, Forgotten, Duration.Indefinite, source)
+                    emit SpellApplied(caster: caster, target: target, spell_name: "Forget")
+                }
+            }
+        }
+    }
+
+
+    // ========================================================
+    //  RAY OF ENFEEBLEMENT (§1.8.5.2)
+    //
+    //  Arcane enchantment, level 2. Range: 10ft + 3ft/MU level.
+    //  One creature. No attack roll required. Save negates.
+    //  Reduces target's strength and strength-dependent effects
+    //  by 25% + 1% per caster level (rounded off for lower-
+    //  level casters). Duration: 1 round/MU level.
+    //  Casting time: 2 segments.
+    // ========================================================
+
+    const RAY_OF_ENFEEBLEMENT_DEF: SpellDef = SpellDef {
+        name: "Ray of Enfeeblement",
+        class_type: Arcane,
+        school: Enchantment,
+        level: 2,
+        range: SpellRange.Special(description: "10ft + 3ft/MU level"),
+        duration: SpellDuration.Special(description: "1 round/MU level"),
+
+        components: SpellComponents {},
+        casting_time: CastingTime.Segments(count: 2),
+        saving_throw: SpellSave.Negates,
+        description: "Reduces target's strength by 25% + 1% per caster level. No attack roll. Save negates."
+    }
+
+    // Compute the STR reduction percentage for Ray of Enfeeblement.
+    derive enfeeblement_reduction_pct(caster_level: int) -> int {
+        25 + caster_level
+    }
+
+    // Resolve Ray of Enfeeblement. Single target, save negates.
+    // Applies Enfeebled condition with the computed reduction.
+    function resolve_ray_of_enfeeblement(caster: entity, targets: list<entity>) {
+        let cl = caster_level(caster, Arcane)
+        let duration_rounds = cl
+        let pct = enfeeblement_reduction_pct(cl)
+        let source = EffectSource.Spell(name: "Ray of Enfeeblement", caster_level: cl)
+        for target in targets {
+            let result = target.ResistSpell(category: some(SpellsUnlisted))
+            if let some(saved) = result {
+                if !saved {
+                    apply_condition(target, Enfeebled(reduction: pct), Duration.Rounds(duration_rounds), source)
+                    emit SpellApplied(caster: caster, target: target, spell_name: "Ray of Enfeeblement")
+                }
+            }
+        }
+    }
+
+
+    // ========================================================
+    //  SCARE (§1.8.5.2)
+    //
+    //  Arcane enchantment, level 2. Range: 10ft.
+    //  One creature of less than 6th level or 6 HD.
+    //  Save negates. On failure, target is Frightened —
+    //  frozen with terror for 3d4 rounds. If attacked,
+    //  fights in own defence at -1 to attacks/damage/saves.
+    //  Casting time: 2 segments.
+    // ========================================================
+
+    const SCARE_DEF: SpellDef = SpellDef {
+        name: "Scare",
+        class_type: Arcane,
+        school: Enchantment,
+        level: 2,
+        range: SpellRange.Distance(distance: Feet { value: 10 }),
+        duration: SpellDuration.Special(description: "3d4 rounds"),
+
+        components: SpellComponents { material: true },
+        casting_time: CastingTime.Segments(count: 2),
+        saving_throw: SpellSave.Negates,
+        description: "One creature of less than 6th level/6 HD is frozen with terror. Save negates."
+    }
+
+    // Check whether a target is vulnerable to Scare (< 6 HD/level).
+    derive is_scare_vulnerable(target: entity) -> bool {
+        let hd = entity_hit_dice(target)
+        dice_count(hd) < 6
+    }
+
+    // Resolve Scare. Single target, must be < 6 HD/level.
+    // Duration is 3d4 rounds (three separate d4 rolls summed).
+    function resolve_scare(caster: entity, targets: list<entity>) {
+        let cl = caster_level(caster, Arcane)
+        let source = EffectSource.Spell(name: "Scare", caster_level: cl)
+        for target in targets {
+            if is_scare_vulnerable(target) {
+                let result = target.ResistSpell(category: some(SpellsUnlisted), is_mental: true)
+                if let some(saved) = result {
+                    if !saved {
+                        let duration_rounds = roll(3d4).total
+                        apply_condition(target, Frightened, Duration.Rounds(duration_rounds), source)
+                        emit SpellApplied(caster: caster, target: target, spell_name: "Scare")
+                    }
+                }
+            }
+        }
+    }
+
+
+    // ========================================================
     //  FIREBALL (§1.8.5.3)
     //
     //  Arcane evocation, level 3. 20ft radius sphere.

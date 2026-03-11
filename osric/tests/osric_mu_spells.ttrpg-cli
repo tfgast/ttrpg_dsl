@@ -336,3 +336,156 @@ assert_no_condition sg_miss_caster, HoldingCharge
 spawn Character sg_gate_caster { name: "SG Gate Caster", classes: [ClassLevel { class: MagicUser, level: 3 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 10, hp: 10 }, Spellcasting {} }
 call apply_condition(sg_gate_caster, HoldingCharge, Duration.Indefinite)
 assert (can_begin_casting(sg_gate_caster)) == false
+
+
+// ── Charm Person SpellDef ────────────────────────────────────
+
+assert_eq CHARM_PERSON_DEF.level, 1
+assert_eq CHARM_PERSON_DEF.school, SpellSchool.Enchantment
+
+// ── Charm Person resolve: failed save → Charmed ──────────────
+
+spawn Character cp_caster_1 { name: "CP Caster 1", classes: [ClassLevel { class: MagicUser, level: 3 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 10, hp: 10 } }
+spawn Character cp_target_1 { name: "CP Target 1", classes: [ClassLevel { class: Fighter, level: 1 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 10, hp: 10 } }
+
+rolls clear
+rolls 1
+call resolve_charm_person(cp_caster_1, [cp_target_1])
+assert_condition cp_target_1, Charmed
+
+// ── Charm Person resolve: successful save → no condition ─────
+
+spawn Character cp_caster_2 { name: "CP Caster 2", classes: [ClassLevel { class: MagicUser, level: 3 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 10, hp: 10 } }
+spawn Character cp_target_2 { name: "CP Target 2", classes: [ClassLevel { class: Fighter, level: 1 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 10, hp: 10 } }
+
+rolls clear
+rolls 20
+call resolve_charm_person(cp_caster_2, [cp_target_2])
+assert_no_condition cp_target_2, Charmed
+
+// ── Charm Person via FinishCasting ───────────────────────────
+
+spawn Character cp_dispatch_caster { name: "CP Dispatch", classes: [ClassLevel { class: MagicUser, level: 5 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 12, hp: 12 } }
+spawn Character cp_dispatch_target { name: "CP Dispatch Target", classes: [ClassLevel { class: Fighter, level: 1 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 10, hp: 10 } }
+
+rolls clear
+rolls 1
+do cp_dispatch_caster.FinishCasting(id: CharmPerson, targets: [cp_dispatch_target])
+assert_condition cp_dispatch_target, Charmed
+
+
+// ── Scare SpellDef ───────────────────────────────────────────
+
+assert_eq SCARE_DEF.level, 2
+assert_eq SCARE_DEF.school, SpellSchool.Enchantment
+
+// ── Scare resolve: failed save, low HD → Frightened ──────────
+
+spawn Character scare_caster_1 { name: "Scare Caster 1", classes: [ClassLevel { class: MagicUser, level: 3 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 10, hp: 10 } }
+spawn Monster scare_target_1 { name: "Scared Orc", hit_dice: 1d8, max_hp: 6, hp: 6, ac: 14, morale: 7, morale_checks_made: 0, xp_value: 0, intelligence: 1, attacks: [MonsterAttack { name: "Club", damage: 1d6 }], size: Medium, special: [] }
+
+rolls clear
+// Save d20=1 (fail), then 3d4 for duration = 2+1+3 = 6 rounds
+rolls 1 2 1 3
+call resolve_scare(scare_caster_1, [scare_target_1])
+assert_condition scare_target_1, Frightened
+
+// ── Scare resolve: successful save → no condition ────────────
+
+spawn Character scare_caster_2 { name: "Scare Caster 2", classes: [ClassLevel { class: MagicUser, level: 3 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 10, hp: 10 } }
+spawn Monster scare_target_2 { name: "Brave Orc", hit_dice: 1d8, max_hp: 6, hp: 6, ac: 14, morale: 7, morale_checks_made: 0, xp_value: 0, intelligence: 1, attacks: [MonsterAttack { name: "Club", damage: 1d6 }], size: Medium, special: [] }
+
+rolls clear
+rolls 20
+call resolve_scare(scare_caster_2, [scare_target_2])
+assert_no_condition scare_target_2, Frightened
+
+// ── Scare resolve: target with 6+ HD → immune ───────────────
+
+spawn Character scare_caster_3 { name: "Scare Caster 3", classes: [ClassLevel { class: MagicUser, level: 5 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 12, hp: 12 } }
+spawn Monster scare_target_immune { name: "Hill Giant", hit_dice: 8d8, max_hp: 40, hp: 40, ac: 16, morale: 10, morale_checks_made: 0, xp_value: 0, intelligence: 6, attacks: [MonsterAttack { name: "Club", damage: 2d8 }], size: Large, special: [] }
+
+rolls clear
+rolls 1
+call resolve_scare(scare_caster_3, [scare_target_immune])
+assert_no_condition scare_target_immune, Frightened
+
+
+// ── Ray of Enfeeblement SpellDef ─────────────────────────────
+
+assert_eq RAY_OF_ENFEEBLEMENT_DEF.level, 2
+assert_eq RAY_OF_ENFEEBLEMENT_DEF.school, SpellSchool.Enchantment
+
+// ── Ray of Enfeeblement: failed save → Enfeebled ─────────────
+// Level 3 caster: 25 + 3 = 28% reduction, duration 3 rounds.
+
+spawn Character roe_caster_1 { name: "RoE Caster 1", classes: [ClassLevel { class: MagicUser, level: 3 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 10, hp: 10 } }
+spawn Character roe_target_1 { name: "RoE Target 1", classes: [ClassLevel { class: Fighter, level: 3 }], abilities: { STR: 16, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 20, hp: 20 } }
+
+rolls clear
+rolls 1
+call resolve_ray_of_enfeeblement(roe_caster_1, [roe_target_1])
+assert_condition roe_target_1, Enfeebled
+
+// ── Ray of Enfeeblement: successful save → no condition ──────
+
+spawn Character roe_caster_2 { name: "RoE Caster 2", classes: [ClassLevel { class: MagicUser, level: 3 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 10, hp: 10 } }
+spawn Character roe_target_2 { name: "RoE Target 2", classes: [ClassLevel { class: Fighter, level: 3 }], abilities: { STR: 16, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 20, hp: 20 } }
+
+rolls clear
+rolls 20
+call resolve_ray_of_enfeeblement(roe_caster_2, [roe_target_2])
+assert_no_condition roe_target_2, Enfeebled
+
+// ── enfeeblement_reduction_pct ───────────────────────────────
+
+assert_eq enfeeblement_reduction_pct(1), 26
+assert_eq enfeeblement_reduction_pct(5), 30
+assert_eq enfeeblement_reduction_pct(10), 35
+
+
+// ── Forget SpellDef ──────────────────────────────────────────
+
+assert_eq FORGET_DEF.level, 2
+assert_eq FORGET_DEF.school, SpellSchool.Enchantment
+
+// ── forget_save_bonus ────────────────────────────────────────
+
+assert_eq forget_save_bonus(1), -2
+assert_eq forget_save_bonus(2), -1
+assert_eq forget_save_bonus(3), 0
+assert_eq forget_save_bonus(4), 0
+
+// ── Forget resolve: failed save → Forgotten ──────────────────
+
+spawn Character fg_caster_1 { name: "FG Caster 1", classes: [ClassLevel { class: MagicUser, level: 5 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 12, hp: 12 } }
+spawn Character fg_target_1 { name: "FG Target 1", classes: [ClassLevel { class: Fighter, level: 3 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 20, hp: 20 } }
+
+rolls clear
+rolls 1
+call resolve_forget(fg_caster_1, [fg_target_1])
+assert_condition fg_target_1, Forgotten
+
+// ── Forget resolve: successful save → no condition ───────────
+
+spawn Character fg_caster_2 { name: "FG Caster 2", classes: [ClassLevel { class: MagicUser, level: 5 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 12, hp: 12 } }
+spawn Character fg_target_2 { name: "FG Target 2", classes: [ClassLevel { class: Fighter, level: 3 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 20, hp: 20 } }
+
+rolls clear
+rolls 20
+call resolve_forget(fg_caster_2, [fg_target_2])
+assert_no_condition fg_target_2, Forgotten
+
+// ── Forget resolve: multiple targets with mixed saves ────────
+
+spawn Character fg_caster_3 { name: "FG Caster 3", classes: [ClassLevel { class: MagicUser, level: 5 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 12, hp: 12 } }
+spawn Character fg_target_3a { name: "FG Target 3a", classes: [ClassLevel { class: Fighter, level: 1 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 10, hp: 10 } }
+spawn Character fg_target_3b { name: "FG Target 3b", classes: [ClassLevel { class: Fighter, level: 1 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 10, hp: 10 } }
+spawn Character fg_target_3c { name: "FG Target 3c", classes: [ClassLevel { class: Fighter, level: 1 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 10, hp: 10 } }
+
+rolls clear
+rolls 1 20 1
+call resolve_forget(fg_caster_3, [fg_target_3a, fg_target_3b, fg_target_3c])
+assert_condition fg_target_3a, Forgotten
+assert_no_condition fg_target_3b, Forgotten
+assert_condition fg_target_3c, Forgotten

@@ -482,9 +482,14 @@ system "OSRIC" {
         BladeBarrier,
         // Magic-User level 1
         BurningHands,
+        CharmPerson,
         MagicMissile,
         ShockingGrasp,
         Sleep,
+        // Magic-User level 2
+        Forget,
+        RayOfEnfeeblement,
+        Scare,
         // Magic-User level 3
         DispelMagicMU,
         Fireball,
