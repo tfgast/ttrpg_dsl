@@ -708,35 +708,9 @@ fn builtin_remove_condition(
                     ));
                 }
             };
-            let cond_name = match fields.get("name") {
-                Some(Value::Str(s)) => Name::from(s.as_str()),
-                _ => Name::from("?"),
-            };
-            let cond_params = match fields.get("params") {
-                Some(Value::Map(m)) => {
-                    let mut params = BTreeMap::new();
-                    for (k, v) in m {
-                        if let Value::Str(key) = k {
-                            params.insert(Name::from(key.as_str()), v.clone());
-                        }
-                    }
-                    params
-                }
-                _ => BTreeMap::new(),
-            };
-            let instance = crate::state::ActiveCondition {
-                id: cond_id,
-                name: cond_name,
-                params: cond_params,
-                bearer: *target,
-                gained_at: 0,
-                duration: Value::Void,
-                invocation: None,
-                applied_at: 0,
-                source: crate::value::effect_source_unknown(),
-                tags: BTreeSet::new(),
-            };
-            (*target, vec![instance])
+            let conditions = env.state.read_conditions(target).unwrap_or_default();
+            let matching: Vec<_> = conditions.into_iter().filter(|c| c.id == cond_id).collect();
+            (*target, matching)
         }
         (Some(a), Some(b)) => {
             return Err(RuntimeError::with_span(

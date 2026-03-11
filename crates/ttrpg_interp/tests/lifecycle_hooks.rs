@@ -214,6 +214,46 @@ system "test" {
     assert_eq!(count_gate_effects(&handler.log, "ConditionRemovalGate"), 1);
 }
 
+#[test]
+fn on_remove_via_active_condition_preserves_condition_params() {
+    let source = r#"
+system "test" {
+    entity Character { hp: int }
+    condition Marked(amount: int) on bearer: Character {
+        on_remove {
+            bearer.hp = bearer.hp + amount
+        }
+    }
+    function mark_then_remove_first(c: Character) {
+        apply_condition(c, Marked(amount: 7), Duration.Indefinite)
+        let conds = conditions(c)
+        remove_condition(c, conds[0])
+    }
+}
+"#;
+    let (program, result) = setup(source);
+    let interp = Interpreter::new(&program, &result.env).unwrap();
+    let mut state = GameState::new();
+    let c = make_character(&mut state, 20);
+
+    let adapter = StateAdapter::new(state);
+    let mut handler = ScriptedHandler::new();
+    adapter.run(&mut handler, |state, handler| {
+        interp
+            .evaluate_function(state, handler, "mark_then_remove_first", vec![Value::Entity(c)])
+            .unwrap();
+    });
+
+    let final_state = adapter.into_inner();
+    assert_eq!(final_state.read_field(&c, "hp"), Some(Value::Int(27)));
+    assert_eq!(count_gate_effects(&handler.log, "ConditionApplyGate"), 1);
+    assert_eq!(count_gate_effects(&handler.log, "ConditionRemovalGate"), 1);
+    assert!(
+        final_state.read_conditions(&c).unwrap_or_default().is_empty(),
+        "condition should be removed by ActiveCondition id"
+    );
+}
+
 // ═══════════════════════════════════════════════════════════════
 // on_remove error does NOT prevent removal
 // ═══════════════════════════════════════════════════════════════

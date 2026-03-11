@@ -47,13 +47,16 @@ function test_polymorph_cycle(target: Character, damage: int) -> int {
         max_hp: target.max_hp,
         ac: 16
     }
-    apply_condition(form, Polymorphed(original: target, suspension_key: 1001),
+    let poly_id = apply_condition(form, Polymorphed(original: target, suspension_key: 1001),
         Duration.Indefinite)
+    if !poly_id.is_some() { error("expected polymorph condition to apply") }
 
     // Apply damage via helper (let bindings are immutable)
     damage_entity(form, damage)
 
     // Revert
+    let poly = conditions(form)[0]
+    if poly.id != poly_id.unwrap() { error("apply_condition returned wrong id") }
     remove_condition(form, "Polymorphed")
 
     target.hp
@@ -122,10 +125,13 @@ function test_eagle_polymorph(target: Character, damage: int) -> int {
         max_hp: target.max_hp,
         ac: 13
     }
-    apply_condition(form, Polymorphed(original: target, suspension_key: 5001),
+    let poly_id = apply_condition(form, Polymorphed(original: target, suspension_key: 5001),
         Duration.Rounds(count: 10))
+    if !poly_id.is_some() { error("expected polymorph condition to apply") }
 
     damage_monster(form, damage)
+    let poly = conditions(form)[0]
+    if poly.id != poly_id.unwrap() { error("apply_condition returned wrong id") }
     remove_condition(form, "Polymorphed")
 
     target.hp
@@ -160,7 +166,8 @@ END
 
 spawn Character victim { name: "Unlucky", hp: 15, max_hp: 15 }
 
-call apply_condition(victim, Petrified, Duration.Indefinite)
+let petrified_id = apply_condition(victim, Petrified, Duration.Indefinite)
+assert petrified_id.is_some()
 
 assert is_suspended(victim) == true
 assert is_off_board(victim) == false
@@ -241,12 +248,15 @@ function test_lethal_polymorph(target: Character) -> int {
         hp: target.hp,
         max_hp: target.max_hp
     }
-    apply_condition(form, Polymorphed(original: target, suspension_key: 9001),
+    let poly_id = apply_condition(form, Polymorphed(original: target, suspension_key: 9001),
         Duration.Indefinite)
+    if !poly_id.is_some() { error("expected polymorph condition to apply") }
 
     // Overkill the form
     damage_monster(form, 25)
 
+    let poly = conditions(form)[0]
+    if poly.id != poly_id.unwrap() { error("apply_condition returned wrong id") }
     remove_condition(form, "Polymorphed")
 
     target.hp
@@ -301,8 +311,11 @@ function do_polymorph(target: Character, form_name: string, form_ac: int, key: i
         max_hp: target.max_hp,
         ac: form_ac
     }
-    apply_condition(form, Polymorphed(original: target, suspension_key: key),
+    let poly_id = apply_condition(form, Polymorphed(original: target, suspension_key: key),
         Duration.Indefinite)
+    if !poly_id.is_some() { error("expected polymorph condition to apply") }
+    let poly = conditions(form)[0]
+    if poly.id != poly_id.unwrap() { error("apply_condition returned wrong id") }
     form
 }
 
@@ -385,8 +398,11 @@ function do_polymorph(target: Character, key: int) -> Monster {
     }
     // Transfer existing transferable conditions to the form
     transfer_conditions(target, form, "transferable")
-    apply_condition(form, Polymorphed(original: target, suspension_key: key),
+    let poly_id = apply_condition(form, Polymorphed(original: target, suspension_key: key),
         Duration.Indefinite)
+    if !poly_id.is_some() { error("expected polymorph condition to apply") }
+    let poly = conditions(form)[1]
+    if poly.id != poly_id.unwrap() { error("apply_condition returned wrong id") }
     form
 }
 
@@ -402,7 +418,8 @@ END
 spawn Character mage { name: "Mage", hp: 30, max_hp: 30 }
 
 // Bless the mage before polymorph
-call apply_condition(mage, Blessed, Duration.Indefinite)
+let blessed_id = apply_condition(mage, Blessed, Duration.Indefinite)
+assert blessed_id.is_some()
 assert has_condition(mage, "Blessed") == true
 
 // Polymorph — Blessed should transfer to form
@@ -411,7 +428,8 @@ assert has_condition(troll, "Blessed") == true
 assert has_condition(mage, "Blessed") == false
 
 // Apply Poisoned on the troll form (physical — won't transfer back)
-call apply_condition(troll, Poisoned, Duration.Indefinite)
+let poisoned_id = apply_condition(troll, Poisoned, Duration.Indefinite)
+assert poisoned_id.is_some()
 assert has_condition(troll, "Poisoned") == true
 
 call damage_monster(troll, 7)
@@ -470,8 +488,11 @@ function do_polymorph(target: Character, key: int) -> Monster {
         max_hp: target.max_hp
     }
     transfer_conditions(target, form, "transferable")
-    apply_condition(form, Polymorphed(original: target, suspension_key: key),
+    let poly_id = apply_condition(form, Polymorphed(original: target, suspension_key: key),
         Duration.Indefinite)
+    if !poly_id.is_some() { error("expected polymorph condition to apply") }
+    let poly = conditions(form)[2]
+    if poly.id != poly_id.unwrap() { error("apply_condition returned wrong id") }
     form
 }
 
@@ -482,8 +503,10 @@ END
 
 spawn Character cleric { name: "Cleric", hp: 25, max_hp: 25 }
 
-call apply_condition(cleric, Blessed, Duration.Indefinite)
-call apply_condition(cleric, Shielded, Duration.Indefinite)
+let bless_id = apply_condition(cleric, Blessed, Duration.Indefinite)
+let shield_id = apply_condition(cleric, Shielded, Duration.Indefinite)
+assert bless_id.is_some()
+assert shield_id.is_some()
 
 let bear = do_polymorph(cleric, 8501)
 
@@ -541,8 +564,11 @@ function do_polymorph(target: Character, key: int) -> Monster {
         hp: target.hp,
         max_hp: target.max_hp
     }
-    apply_condition(form, Polymorphed(original: target, suspension_key: key),
+    let poly_id = apply_condition(form, Polymorphed(original: target, suspension_key: key),
         Duration.Indefinite)
+    if !poly_id.is_some() { error("expected polymorph condition to apply") }
+    let poly = conditions(form)[0]
+    if poly.id != poly_id.unwrap() { error("apply_condition returned wrong id") }
     form
 }
 
@@ -556,7 +582,8 @@ spawn Character ranger { name: "Ranger", hp: 35, max_hp: 35 }
 let wolf = do_polymorph(ranger, 9501)
 
 // Someone curses the wolf form — it's transferable, should go back to ranger
-call apply_condition(wolf, Cursed, Duration.Indefinite)
+let curse_id = apply_condition(wolf, Cursed, Duration.Indefinite)
+assert curse_id.is_some()
 assert has_condition(wolf, "Cursed") == true
 
 call revert(wolf)
@@ -598,7 +625,8 @@ END
 spawn Character sculptor { name: "Sculptor", hp: 20, max_hp: 20, ac: 14 }
 
 // Apply Blessed before going statue (should persist through toggles)
-call apply_condition(sculptor, Blessed, Duration.Indefinite)
+let sculptor_bless = apply_condition(sculptor, Blessed, Duration.Indefinite)
+assert sculptor_bless.is_some()
 assert has_condition(sculptor, "Blessed") == true
 
 // Turn to statue
@@ -674,8 +702,11 @@ function do_polymorph(target: Character, form_name: string, form_ac: int, key: i
         ac: form_ac
     }
     transfer_conditions(target, form, "transferable")
-    apply_condition(form, Polymorphed(original: target, suspension_key: key),
+    let poly_id = apply_condition(form, Polymorphed(original: target, suspension_key: key),
         Duration.Indefinite)
+    if !poly_id.is_some() { error("expected polymorph condition to apply") }
+    let poly = conditions(form)[1]
+    if poly.id != poly_id.unwrap() { error("apply_condition returned wrong id") }
     form
 }
 
@@ -701,7 +732,8 @@ END
 spawn Character shifter { name: "Shifter", hp: 50, max_hp: 50, ac: 12 }
 
 // Bless before any polymorph
-call apply_condition(shifter, Blessed, Duration.Indefinite)
+let shifter_bless = apply_condition(shifter, Blessed, Duration.Indefinite)
+assert shifter_bless.is_some()
 assert has_condition(shifter, "Blessed") == true
 
 // First form: Bear

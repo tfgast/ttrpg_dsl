@@ -1439,7 +1439,24 @@ fn remove_condition_active_condition_uses_id() {
     let program = program_with_decls(vec![]);
     let type_env = type_env_with_builtins();
     let interp = Interpreter::new(&program, &type_env).unwrap();
-    let state = TestState::new();
+    let mut state = TestState::new();
+    let mut params = BTreeMap::new();
+    params.insert(Name::from("source"), Value::Entity(EntityRef(9)));
+    state.conditions.insert(
+        1,
+        vec![ActiveCondition {
+            id: 42,
+            name: "Prone".into(),
+            params: params.clone(),
+            bearer: EntityRef(1),
+            gained_at: 7,
+            duration: crate::value::duration_variant("Indefinite"),
+            invocation: None,
+            applied_at: 11,
+            source: effect_source_unknown(),
+            tags: BTreeSet::new(),
+        }],
+    );
     let mut handler = ScriptedHandler::new();
     let mut env = make_env(&state, &mut handler, &interp);
 
