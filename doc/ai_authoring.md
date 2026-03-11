@@ -1247,7 +1247,14 @@ remove_suspension_source(target, source_id: 42)
 
 **Tag convention:** Tag conditions that represent mental/magical effects with `#transferable` (or similar). Physical/equipment conditions are not tagged.
 
-```ttrpg
+```ttrpg-with-preamble
+entity Monster {
+    name: string
+    hp: resource(0..=max_hp)
+    max_hp: int
+    ac: int
+}
+
 tag transferable
 
 condition Blessed on bearer: entity stacking all {
@@ -1263,7 +1270,7 @@ condition Polymorphed(original: Character, suspension_key: int) on bearer: Monst
 {
     on_remove {
         transfer_conditions(bearer, original, "transferable")
-        original.hp = bearer.hp
+        original.HP = bearer.hp
         remove_suspension_source(original, source_id: suspension_key)
         despawn(bearer)
     }
@@ -1275,8 +1282,8 @@ function polymorph(target: Character, form_name: string, form_ac: int, key: int)
 
     let form = Monster {
         name: form_name,
-        hp: target.hp,
-        max_hp: target.max_hp,
+        hp: target.HP,
+        max_hp: target.max_HP,
         ac: form_ac
     }
     transfer_conditions(target, form, "transferable")
