@@ -1,6 +1,8 @@
 use std::collections::{BTreeMap, BTreeSet};
 use ttrpg_ast::Name;
 use ttrpg_ast::Span;
+#[cfg(debug_assertions)]
+use ttrpg_checker::ty::Ty;
 
 use crate::Env;
 use crate::RuntimeError;
@@ -538,6 +540,36 @@ fn builtin_apply_condition(
     } else {
         crate::value::effect_source_unknown()
     };
+
+    // Debug-only: validate condition parameter types against declarations
+    debug_assert!(
+        {
+            if let Some(info) = env.interp.type_env.conditions.get(&cond_name) {
+                let mut ok = true;
+                for param in &info.params {
+                    if let Some(val) = cond_args.get(&param.name) {
+                        if !value_matches_ty(val, &param.ty) {
+                            eprintln!(
+                                "apply_condition: param '{}' of condition '{}' expected type {:?}, got {:?}",
+                                param.name, cond_name, param.ty, type_name(val)
+                            );
+                            ok = false;
+                        }
+                    } else if !param.has_default {
+                        eprintln!(
+                            "apply_condition: missing required param '{}' for condition '{}'",
+                            param.name, cond_name
+                        );
+                        ok = false;
+                    }
+                }
+                ok
+            } else {
+                true // Unknown condition — nothing to validate against
+            }
+        },
+        "condition parameter type mismatch in apply_condition (see stderr for details)"
+    );
 
     // Look up declaration tags for this condition
     let tags: BTreeSet<Name> = env
@@ -1276,6 +1308,47 @@ fn type_name(val: &Value) -> &'static str {
         Value::FnRef(_) => "FnRef",
         Value::EnumNamespace(_) => "EnumNamespace",
         Value::ModuleAlias(_) => "ModuleAlias",
+    }
+}
+
+/// Check whether a runtime `Value` is compatible with a declared `Ty`.
+///
+/// Used only in debug assertions to catch checker bugs — not exhaustive for
+/// complex generic types (List<T>, Map<K,V>, etc.), which are accepted
+/// unconditionally.
+#[cfg(debug_assertions)]
+fn value_matches_ty(val: &Value, ty: &Ty) -> bool {
+    match (val, ty) {
+        // Error/Unit types — always accept
+        (_, Ty::Error) => true,
+        (Value::Void, Ty::Unit) => true,
+        // Primitives
+        (Value::Int(_), Ty::Int | Ty::Resource) => true,
+        (Value::Float(_), Ty::Float) => true,
+        (Value::Bool(_), Ty::Bool) => true,
+        (Value::Str(_), Ty::String) => true,
+        // Entity — AnyEntity accepts all entities
+        (Value::Entity(_), Ty::Entity(_) | Ty::AnyEntity) => true,
+        // Dice pipeline
+        (Value::DiceExpr(_), Ty::DiceExpr) => true,
+        (Value::RollResult(_), Ty::RollResult) => true,
+        // Opaque types
+        (Value::Condition { .. }, Ty::Condition) => true,
+        (Value::Invocation(_), Ty::Invocation) => true,
+        (Value::Position(_), Ty::Position) => true,
+        (Value::Direction(_), Ty::Direction) => true,
+        // Nominal types
+        (Value::EnumVariant { enum_name, .. }, Ty::Enum(expected)) => enum_name == expected,
+        (Value::Struct { name, .. }, Ty::Struct(expected)) => name == expected,
+        (Value::Struct { name, .. }, Ty::UnitType(expected)) => name == expected,
+        // Collections and Option — accept without deep element checks
+        (Value::List(_), Ty::List(_)) => true,
+        (Value::Set(_), Ty::Set(_)) => true,
+        (Value::Map(_), Ty::Map(_, _)) => true,
+        (Value::Option(_), Ty::Option(_)) => true,
+        // Void is valid for Option (None)
+        (Value::Void, Ty::Option(_)) => true,
+        _ => false,
     }
 }
 
