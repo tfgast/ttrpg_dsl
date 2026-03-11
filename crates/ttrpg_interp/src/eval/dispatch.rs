@@ -155,6 +155,7 @@ pub(crate) fn eval_expr(env: &mut Env, expr: &Spanned<ExprKind>) -> Result<Value
                         ttrpg_ast::ast::ArmBody::Expr(e) => e.span,
                         ttrpg_ast::ast::ArmBody::Block(b) => b.span,
                     };
+                    env.record_coverage(arm_span);
                     env.record_branch(BranchPoint {
                         parent_span: expr.span,
                         kind: BranchKind::MatchArm(i),
@@ -186,6 +187,7 @@ pub(crate) fn eval_expr(env: &mut Env, expr: &Spanned<ExprKind>) -> Result<Value
                             ttrpg_ast::ast::ArmBody::Expr(e) => e.span,
                             ttrpg_ast::ast::ArmBody::Block(b) => b.span,
                         };
+                        env.record_coverage(arm_span);
                         env.record_branch(BranchPoint {
                             parent_span: expr.span,
                             kind: BranchKind::GuardArm(i),
@@ -201,6 +203,7 @@ pub(crate) fn eval_expr(env: &mut Env, expr: &Spanned<ExprKind>) -> Result<Value
                                     ttrpg_ast::ast::ArmBody::Expr(e) => e.span,
                                     ttrpg_ast::ast::ArmBody::Block(b) => b.span,
                                 };
+                                env.record_coverage(arm_span);
                                 env.record_branch(BranchPoint {
                                     parent_span: expr.span,
                                     kind: BranchKind::GuardArm(i),

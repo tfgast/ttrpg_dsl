@@ -183,6 +183,41 @@ fn coverage_tracks_match_arms() {
 }
 
 #[test]
+fn coverage_report_marks_taken_match_arm_hit() {
+    let mut r = load_simple_system();
+    exec(&mut r, "seed 1");
+
+    exec(&mut r, "call pick(1)");
+
+    let report = exec(&mut r, "coverage").join("\n");
+    let one_arm = report
+        .lines()
+        .find(|line| line.contains("1 => \"one\","))
+        .expect("match arm for 1 should appear in coverage report");
+    let two_arm = report
+        .lines()
+        .find(|line| line.contains("2 => \"two\","))
+        .expect("match arm for 2 should appear in coverage report");
+    let wildcard_arm = report
+        .lines()
+        .find(|line| line.contains("_ => \"other\","))
+        .expect("wildcard arm should appear in coverage report");
+
+    assert!(
+        one_arm.contains("HIT"),
+        "selected match arm should be marked HIT:\n{report}"
+    );
+    assert!(
+        two_arm.contains("MISS"),
+        "unselected match arm should remain MISS:\n{report}"
+    );
+    assert!(
+        wildcard_arm.contains("MISS"),
+        "unselected wildcard arm should remain MISS:\n{report}"
+    );
+}
+
+#[test]
 fn coverage_tracks_match_wildcard() {
     let mut r = load_simple_system();
     exec(&mut r, "seed 1");
