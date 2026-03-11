@@ -1,0 +1,118 @@
+// OSRIC Spell Ability integration tests
+//
+// Tests UseSpellAbility action for monsters with innate spell-like abilities.
+
+load osric/*.ttrpg
+
+// ── Helper functions ─────────────────────────────────────────
+
+// has_spell_ability returns true for monsters with a matching ability
+let efreet = create_efreet()
+assert has_spell_ability(efreet, SpellId.WallOfFire)
+assert !has_spell_ability(efreet, SpellId.MagicMissile)
+
+// has_spell_ability returns false for entities without SpellAbility
+spawn Monster no_spells { name: "Goblin", hit_dice: 1d8, max_hp: 4, hp: 4, ac: 14, attacks: [MonsterAttack { name: "Sword", damage: 1d6 }], special: [] }
+assert !has_spell_ability(no_spells, SpellId.WallOfFire)
+
+// spell_ability_index finds correct entry
+let abilities = [
+    SpellLikeEntry { spell: SpellId.CureLightWounds, uses: SpellUseLimit.AtWill },
+    SpellLikeEntry { spell: SpellId.MagicMissile, uses: SpellUseLimit.PerDay(count: 3), uses_remaining: 3 }
+]
+assert_eq spell_ability_index(abilities, SpellId.CureLightWounds), 0
+assert_eq spell_ability_index(abilities, SpellId.MagicMissile), 1
+assert_eq spell_ability_index(abilities, SpellId.Fireball), -1
+
+// spell_ability_available checks use limits
+let at_will_entry = SpellLikeEntry { spell: SpellId.CureLightWounds, uses: SpellUseLimit.AtWill }
+assert spell_ability_available(at_will_entry)
+
+let per_day_avail = SpellLikeEntry { spell: SpellId.MagicMissile, uses: SpellUseLimit.PerDay(count: 3), uses_remaining: 2 }
+assert spell_ability_available(per_day_avail)
+
+let per_day_empty = SpellLikeEntry { spell: SpellId.MagicMissile, uses: SpellUseLimit.PerDay(count: 3), uses_remaining: 0 }
+assert !spell_ability_available(per_day_empty)
+
+// ── UseSpellAbility: AtWill targeted spell ───────────────────
+
+spawn Monster healer_monster {
+    name: "Healing Spirit",
+    hit_dice: 6d8,
+    max_hp: 30,
+    hp: 30,
+    ac: 16,
+    attacks: [MonsterAttack { name: "Touch", damage: 1d4 }],
+    special: ["SpellLikeAbilities"],
+    SpellAbility {
+        innate_caster_level: 6,
+        abilities: [
+            SpellLikeEntry { spell: SpellId.CureLightWounds, uses: SpellUseLimit.AtWill }
+        ]
+    }
+}
+
+spawn Character heal_target {
+    name: "Wounded Fighter",
+    classes: [ClassLevel { class: Fighter, level: 5 }],
+    abilities: { STR: 16, INT: 10, WIS: 10, DEX: 12, CON: 14, CHA: 10 },
+    ancestry: Human,
+    HitPoints { max_hp: 40, hp: 40 }
+}
+
+do TakeDamage(heal_target, healer_monster, 20)
+assert_eq heal_target.hp, 20
+
+rolls clear
+rolls 7
+do UseSpellAbility(healer_monster, spell_id: SpellId.CureLightWounds, targets: [heal_target])
+assert_eq heal_target.hp, 27
+
+// AtWill: can use again without limit
+rolls clear
+rolls 4
+do UseSpellAbility(healer_monster, spell_id: SpellId.CureLightWounds, targets: [heal_target])
+assert_eq heal_target.hp, 31
+
+// ── UseSpellAbility: PerDay with use tracking ────────────────
+
+spawn Monster missile_fiend {
+    name: "Missile Fiend",
+    hit_dice: 4d8,
+    max_hp: 20,
+    hp: 20,
+    ac: 15,
+    attacks: [MonsterAttack { name: "Claw", damage: 1d6 }],
+    special: ["SpellLikeAbilities"],
+    SpellAbility {
+        innate_caster_level: 5,
+        abilities: [
+            SpellLikeEntry { spell: SpellId.MagicMissile, uses: SpellUseLimit.PerDay(count: 2), uses_remaining: 2 }
+        ]
+    }
+}
+
+spawn Character missile_target {
+    name: "Target Dummy",
+    classes: [ClassLevel { class: Fighter, level: 3 }],
+    abilities: { STR: 12, INT: 10, WIS: 10, DEX: 10, CON: 12, CHA: 10 },
+    ancestry: Human,
+    HitPoints { max_hp: 20, hp: 20 }
+}
+
+// First use: should work and decrement uses_remaining to 1
+rolls clear
+rolls 3
+do UseSpellAbility(missile_fiend, spell_id: SpellId.MagicMissile, targets: [missile_target])
+assert_eq missile_fiend.SpellAbility.abilities[0].uses_remaining, 1
+
+// Second use: should work and decrement to 0
+rolls clear
+rolls 4
+do UseSpellAbility(missile_fiend, spell_id: SpellId.MagicMissile, targets: [missile_target])
+assert_eq missile_fiend.SpellAbility.abilities[0].uses_remaining, 0
+
+// ── caster_level works for monsters with SpellAbility ────────
+
+assert_eq caster_level(healer_monster, Divine), 6
+assert_eq caster_level(missile_fiend, Arcane), 5

@@ -176,4 +176,65 @@ system "OSRIC Spell Registry" {
             }
         }
     }
+
+
+    // ========================================================
+    //  USE SPELL ABILITY
+    //
+    //  Innate spell-like ability for monsters with SpellAbility.
+    //  Much simpler than CastSpell — no memorisation, no spell
+    //  slots, no casting time. Validates the spell is in the
+    //  monster's abilities list, checks uses_remaining for PerDay
+    //  abilities, decrements the use count, and routes to
+    //  cast_spell for resolution.
+    // ========================================================
+
+    function has_spell_ability(caster: entity, spell_id: SpellId) -> bool {
+        if caster has SpellAbility as sa {
+            len([a for a in caster.sa.abilities if a.spell == spell_id]) > 0
+        } else {
+            false
+        }
+    }
+
+    function spell_ability_index(abilities: list<SpellLikeEntry>, spell_id: SpellId) -> int {
+        for i in 0..len(abilities) {
+            if abilities[i].spell == spell_id {
+                return i
+            }
+        }
+        -1
+    }
+
+    function spell_ability_available(entry: SpellLikeEntry) -> bool {
+        match entry.uses {
+            SpellUseLimit.AtWill => true,
+            SpellUseLimit.PerDay(count) => entry.uses_remaining > 0
+        }
+    }
+
+    action UseSpellAbility on caster: Monster with SpellAbility as sa (
+        spell_id: SpellId,
+        targets: list<entity> = [],
+        placement: option<Placement> = none
+    ) {
+        cost free
+        requires {
+            has_spell_ability(caster, spell_id) &&
+            spell_ability_available(caster.sa.abilities[spell_ability_index(caster.sa.abilities, spell_id)])
+        }
+        resolve {
+            let idx = spell_ability_index(caster.sa.abilities, spell_id)
+            let entry = caster.sa.abilities[idx]
+
+            match entry.uses {
+                SpellUseLimit.PerDay(count) => {
+                    caster.sa.abilities[idx].uses_remaining = entry.uses_remaining - 1
+                },
+                SpellUseLimit.AtWill => {}
+            }
+
+            cast_spell(id: spell_id, caster: caster, targets: targets, placement: placement)
+        }
+    }
 }
