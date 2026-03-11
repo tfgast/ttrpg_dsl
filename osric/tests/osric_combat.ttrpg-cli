@@ -326,6 +326,42 @@ do TakeDamage(td_goblin, td_atk, 10, DamageType.Blunt)
 assert_eq td_goblin.hp, 0
 assert_condition td_goblin, Dead
 
+// ── TakeDamage: massive damage instant death (hp <= -10) ────────
+
+spawn Character td_massive_tgt { name: "Squishy", classes: [ClassLevel { class: MagicUser, level: 1 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 5, hp: 5 } }
+do TakeDamage(td_massive_tgt, td_atk, 20, DamageType.Slashing)
+assert_eq td_massive_tgt.hp, -10
+assert_condition td_massive_tgt, Dead
+assert_no_condition td_massive_tgt, Unconscious
+
+// ── TakeDamage: scarred at hp <= -6 ─────────────────────────────
+
+spawn Character td_scar_tgt { name: "Scarface", classes: [ClassLevel { class: Fighter, level: 1 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 10, hp: 10 } }
+do TakeDamage(td_scar_tgt, td_atk, 17, DamageType.Blunt)
+assert_eq td_scar_tgt.hp, -7
+assert_condition td_scar_tgt, Unconscious
+assert_condition td_scar_tgt, Bleeding
+assert_condition td_scar_tgt, Scarred
+
+// ── TakeDamage: damage to unconscious creature = instant death ──
+
+spawn Character td_finish_tgt { name: "Downed", classes: [ClassLevel { class: Fighter, level: 1 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 5, hp: 5 } }
+do TakeDamage(td_finish_tgt, td_atk, 6, DamageType.Blunt)
+assert_condition td_finish_tgt, Unconscious
+// Now any damage while unconscious kills instantly
+do TakeDamage(td_finish_tgt, td_atk, 1, DamageType.Blunt)
+assert_eq td_finish_tgt.hp, -10
+assert_condition td_finish_tgt, Dead
+assert_no_condition td_finish_tgt, Unconscious
+assert_no_condition td_finish_tgt, Bleeding
+
+// ── TakeTempDamage: knockout when temp_damage >= hp ─────────────
+
+spawn Character td_ko_tgt { name: "Brawlee", classes: [ClassLevel { class: Fighter, level: 1 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 10, hp: 10 } }
+do TakeTempDamage(td_ko_tgt, td_atk, 10)
+assert_eq td_ko_tgt.temp_damage, 10
+assert_condition td_ko_tgt, Unconscious
+
 // ── Backstab derives and action ─────────────────────────────────
 
 assert_eq thief_backstab_multiplier(1), 2

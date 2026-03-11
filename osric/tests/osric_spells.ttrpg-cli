@@ -287,3 +287,56 @@ do CastSpell(cast2, CureLightWounds, 1, 5)
 assert_eq cast2.Spellcasting.memorised_spells.len(), 0
 assert_eq cast2.Spellcasting.slots_used[0], 0
 assert_no_condition cast2, CastingSpell
+
+// ── Concentration: FinishCasting a concentration spell ───────────
+// Wall of Fire is the only OSRIC concentration spell.
+// FinishCasting with concentration=true emits ConcentrationStarted,
+// which triggers OnConcentrationStarted hook → applies Concentrating.
+
+pos conc_pos 0 0
+let conc_placement = Placement { anchor: AnchorPoint.AtPosition(position: conc_pos), position: conc_pos }
+
+spawn Character conc_caster { name: "Pyromancer", classes: [ClassLevel { class: MagicUser, level: 7 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 12, hp: 12 }, Spellcasting { spell_slots: [4, 3, 2, 1], slots_used: [0, 0, 0, 0], memorised_spells: [] } }
+
+do conc_caster.FinishCasting(id: WallOfFire, placement: some(conc_placement))
+assert_condition conc_caster, Concentrating
+assert conc_caster.Spellcasting.concentrating_on != none
+
+// ── Re-casting concentration breaks the previous one ────────────
+
+do conc_caster.FinishCasting(id: WallOfFire, placement: some(conc_placement))
+assert_condition conc_caster, Concentrating
+
+// ── BreakConcentration clears state ─────────────────────────────
+
+do conc_caster.BreakConcentration()
+assert_no_condition conc_caster, Concentrating
+assert_eq conc_caster.Spellcasting.concentrating_on, none
+
+// ── Concentration auto-break on knockout ─────────────────────────
+// Cast again, then knock the caster unconscious → concentration auto-breaks.
+
+spawn Character conc_ko_caster { name: "Fragile Mage", classes: [ClassLevel { class: MagicUser, level: 7 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 5, hp: 5 }, Spellcasting { spell_slots: [4, 3, 2, 1], slots_used: [0, 0, 0, 0], memorised_spells: [] } }
+spawn Character conc_ko_atk { name: "Ogre", classes: [ClassLevel { class: Fighter, level: 5 }], abilities: { STR: 18, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 30, hp: 30 } }
+
+do conc_ko_caster.FinishCasting(id: WallOfFire, placement: some(conc_placement))
+assert_condition conc_ko_caster, Concentrating
+
+// Knock unconscious — should auto-break concentration
+do TakeDamage(conc_ko_caster, conc_ko_atk, 6, DamageType.Blunt)
+assert_condition conc_ko_caster, Unconscious
+assert_no_condition conc_ko_caster, Concentrating
+assert_eq conc_ko_caster.Spellcasting.concentrating_on, none
+
+// ── Concentration auto-break on death ────────────────────────────
+
+spawn Character conc_dead_caster { name: "Doomed Mage", classes: [ClassLevel { class: MagicUser, level: 7 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 5, hp: 5 }, Spellcasting { spell_slots: [4, 3, 2, 1], slots_used: [0, 0, 0, 0], memorised_spells: [] } }
+
+do conc_dead_caster.FinishCasting(id: WallOfFire, placement: some(conc_placement))
+assert_condition conc_dead_caster, Concentrating
+
+// Massive damage kills instantly → death hook breaks concentration
+do TakeDamage(conc_dead_caster, conc_ko_atk, 30, DamageType.Slashing)
+assert_condition conc_dead_caster, Dead
+assert_no_condition conc_dead_caster, Concentrating
+assert_eq conc_dead_caster.Spellcasting.concentrating_on, none
