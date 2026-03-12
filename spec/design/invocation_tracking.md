@@ -80,7 +80,9 @@ with_clause ::= "with" IDENT ("," IDENT)*
 tag_list    ::= ("#" IDENT)*
 ```
 
-Tags on actions follow the same syntax (`#tagname` after the closing `)` of the parameter list and before `{`), validation (must be declared via `tag #name`), and storage (in `FnInfo.tags` via `collect_fn`) as tags on derives and mechanics. This enables selector-based modify clauses targeting actions, and gives ruleset authors metadata to categorize their actions.
+Tags on actions follow the same syntax (`#tagname` after the closing `)` of the parameter list and before `{`), validation (must be declared via `tag #name`), and storage (in `FnInfo.tags` via `collect_fn`) as tags on derives and mechanics. This gives ruleset authors metadata to categorize their actions (e.g., `#concentration`, `#sustained`).
+
+> **Current status:** Selector-based modify clauses do not target actions. The selector matching in `check_modify.rs` only considers derives and mechanics. A future extension could allow selector-based `.cost` modify on tagged actions (e.g., `modify [#concentration].cost(caster: bearer) { cost = free }`), which would enable bulk cost overrides for tagged action categories. This is deferred until there is a concrete use case driving the implementation.
 
 ### DSL Example: D&D 5e Concentration
 
