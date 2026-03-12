@@ -737,7 +737,7 @@ impl Checker<'_> {
             ExprKind::Paren(inner) => Self::expr_mentions_result(&inner.node),
             ExprKind::If { condition, .. } => Self::expr_mentions_result(&condition.node),
             ExprKind::IfLet { scrutinee, .. } => Self::expr_mentions_result(&scrutinee.node),
-            ExprKind::Has { entity, .. } | ExprKind::Is { entity, .. } => {
+            ExprKind::Has { entity, .. } | ExprKind::Is { expr: entity, .. } => {
                 Self::expr_mentions_result(&entity.node)
             }
             _ => false,

@@ -153,9 +153,9 @@ impl Checker<'_> {
             } => self.check_has(entity, group_name, alias, expr.span),
 
             ExprKind::Is {
-                entity,
-                entity_type,
-            } => self.check_is(entity, entity_type, expr.span),
+                expr: is_expr,
+                target_type,
+            } => self.check_is(is_expr, target_type, expr.span),
         }
     }
 

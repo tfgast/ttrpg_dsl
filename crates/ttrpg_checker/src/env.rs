@@ -328,6 +328,7 @@ impl TypeEnv {
             TypeExpr::ActiveCondition => Ty::ActiveCondition,
             TypeExpr::Invocation => Ty::Invocation,
             TypeExpr::Unit => Ty::Unit,
+            TypeExpr::Any => Ty::Any,
             TypeExpr::Named(name) => {
                 if name == "entity" {
                     return Ty::AnyEntity;

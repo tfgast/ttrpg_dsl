@@ -38,6 +38,9 @@ pub enum Ty {
     // Wildcard: matches any Entity(_) — used for entity-generic builtins
     AnyEntity,
 
+    // Dynamically typed: holds any value, narrowed via `is` guards
+    Any,
+
     // Generic containers
     List(Box<Ty>),
     Set(Box<Ty>),
@@ -113,6 +116,7 @@ impl Ty {
             Ty::Entity(name) => name.to_string(),
             Ty::UnitType(name) => name.to_string(),
             Ty::AnyEntity => "entity".into(),
+            Ty::Any => "any".into(),
             Ty::List(inner) => format!("list<{}>", inner.display()),
             Ty::Set(inner) => format!("set<{}>", inner.display()),
             Ty::Map(k, v) => format!("map<{}, {}>", k.display(), v.display()),

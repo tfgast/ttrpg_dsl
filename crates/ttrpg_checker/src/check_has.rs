@@ -101,43 +101,76 @@ impl Checker<'_> {
 
     pub(crate) fn check_is(
         &mut self,
-        entity: &Spanned<ExprKind>,
-        entity_type_name: &str,
+        expr: &Spanned<ExprKind>,
+        target_type: &Spanned<TypeExpr>,
         span: ttrpg_ast::Span,
     ) -> Ty {
-        self.check_name_visible(entity_type_name, Namespace::Type, span);
-        let is_entity_type = match self.env.types.get(entity_type_name) {
-            Some(crate::env::DeclInfo::Entity(_)) => true,
-            Some(_) => {
+        // Resolve the target type expression
+        let target_ty = self.resolve_type_validated(target_type);
+
+        // Validate: target must be a concrete type, not `any`, `entity`, `error`, or `unit`
+        match &target_ty {
+            Ty::Any => {
+                self.error("`is any` is not meaningful — use a concrete type", span);
+                return Ty::Bool;
+            }
+            Ty::AnyEntity => {
                 self.error(
-                    format!("`is` requires an entity type, `{entity_type_name}` is not an entity"),
+                    "`is entity` is not meaningful — use a specific entity type",
                     span,
                 );
                 return Ty::Bool;
             }
-            None => {
-                self.error_with_help(
-                    format!("unknown type `{entity_type_name}`"),
-                    span,
-                    format!("declare it with: enum {entity_type_name} {{ ... }}, struct {entity_type_name} {{ ... }}, or entity {entity_type_name} {{ ... }}"),
-                );
-                return Ty::Bool;
-            }
-        };
-        let entity_ty = self.check_expr(entity);
-        if entity_ty.is_error() {
+            Ty::Error => return Ty::Bool,
+            _ => {}
+        }
+
+        // Check the expression being tested
+        let expr_ty = self.check_expr(expr);
+        if expr_ty.is_error() {
             return Ty::Bool;
         }
-        match &entity_ty {
-            Ty::AnyEntity => {}
-            Ty::Entity(name) if is_entity_type => {
-                if name.as_ref() == entity_type_name {
-                    self.warning(format!("`is {entity_type_name}` is always true here"), span);
+
+        match &expr_ty {
+            // `any` can be tested against any concrete type
+            Ty::Any => {}
+            // `entity` (AnyEntity) can be tested against entity types
+            Ty::AnyEntity => {
+                if !matches!(target_ty, Ty::Entity(_)) {
+                    self.error(
+                        format!(
+                            "`is` on entity value requires an entity type, found {}",
+                            target_ty.display()
+                        ),
+                        span,
+                    );
+                }
+            }
+            // Specific entity can be tested against entity types
+            Ty::Entity(name) => {
+                if let Ty::Entity(target_name) = &target_ty {
+                    if name == target_name {
+                        self.warning(
+                            format!("`is {}` is always true here", target_name),
+                            span,
+                        );
+                    }
+                } else {
+                    self.error(
+                        format!(
+                            "`is` on entity value requires an entity type, found {}",
+                            target_ty.display()
+                        ),
+                        span,
+                    );
                 }
             }
             _ => {
                 self.error(
-                    format!("`is` can only be used with entity types, found {entity_ty}"),
+                    format!(
+                        "`is` can only be used with `any` or entity types, found {}",
+                        expr_ty.display()
+                    ),
                     span,
                 );
             }
@@ -145,15 +178,23 @@ impl Checker<'_> {
         Ty::Bool
     }
 
-    /// Extract `(path_key, entity_type)` narrowing tuples from an `is` condition.
-    pub(crate) fn extract_is_narrowings(&self, expr: &Spanned<ExprKind>) -> Vec<(Name, Name)> {
+    /// Extract `(path_key, target_ty)` narrowing tuples from an `is` condition.
+    pub(crate) fn extract_is_narrowings(
+        &self,
+        expr: &Spanned<ExprKind>,
+    ) -> Vec<(Name, Ty)> {
         match &expr.node {
             ExprKind::Is {
-                entity,
-                entity_type,
+                expr: is_expr,
+                target_type,
             } => {
-                if let Some(path_key) = self.extract_path_key(entity) {
-                    vec![(path_key, entity_type.clone())]
+                if let Some(path_key) = self.extract_path_key(is_expr) {
+                    let ty = self.env.resolve_type(target_type);
+                    if !ty.is_error() {
+                        vec![(path_key, ty)]
+                    } else {
+                        vec![]
+                    }
                 } else {
                     vec![]
                 }

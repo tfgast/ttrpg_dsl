@@ -1469,7 +1469,7 @@ impl<'a> Checker<'a> {
         &mut self,
         block: &Block,
         has_narrowings: &[(Name, Name, Option<Name>)],
-        is_narrowings: &[(Name, Name)],
+        is_narrowings: &[(Name, Ty)],
         hint: Option<&Ty>,
     ) -> Ty {
         self.scope.push(BlockKind::Inner);
@@ -1480,9 +1480,8 @@ impl<'a> Checker<'a> {
                     .add_group_alias(var.clone(), alias.clone(), group.clone());
             }
         }
-        for (var, entity_type) in is_narrowings {
-            self.scope
-                .narrow_entity_type(var.clone(), entity_type.clone());
+        for (var, target_ty) in is_narrowings {
+            self.scope.narrow_type(var.clone(), target_ty.clone());
         }
         let stmts = &block.node;
         let mut last_ty = Ty::Unit;

@@ -299,19 +299,27 @@ impl ScopeStack {
         }
     }
 
-    /// Narrow an entity-typed variable to a specific entity type.
-    /// Re-binds the variable in the current scope with the narrowed type.
-    pub fn narrow_entity_type(&mut self, var: Name, entity_type: Name) {
-        if let Some(binding) = self.lookup(&var).cloned()
-            && binding.ty.is_entity()
-        {
-            self.bind(
-                var,
-                VarBinding {
-                    ty: Ty::Entity(entity_type),
-                    ..binding
-                },
-            );
+    /// Narrow a variable's type via an `is` guard.
+    /// For `any`-typed variables, narrows to the target type.
+    /// For entity-typed variables, narrows to a specific entity type.
+    pub fn narrow_type(&mut self, var: Name, target_ty: Ty) {
+        if let Some(binding) = self.lookup(&var).cloned() {
+            let can_narrow = match (&binding.ty, &target_ty) {
+                // any → any concrete type
+                (Ty::Any, _) => true,
+                // entity/AnyEntity → Entity(name)
+                (Ty::Entity(_) | Ty::AnyEntity, Ty::Entity(_)) => true,
+                _ => false,
+            };
+            if can_narrow {
+                self.bind(
+                    var,
+                    VarBinding {
+                        ty: target_ty,
+                        ..binding
+                    },
+                );
+            }
         }
     }
 

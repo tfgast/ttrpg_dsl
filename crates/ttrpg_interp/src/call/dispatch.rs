@@ -123,6 +123,16 @@ pub(crate) fn eval_call(
                 "some" => return eval_some(env, args, call_span),
                 "max" => return eval_max(env, args, call_span),
                 "min" => return eval_min(env, args, call_span),
+                "to_any" => {
+                    // Identity at runtime — values are already untyped
+                    if args.len() != 1 {
+                        return Err(RuntimeError::with_span(
+                            format!("to_any: expected 1 argument, got {}", args.len()),
+                            call_span,
+                        ));
+                    }
+                    return eval_expr(env, &args[0].value);
+                }
                 _ => {}
             }
 

@@ -369,7 +369,7 @@ fn collect_idents(expr: &Spanned<ExprKind>, out: &mut Vec<Name>) {
                 collect_idents(f, out);
             }
         }
-        ExprKind::Has { entity, .. } | ExprKind::Is { entity, .. } => {
+        ExprKind::Has { entity, .. } | ExprKind::Is { expr: entity, .. } => {
             collect_idents(entity, out);
         }
         _ => {}

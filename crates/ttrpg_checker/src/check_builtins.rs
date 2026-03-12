@@ -706,4 +706,23 @@ impl Checker<'_> {
             _ => {}
         }
     }
+
+    /// `to_any(value) -> any` — wraps any value into the `any` type.
+    pub(crate) fn check_to_any_call(&mut self, args: &[Arg], span: ttrpg_ast::Span) -> Ty {
+        if args.len() != 1 {
+            self.error(
+                format!("`to_any` expects 1 argument, found {}", args.len()),
+                span,
+            );
+            for arg in args {
+                self.check_expr(&arg.value);
+            }
+            return Ty::Error;
+        }
+        let arg_ty = self.check_expr(&args[0].value);
+        if arg_ty.is_error() {
+            return Ty::Error;
+        }
+        Ty::Any
+    }
 }

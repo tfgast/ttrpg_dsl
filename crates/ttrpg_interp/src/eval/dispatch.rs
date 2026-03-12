@@ -1,7 +1,7 @@
 use std::collections::BTreeMap;
 
 use rustc_hash::FxHashMap;
-use ttrpg_ast::ast::{ExprKind, GroupInit, StructFieldInit};
+use ttrpg_ast::ast::{ExprKind, GroupInit, StructFieldInit, TypeExpr};
 use ttrpg_ast::{Name, Span, Spanned};
 use ttrpg_checker::env::{DeclInfo, FnKind};
 
@@ -262,23 +262,11 @@ pub(crate) fn eval_expr(env: &mut Env, expr: &Spanned<ExprKind>) -> Result<Value
         }
 
         ExprKind::Is {
-            entity,
-            entity_type,
+            expr: is_expr,
+            target_type,
         } => {
-            let entity_val = eval_expr(env, entity)?;
-            let entity_ref = match entity_val {
-                Value::Entity(r) => r,
-                _ => {
-                    return Err(RuntimeError::with_span(
-                        "is: expected entity value",
-                        entity.span,
-                    ));
-                }
-            };
-            let matches = match env.state.entity_type_name(&entity_ref) {
-                Some(actual_type) => actual_type.as_ref() == entity_type.as_ref(),
-                None => false,
-            };
+            let val = eval_expr(env, is_expr)?;
+            let matches = value_matches_type(&val, &target_type.node, env);
             Ok(Value::Bool(matches))
         }
 
@@ -561,4 +549,58 @@ fn eval_entity_construction(
     }
 
     Ok(Value::Entity(entity_ref))
+}
+
+/// Check whether a runtime value matches a type expression.
+/// Used by `is` guards to test values at runtime.
+fn value_matches_type(val: &Value, ty: &TypeExpr, env: &Env) -> bool {
+    match (val, ty) {
+        // Primitives
+        (Value::Int(_), TypeExpr::Int) => true,
+        (Value::Float(_), TypeExpr::Float) => true,
+        (Value::Bool(_), TypeExpr::Bool) => true,
+        (Value::Str(_), TypeExpr::String) => true,
+        // Dice
+        (Value::DiceExpr(_), TypeExpr::DiceExpr) => true,
+        (Value::RollResult(_), TypeExpr::RollResult) => true,
+        // Entity types
+        (Value::Entity(eref), TypeExpr::Named(name)) => {
+            if name == "entity" {
+                true // matches any entity
+            } else {
+                match env.state.entity_type_name(eref) {
+                    Some(actual) => actual.as_ref() == name.as_ref(),
+                    None => false,
+                }
+            }
+        }
+        // Structs
+        (Value::Struct { name: sname, .. }, TypeExpr::Named(name)) => sname.as_ref() == name.as_ref(),
+        // Enums
+        (Value::EnumVariant { enum_name, .. }, TypeExpr::Named(name)) => enum_name.as_ref() == name.as_ref(),
+        // Containers with element type checking
+        (Value::List(items), TypeExpr::List(inner)) => {
+            items.iter().all(|item| value_matches_type(item, &inner.node, env))
+        }
+        (Value::Set(items), TypeExpr::Set(inner)) => {
+            items.iter().all(|item| value_matches_type(item, &inner.node, env))
+        }
+        (Value::Map(entries), TypeExpr::Map(kt, vt)) => {
+            entries.iter().all(|(k, v)| {
+                value_matches_type(k, &kt.node, env) && value_matches_type(v, &vt.node, env)
+            })
+        }
+        (Value::Option(inner), TypeExpr::OptionType(inner_ty)) => match inner {
+            Some(v) => value_matches_type(v, &inner_ty.node, env),
+            None => true, // none matches any option<T>
+        },
+        // none literal (Value::Void) matches any option<T>
+        (Value::Void, TypeExpr::OptionType(_)) => true,
+        // Opaque built-in types
+        (Value::Condition { .. }, TypeExpr::Condition) => true,
+        (Value::Position(_), TypeExpr::Position) => true,
+        (Value::Direction(_), TypeExpr::Direction) => true,
+        (Value::Invocation(_), TypeExpr::Invocation) => true,
+        _ => false,
+    }
 }

@@ -34,6 +34,10 @@ impl Parser {
                         self.advance();
                         TypeExpr::RollResult
                     }
+                    "any" => {
+                        self.advance();
+                        TypeExpr::Any
+                    }
                     "entity" => {
                         self.advance();
                         TypeExpr::Named("entity".into())

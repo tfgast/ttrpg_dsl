@@ -191,6 +191,7 @@ impl Checker<'_> {
             "min" => return self.check_min_call(args, span),
             "some" => return self.check_some_call(args, span),
             "revoke" => return self.check_revoke_call(args, span),
+            "to_any" => return self.check_to_any_call(args, span),
             _ => {}
         }
 

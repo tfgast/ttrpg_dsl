@@ -980,6 +980,7 @@ pub enum TypeExpr {
     ActiveCondition,
     Invocation,
     Unit,
+    Any,
     Named(Name),
     Qualified {
         qualifier: Name,
@@ -1084,11 +1085,13 @@ pub enum ExprKind {
         group_name: Name,
         alias: Option<Name>,
     },
-    /// `entity is EntityType` — tests whether an entity is a specific type.
+    /// `expr is Type` — tests whether a value is a specific type.
+    /// Works with `entity` (narrowing to entity subtypes) and `any` (narrowing
+    /// to any concrete type including primitives, structs, enums, and containers).
     /// Produces a bool and enables flow-sensitive type narrowing.
     Is {
-        entity: Box<Spanned<ExprKind>>,
-        entity_type: Name,
+        expr: Box<Spanned<ExprKind>>,
+        target_type: Spanned<TypeExpr>,
     },
 }
 

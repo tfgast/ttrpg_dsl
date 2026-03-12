@@ -481,6 +481,7 @@ impl VisitSpansMut for TypeExpr {
             | TypeExpr::ActiveCondition
             | TypeExpr::Invocation
             | TypeExpr::Unit
+            | TypeExpr::Any
             | TypeExpr::Named(_)
             | TypeExpr::Qualified { .. } => {}
             TypeExpr::List(inner) | TypeExpr::Set(inner) | TypeExpr::OptionType(inner) => {
@@ -615,8 +616,9 @@ impl VisitSpansMut for ExprKind {
             ExprKind::Has { entity, .. } => {
                 entity.visit_spans_mut(f);
             }
-            ExprKind::Is { entity, .. } => {
-                entity.visit_spans_mut(f);
+            ExprKind::Is { expr, target_type } => {
+                expr.visit_spans_mut(f);
+                target_type.visit_spans_mut(f);
             }
         }
     }

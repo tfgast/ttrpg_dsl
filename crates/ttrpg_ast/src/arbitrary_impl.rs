@@ -207,8 +207,8 @@ impl<'a> Arbitrary<'a> for ExprKind {
                 alias: u.arbitrary()?,
             },
             _ => ExprKind::Is {
-                entity: arb_boxed_expr(u)?,
-                entity_type: u.arbitrary()?,
+                expr: arb_boxed_expr(u)?,
+                target_type: arb_spanned(u)?,
             },
         })
     }
@@ -219,7 +219,7 @@ impl<'a> Arbitrary<'a> for ExprKind {
 impl<'a> Arbitrary<'a> for TypeExpr {
     fn arbitrary(u: &mut Unstructured<'a>) -> Result<Self> {
         if u.len() < RECURSION_BUDGET {
-            let choice = u.int_in_range(0..=16)?;
+            let choice = u.int_in_range(0..=17)?;
             return Ok(match choice {
                 0 => TypeExpr::Int,
                 1 => TypeExpr::Bool,
@@ -236,7 +236,8 @@ impl<'a> Arbitrary<'a> for TypeExpr {
                 12 => TypeExpr::ActiveCondition,
                 13 => TypeExpr::Invocation,
                 14 => TypeExpr::Unit,
-                15 => TypeExpr::Named(u.arbitrary()?),
+                15 => TypeExpr::Any,
+                16 => TypeExpr::Named(u.arbitrary()?),
                 _ => TypeExpr::Qualified {
                     qualifier: u.arbitrary()?,
                     name: u.arbitrary()?,
