@@ -140,6 +140,12 @@ system "OSRIC Afflictions" {
         MonsterDisease(source_name: string)
     }
 
+    enum DiseasePhase {
+        Incubation,
+        Active,
+        Recovery
+    }
+
     struct DiseaseParams {
         incubation_days: int
         duration_days: int
@@ -154,17 +160,62 @@ system "OSRIC Afflictions" {
         params: option<DiseaseParams>
     }
 
-    // Diseased condition: active disease with stat and roll penalties.
-    // stat_penalty and roll_penalty are the rolled values (positive = penalty amount).
+    // Diseased condition: multi-phase disease with lifecycle tracking.
+    // Phases: Incubation (no symptoms) → Active (penalties) → Recovery (penalties fade)
+    // Fatal diseases kill at the end of the active phase instead of recovering.
+    // §1.6.9.2: 2d8 incubation, penalties active for 2d8 days, recovery 1pt/day.
     condition Diseased(
         stat_penalty: int,
         roll_penalty: int,
         is_fatal: bool,
-        source: DiseaseSource
+        source: DiseaseSource,
+        incubation_days: int,
+        duration_days: int
     ) on bearer: entity {
         tags: #disease
+
+        state {
+            days_elapsed: int = 0
+            phase: DiseasePhase = DiseasePhase.Incubation
+            current_stat_penalty: int = 0
+            current_roll_penalty: int = 0
+        }
+
         modify [#attack_resolution](attacker: bearer) {
-            attack_mod = attack_mod - roll_penalty
+            attack_mod = attack_mod - state.current_roll_penalty
+        }
+
+        periodic #day_end {
+            state.days_elapsed = state.days_elapsed + 1
+            match state.phase {
+                DiseasePhase.Incubation => {
+                    if state.days_elapsed >= incubation_days {
+                        state.phase = DiseasePhase.Active
+                        state.current_stat_penalty = stat_penalty
+                        state.current_roll_penalty = roll_penalty
+                        state.days_elapsed = 0
+                    }
+                },
+                DiseasePhase.Active => {
+                    if state.days_elapsed >= duration_days {
+                        if is_fatal {
+                            remove_condition(bearer, "Diseased")
+                            apply_condition(bearer, Dead, Duration.Indefinite)
+                            emit CharacterDead(target: bearer)
+                        } else {
+                            state.phase = DiseasePhase.Recovery
+                            state.days_elapsed = 0
+                        }
+                    }
+                },
+                DiseasePhase.Recovery => {
+                    state.current_stat_penalty = max(0, state.current_stat_penalty - 1)
+                    state.current_roll_penalty = max(0, state.current_roll_penalty - 1)
+                    if state.current_stat_penalty <= 0 && state.current_roll_penalty <= 0 {
+                        remove_condition(bearer, "Diseased")
+                    }
+                }
+            }
         }
     }
 

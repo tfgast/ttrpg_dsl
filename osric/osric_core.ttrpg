@@ -54,6 +54,7 @@ system "OSRIC" {
     tag round_start_healing
     tag round_end_damage
     tag turn_end
+    tag day_end
 
     // --- Unit types ---
 
