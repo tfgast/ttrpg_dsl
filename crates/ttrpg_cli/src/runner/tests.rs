@@ -3867,6 +3867,61 @@ system "test" {
     runner.exec("assert hero.HP == 10").unwrap();
 }
 
+#[test]
+fn let_bound_entity_alias_works_for_handle_commands() {
+    let source = r#"
+system "test" {
+    group Spellcasting {
+        spell_slots: int
+    }
+
+    entity Character {
+        HP: int
+        optional Spellcasting
+    }
+}
+"#;
+    let path = write_temp("let_entity_alias_handle_cmds", source);
+    let mut runner = Runner::new();
+    runner.exec(&format!("load {}", path.display())).unwrap();
+    runner.take_output();
+
+    runner.exec("spawn Character hero { HP: 10 }").unwrap();
+    runner.take_output();
+
+    runner.exec("let alias = hero").unwrap();
+    runner.take_output();
+
+    runner.exec("inspect alias.HP").unwrap();
+    let out = runner.take_output();
+    assert_eq!(out, vec!["alias.HP = 10"]);
+
+    runner.exec("set alias.HP = 20").unwrap();
+    runner.take_output();
+    runner.exec("assert alias.HP == 20").unwrap();
+
+    runner
+        .exec("grant alias.Spellcasting { spell_slots: 1 }")
+        .unwrap();
+    runner.take_output();
+    runner
+        .exec("assert alias.Spellcasting.spell_slots == 1")
+        .unwrap();
+
+    runner.exec("revoke alias.Spellcasting").unwrap();
+    runner.take_output();
+    runner.exec("inspect alias.Spellcasting").unwrap();
+    let out = runner.take_output();
+    assert_eq!(out, vec!["alias.Spellcasting = <not granted>"]);
+
+    runner.exec("destroy alias").unwrap();
+    let out = runner.take_output();
+    assert_eq!(out, vec!["destroyed alias"]);
+
+    let err = runner.exec("inspect alias").unwrap_err();
+    assert!(err.to_string().contains("not found in state"));
+}
+
 // ── let captures action return values (tdsl-85tc) ───────────
 
 #[test]

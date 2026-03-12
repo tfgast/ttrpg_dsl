@@ -512,9 +512,13 @@ impl Runner {
 
     /// Resolve a handle name to an EntityRef.
     fn resolve_handle(&self, name: &str) -> Result<EntityRef, CliError> {
-        self.handles
-            .get(name)
-            .ok_or_else(|| CliError::Message(format!("unknown handle: {name}")))
+        if let Some(entity) = self.handles.get(name) {
+            return Ok(entity);
+        }
+        if let Some(Value::Entity(entity)) = self.variables.get(name) {
+            return Ok(*entity);
+        }
+        Err(CliError::Message(format!("unknown handle: {name}")))
     }
 
     /// Enable quiet mode: suppress effect handler log output.
