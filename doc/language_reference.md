@@ -40,7 +40,7 @@
 | `Duration`        | `EndOfTurn`, `StartOfNextTurn`, `Rounds(n)`, `Minutes(n)`, `Indefinite` |
 | `EffectSource`    | Condition provenance — user-defined enum, must have plain `Unknown` variant |
 | `Invocation`      | Opaque execution scope handle                               |
-| `ActiveCondition` | Runtime condition instance — fields: `name`, `duration`, `source`, `id`, `applied_at` |
+| `ActiveCondition` | Runtime condition instance — fields: `name`, `duration`, `source`, `id`, `applied_at`, `tags`; narrow with `is ActiveCondition<CondName>` for param access |
 | `Condition`       | Condition identifier — store in variables, pass to functions |
 | `Presence`        | Built-in enum: `OnMap`, `OffBoard` — entity board presence state |
 
@@ -702,10 +702,23 @@ if xs is list<int> {
 }
 ```
 
+**ActiveCondition narrowing:**
+
+```
+for c in conditions(target) {
+    if c is ActiveCondition<Frightened> {
+        c.source_entity    // Frightened param accessible after narrowing
+    }
+}
+```
+
+Before narrowing, only base fields (`.name`, `.duration`, `.source`, `.id`, `.applied_at`, `.tags`) are accessible. Accessing condition param fields on un-narrowed `ActiveCondition` is a checker error — narrow first with `is ActiveCondition<CondName>`.
+
 Requirements:
-- Left operand must be `any` or entity-typed (specific or polymorphic `entity`)
+- Left operand must be `any`, entity-typed (specific or polymorphic `entity`), or `ActiveCondition`
 - For `entity`-typed: right operand must name a declared entity type
 - For `any`-typed: right operand can be any concrete type (primitives, structs, enums, containers)
+- For `ActiveCondition`: right operand must be `ActiveCondition<CondName>`
 - `is any` and `is entity` are not valid targets
 
 Composes with `has` narrowing via `&&`:
@@ -810,7 +823,7 @@ function apply_cond(t: entity, c: Condition, dur: Duration) {
 }
 apply_cond(target, Sleeping, Duration.Rounds(10))
 ```
-`Condition` (blueprint) vs `ActiveCondition` (live instance with `.name`, `.duration`, `.source`, `.id`, `.applied_at`).
+`Condition` (blueprint) vs `ActiveCondition` (live instance with `.name`, `.duration`, `.source`, `.id`, `.applied_at`, `.tags`). Use `is ActiveCondition<CondName>` to narrow and access condition params, or `conditions(entity, CondName)` for the typed overload.
 
 ### Enum
 `ordinal(v)` `from_ordinal(E, i)` `try_from_ordinal(E, i)`

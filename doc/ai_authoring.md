@@ -765,7 +765,7 @@ DiceExpr  ──roll()──▶  RollResult  ──.total──▶  int
 | `EffectSource`    | Condition provenance metadata — must have plain `Unknown` variant |
 | `Invocation`      | Execution scope handle from `invocation()`     |
 | `Condition`       | Condition identifier — pass to `apply_condition()`, store in variables |
-| `ActiveCondition` | Runtime condition instance: `.name`, `.duration`, `.source`, `.id` |
+| `ActiveCondition` | Runtime condition instance: `.name`, `.duration`, `.source`, `.id`; narrow with `is ActiveCondition<CondName>` for param access |
 | `Presence`        | Built-in enum: `OnMap`, `OffBoard` — entity board presence state |
 
 ---
@@ -1213,7 +1213,7 @@ function resolve_sleep(caster: entity, targets: list<entity>) {
 
 **`Condition` vs `ActiveCondition`:**
 - `Condition` = a condition blueprint (e.g. `Prone`, `Sleeping`, `Concealed(level: 3)`)
-- `ActiveCondition` = a live instance on an entity, with `.name`, `.duration`, `.source`, `.id`, `.applied_at` fields; returned by `conditions(entity)`
+- `ActiveCondition` = a live instance on an entity, with `.name`, `.duration`, `.source`, `.id`, `.applied_at`, `.tags` fields; returned by `conditions(entity)`. Narrow with `is ActiveCondition<CondName>` to access condition params
 - `has_condition(entity, Prone)` → `bool` — checks if entity has an active condition by name (bare condition identifier, not string). Prefer over `any([c.name == X for c in conditions(entity)])`.
 
 **Typed `conditions()` overload:**
@@ -1243,6 +1243,25 @@ if len(grapples) > 0 {
 - Returns empty list if no matching conditions exist
 - State access is read-only from outside the condition — only the condition's own blocks can mutate state
 - Typed results are compatible with `remove_condition()` (subtype of `ActiveCondition` and `Condition`)
+
+**`is ActiveCondition<CondName>` narrowing:**
+
+When iterating all conditions via `conditions(entity)`, use `is ActiveCondition<CondName>` to narrow and access params:
+
+```ttrpg-snippet
+for c in conditions(target) {
+    if c is ActiveCondition<Grappling> {
+        c.opponent           // typed as entity after narrowing
+        c.state.current_hold // state access works too
+    } else if c is ActiveCondition<Frightened> {
+        c.source_entity      // Frightened-specific param
+    }
+}
+```
+
+- Before narrowing, only base fields (`.name`, `.duration`, `.source`, `.id`, `.applied_at`, `.tags`) are accessible — accessing param fields on un-narrowed `ActiveCondition` is a checker error
+- After narrowing, params and `.state` are available with their declared types
+- Use the 2-arg `conditions(entity, CondName)` overload when you only care about one condition type; use `is` narrowing when you need to branch on multiple condition types in a single loop
 
 **`EffectSource` — condition provenance:**
 
@@ -1552,11 +1571,22 @@ function spellcaster_dc(target: entity) -> int {
 }
 ```
 
+**ActiveCondition narrowing:**
+
+```ttrpg-snippet
+for c in conditions(target) {
+    if c is ActiveCondition<Frightened> {
+        c.source_entity    // Frightened param accessible after narrowing
+    }
+}
+```
+
 **Key rules:**
 
-- Left operand must be `any` or entity type (specific or polymorphic `entity`)
+- Left operand must be `any`, entity type, or `ActiveCondition`
 - For entity: right operand must name a declared entity type
 - For `any`: right operand can be any concrete type (primitives, structs, enums, containers like `list<int>`)
+- For `ActiveCondition`: right operand must be `ActiveCondition<CondName>`
 - `is any` and `is entity` are not valid targets — use concrete types
 - Same precedence as `in` and `has`
 - Narrowing applies only in the then-block (not the else-block)

@@ -484,6 +484,29 @@ struct RollResult {
 // `is any` and `is entity` are not valid targets — use concrete types.
 // `to_any` accepts any type and returns `any`. It is a no-op at runtime
 // (values already carry their type information dynamically).
+//
+// --- ActiveCondition type narrowing (`is`) ---
+//
+// `ActiveCondition` values (from `conditions(entity)`) can be narrowed to
+// a specific condition type using `is ActiveCondition<CondName>`:
+//
+//   for c in conditions(target) {
+//       if c is ActiveCondition<Frightened> {
+//           c.source_entity    // Frightened param accessible
+//       } else if c is ActiveCondition<Poisoned> {
+//           c.dc               // Poisoned param accessible
+//       }
+//   }
+//
+// Before narrowing, only base fields are accessible (`.name`, `.duration`,
+// `.source`, `.id`, `.applied_at`, `.tags`). Accessing condition-specific
+// parameter fields requires narrowing first — the checker rejects unknown
+// field access on un-narrowed `ActiveCondition`.
+//
+// After narrowing, condition parameters and `.state` are available, matching
+// the typed `conditions(entity, CondName)` overload.
+//
+// `is ActiveCondition<CondName>` composes with other narrowings via `&&`.
 
 
 // --- Position ---
@@ -750,6 +773,7 @@ struct ActiveCondition {
     source: EffectSource      // provenance metadata (default: Unknown)
     id: int                   // unique identifier for this condition instance
     applied_at: int           // game time when this condition was applied
+    tags: set<string>         // tag set (e.g., "curse", "disease")
 }
 
 // The `id` field distinguishes multiple instances of the same condition
@@ -768,6 +792,25 @@ struct ActiveCondition {
 //       message: string
 //   }
 //
-// Condition parameters (e.g., the `source` in `Frightened(source: attacker)`)
-// are not exposed as fields in v0. Access to heterogeneous parameter
-// fields requires a future type-system extension.
+// --- ActiveCondition<CondName> (typed narrowing) ---
+//
+// `ActiveCondition<CondName>` is a parameterized form that carries the
+// condition name, giving access to condition parameters and state fields.
+// Obtained via either:
+//   1. `conditions(entity, CondName)` — returns `list<ActiveCondition<CondName>>`
+//   2. `is ActiveCondition<CondName>` narrowing on an `ActiveCondition` value
+//
+// After narrowing or using the typed overload, condition parameters are
+// accessible as fields and state is accessible via `.state`:
+//
+//   condition Frightened(source_entity: Character) on bearer: Character {}
+//
+//   for c in conditions(target) {
+//       if c is ActiveCondition<Frightened> {
+//           let src = c.source_entity    // typed as Character
+//       }
+//   }
+//
+// `ActiveCondition<CondName>` is a subtype of both `ActiveCondition` and
+// `Condition`, so typed values work with `remove_condition()` and can be
+// passed where either base type is expected.
