@@ -1,4 +1,6 @@
-# TTRPG DSL — Quick Reference (v0)
+# TTRPG DSL — Language Reference (v0)
+
+> Complete syntax, types, operators, and builtins. For patterns, common mistakes, and worked examples see [`ai_authoring.md`](ai_authoring.md).
 
 ## Types
 
@@ -228,20 +230,7 @@ Errors:
 
 ---
 
-## Block Categories
-
-| Block     | Dice | Mutate | Receiver          | Returns | Cost |
-|-----------|------|--------|-------------------|---------|------|
-| derive    | -    | -      | -                 | value   | -    |
-| table     | -    | -      | -                 | value   | -    |
-| mechanic  | yes  | -      | -                 | value   | -    |
-| function  | yes  | yes    | -                 | optional| -    |
-| action    | yes  | yes    | `on` receiver     | optional| yes  |
-| reaction  | yes  | yes    | `on` + trigger    | unit    | yes  |
-| hook      | yes  | yes    | `on` + trigger    | unit    | -    |
-| condition | -    | -      | `on bearer`       | -       | -    |
-| prompt    | -    | -      | -                 | value   | -    |
-| move      | yes  | yes    | `on` receiver     | unit    | yes  |
+## Block Types
 
 ### Derive
 
