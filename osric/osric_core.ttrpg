@@ -53,6 +53,7 @@ system "OSRIC" {
     // to control when periodic blocks fire within the combat loop.
     tag round_start_healing
     tag round_end_damage
+    tag turn_end
 
     // --- Unit types ---
 

@@ -59,8 +59,25 @@ system "OSRIC Afflictions" {
 
     // SlowPoisoned: lethal poison delayed by slow poison spell.
     // The cleric_level tracks the caster's level (window in turns).
+    // Each turn, turns_remaining decrements. At zero the poison
+    // takes effect and the character dies (lethal poison only).
+    // Neutralise Poison removes this before the timer expires.
     condition SlowPoisoned(cleric_level: int) on bearer: entity {
         tags: #poison
+        state {
+            turns_remaining: int = cleric_level
+        }
+
+        periodic #turn_end {
+            state.turns_remaining = state.turns_remaining - 1
+            if state.turns_remaining <= 0 {
+                // Time's up — the slow poison wears off and death occurs.
+                remove_condition(bearer, "SlowPoisoned")
+                remove_condition(bearer, "Poisoned")
+                apply_condition(bearer, Dead, Duration.Indefinite)
+                emit CharacterDead(target: bearer)
+            }
+        }
     }
 
     // Apply poison using pre-computed saves. Works for both
