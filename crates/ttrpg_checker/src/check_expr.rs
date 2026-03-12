@@ -751,8 +751,9 @@ impl Checker<'_> {
                         return fty.clone();
                     }
                 }
-                self.error(format!("ActiveCondition has no field `{field}`"), span);
-                Ty::Error
+                // Unknown fields may be condition params — typed as `any`
+                // before narrowing via `is ActiveCondition<CondName>`.
+                Ty::Any
             }
             Ty::TypedActiveCondition(cond_name) => {
                 // Base ActiveCondition fields (name, duration, id, etc.)

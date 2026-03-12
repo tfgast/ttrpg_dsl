@@ -326,6 +326,7 @@ impl TypeEnv {
             TypeExpr::Direction => self.resolve_named_or("Direction", Ty::Direction),
             TypeExpr::Condition => self.resolve_named_or("Condition", Ty::Condition),
             TypeExpr::ActiveCondition => Ty::ActiveCondition,
+            TypeExpr::TypedActiveCondition(name) => Ty::TypedActiveCondition(name.clone()),
             TypeExpr::Invocation => Ty::Invocation,
             TypeExpr::Unit => Ty::Unit,
             TypeExpr::Any => Ty::Any,

@@ -978,6 +978,8 @@ pub enum TypeExpr {
     Direction,
     Condition,
     ActiveCondition,
+    /// Typed active condition: `ActiveCondition<CondName>`
+    TypedActiveCondition(Name),
     Invocation,
     Unit,
     Any,

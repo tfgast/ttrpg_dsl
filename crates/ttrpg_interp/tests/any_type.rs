@@ -367,7 +367,7 @@ system "test" {
 }
 "#);
     assert!(
-        errors.iter().any(|e| e.contains("`is` can only be used with `any` or entity types")),
+        errors.iter().any(|e| e.contains("`is` can only be used with")),
         "expected error about `is` on int, got: {:?}",
         errors
     );

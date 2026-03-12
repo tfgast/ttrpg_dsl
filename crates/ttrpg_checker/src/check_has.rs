@@ -165,10 +165,44 @@ impl Checker<'_> {
                     );
                 }
             }
+            // ActiveCondition can be tested against ActiveCondition<CondName>
+            Ty::ActiveCondition => {
+                if !matches!(target_ty, Ty::TypedActiveCondition(_)) {
+                    self.error(
+                        format!(
+                            "`is` on ActiveCondition requires ActiveCondition<CondName>, found {}",
+                            target_ty.display()
+                        ),
+                        span,
+                    );
+                }
+            }
+            // TypedActiveCondition can be tested (always-true warning if same)
+            Ty::TypedActiveCondition(name) => {
+                if let Ty::TypedActiveCondition(target_name) = &target_ty {
+                    if name == target_name {
+                        self.warning(
+                            format!(
+                                "`is {}` is always true here",
+                                target_ty.display()
+                            ),
+                            span,
+                        );
+                    }
+                } else {
+                    self.error(
+                        format!(
+                            "`is` on ActiveCondition requires ActiveCondition<CondName>, found {}",
+                            target_ty.display()
+                        ),
+                        span,
+                    );
+                }
+            }
             _ => {
                 self.error(
                     format!(
-                        "`is` can only be used with `any` or entity types, found {}",
+                        "`is` can only be used with `any`, entity, or ActiveCondition types, found {}",
                         expr_ty.display()
                     ),
                     span,

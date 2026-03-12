@@ -598,6 +598,12 @@ fn value_matches_type(val: &Value, ty: &TypeExpr, env: &Env) -> bool {
         (Value::Void, TypeExpr::OptionType(_)) => true,
         // Opaque built-in types
         (Value::Condition { .. }, TypeExpr::Condition) => true,
+        // ActiveCondition struct matches ActiveCondition<CondName> if the name field matches
+        (Value::Struct { name: sname, fields }, TypeExpr::TypedActiveCondition(cond_name))
+            if sname.as_ref() == "ActiveCondition" =>
+        {
+            matches!(fields.get(&Name::from("name")), Some(Value::Str(n)) if n == cond_name.as_ref())
+        }
         (Value::Position(_), TypeExpr::Position) => true,
         (Value::Direction(_), TypeExpr::Direction) => true,
         (Value::Invocation(_), TypeExpr::Invocation) => true,

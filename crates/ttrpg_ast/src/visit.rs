@@ -479,6 +479,7 @@ impl VisitSpansMut for TypeExpr {
             | TypeExpr::Direction
             | TypeExpr::Condition
             | TypeExpr::ActiveCondition
+            | TypeExpr::TypedActiveCondition(_)
             | TypeExpr::Invocation
             | TypeExpr::Unit
             | TypeExpr::Any

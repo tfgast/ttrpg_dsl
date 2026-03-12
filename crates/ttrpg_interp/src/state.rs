@@ -156,6 +156,10 @@ pub struct ActiveCondition {
 
 impl ActiveCondition {
     /// Convert this active condition to a `Value::Struct` for DSL-level access.
+    ///
+    /// Always includes base fields, condition parameters, and state.
+    /// Before `is ActiveCondition<CondName>` narrowing, param fields are typed
+    /// as `any` by the checker. After narrowing, they get their declared types.
     pub fn to_value(&self) -> Value {
         let mut fields = BTreeMap::new();
         fields.insert(Name::from("name"), Value::Str(self.name.to_string()));
@@ -178,41 +182,7 @@ impl ActiveCondition {
                     .collect(),
             ),
         );
-        Value::Struct {
-            name: Name::from("ActiveCondition"),
-            fields,
-        }
-    }
-
-    /// Convert to a typed `Value::Struct` that includes params and state.
-    ///
-    /// Used by the 2-arg `conditions(entity, CondName)` overload.
-    /// Includes base ActiveCondition fields, condition parameters, and
-    /// a `state` sub-struct containing the per-instance mutable state.
-    pub fn to_typed_value(&self) -> Value {
-        let mut fields = BTreeMap::new();
-        // Base fields
-        fields.insert(Name::from("name"), Value::Str(self.name.to_string()));
-        fields.insert(Name::from("duration"), self.duration.clone());
-        fields.insert(
-            Name::from("id"),
-            Value::Int(self.id.min(i64::MAX as u64) as i64),
-        );
-        fields.insert(
-            Name::from("applied_at"),
-            Value::Int(self.applied_at.min(i64::MAX as u64) as i64),
-        );
-        fields.insert(Name::from("source"), self.source.clone());
-        fields.insert(
-            Name::from("tags"),
-            Value::Set(
-                self.tags
-                    .iter()
-                    .map(|t| Value::Str(t.to_string()))
-                    .collect(),
-            ),
-        );
-        // Condition parameters
+        // Condition parameters (typed as `any` before narrowing)
         for (name, value) in &self.params {
             fields.insert(name.clone(), value.clone());
         }

@@ -43,7 +43,7 @@ impl Parser {
                         TypeExpr::Named("entity".into())
                     }
                     "TurnBudget" | "Duration" | "EffectSource" | "Position" | "Direction"
-                    | "Condition" | "ActiveCondition" | "Invocation"
+                    | "Condition" | "Invocation"
                         if !matches!(self.peek_at(1), TokenKind::Dot) =>
                     {
                         let ty = match &*name {
@@ -53,12 +53,24 @@ impl Parser {
                             "Position" => TypeExpr::Position,
                             "Direction" => TypeExpr::Direction,
                             "Condition" => TypeExpr::Condition,
-                            "ActiveCondition" => TypeExpr::ActiveCondition,
                             "Invocation" => TypeExpr::Invocation,
                             _ => unreachable!(),
                         };
                         self.advance();
                         ty
+                    }
+                    "ActiveCondition"
+                        if !matches!(self.peek_at(1), TokenKind::Dot) =>
+                    {
+                        self.advance();
+                        if matches!(self.peek(), TokenKind::Lt) {
+                            self.expect(&TokenKind::Lt)?;
+                            let (cond_name, _) = self.expect_ident()?;
+                            self.expect(&TokenKind::Gt)?;
+                            TypeExpr::TypedActiveCondition(cond_name)
+                        } else {
+                            TypeExpr::ActiveCondition
+                        }
                     }
 
                     "map" => {

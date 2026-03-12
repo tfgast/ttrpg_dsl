@@ -197,17 +197,17 @@ fn builtin_conditions(env: &Env, args: &[Value], span: Span) -> Result<Value, Ru
         }
     };
 
-    // Two-arg form: filter by condition name, return typed values
+    // Two-arg form: filter by condition name
     if let Some(Value::Condition { name: cond_name, .. }) = args.get(1) {
         let values = conditions
             .iter()
             .filter(|c| c.name == *cond_name)
-            .map(|c| c.to_typed_value())
+            .map(|c| c.to_value())
             .collect();
         return Ok(Value::List(values));
     }
 
-    // One-arg form: return all conditions as untyped values
+    // One-arg form: return all conditions
     let values = conditions.iter().map(|c| c.to_value()).collect();
     Ok(Value::List(values))
 }

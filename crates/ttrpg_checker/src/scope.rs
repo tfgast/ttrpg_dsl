@@ -309,6 +309,11 @@ impl ScopeStack {
                 (Ty::Any, _) => true,
                 // entity/AnyEntity → Entity(name)
                 (Ty::Entity(_) | Ty::AnyEntity, Ty::Entity(_)) => true,
+                // ActiveCondition → TypedActiveCondition(name)
+                (
+                    Ty::ActiveCondition | Ty::TypedActiveCondition(_),
+                    Ty::TypedActiveCondition(_),
+                ) => true,
                 _ => false,
             };
             if can_narrow {
