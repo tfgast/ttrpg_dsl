@@ -1,0 +1,593 @@
+// ============================================================
+// v0 Spec — Part 2: Declarations, Scoping, and Modules
+//
+// Block categories, call restrictions, receivers, const, group
+// aliases, disjunctive with, cost free, tags, modules/imports.
+// ============================================================
+
+
+// --- Block categories ---
+//
+// Category     Dice?   Mutate?   Receiver?   Returns?   Modify?   Purpose
+// --------     -----   -------   ---------   --------   -------   -------
+// const        no      no        no          n/a        no        named compile-time constant
+// derive       no      no        no          value      yes       pure computation
+// mechanic     yes     no        no          value      yes       dice + logic, returns a value
+// function     yes     yes       no          value?     no        general-purpose subroutine
+// action       yes     yes       yes         optional   no        game action, changes state
+// reaction     yes     yes       yes         unit       no        triggered action, changes state
+// hook         yes     yes       yes         unit       no        mandatory triggered action, always fires
+// condition    no      no        yes         n/a        n/a       declarative modifier overlay
+// prompt       no      no        no          value      yes       human decision point
+//
+// "Returns?" indicates whether the block is value-returning.
+// derive/mechanic/function: last stmt MUST be expr_stmt (its value is the return).
+//   function return type is optional — omitting it gives unit (void).
+// action: return type is optional via `-> Type` after the parameter list.
+//   When present, the resolve block's last expression must match that type.
+//   On veto or requires/cost failure, the action returns the type's natural
+//   "absent" value (typically `none` for option types). When omitted, the
+//   action returns unit and the resolve block value is discarded.
+// reaction/hook resolve: no return type; any block value is discarded.
+//
+// The `return` keyword is allowed in function, action, reaction, hook,
+// lifecycle, and periodic blocks for early exit. `return expr` in functions with return types;
+// bare `return` in void/unit blocks. NOT allowed in derive/mechanic (use
+// if/else or match for conditional values instead).
+// See 05_grammar.ttrpg "Block value semantics" for details.
+//
+// "Modify?" indicates whether condition modify clauses can target this block.
+// derive/mechanic: subject to the modify pipeline (Phase 1 param rewrite,
+//   Phase 2 result rewrite). function/action/reaction/hook: no modify pipeline.
+//
+// Key: "Mutate?" means can the block assign to entity fields
+//      (e.g., target.HP -= 5).
+//
+// function, action, reaction, and hook can mutate entity state and emit events.
+// mechanic can call roll() but CANNOT assign to entity fields.
+// condition does NOT mutate via modify/suppress — those are declarative overlays
+//   that alter computed results, not imperative assignments.
+//   However, conditions MAY include on_apply/on_remove lifecycle hooks that
+//   have hook-like mutation semantics (see 03_conditions.ttrpg),
+//   and `periodic #tag { ... }` blocks that have full function-body semantics
+//   (see 03_conditions.ttrpg "Condition periodic blocks").
+//
+// Functions are general-purpose subroutines. They can do everything an
+// action resolve block can except: no receiver (`on`), no cost/requires
+// clauses, no `invocation()`. They cannot be targeted by condition modify
+// clauses. Functions can call actions, other functions, derives, and
+// mechanics. Derives and mechanics CANNOT call functions.
+//
+// Functions (and only functions) can be referenced as first-class values.
+// A bare function name in expression position resolves to a fn ref value
+// of type `fn(T1, T2) -> R`. See 01_type_system.ttrpg for full details.
+// Functions with `with` constraints on any parameter cannot be referenced.
+//
+// Functions can provision turn budgets via `with_budget`, enabling them
+// to call costed actions. Within a `with_budget` block, the `turn`
+// keyword is accessible (readable as a struct). See 04_runtime.ttrpg.
+//
+// Entity construction (e.g., `Monster { name: "Ogre", hit_dice: 4 }`)
+// is allowed only in mutating contexts: function, action, reaction,
+// hook, and with_budget bodies. Entity construction in derive, mechanic,
+// table, condition, or prompt is a checker error, because creating an
+// entity requires spawning mutable state.
+//
+// Note: while `invocation()` cannot be called directly inside a function
+// body (there is no actor to anchor it), actions called BY a function
+// still get their own invocation context. The action dispatch saves the
+// caller's state, allocates a fresh invocation ID, and restores on return.
+// So a function can safely call actions that use `invocation()` internally.
+//
+// Call restrictions by context:
+//   derive/mechanic  -> can call derives, mechanics, prompts, builtins
+//   function         -> can call derives, mechanics, functions, actions, prompts, builtins
+//   action/reaction/hook resolve -> can call derives, mechanics, functions, actions, prompts, builtins
+//   condition modify -> can call derives, mechanics, builtins (no actions, functions, prompts)
+//   condition on_apply/on_remove -> can call derives, mechanics, functions, builtins, emit
+//       (NO apply_condition, remove_condition, revoke(invocation), invocation())
+//   condition periodic -> can call derives, mechanics, functions, actions, builtins, emit
+//       CAN call apply_condition, remove_condition (full function-body permissions)
+//       (NO invocation())
+//   trigger binding  -> side-effect-free builtins only
+
+
+// --- Const declarations ---
+//
+// Named compile-time constants declared at the system (top-level) scope.
+//
+//   const MAX_LEVEL = 20
+//   const BASE_DC: int = 10
+//   const STATS: list<int> = [10, 12, 14]
+//
+// Scoping rules:
+// - Value expression is checked in Derive scope (no dice, no mutation,
+//   no entity field access). Can reference other consts, enum variants,
+//   struct literals, and pure built-in functions.
+// - Consts are visible from any block within the same system (and from
+//   importing systems, following normal module visibility rules).
+// - Consts share the Function namespace: a const name cannot collide
+//   with a derive, mechanic, function, action, reaction, hook, or prompt
+//   in the same system.
+// - A local `let` binding shadows a const of the same name within its scope.
+// - Consts are immutable — assignment to a const is a checker error.
+// - Duplicate const names within the same system are a checker error.
+// - Type annotation is optional; when omitted, the type is inferred
+//   from the value expression.
+//
+// Evaluation: consts are lazily evaluated on first reference and
+// cached for subsequent uses. Const expressions referencing other
+// consts trigger evaluation of those dependencies first.
+
+
+// --- Receivers: the `on` keyword ---
+//
+// Blocks that operate on behalf of an entity declare a receiver
+// with the `on` keyword. This replaces implicit `self`.
+//
+// Syntax: `action Name on receiver_name: ReceiverType (params) { ... }`
+//
+// The receiver is just a named parameter with special status:
+// - It's the entity performing the action
+// - It's used for cost deduction (action economy)
+// - condition uses it for the entity bearing the condition
+//
+// Actions can be invoked in two equivalent ways:
+//   Attack(attacker_entity, target, weapon)   // function-call form
+//   attacker_entity.Attack(target, weapon)    // method-call form
+//
+// The method form desugars to the function form — the receiver
+// becomes the first argument. See 05_grammar.ttrpg for
+// the full resolution rules.
+
+// EXAMPLE: explicit receiver, all field access names its source
+action Attack on attacker: Character (target: Character, weapon: Weapon) {
+    cost { action }
+    requires { distance(attacker.position, target.position) <= weapon.range }
+    resolve {
+        // attacker.abilities, target.AC — always explicit
+    }
+}
+
+// EXAMPLE: derive — no receiver, pure function of its arguments
+derive modifier(score: int) -> int {
+    floor((score - 10) / 2)
+}
+
+// EXAMPLE: mechanic — no receiver, can roll but cannot mutate
+mechanic attack_roll(
+    attacker: Character,
+    target: Character,
+    weapon: Weapon,
+    mode: RollMode = normal
+) -> RollResult {
+    // Can call roll(), but CANNOT write `target.HP -= ...`
+    let ability = choose_attack_ability(attacker, weapon)
+    let expr = d20_expr(
+        score: attacker.abilities[ability],
+        proficiency: proficiency_bonus(attacker.level),
+        mode: mode
+    )
+    roll(expr)
+}
+
+// EXAMPLE: function — no receiver, can roll, can mutate, can call actions
+function apply_damage(target: Character, amount: int) {
+    // Can roll dice and mutate state like an action resolve block
+    target.HP -= amount
+    emit Damaged(target: target, amount: amount)
+}
+
+// Functions can also return values:
+function compute_modifier(score: int, bonus: int) -> int {
+    floor((score - 10) / 2) + bonus
+}
+
+
+// --- Group aliases (`as`) ---
+//
+// When accessing optional group fields, the full path can be verbose:
+//   caster.Spellcasting.spell_dc + caster.Spellcasting.spell_slots
+//
+// The `as` keyword on `with` constraints and `has` guards creates a
+// locally-scoped alias that shortens these paths.
+//
+// On `with` constraints (scoped to the function/action body):
+
+action CastSpell on caster: Character with Spellcasting as sc (cost: int) {
+    resolve {
+        // `sc` is an alias for `Spellcasting` on `caster`
+        caster.sc.spell_slots -= cost
+    }
+}
+
+// On `has` guards (scoped to the then-block):
+
+derive effective_dc(c: Character) -> int {
+    if c has Spellcasting as sc {
+        c.sc.spell_dc + c.level     // alias visible here
+    } else {
+        0                            // alias NOT visible here
+    }
+}
+
+// Multiple aliases can coexist:
+
+derive total_resources(c: Character) -> int {
+    let spells = if c has Spellcasting as sc { c.sc.spell_slots } else { 0 }
+    let ki = if c has KiPowers as kp { c.kp.ki_points } else { 0 }
+    spells + ki
+}
+
+// Aliases work for both reads and writes (in mutation contexts).
+// They are purely syntactic — the checker resolves them at check time
+// and no runtime name is created.
+//
+// Restrictions:
+//   - An alias must not shadow an existing field or group name on the
+//     same entity type. This prevents ambiguity in field resolution.
+//   - The alias is not visible outside its scope (function body or
+//     then-block).
+
+
+// --- Disjunctive `with` (OR constraints) ---
+//
+// `with A | B` declares that the parameter has at least one of the
+// listed groups. Unlike conjunctive `with A, B` (AND), disjunctive
+// constraints do NOT narrow the body scope — the author must use
+// `has` guards to access group-specific fields.
+//
+// This is useful for functions that handle multiple capability groups
+// without requiring all of them:
+
+// EXAMPLE: disjunctive `with` — at least one combat capability
+//
+// action AnyAttack on actor: Combatant with MeleeCapable | MissileCapable (
+//     target: Combatant, distance: int
+// ) {
+//     resolve {
+//         // Cannot access actor.MeleeCapable.str_mod directly — not narrowed.
+//         // Must use `has` guard to narrow to a specific group:
+//         if actor has MissileCapable as missile && distance > 10 {
+//             let result = resolve_missile_attack(actor, target, distance)
+//             // ...
+//         } else if actor has MeleeCapable {
+//             let result = resolve_melee_attack(actor, target)
+//             // ...
+//         }
+//     }
+// }
+//
+// Key differences from conjunctive `with A, B`:
+//   - Body: group fields NOT directly accessible (use `has` guards)
+//   - Call site: no static group proof required
+//   - Mixing: `with A, B | C` is a parse error (pick one separator)
+
+
+// --- Cost free ---
+//
+// An action or reaction may declare `cost free` to explicitly signal
+// that it consumes no turn resources. This is distinct from omitting
+// the cost clause: omission is ambiguous (intentional? forgotten?),
+// while `cost free` is an unambiguous declaration.
+//
+//   action Cantrip on caster: Character () {
+//       cost free
+//       resolve { ... }
+//   }
+//
+// Semantics:
+//   - No DeductCost effects are emitted at runtime.
+//   - Cost modifiers (modify Action.cost) can still apply to change
+//     a free action's cost, or to make a costed action free.
+//   - `cost free` is valid on both actions and reactions.
+
+
+// --- Tags ---
+//
+// Tags are metadata labels declared with `tag #name` and attached to
+// derives, mechanics, functions, and actions using `#tagname` after
+// the parameter list (before the opening `{`). Conditions use a
+// `tags: #name, ...` statement inside the body instead. Tags must be
+// declared before use.
+//
+//   tag #concentration
+//   tag #ranged
+//   tag #curse
+//   tag #disease
+//
+//   action CastBless on caster: Character (targets: list<Character>) #concentration {
+//       // ...
+//   }
+//
+//   derive ranged_bonus(attacker: Character, weapon: Weapon) -> int #ranged {
+//       // ...
+//   }
+//
+// Tags on functions and actions are metadata for categorization,
+// selector-based modify clauses, and tooling. Multiple tags can be
+// applied to a single declaration: `action Foo on x: T () #a #b { }`.
+//
+// --- Tags on condition declarations ---
+//
+// Condition declarations can also carry tags. These represent static
+// categorical properties of the condition type — things that are always
+// true regardless of how the condition was applied.
+//
+// Tags are declared inside the condition body using `tags: #name, ...`:
+//
+//   condition BestowCurse on bearer: Character {
+//       tags: #curse
+//   }
+//   condition MummyRot on bearer: Character {
+//       tags: #curse, #disease
+//   }
+//   condition Poisoned on bearer: Character {
+//       tags: #poison
+//   }
+//
+// At runtime, declaration tags are exposed as a `Set<string>` on the
+// `tags` field of ActiveCondition values:
+//
+//   let c = conditions(target)[0]
+//   if "curse" in c.tags { ... }
+//
+// This is distinct from:
+// - Modify-clause tags (e.g., `modify foo(...) #penalty { ... }`) which
+//   describe individual mechanical effects and are used for targeted
+//   suppression within a condition.
+// - EffectSource (e.g., `EffectSource.Spell(...)`) which is per-application
+//   metadata about how a condition was applied, not what it inherently is.
+//
+// Use condition tags for inherently static properties (#curse, #disease,
+// #poison). Use EffectSource for source-dependent properties like whether
+// the condition is magical — the same condition (e.g., Paralyzed) can
+// come from a spell (magical) or a monster ability (non-magical).
+//
+// The checker validates that all tags used on declarations have been
+// declared via `tag #name`. Undeclared tags are a compile-time error.
+
+
+// --- Modules and imports ---
+//
+// Each file can contain `import` declarations, `use` declarations,
+// and `system` blocks.
+//
+// `import` loads source files by path (file-level dependency).
+// `use` exposes all public names from another system by name
+//   (symbol-level visibility).
+//
+// All top-level declarations in a system block are public.
+// No private/public distinction in v0.
+//
+// Grammar:
+//   import_decl = "import" STRING TERM
+//   use_decl    = "use" (STRING | IDENT) ("as" IDENT)? TERM
+//   top_level   = import_decl | use_decl | system_decl
+//
+// `as` is a soft keyword — it is recognized as a keyword after the
+// `use` name, after group names in `with` constraints, and
+// after group names in `has` expressions. Identifiers named `as` are
+// valid elsewhere in the language.
+//
+// --- Source imports (import directive) ---
+//
+// The `import` directive declares a file-level source dependency:
+//
+//   import "combat.ttrpg"
+//   import "sub/helpers.ttrpg"
+//
+// Import paths are resolved relative to the importing file's
+// directory. Transitive imports are followed automatically: if
+// a.ttrpg imports b.ttrpg and b.ttrpg imports c.ttrpg, loading
+// a.ttrpg discovers and loads all three files.
+//
+// Files are deduplicated by canonical path, so diamond-shaped
+// import graphs (a->b, a->c, b->d, c->d) load each file exactly once.
+// Mutual imports between files are allowed (deduplication prevents
+// infinite loops).
+//
+// Import ordering: entrypoint files are loaded first, then their
+// transitive dependencies in BFS discovery order.
+//
+// Prefer `import` over glob patterns or manual multi-file CLI
+// invocations. When each file declares its own imports, the
+// dependency graph is explicit and only the entrypoint file(s)
+// need to be specified to load the full source set.
+//
+// Multiple files can still be loaded via the CLI:
+//   load core.ttrpg combat.ttrpg
+//   load systems/*.ttrpg          // glob expansion (legacy)
+//
+// Files are parsed independently, then spans are rebased into a
+// single unified offset space (with 1-byte sentinel gaps between
+// files). Programs are merged into a single Program and checked
+// with module-aware visibility.
+//
+// --- Package manifests (ttrpg.toml) ---
+//
+// A package manifest declares package identity, named entrypoints,
+// and curated bundles. The file graph itself lives in source files
+// (via `import` directives) — the manifest lists root entry files,
+// and the import resolver discovers transitive dependencies.
+//
+// Manifest format (v1):
+//
+//   manifest_version = 1
+//
+//   [package]
+//   name = "ose"
+//   default_target = "full"
+//
+//   [entries.core]
+//   path = "ose_core.ttrpg"
+//
+//   [entries.combat]
+//   path = "ose_combat.ttrpg"
+//
+//   [bundles.full]
+//   entries = ["core", "class", "combat", "equipment"]
+//
+//   [bundles.chargen]
+//   entries = ["core", "class", "chargen"]
+//
+// Terminology:
+//   entry  — a single root source file
+//   bundle — a curated composition of multiple entries
+//   target — either an entry or a bundle (the unit of CLI loading)
+//
+// CLI semantics:
+//   load ose          -> load default_target (usually a bundle)
+//   load ose:core     -> load named entry
+//   load ose:chargen  -> load named bundle
+//
+// The loader searches for <package_name>/ttrpg.toml relative to the
+// current working directory. If no manifest is found and the token
+// contains no path separators, extensions, or glob characters, it
+// falls through to file-path resolution.
+//
+// Bundles replace hand-maintained file lists and most glob patterns.
+// The manifest is the single source of truth for package composition.
+// default_target should be the most useful complete experience, not
+// the minimal seed file.
+//
+// --- Global name uniqueness (v0) ---
+//
+// In v0, no two loaded systems may define the same declaration
+// name in the same namespace. This is enforced at module resolution
+// time (before the checker runs).
+//
+// Namespaces checked:
+//   - Types (enums, structs, entities)
+//   - Functions (derives, mechanics, actions, reactions, hooks, prompts, consts)
+//   - Conditions
+//   - Events
+//   - Options
+//   - Enum variants (two enums with overlapping variant names collide)
+//
+// Same name in different namespaces is fine (e.g., type Foo and
+// function Foo coexist).
+//
+// --- System merging ---
+//
+// Multiple blocks with the same system name are merged additively:
+//
+//   // file: core_types.ttrpg
+//   system "Core" { entity Character { HP: int } }
+//
+//   // file: core_functions.ttrpg
+//   system "Core" { derive modifier(score: int) -> int { (score - 10) / 2 } }
+//
+// After loading both files, system "Core" contains both Character
+// and modifier(). Duplicate declarations within a merged system
+// are an error.
+//
+// --- Restricted field mutation ---
+//
+// Fields marked `restricted` can only be mutated (`=`, `+=`, `-=`)
+// within the system that declares the containing type or group, or
+// the system that declares the entity containing the group.
+// Other systems can read restricted fields freely but cannot assign
+// to them.
+//
+// This provides module-level encapsulation: a core system can expose
+// entity state for reading while reserving mutation to its own
+// actions, functions, and hooks. When a group is included by an
+// entity in a different system, the entity's system can also mutate
+// the group's restricted fields — this allows entity-authoring
+// systems to fully manage their entities' state.
+//
+// EXAMPLE: Core declares HP as restricted; Extension cannot mutate it.
+//
+//   // core.ttrpg
+//   system "Core" {
+//       entity Character {
+//           restricted HP: resource(0..=max_HP)
+//           max_HP: int
+//       }
+//       action Heal on target: Character () {
+//           resolve { target.HP += 5 }   // OK — same system
+//       }
+//   }
+//
+//   // ext.ttrpg
+//   use "Core"
+//   system "Extension" {
+//       derive is_hurt(c: Character) -> bool { c.HP < c.max_HP }   // OK — read
+//       action Zap on target: Character () {
+//           resolve { target.HP -= 1 }   // ERROR: restricted field
+//       }
+//   }
+//
+// Rules:
+//   - Applies to entity fields, struct fields, group fields, and
+//     inline optional group fields.
+//   - Mutation is allowed from either:
+//     (a) the system that declares the group (`group_owner`), or
+//     (b) the system that declares the entity (`type_owner`).
+//     For inline groups without a separate `group_owner`, the
+//     entity's owner is used.
+//   - `grant` is exempt: initializing group fields via grant is not
+//     treated as mutation, allowing cross-system group provisioning.
+//   - Single-file mode and REPL mode skip the check (no modules).
+//   - The error message identifies both the current system and the
+//     declaring system for easy diagnosis.
+
+// --- Import semantics ---
+//
+// `use` is a top-level declaration, not inside a system block.
+// All `use` declarations in a file apply to all system blocks
+// in that same file.
+//
+// Imports are NOT transitive: if A uses B and B uses C, A cannot
+// see C's declarations without an explicit `use "C"`.
+
+// file: dnd5e/core.ttrpg
+system "D&D 5e Core" {
+    // Ability, modifier(), proficiency_bonus(), ...
+}
+
+// file: dnd5e/combat.ttrpg
+use "D&D 5e Core"
+
+system "D&D 5e Combat" {
+    // Can reference Ability, modifier(), etc. from Core
+}
+
+// --- Qualified access via aliases ---
+//
+// The `as` clause creates an alias for disambiguation:
+//
+//   use "D&D 5e Core" as Core
+//
+// Qualified type position (desugared before checking):
+//   entity Foo { ability: Core.Ability }
+//   // TypeExpr::Qualified { qualifier: "Core", name: "Ability" }
+//   // desugared to TypeExpr::Named("Ability") after validation
+//
+// Qualified expression position:
+//   Core.Ability       -> Ty::EnumType (namespace access)
+//   Core.Ability.STR   -> enum variant through alias
+//   Core.modifier(10)  -> function call through alias
+//   Core.Prone         -> condition reference through alias
+//
+// Alias rules:
+//   - Same alias for same target in different files: idempotent (ok)
+//   - Same alias for different targets: error
+//   - Alias collides with own declaration name: error
+//   - Alias collides with builtin function name: error
+
+// file: homebrew/flanking.ttrpg
+use "D&D 5e Combat"
+
+option flanking extends "D&D 5e Combat" {
+    description: "Melee attackers on opposite sides gain advantage"
+    default: off
+    when enabled {
+        modify attack_roll(attacker: _, target: _) {
+            if flanking_position(attacker, target) {
+                mode = advantage
+            }
+        }
+    }
+}

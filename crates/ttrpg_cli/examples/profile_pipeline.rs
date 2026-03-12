@@ -13,7 +13,7 @@ use ttrpg_interp::value::Value;
 
 static OSE_COMBAT: &str = include_str!("../../../ose/ose_combat.ttrpg");
 static DND5E: &str = include_str!("../../../examples/dnd5e_expanded.ttrpg");
-static SPEC_FULL: &str = include_str!("../../../spec/v0/04_full_example.ttrpg");
+static SPEC_FULL: &str = include_str!("../../../spec/v0/06_full_example.ttrpg");
 
 struct NullHandler;
 

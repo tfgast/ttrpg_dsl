@@ -30,7 +30,7 @@ cat commands.txt | ttrpg        # pipe mode (no line editing)
 | `errors`                         | Show diagnostics from last load                |
 
 ```
-load spec/v0/04_full_example.ttrpg
+load spec/v0/06_full_example.ttrpg
 load *.ttrpg
 load ose              # load default target from ose/ttrpg.toml
 load ose:combat       # load named entry

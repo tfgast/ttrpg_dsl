@@ -21,7 +21,7 @@ use ttrpg_interp::value::{DiceExpr, RollResult, Value, duration_variant};
 // ── Setup ──────────────────────────────────────────────────────
 
 fn setup() -> (ttrpg_ast::ast::Program, ttrpg_checker::CheckResult) {
-    let source = include_str!("../../../spec/v0/04_full_example.ttrpg");
+    let source = include_str!("../../../spec/v0/06_full_example.ttrpg");
     let (program, parse_errors) = ttrpg_parser::parse(source, FileId::SYNTH);
     assert!(
         parse_errors.is_empty(),

@@ -1,7 +1,7 @@
 // =============================================================================
 // Grammar conformance tests
 //
-// Systematically verifies every production in 03_canonical_grammar.ttrpg.
+// Systematically verifies every production in 05_grammar.ttrpg.
 // Organized by spec section.
 // =============================================================================
 

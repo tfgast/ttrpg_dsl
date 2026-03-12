@@ -1,7 +1,7 @@
 //! Spec audit: conditions and modify system.
 //!
 //! Tests the full pipeline (parse → lower → check → interpret) verifying
-//! the condition/modify system against 02_scoping.ttrpg requirements:
+//! the condition/modify system against 03_conditions.ttrpg requirements:
 //!
 //! 1. Phase 1 + Phase 2 mixed in a single modify body
 //! 2. Conflict resolution: oldest-first pipeline ordering, last-writer-wins
@@ -119,7 +119,7 @@ impl EffectHandler for ScriptedHandler {
 #[test]
 fn mixed_phase1_and_phase2_in_single_modify_body() {
     // Spec: "A single modify body can contain both phases; the runtime
-    //        partitions them." (03_canonical_grammar.ttrpg lines 301-304)
+    //        partitions them." (05_grammar.ttrpg lines 301-304)
     let source = r#"
 system "test" {
     entity Character { HP: int }

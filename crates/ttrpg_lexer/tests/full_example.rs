@@ -3,7 +3,7 @@ use ttrpg_lexer::{Lexer, RawLexer, TokenKind};
 
 #[test]
 fn test_lex_full_example_no_errors() {
-    let source = include_str!("../../../spec/v0/04_full_example.ttrpg");
+    let source = include_str!("../../../spec/v0/06_full_example.ttrpg");
     let tokens: Vec<_> = Lexer::new(source, FileId::SYNTH).collect();
     let errors: Vec<_> = tokens
         .iter()

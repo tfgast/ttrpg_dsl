@@ -1,10 +1,10 @@
 // Full D&D 5e example smoke coverage using the canonical external source.
 //
-// This script intentionally loads spec/v0/04_full_example.ttrpg instead of
+// This script intentionally loads spec/v0/06_full_example.ttrpg instead of
 // embedding a copy of it inline. Runtime scenarios that require host-created
 // opaque Position values still remain in Rust integration tests.
 
-load spec/v0/04_full_example.ttrpg
+load spec/v0/06_full_example.ttrpg
 
 // ── Core derives and scalar mechanics ───────────────────────────
 

@@ -989,7 +989,7 @@ system "D&D 5e Expanded" {
 
     // "Until next use": consume condition after its modifier fires once.
     // modify_applied is a built-in event emitted when a condition's
-    // modify clause activates — see spec 02_scoping.ttrpg.
+    // modify clause activates — see spec 03_conditions.ttrpg.
     hook ConsumeOnUse on c: Character (trigger: modify_applied(bearer: c)) {
         match trigger.condition.duration {
             UntilNextUse => {

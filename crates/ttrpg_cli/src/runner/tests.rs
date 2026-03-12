@@ -2594,7 +2594,7 @@ fn reload_preserves_default_on() {
     );
 }
 
-// ── Module system integration tests (spec: 02_scoping.ttrpg) ──────────
+// ── Module system integration tests (spec: 02_declarations.ttrpg) ──────────
 
 #[test]
 fn module_system_merging_additive() {

@@ -1,13 +1,13 @@
 // ============================================================
-// v0 Spec — Part 4: Full Worked Example
+// v0 Spec — Part 6: Full Worked Example
 //
-// Parseable by the grammar in 03_canonical_grammar.ttrpg.
+// Parseable by the grammar in 05_grammar.ttrpg.
 // Every type annotated. Every scope declared. Every field
 // traced to its source. No undefined references.
 //
 // This file is self-contained — all types and functions are
 // defined locally. A real project would split these across
-// modules (see 02_scoping.ttrpg for the import model).
+// modules (see 02_declarations.ttrpg for the import model).
 // ============================================================
 
 system "D&D 5e Combat" {
@@ -38,6 +38,13 @@ system "D&D 5e Combat" {
     enum ResolvedDamage {
         miss,
         hit(amount: int)
+    }
+
+
+    // --- Unit types ---
+
+    unit Feet suffix ft {
+        value: int
     }
 
 

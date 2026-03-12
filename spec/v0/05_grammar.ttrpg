@@ -1,8 +1,8 @@
 // ============================================================
-// v0 Spec — Part 3: Canonical Grammar
+// v0 Spec — Part 5: Canonical Grammar
 //
 // Complete EBNF. Every nonterminal defined. The full example
-// in 04_full_example.ttrpg is parseable by this grammar.
+// in 06_full_example.ttrpg is parseable by this grammar.
 // ============================================================
 
 // Notation:
@@ -161,6 +161,10 @@ decl            = enum_decl
                 | tag_decl
                 | move_decl          // PbtA sugar (desugars to mechanic + action)
 
+// Note: `table` is a reserved keyword for future use. The parser
+// recognizes `table` in declaration position but currently produces
+// a parse error. Table declarations are not implemented in v0.
+
 // --- Const declaration ---
 const_decl      = "const" IDENT (":" type)? "=" expr term
 
@@ -186,7 +190,7 @@ tag_decl        = "tag" "#"? IDENT term
 
 // Tags are metadata labels attached to derives, mechanics, functions, and actions.
 // A tag must be declared before it can be used on a declaration.
-// See 02_scoping.ttrpg for usage details.
+// See 02_declarations.ttrpg for usage details.
 
 // --- Enum ---
 enum_decl       = "enum" IDENT "ordered"? "{" enum_variants "}"
@@ -392,30 +396,10 @@ condition_decl  = "condition" IDENT params? tag_list?
 // With param args, source condition parameters are substituted in the
 // copied clause bodies. Values can be names or constant literals.
 
-// --- Stacking policy (same-condition instance precedence) ---
+// --- Stacking policy ---
 //
-// Controls which instance contributes effects when multiple instances
-// of the same condition exist on one bearer. Non-winning instances
-// remain active (duration ticking) but their modify, suppress,
-// suppress_modify, and cost modifier clauses are all excluded.
-//
-// Policies:
-//   all     — every instance contributes (default, backwards-compatible)
-//   first   — oldest instance wins (by gained_at, then lowest id)
-//   best by highest(<param>) ties oldest — highest param value wins
-//   best by lowest(<param>) ties oldest  — lowest param value wins
-//
-// <param> must name an int parameter declared on this condition.
-// The stacking clause belongs to the concrete declared
-// condition and is NOT copied by include.
-//
-// Tie-breaking: gained_at (oldest first). If gained_at ties, lowest
-// condition_id wins, for full determinism.
-//
-// Examples:
-//   condition Prone on bearer: entity stacking first { ... }
-//   condition Concealed(level: int) on bearer: entity
-//       stacking best by highest(level) ties oldest { ... }
+// See 03_conditions.ttrpg for full semantic details.
+// Grammar only: policy syntax and examples.
 //
 stacking_clause = "stacking" stacking_policy
 stacking_policy = "all"
@@ -445,85 +429,24 @@ periodic_clause  = "periodic" "#" IDENT block
 //
 // --- State block ---
 //
-// Declares per-instance mutable fields private to the condition hierarchy.
-// Each field requires a type annotation and a default expression. Default
-// expressions may reference condition parameters. At most one state block
-// per condition declaration.
-//
 // `state` is a soft keyword, recognized only in condition body position.
-// The name `state` is reserved inside conditions — it cannot be used as a
-// condition parameter name or receiver name (checker error).
+// See 03_conditions.ttrpg for full state field semantics (scoping,
+// persistence, inheritance, allowed types).
 //
-// SCOPING:
-//   State fields are accessed via the `state` prefix: `state.field_name`.
-//   - **Mutable** in on_apply, on_remove, and periodic blocks:
-//     `state.x = expr`, `state.x += expr`, `state.x -= expr`
-//   - **Read-only** in modify blocks (all phases: body, binding evaluation,
-//     cost modifiers). Modify syntax does not admit arbitrary assignment;
-//     state is bound as an immutable value in modify expressions.
-//   - NOT visible outside condition-owned blocks (functions, actions, etc.)
+// --- Lifecycle clauses (on_apply / on_remove) ---
 //
-// PERSISTENCE (snapshot-in / snapshot-out):
-//   One mutable state map is threaded through the full inherited lifecycle
-//   or periodic dispatch (all ancestor blocks share the same map). Parent
-//   mutations are visible to child blocks within the same dispatch.
-//   - on_apply: state map starts from defaults, final map travels with the
-//     ApplyCondition effect.
-//   - periodic/on_remove: state is cloned from the instance, mutated across
-//     the ancestor chain, then written back via SetConditionState effect.
-//   - modify: state is bound as an immutable snapshot, no write-back.
-//   - SetConditionState is a no-op if the condition was removed mid-block.
+// `on_apply` and `on_remove` are soft keywords recognized only in
+// condition body position. At most one of each per condition (parser
+// error on duplicates). See 03_conditions.ttrpg for full semantic
+// details (trigger points, restrictions, clause copying).
 //
-// INHERITANCE:
-//   - Child conditions see parent state fields (full read/write access)
-//   - Child can declare additional fields in its own `state { }` block
-//   - Child CANNOT redeclare or shadow a parent field name (checker error)
-//   - Sibling parents declaring the same field name is a checker error
-//   - Initialization order follows DFS linearization: grandparent → parent
-//     → child. Diamond dedup handled by ancestor walk.
+// --- Periodic clause ---
 //
-// ALLOWED TYPES:
-//   All value types including entity refs, enums, lists, structs.
-//   Disallowed: Condition, ActiveCondition, Module, FnRef.
-//
-// At most one on_apply and one on_remove per condition (parser error on
-// duplicates). Lifecycle blocks have hook-like execution semantics: they
-// can mutate entity state, emit events, roll dice, and call derives,
-// mechanics, and functions. Restrictions: apply_condition(),
-// remove_condition(), revoke(invocation), and invocation() are forbidden
-// inside lifecycle blocks (checker + runtime enforced).
-//
-// `on_apply` fires before the condition activates (modify/suppress not
-// yet in effect). If it errors, the condition is never applied.
-// `on_remove` fires before the condition is stripped (modify/suppress
-// still in effect). If it errors, the condition is still removed.
-//
-// `on_apply` and `on_remove` are soft keywords — they are valid as
-// identifiers elsewhere in the language. The parser recognizes them
-// only in condition body position.
-
 // `periodic` is a soft keyword, recognized only in condition body position.
 // The tag after `#` must reference a tag declared with `tag` at system level.
 // No duplicate periodic tags per condition declaration (parser error).
-//
-// Periodic blocks have function-body execution semantics:
-//   - Can mutate entity state, emit events, roll dice
-//   - Can call derives, mechanics, functions, actions
-//   - CAN call apply_condition(), remove_condition() (unlike lifecycle blocks)
-//   - `invocation()` is NOT available
-//
-// Scoping: `bearer` (the receiver), the effective condition parameter map,
-// `self` (the full ActiveCondition instance), and `state` (the mutable
-// condition state fields) are in scope. `self` provides access to .name,
-// .duration, .source, .id, .applied_at, .tags. `state` provides access to
-// declared state fields via `state.field_name`.
-// Effective condition parameters are materialized ancestor-first; if both a
-// parent and child declare the same name, the child's binding shadows the
-// parent's binding in the periodic block.
-//
-// Executed by `process_periodic_conditions(combatants, tag_string)`.
-// Only stacking winners execute. Ancestor periodic blocks run before
-// child blocks (DFS post-order, same as lifecycle blocks).
+// See 03_conditions.ttrpg for full semantic details (scoping, capabilities,
+// execution model, stacking, inheritance).
 
 modify_clause   = "modify" modify_target "(" modify_bindings? ")" tag_list? modify_body
                 | "modify" IDENT "." "cost" "(" modify_bindings? ")" cost_modify_body
@@ -555,27 +478,15 @@ modify_stmt     = "let" IDENT (":" type)? "=" expr term   // local binding (eith
 
 // --- Cost modification ---
 //
-// The second form of modify_clause targets an action or reaction's
-// cost instead of its parameters/result. The `.cost` suffix after
-// the action name selects this mode:
+// The second form of modify_clause targets an action's cost via `.cost`.
+// See 03_conditions.ttrpg for full semantic details.
 //
+// Grammar notes:
 //   modify Dash.cost(actor: bearer) { cost = bonus_action }
 //
-// The target name must refer to an action or reaction (not a derive
-// or mechanic — those have no cost). Bindings work the same way:
-// the receiver and declared parameters are bindable.
-//
 // Cost modify bodies use a restricted statement set — only `cost =`
-// assignments, `let` bindings, and `if`/`else` are allowed. Parameter
-// overrides (`param = expr`) and result rewrites (`result.field = expr`)
-// are rejected with a diagnostic.
-//
-// `cost = free` waives the action's cost entirely.
-// `cost = token1, token2` replaces the cost with the given tokens.
-//
-// Multiple cost modifiers follow the same conflict resolution as
-// parameter modifiers: applied in condition-gained order, last writer
-// wins (see 02_scoping.ttrpg "Modify conflict resolution").
+// assignments, `let` bindings, and `if`/`else` are allowed.
+// `cost = free` waives cost; `cost = token1, token2` replaces tokens.
 
 cost_modify_body = "{" cost_modify_stmt* "}"
 cost_modify_stmt = "cost" "=" "free" term                              // waive cost
@@ -790,7 +701,8 @@ block           = "{" stmt* "}"
 //   - reaction/hook resolve: block value is discarded (no constraint).
 
 stmt            = let_stmt | assign_stmt | grant_stmt | revoke_stmt
-                | emit_stmt | with_budget_stmt | return_stmt | expr_stmt
+                | emit_stmt | with_budget_stmt | with_cost_payer_stmt
+                | return_stmt | expr_stmt
 
 let_stmt        = "let" IDENT (":" type)? "=" expr term
 assign_stmt     = lvalue assign_op expr term
@@ -845,62 +757,31 @@ emit_stmt       = "emit" IDENT "(" arg_list? ")" term
 
 // --- with_budget (scoped turn budget provisioning) ---
 //
-// `with_budget` provisions a turn budget for an entity, executes a
-// block in that budget context, then cleans up. This enables functions
-// to call costed actions by providing the required budget.
+// See 04_runtime.ttrpg for full semantic details.
 //
-// Allowed in function, action, reaction, and hook blocks (any mutation
-// context). Not allowed in derive, mechanic, condition, or prompt.
+// Grammar: `with_budget(entity, { field: value, ... }) { body }`
+// Allowed in function, action, reaction, hook. Not in derive, mechanic,
+// condition, or prompt.
 //
-// The entity expression must evaluate to an entity type. Budget field
-// names must match fields of the TurnBudget struct, and values must
-// be int.
+// --- with_cost_payer ---
 //
-// Within the body:
-//   - Use `budget_of(entity)` to read an entity's budget (e.g., `budget_of(actor).action`)
-//   - `turn` keyword works inside action/reaction/hook resolve blocks (set by action dispatch)
-//   - Actions called within deduct from the provisioned budget
-//   - Budget enforcement fires RequiresCheck when budget is exhausted
-//
-// Nesting: with_budget blocks can nest. Each saves/restores the
-// previous budget. Inner blocks shadow the outer
-// budget for the same entity; the outer budget is restored on exit.
-//
-// Cost payer: with_budget provisions budget only. Use with_cost_payer
-// to set the payer for summoning patterns where the receiver differs
-// from the entity paying the cost:
+// `with_cost_payer` sets the cost payer for summoning patterns where
+// the acting entity differs from the entity paying the cost:
 //
 //   with_budget(wizard, { action: 1 }) {
 //       with_cost_payer(wizard) {
-//           skeleton.MeleeAttack(target, weapon)  // skeleton acts, wizard pays
-//       }
-//   }
-//
-// Cleanup: budget is always cleared/restored on exit, even if the
-// body errors. Error in the body takes precedence over cleanup errors.
-//
-// Examples:
-//
-//   // OSRIC pattern: provision one attack, call costed action
-//   with_budget(combatant, { action: 1 }) {
-//       combatant.MeleeAttack(target, weapon)
-//   }
-//
-//   // 5e interactive turn: multiple resources, read budget in loop
-//   with_budget(actor, { action: 1, bonus_action: 1, movement: actor.speed }) {
-//       while turn.action > 0 || turn.bonus_action > 0 {
-//           let choice = prompt choose_action(actor)
-//           match choice {
-//               Attack(target) => target.Attack(actor),
-//               Dash => actor.Dash(),
-//               EndTurn => {}
-//           }
+//           skeleton.MeleeAttack(target, weapon)
 //       }
 //   }
 
 with_budget_stmt = "with_budget" "(" expr "," "{" budget_fields "}" ")" block
 budget_fields    = budget_field ("," budget_field)* ","?
 budget_field     = IDENT ":" expr
+
+with_cost_payer_stmt = "with_cost_payer" "(" expr ")" block
+// Sets the cost payer entity for the duration of the block.
+// Actions within deduct costs from the payer's budget rather than
+// the acting entity's budget. See 04_runtime.ttrpg for details.
 
 
 // =========================
@@ -932,6 +813,12 @@ postfix_expr    = primary_expr postfix_op*
 postfix_op      = "." IDENT                          // field access
                 | "[" expr "]"                        // index
                 | "(" arg_list? ")"                   // call
+//
+// Qualified name resolution: `Module.Name` is parsed as field access
+// (primary IDENT, then "." IDENT). During type checking, if the left
+// operand resolves to a module alias (from `use "System" as Alias`),
+// the checker rewrites it to a qualified lookup in that module's
+// namespace. See 02_declarations.ttrpg "Qualified access via aliases".
 primary_expr    = INT | STRING
                 | "true" | "false" | "none"
                 | dice_lit

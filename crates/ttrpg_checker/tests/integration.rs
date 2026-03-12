@@ -159,7 +159,7 @@ fn expect_warnings(source: &str, expected_fragments: &[&str]) {
 
 #[test]
 fn test_full_example_no_errors() {
-    let source = include_str!("../../../spec/v0/04_full_example.ttrpg");
+    let source = include_str!("../../../spec/v0/06_full_example.ttrpg");
     expect_no_errors(source);
 }
 
@@ -175,7 +175,7 @@ fn test_expanded_example_no_errors() {
 
 #[test]
 fn test_collect_counts() {
-    let source = include_str!("../../../spec/v0/04_full_example.ttrpg");
+    let source = include_str!("../../../spec/v0/06_full_example.ttrpg");
     let result = check_source(source);
 
     // Enums: Ability, RollMode, DamageType, WeaponProperty, SaveResult, ResolvedDamage + built-in Duration + built-in EffectSource + built-in Presence
@@ -435,7 +435,7 @@ system "test" {
 
 #[test]
 // ═══════════════════════════════════════════════════════════════
-// Block categories: scoping and permission audit (02_scoping.ttrpg)
+// Block categories: scoping and permission audit (02_declarations.ttrpg)
 // ═══════════════════════════════════════════════════════════════
 
 // --- emit scope ---

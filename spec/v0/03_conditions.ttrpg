@@ -1,0 +1,670 @@
+// ============================================================
+// v0 Spec — Part 3: Condition System
+//
+// Modify pipeline, stacking, lifecycle hooks, state fields,
+// periodic blocks, suspension, cost modification.
+// ============================================================
+
+
+// --- Conditions and `modify` ---
+//
+// condition blocks declare modifier overlays. A modify clause says:
+//   "When function X is called and these bindings match,
+//    apply these transformations."
+//
+// This is NOT mutation. The condition doesn't execute imperative code.
+// It declares transformation rules that the runtime applies.
+//
+// Modify operates in two phases:
+//
+//   Phase 1 — Pre-call (parameter rewrite):
+//     Statements of the form `param_name = expr` override input
+//     parameters of the target function BEFORE it executes.
+//     Example: `mode = disadvantage` rewrites the mode parameter
+//     of attack_roll before the roll happens.
+//
+//   Phase 2 — Post-call (result rewrite):
+//     Statements of the form `result.field = expr` modify fields
+//     of the target function's return value AFTER it executes.
+//     Example: `result.movement = result.movement - 15` adjusts
+//     the movement field of initial_budget's returned TurnBudget.
+//
+// Both phases are declarative. Neither phase assigns to entity fields.
+//
+// The modify clause targets a specific mechanic/derive by name and
+// binds its parameters to condition context.
+
+condition Prone on bearer: Character {
+    // When attack_roll is called with attacker == bearer: set mode to disadvantage
+    modify attack_roll(attacker: bearer) {
+        mode = disadvantage
+    }
+
+    // When attack_roll is called with target == bearer: mode depends on distance
+    modify attack_roll(target: bearer) {
+        mode = if distance(attacker.position, bearer.position) <= 5 {
+            advantage
+        } else {
+            disadvantage
+        }
+    }
+
+    // When initial_budget is computed for bearer: halve movement
+    modify initial_budget(actor: bearer) {
+        result.movement = result.movement - floor(bearer.speed / 2)
+    }
+}
+
+// The modify clause binds `attacker: bearer` meaning "this modifier fires
+// when the `attacker` parameter equals the entity bearing Prone."
+// Inside the modify body, other parameters of the target function
+// (e.g., `attacker`, `target`) are in scope as read-only bindings.
+// `result` refers to the output of the target function, for post-modification.
+//
+// `let` statements are allowed in modify bodies for intermediate values:
+//   modify attack_roll(target: bearer) {
+//       let dist = distance(attacker.position, bearer.position)
+//       mode = if dist <= 5 { advantage } else { disadvantage }
+//   }
+
+
+// --- Modify conflict resolution ---
+//
+// When multiple active conditions modify the same parameter of the
+// same function call, modifiers are applied in the order the conditions
+// were gained by the entity (oldest first). Within a single condition,
+// clauses are applied in declaration order.
+//
+// Each modifier sees the parameter value left by the previous modifier
+// (pipeline model, not independent evaluation). Last writer wins.
+//
+// Example: entity has both Prone and Dodging, attacking a target.
+//   1. Prone.modify attack_roll(attacker: bearer) sets mode = disadvantage
+//   2. No other condition modifies this call
+//   Result: mode = disadvantage
+//
+// Game-specific interactions (e.g., D&D 5e "advantage and disadvantage
+// cancel out") are NOT built into the runtime. They should be modeled
+// as a mechanic or derive that checks for conflicting conditions:
+//
+//   derive resolve_roll_mode(actor: Character, base_mode: RollMode) -> RollMode {
+//       let has_adv = /* check conditions granting advantage */
+//       let has_dis = /* check conditions granting disadvantage */
+//       match { has_adv && has_dis => normal, has_adv => advantage,
+//               has_dis => disadvantage, _ => base_mode }
+//   }
+//
+// This keeps the modify system simple (last-writer-wins pipeline)
+// and pushes game-specific cancellation logic into explicit DSL code.
+
+
+// --- Same-condition stacking (instance precedence) ---
+//
+// When multiple instances of the same condition exist on one bearer,
+// their modifiers stack by default (all instances contribute). The
+// `stacking` clause on the condition declaration overrides this:
+//
+//   condition Prone on bearer: entity stacking first {
+//       modify [#attack_resolution](target: bearer) {
+//           attack_mod = attack_mod + 4
+//       }
+//   }
+//
+//   condition Concealed(level: int) on bearer: entity
+//       stacking best by highest(level) ties oldest
+//   {
+//       modify [#attack_resolution](target: bearer) {
+//           attack_mod = attack_mod - level
+//       }
+//   }
+//
+// Policies:
+//
+//   all (default) — Every instance contributes all effects. Use for
+//   conditions that legitimately coexist, like Grappling with
+//   different opponents.
+//
+//   first — The oldest instance (lowest gained_at) wins. All other
+//   instances are suppressed. Use for parameterless conditions where
+//   duplicates should not double effects (Prone, Stunned, etc.).
+//
+//   best by highest(<param>) ties oldest — The instance with the
+//   highest value of <param> wins. Ties broken by gained_at (oldest),
+//   then lowest condition_id. Use for parameterised conditions where
+//   the strongest effect should prevail (Concealed, Cover).
+//
+//   best by lowest(<param>) ties oldest — Same as above but the
+//   instance with the lowest value of <param> wins.
+//
+// SUPPRESSION SEMANTICS:
+//   Non-winning instances are suppressed, NOT removed. They remain
+//   in state with their duration ticking. When the winner expires,
+//   the next-best instance becomes the new winner.
+//
+//   Suppression is total: a suppressed instance contributes NO
+//   effects — its modify clauses, suppress clauses, suppress_modify
+//   clauses, and cost modifiers are all excluded from collection.
+//
+// PARAMETER CONSTRAINT:
+//   For `best by`, <param> must name an int parameter declared on
+//   this condition.
+//
+// STACKING NOT COPIED:
+//   The stacking clause belongs to the concrete declared condition.
+//   It is NOT copied by `include`. A condition must declare its own
+//   stacking policy. Omitting it defaults to `all`.
+//
+// EVALUATION:
+//   Before collecting any clauses from a condition instance, the
+//   runtime computes a per-bearer allowlist of winning condition_ids.
+//   Non-winners are skipped entirely. This applies uniformly across all collection paths:
+//   modify/suppress_modify (pipeline.rs), cost modifiers (action.rs),
+//   and suppress clauses (event.rs).
+//
+// CROSS-CONDITION OVERLAP:
+//   Stacking only governs instances of the SAME condition. Overlap
+//   between different conditions (e.g., Concealed vs Invisible) is
+//   a separate concern, handled by guard conditions in modify bodies
+//   or suppress_modify clauses.
+
+
+// --- Tags on modify clauses ---
+//
+// Modify clauses can carry tag annotations for provenance tracking
+// and targeted suppression. Tags are placed after the closing ")" of
+// bindings and before the opening "{":
+//
+//   modify attack_roll(attacker: bearer) #position #penalty {
+//       mode = disadvantage
+//   }
+//
+// Tags must be declared via `tag` declarations. They appear in the
+// Effect::ModifyApplied event, enabling the REPL `breakdown` command
+// to show which modifiers came from which categories.
+
+
+// --- Suppress-modify (targeted modifier suppression) ---
+//
+// A condition can suppress modify clauses matching a selector using
+// `suppress [selector](bindings)`:
+//
+//   condition FreedomOfMovement on bearer: Character {
+//       suppress [#position](attacker: bearer)
+//   }
+//
+// This suppresses all modify clauses tagged #position where the
+// `attacker` binding matches bearer. Suppressed modifiers are filtered
+// out in collect_modifiers_owned before phase 1/phase 2 execution.
+//
+// Selector predicates reuse modify clause selector syntax:
+//   #tag        — match modify clauses with this tag
+//   returns T   — match modify clauses targeting functions returning T
+//   has p: T    — match modify clauses targeting functions with param p of type T
+//
+// Bindings are optional. Omitting them suppresses all matching modify
+// clauses regardless of which entity they target:
+//
+//   suppress [#fear]   // suppress all #fear-tagged modifiers unconditionally
+//
+// Suppress-modify is separate from event suppress (`suppress event_name(...)`)
+// and is disambiguated by the leading `[` after `suppress`.
+//
+// Evaluation order: suppress-modify clauses from all conditions on all
+// entities in scope are collected, then each candidate modifier is
+// checked against all active suppressions. A modifier is removed if
+// any suppression matches both its selector predicates and bindings.
+
+
+// --- Built-in `modify_applied` event ---
+//
+// The interpreter automatically emits a `modify_applied` event after a
+// condition's modify clause fires. Hooks can listen for this to implement
+// patterns like "until next use" — consuming a condition after its modifier
+// activates.
+//
+// Event shape (built-in, auto-registered):
+//   event modify_applied(bearer: entity, condition: ActiveCondition) {
+//       target_fn: string
+//   }
+//
+//   - bearer: entity bearing the condition whose modifier fired
+//   - condition: ActiveCondition struct with name, id, duration fields
+//   - target_fn: name of the function that was modified
+//
+// The event is deduplicated by condition instance id: if a condition has
+// multiple modify clauses that all fire on the same call, only one
+// modify_applied event is emitted.
+//
+// Example: remove a condition after its modifier fires once
+//
+//   hook ConsumeOnUse on c: Character (trigger: modify_applied(bearer: c)) {
+//       if trigger.condition.name == "OneTimeBoost" {
+//           remove_condition(c, trigger.condition)
+//       }
+//   }
+//
+// User-defined events with the name `modify_applied` take precedence over
+// the built-in (consistent with Duration/TurnBudget override semantics).
+// The event is only emitted for condition-sourced modifiers, not options.
+
+
+// --- Condition lifecycle hooks (on_apply / on_remove) ---
+//
+// Conditions can include imperative lifecycle blocks that execute when
+// the condition is applied to or removed from an entity. These are
+// declared alongside modify and suppress clauses inside the condition
+// body. At most one `on_apply` and one `on_remove` per condition.
+//
+// Lifecycle blocks have hook-like execution semantics:
+//   - Can mutate entity state
+//   - Can emit events
+//   - Can roll dice
+//   - Can call derives, mechanics, functions
+//
+// Scoping: `bearer` (the receiver), condition parameters, and `state`
+// (mutable condition state fields, if declared) are in scope.
+// `invocation()` is NOT available (checker error).
+//
+// RESTRICTIONS (enforced by checker + runtime):
+//   - apply_condition() — forbidden (prevents reentrancy)
+//   - remove_condition() — forbidden (same reasoning)
+//   - revoke(invocation) — forbidden (removes conditions)
+//   - invocation() — forbidden (no meaningful use)
+//   Note: `revoke entity.Group` (optional group revocation) IS allowed.
+//   These restrictions are direct-only. A lifecycle block may emit an
+//   event whose hook calls apply_condition() — that indirect path is
+//   not transitively prevented.
+//
+// TRIGGER POINTS:
+//
+//   on_apply fires immediately BEFORE the condition is activated.
+//   The condition's modify/suppress clauses are NOT yet in effect.
+//   If on_apply succeeds, the condition activates normally.
+//   If on_apply errors, the condition is never applied. Side effects
+//   from the partial execution (mutations, emits) are not undone —
+//   consistent with hook error semantics (fire-and-forget).
+//
+//   on_remove fires immediately BEFORE the condition is stripped.
+//   The condition's modify/suppress clauses ARE still in effect.
+//   Fires on: remove_condition(), revoke(invocation), future auto-expiry.
+//   When remove_condition() matches multiple instances, on_remove fires
+//   once per instance in gained_at order (oldest first). All matched
+//   instances are removed regardless of individual on_remove errors;
+//   the first error is propagated after all removals complete.
+//   If on_remove errors, the condition is STILL removed (removal must
+//   succeed for state consistency).
+//
+// CLAUSE COPYING (include):
+//   Use `include modify/suppress/suppress-modify CondName` to copy
+//   declarative clauses from another condition at compile time.
+//   Lifecycle hooks, periodic blocks, state, stacking, and tags are
+//   NOT copied — only the specified clause type.
+//
+// DESIGN PRINCIPLE:
+//   Conditions that share declarative effects should use `include`,
+//   not imperative apply_condition() inside on_apply.
+
+// EXAMPLE: lifecycle hooks for status tracking and cleanup
+condition Burning(damage_per_tick: int) on bearer: Character {
+    on_apply {
+        emit StatusGained(target: bearer, status: "Burning")
+        bearer.took_fire_damage = true
+    }
+
+    on_remove {
+        emit StatusLost(target: bearer, status: "Burning")
+    }
+
+    modify fire_resistance(target: bearer) {
+        result.amount = result.amount - damage_per_tick
+    }
+}
+
+// EXAMPLE: lifecycle hooks with dice and mutation
+condition Poisoned(potency: int) on bearer: Character {
+    on_apply {
+        let initial_damage: RollResult = roll(dice(potency, 6))
+        bearer.HP -= initial_damage.total
+        emit Damaged(target: bearer, amount: initial_damage.total)
+    }
+
+    on_remove {
+        bearer.poisoned_flag = false
+    }
+
+    modify saving_throw(target: bearer) {
+        mode = disadvantage
+    }
+}
+
+
+// --- Condition state fields (state { ... }) ---
+//
+// Conditions can declare per-instance mutable fields in a `state { }` block.
+// State fields are private to the condition hierarchy — they are not visible
+// through `conditions()`, `self`, or any external API. They provide internal
+// bookkeeping without polluting the condition's public interface.
+//
+// SYNTAX: state { field_name: Type = default_expr }
+//   - Each field requires a type annotation and a default expression.
+//   - Default expressions may reference condition parameters.
+//   - At most one state block per condition declaration.
+//   - Must appear before executable blocks (on_apply, on_remove, periodic, modify).
+//
+// SCOPING:
+//   State fields are accessed via the `state` prefix: `state.field_name`.
+//   - Mutable in on_apply, on_remove, periodic blocks
+//   - Read-only in modify blocks (all phases)
+//   - NOT accessible outside condition-owned blocks
+//
+// IDENTIFIER RESERVATION:
+//   `state` is reserved inside conditions — it cannot be used as a condition
+//   parameter name or receiver name. The checker enforces this.
+//
+// PERSISTENCE (snapshot-in / snapshot-out):
+//   One mutable state map is threaded through the FULL inherited dispatch
+//   (all ancestor blocks in a single on_apply/on_remove/periodic chain
+//   share the same mutable state map). Parent mutations are visible to
+//   child blocks within the same dispatch.
+//   - on_apply: defaults evaluated in ancestor order, state mutated across
+//     the full on_apply chain, final map included in ApplyCondition effect.
+//   - periodic/on_remove: state cloned from instance, mutated across
+//     ancestor chain, written back via SetConditionState effect at exit.
+//   - modify: state bound as immutable snapshot, no write-back.
+//   - If the condition is removed mid-block (e.g., self-removal in periodic),
+//     SetConditionState is a no-op (condition no longer exists).
+//
+// INHERITANCE:
+//   - Child conditions see parent state fields (full read/write access)
+//   - Child can add its own fields in a separate `state { }` block
+//   - Child CANNOT redeclare or shadow a parent field name (checker error)
+//   - If two sibling parents declare the same field name, it is a checker error
+//   - Init order follows DFS linearization: grandparent -> parent -> child
+//
+// TYPES:
+//   Allowed: all Value types including entity refs, enums, lists, structs.
+//   Disallowed: Condition, ActiveCondition, Module, FnRef.
+//
+// PARAMS vs STATE FIELDS:
+//   - Params: immutable, externally matchable, used by stacking/remove_condition
+//   - State fields: mutable, private, ignored by stacking and remove_condition
+//   - conditions() and external queries never expose state field values
+
+// EXAMPLE: poison tracking cumulative damage across ticks
+condition PoisonTracked(potency: int) on bearer: Character {
+    state {
+        ticks_elapsed: int = 0
+        cumulative_damage: int = 0
+    }
+
+    on_apply {
+        state.cumulative_damage = roll(dice(potency, 6)).total
+        bearer.HP -= state.cumulative_damage
+        emit Damaged(target: bearer, amount: state.cumulative_damage)
+    }
+
+    periodic #round_end_damage {
+        state.ticks_elapsed += 1
+        let tick_dmg = roll(1d4).total
+        state.cumulative_damage += tick_dmg
+        bearer.HP -= tick_dmg
+    }
+
+    on_remove {
+        emit PoisonSummary(target: bearer, total_damage: state.cumulative_damage,
+                           rounds: state.ticks_elapsed)
+    }
+}
+
+// EXAMPLE: include copies modify clauses from another condition
+condition IntensePoison(potency: int) on bearer: Character {
+    include modify PoisonTracked
+
+    state {
+        spread_count: int = 0
+        ticks_elapsed: int = 0
+    }
+
+    periodic #round_end_damage {
+        state.ticks_elapsed += 1
+        if state.ticks_elapsed >= 3 {
+            state.spread_count += 1
+            emit PoisonSpread(source: bearer, count: state.spread_count)
+        }
+    }
+}
+
+
+// --- Condition periodic blocks (periodic #tag { ... }) ---
+//
+// Conditions can include periodic blocks that execute during the combat
+// loop via `process_periodic_conditions(combatants, tag)`. Unlike lifecycle
+// blocks, periodic blocks are NOT restricted from calling apply_condition()
+// or remove_condition() — they have full function-body semantics.
+//
+// Periodic blocks replace standalone processing functions (e.g.,
+// process_bleeding(), process_blade_barrier_damage()) by co-locating the
+// per-round effect logic with the condition that causes it.
+//
+// SYNTAX: periodic #tag { statements }
+//   The tag must be declared with `tag` at system level.
+//   A condition may have multiple periodic blocks with different tags.
+//   Duplicate tags within a single condition declaration are a parser error.
+//
+// SCOPING:
+//   `bearer`  — the entity carrying the condition (receiver)
+//   condition parameters — bound from the active-condition parameter map
+//   `self`    — the full ActiveCondition instance being processed
+//              (.name, .duration, .source, .id, .applied_at, .tags)
+//   `state`   — mutable condition state fields (if declared). Accessed
+//              via `state.field_name`.
+//
+//   Note: lifecycle blocks bind `bearer` + params + state. Periodic blocks
+//   additionally bind `self` because they replace standalone functions
+//   that had full access to condition instance data via `conditions()`.
+//
+// CAPABILITIES (checker-enforced):
+//   - Can mutate entity state, emit events, roll dice
+//   - Can call derives, mechanics, functions, actions
+//   - CAN call apply_condition(), remove_condition()
+//   - `invocation()` is NOT available
+//
+// EXECUTION (process_periodic_conditions):
+//   1. For each combatant, snapshot active conditions and compute stacking winners
+//   2. For each winning instance whose declaration (including ancestors)
+//      has a periodic block matching the requested tag:
+//      - Execute the block with bearer, self, and params bound
+//   3. Conditions removed during the pass are skipped (snapshot-based)
+//   4. Conditions applied to the same bearer during the pass don't tick
+//      until the next call (cross-bearer applies may tick if the recipient
+//      hasn't been processed yet)
+//
+// STACKING:
+//   Only stacking winners execute periodic blocks:
+//   - `all`: every instance ticks separately (e.g., overlapping Blade Barriers)
+//   - `first`: only the oldest instance ticks
+//   - `best by`: only the winning instance ticks
+//
+// INHERITANCE:
+//   Parent periodic blocks execute before child blocks (DFS post-order),
+//   same ordering as lifecycle blocks.
+//
+// TAG VALIDATION:
+//   Periodic tags are validated against the tag namespace by the checker
+//   at declaration sites. Call-site strings in process_periodic_conditions()
+//   are validated at runtime — unknown tags produce a runtime error.
+
+// EXAMPLE: bleeding damage as a periodic block
+condition Bleeding on bearer: entity
+    stacking first
+{
+    periodic #round_end_damage {
+        if bearer is Character {
+            bearer.hp = bearer.hp - 1
+            if bearer.hp <= -10 {
+                bearer.hp = -10
+                remove_condition(bearer, "Bleeding")
+                remove_condition(bearer, "Unconscious")
+                apply_condition(bearer, Dead, Duration.Indefinite)
+                emit CharacterDead(target: bearer)
+            }
+        }
+    }
+}
+
+// EXAMPLE: zone damage using self.source
+condition InsideBladeBarrier on bearer: entity
+    stacking all
+{
+    periodic #round_end_damage {
+        if let EffectSource.Spell(zone_name, cl) = self.source {
+            let damage = roll(8d8).total
+            bearer.TakeDamage(bearer, damage, DamageType.Slashing)
+            emit SpellDamaged(caster: bearer, target: bearer,
+                spell_name: zone_name, amount: damage)
+        }
+    }
+}
+
+// EXAMPLE: combat loop integration
+// process_periodic_conditions(combatants, "round_end_damage")
+// process_temp_healing(combatants)    // not condition-based
+// expire_conditions(combatants)
+
+
+// --- Suspension (entity presence and turn/duration freezing) ---
+//
+// The suspension system temporarily removes entities from ordinary play
+// or freezes their turn/duration progression. This models spells like
+// Imprisonment, Trap the Soul, Temporal Stasis, and similar effects
+// that take an entity out of the game while preserving its state for
+// later restoration.
+//
+// Suspension operates through source-keyed records. Each record is
+// identified by a source_id (typically a ConditionToken value) and
+// specifies:
+//   - presence: Presence.OnMap or Presence.OffBoard
+//   - freeze_turns: bool — whether turns are frozen
+//   - freeze_durations: bool — whether condition durations are frozen
+//
+// Multiple suspension records can coexist on one entity.
+// Resolution uses worst-case-wins semantics:
+//   - Off-board if ANY record says OffBoard
+//   - Turns frozen if ANY record says freeze_turns: true
+//   - Durations frozen if ANY record says freeze_durations: true
+//
+// LIFECYCLE INTEGRATION:
+//   The `suspend()` builtin is only available inside condition lifecycle
+//   blocks (on_apply / on_remove). It automatically keys the suspension
+//   record to the current condition instance via `condition_token()`.
+//   When the condition is removed, the suspension record is automatically
+//   cleaned up — no manual bookkeeping is needed.
+//
+//   The `condition_token()` builtin returns the pre-allocated token for
+//   the condition being applied/removed. This token is allocated before
+//   on_apply runs, so it is available for use as a suspension source key.
+//
+// AUTO-CLEANUP:
+//   Suspension records keyed to a condition instance are automatically
+//   removed when that condition is removed (via remove_condition() or
+//   revoke()). The cleanup happens after the RemoveCondition mutation
+//   succeeds, not during on_remove. This means on_remove still sees
+//   the suspension in effect.
+//
+// DURATION FREEZE SEMANTICS:
+//   When durations are frozen, condition timers stop ticking. When
+//   unfrozen, each condition's applied_at is bumped forward so that
+//   remaining duration is preserved:
+//     cond.applied_at += now - max(cond.applied_at, freeze_start)
+//   Conditions applied mid-freeze get a smaller bump than pre-freeze
+//   conditions, correctly preserving their shorter elapsed time.
+//
+// ENUMERATION:
+//   `entities_in_play()` (host-side) excludes off-board entities from
+//   hook candidate scanning and modify_applied evaluation. Off-board
+//   entities still exist and can be queried with `all_entities()`.
+//
+// EXAMPLE: Imprisonment spell using suspend() in lifecycle block
+//
+//   condition Imprisoned on bearer: entity
+//       stacking first
+//   {
+//       on_apply {
+//           suspend(bearer, Presence.OffBoard, freeze_turns: true,
+//                   freeze_durations: true)
+//       }
+//   }
+//
+// EXAMPLE: Manual suspension with explicit source key
+//
+//   // In an action or function:
+//   let token = condition_token()  // ERROR — only in lifecycle blocks
+//   // Instead, use suspend_with_source():
+//   suspend_with_source(target, source_id: 42,
+//       Presence.OffBoard, freeze_turns: true, freeze_durations: true)
+//   // Later:
+//   remove_suspension_source(target, source_id: 42)
+//
+// See 04_runtime.ttrpg for the suspension builtins (suspend,
+// suspend_with_source, remove_suspension_source, is_suspended, etc.).
+
+
+// --- Cost modification (modify Action.cost) ---
+//
+// Conditions can override an action's cost using the `.cost` suffix
+// on modify clauses. This enables features like D&D 5e's Cunning
+// Action (Dash/Disengage/Hide as a bonus action) without duplicating
+// the entire action definition.
+//
+// Syntax:
+//   condition CunningAction on bearer: Character {
+//       modify Dash.cost(actor: bearer) { cost = bonus_action }
+//   }
+//
+// The `.cost` suffix distinguishes cost modification from parameter/
+// result modification. The target must be an action or reaction (not
+// a derive or mechanic, which have no cost).
+//
+// Bindings work the same as regular modify clauses: the action's
+// receiver and declared parameters are bindable. In the example above,
+// `actor` is Dash's receiver name, bound to the condition's `bearer`.
+// Condition-owned names visible while checking and evaluating the cost
+// modifier come from the same effective inherited parameter map used by
+// lifecycle/periodic/modify scopes, so descendant parameter names shadow
+// matching ancestor names.
+//
+// Cost modify bodies support:
+//   - `cost = token1, token2` — replace the cost with new tokens
+//   - `cost = free` — waive the cost entirely
+//   - `let` bindings for intermediate values
+//   - `if`/`else` for conditional cost changes
+//
+// Cost modify bodies reject parameter overrides (`param = expr`) and
+// result rewrites (`result.field = expr`) — those belong in regular
+// modify clauses.
+//
+// Cost modifiers are collected from active conditions on the acting
+// entity, applied in condition-gained order (oldest first), last
+// writer wins. This follows the same pipeline model as parameter
+// modification (see "Modify conflict resolution" above).
+//
+// EXAMPLE: Rogue's Cunning Action — Dash, Disengage, Hide as bonus action
+//
+//   condition CunningAction on bearer: Character {
+//       modify Dash.cost(actor: bearer) { cost = bonus_action }
+//       modify Disengage.cost(actor: bearer) { cost = bonus_action }
+//       modify Hide.cost(actor: bearer) { cost = bonus_action }
+//   }
+//
+// EXAMPLE: Conditional cost change (free if a resource is available)
+//
+//   condition Metamagic on bearer: Character {
+//       modify Fireball.cost(caster: bearer) {
+//           if bearer.sorcery_points >= 2 {
+//               cost = free
+//           }
+//       }
+//   }
+//
+// EXAMPLE: Cost modification emits a ModifyApplied effect showing
+// the old and new cost, allowing the host to log the change.

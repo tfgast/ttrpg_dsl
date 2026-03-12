@@ -1,7 +1,7 @@
 //! Spec audit: type system and arithmetic.
 //!
 //! Exhaustive verification of type system rules from 01_type_system.ttrpg and
-//! 05_unit_types.ttrpg. Tests cover the full pipeline (parse → lower → check →
+//! 01_type_system.ttrpg. Tests cover the full pipeline (parse → lower → check →
 //! interpret) and also checker-only error rejection:
 //!
 //! 1. Coercion table: DiceExpr→RollResult (only via roll), RollResult→int

@@ -4,7 +4,7 @@ use ttrpg_parser::{Severity, SourceMap, parse};
 
 #[test]
 fn test_parse_full_example() {
-    let source = include_str!("../../../spec/v0/04_full_example.ttrpg");
+    let source = include_str!("../../../spec/v0/06_full_example.ttrpg");
     let (program, diagnostics) = parse(source, FileId::SYNTH);
 
     if !diagnostics.is_empty() {

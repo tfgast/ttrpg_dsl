@@ -385,8 +385,8 @@ mod tests {
     #[test]
     fn parse_load() {
         assert_eq!(
-            parse_command("load spec/v0/04_full_example.ttrpg"),
-            Some(Command::Load("spec/v0/04_full_example.ttrpg".into()))
+            parse_command("load spec/v0/06_full_example.ttrpg"),
+            Some(Command::Load("spec/v0/06_full_example.ttrpg".into()))
         );
     }
 
