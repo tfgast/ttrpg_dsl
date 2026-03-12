@@ -58,7 +58,36 @@ pub(crate) fn eval_call(
                     .map(|ci| ci.params.clone())
                     .unwrap_or_default();
                 let bound = bind_args(&param_infos, args, Some(&cond_decl.params), env, call_span)?;
-                let cond_args: BTreeMap<Name, Value> = bound.into_iter().collect();
+                let mut cond_args: BTreeMap<Name, Value> = bound.into_iter().collect();
+
+                // Materialize inherited parent default params across the extends chain.
+                // Walk ancestors in DFS order (parents first), evaluate defaults for
+                // any param not already present in the map. This ensures parent lifecycle
+                // blocks and state field defaults can reference parent params.
+                let chain =
+                    crate::pipeline::collect_ancestor_order(env.interp.program, name.as_str());
+                for ancestor_decl in &chain {
+                    // Skip the concrete condition itself (already bound above)
+                    if ancestor_decl.name == *name {
+                        continue;
+                    }
+                    for param in &ancestor_decl.params {
+                        if cond_args.contains_key(&param.name) {
+                            continue; // child already provided or earlier ancestor set this
+                        }
+                        if let Some(ref default_expr) = param.default {
+                            // Evaluate the default in a scope with already-bound params visible
+                            env.push_scope();
+                            for (pname, pval) in &cond_args {
+                                env.bind(pname.clone(), pval.clone());
+                            }
+                            let val = eval_expr(env, default_expr)?;
+                            env.pop_scope();
+                            cond_args.insert(param.name.clone(), val);
+                        }
+                    }
+                }
+
                 return Ok(Value::Condition {
                     name: name.clone(),
                     args: cond_args,

@@ -729,6 +729,13 @@ impl Checker<'_> {
                 );
                 Ty::Error
             }
+            Ty::ConditionState(fields) => {
+                if let Some((_, ty)) = fields.iter().find(|(n, _)| n == field) {
+                    return ty.clone();
+                }
+                self.error(format!("condition state has no field `{field}`"), span);
+                Ty::Error
+            }
             Ty::RollResult => {
                 for (fname, ref fty) in TypeEnv::roll_result_fields() {
                     if fname == field {

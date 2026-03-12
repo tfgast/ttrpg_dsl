@@ -258,7 +258,16 @@ impl VisitSpansMut for ConditionDecl {
             param.visit_spans_mut(f);
         }
         self.receiver_type.visit_spans_mut(f);
+        self.state_fields.visit_spans_mut(f);
         self.clauses.visit_spans_mut(f);
+    }
+}
+
+impl VisitSpansMut for StateFieldDecl {
+    fn visit_spans_mut(&mut self, f: &mut dyn FnMut(&mut Span)) {
+        self.span.visit_spans_mut(f);
+        self.ty.visit_spans_mut(f);
+        self.default.visit_spans_mut(f);
     }
 }
 

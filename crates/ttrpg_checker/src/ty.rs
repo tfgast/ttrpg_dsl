@@ -60,6 +60,9 @@ pub enum Ty {
     // Consumed by resolve_field and check_call; cannot appear in signatures.
     ModuleAlias(Name),
 
+    // Condition state: per-instance mutable fields declared in `state { ... }`
+    ConditionState(Vec<(Name, Ty)>),
+
     // Sentinel: suppresses cascading errors
     Error,
 }
@@ -123,6 +126,7 @@ impl Ty {
                 }
             }
             Ty::OptionalGroupRef(entity, group) => format!("{entity}.{group}"),
+            Ty::ConditionState(_) => "condition_state".into(),
             Ty::Resource => "resource".into(),
             Ty::Unit => "unit".into(),
             Ty::ModuleAlias(name) => format!("module \"{name}\""),

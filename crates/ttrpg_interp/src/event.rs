@@ -1211,6 +1211,8 @@ mod tests {
                 receiver_name: "bearer".into(),
                 receiver_type: Ty::Entity("Character".into()),
                 tags: HashSet::new(),
+                own_state_fields: vec![],
+                merged_state_fields: vec![],
             },
         );
 
@@ -1368,6 +1370,8 @@ mod tests {
                 receiver_name: "bearer".into(),
                 receiver_type: Ty::Entity("Character".into()),
                 tags: HashSet::new(),
+                own_state_fields: vec![],
+                merged_state_fields: vec![],
             },
         );
 

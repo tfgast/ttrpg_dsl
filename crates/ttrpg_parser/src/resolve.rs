@@ -899,6 +899,7 @@ mod tests {
                 receiver_with_groups: WithClause::default(),
                 tags: vec![],
                 clauses: vec![],
+                state_fields: vec![],
             }),
             Span::dummy(),
         )

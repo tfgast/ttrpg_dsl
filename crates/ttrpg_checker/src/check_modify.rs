@@ -109,6 +109,19 @@ impl Checker<'_> {
         receiver: Option<(&Name, &Spanned<TypeExpr>, &WithClause)>,
         condition_params: &[Param],
     ) {
+        self.check_modify_clause_with_state(clause, receiver, condition_params, &[], &[]);
+    }
+
+    /// Check a modify clause with optional condition state fields bound as read-only
+    /// and inherited ancestor params bound in scope.
+    pub fn check_modify_clause_with_state(
+        &mut self,
+        clause: &ModifyClause,
+        receiver: Option<(&Name, &Spanned<TypeExpr>, &WithClause)>,
+        condition_params: &[Param],
+        state_fields: &[(Name, Ty)],
+        inherited_params: &[(Name, Ty)],
+    ) {
         // Validate tags: each must be declared in env.tags
         for tag in &clause.tags {
             if !self.env.tags.contains(tag) {
@@ -122,13 +135,34 @@ impl Checker<'_> {
 
         match &clause.target {
             ModifyTarget::Named(name) => {
-                self.check_modify_named(clause, name, receiver, condition_params);
+                self.check_modify_named(
+                    clause,
+                    name,
+                    receiver,
+                    condition_params,
+                    state_fields,
+                    inherited_params,
+                );
             }
             ModifyTarget::Selector(preds) => {
-                self.check_modify_selector(clause, preds, receiver, condition_params);
+                self.check_modify_selector(
+                    clause,
+                    preds,
+                    receiver,
+                    condition_params,
+                    state_fields,
+                    inherited_params,
+                );
             }
             ModifyTarget::Cost(name) => {
-                self.check_modify_cost(clause, name, receiver, condition_params);
+                self.check_modify_cost(
+                    clause,
+                    name,
+                    receiver,
+                    condition_params,
+                    state_fields,
+                    inherited_params,
+                );
             }
         }
     }
@@ -140,6 +174,8 @@ impl Checker<'_> {
         target_name: &Name,
         receiver: Option<(&Name, &Spanned<TypeExpr>, &WithClause)>,
         condition_params: &[Param],
+        state_fields: &[(Name, Ty)],
+        inherited_params: &[(Name, Ty)],
     ) {
         // Look up the target function
         let fn_info = match self.env.lookup_fn(target_name) {
@@ -167,7 +203,15 @@ impl Checker<'_> {
             return;
         }
 
-        self.check_modify_body(clause, &fn_info, receiver, condition_params, &[]);
+        self.check_modify_body(
+            clause,
+            &fn_info,
+            receiver,
+            condition_params,
+            &[],
+            state_fields,
+            inherited_params,
+        );
     }
 
     /// Check a modify clause targeting an action/reaction's cost.
@@ -177,6 +221,8 @@ impl Checker<'_> {
         target_name: &Name,
         receiver: Option<(&Name, &Spanned<TypeExpr>, &WithClause)>,
         condition_params: &[Param],
+        state_fields: &[(Name, Ty)],
+        inherited_params: &[(Name, Ty)],
     ) {
         // Look up the target function
         let fn_info = match self.env.lookup_fn(target_name) {
@@ -206,6 +252,30 @@ impl Checker<'_> {
 
         // Bind receiver and condition params into scope
         self.bind_condition_context(receiver, condition_params);
+
+        // Bind inherited ancestor params
+        for (name, ty) in inherited_params {
+            self.scope.bind(
+                name.clone(),
+                VarBinding {
+                    ty: ty.clone(),
+                    mutable: false,
+                    is_local: false,
+                },
+            );
+        }
+
+        // Bind condition state as read-only if available
+        if !state_fields.is_empty() {
+            self.scope.bind(
+                "state".into(),
+                VarBinding {
+                    ty: Ty::ConditionState(state_fields.to_vec()),
+                    mutable: false,
+                    is_local: false,
+                },
+            );
+        }
 
         // Validate bindings: the action's receiver is bindable, plus all declared params
         self.validate_clause_bindings(
@@ -371,6 +441,8 @@ impl Checker<'_> {
         preds: &[SelectorPredicate],
         receiver: Option<(&Name, &Spanned<TypeExpr>, &WithClause)>,
         condition_params: &[Param],
+        state_fields: &[(Name, Ty)],
+        inherited_params: &[(Name, Ty)],
     ) {
         // Resolve predicates into concrete types for matching
         let mut resolved: Vec<ResolvedPredicate> = Vec::new();
@@ -571,7 +643,15 @@ impl Checker<'_> {
             trigger: None,
         };
 
-        self.check_modify_body(clause, &synthetic_fn, receiver, condition_params, &matched_fns);
+        self.check_modify_body(
+            clause,
+            &synthetic_fn,
+            receiver,
+            condition_params,
+            &matched_fns,
+            state_fields,
+            inherited_params,
+        );
 
         // Store match set for interpreter runtime dispatch
         self.selector_matches.insert(clause.id, match_set);
@@ -696,11 +776,37 @@ impl Checker<'_> {
         receiver: Option<(&Name, &Spanned<TypeExpr>, &WithClause)>,
         condition_params: &[Param],
         matched_fns: &[&FnInfo],
+        state_fields: &[(Name, Ty)],
+        inherited_params: &[(Name, Ty)],
     ) {
         self.scope.push(BlockKind::ModifyClause);
 
         // Bind receiver and condition params into scope
         self.bind_condition_context(receiver, condition_params);
+
+        // Bind inherited ancestor params
+        for (name, ty) in inherited_params {
+            self.scope.bind(
+                name.clone(),
+                VarBinding {
+                    ty: ty.clone(),
+                    mutable: false,
+                    is_local: false,
+                },
+            );
+        }
+
+        // Bind condition state as read-only if available
+        if !state_fields.is_empty() {
+            self.scope.bind(
+                "state".into(),
+                VarBinding {
+                    ty: Ty::ConditionState(state_fields.to_vec()),
+                    mutable: false,
+                    is_local: false,
+                },
+            );
+        }
 
         // Validate bindings reference real parameters and type-check value expressions
         let target_label = match &clause.target {

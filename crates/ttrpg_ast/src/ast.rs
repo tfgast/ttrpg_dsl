@@ -673,6 +673,8 @@ pub struct ConditionDecl {
     /// Tags on the condition declaration (e.g., `#curse #disease`).
     /// These are static categorical properties of the condition type.
     pub tags: Vec<Name>,
+    /// Private per-instance state fields declared in `state { ... }`.
+    pub state_fields: Vec<StateFieldDecl>,
     pub clauses: Vec<ConditionClause>,
 }
 
@@ -691,6 +693,7 @@ impl ConditionDecl {
             receiver_type,
             receiver_with_groups: WithClause::default(),
             tags: vec![],
+            state_fields: vec![],
             clauses: vec![],
         }
     }
@@ -720,10 +723,24 @@ impl ConditionDecl {
         self
     }
 
+    pub fn with_state_fields(mut self, state_fields: Vec<StateFieldDecl>) -> Self {
+        self.state_fields = state_fields;
+        self
+    }
+
     pub fn with_clauses(mut self, clauses: Vec<ConditionClause>) -> Self {
         self.clauses = clauses;
         self
     }
+}
+
+#[derive(Clone)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
+pub struct StateFieldDecl {
+    pub name: Name,
+    pub ty: Spanned<TypeExpr>,
+    pub default: Spanned<ExprKind>,
+    pub span: Span,
 }
 
 #[derive(Clone)]

@@ -123,6 +123,11 @@ pub struct ConditionInfo {
     pub receiver_type: Ty,
     /// Tags declared on this condition (e.g., `#curse #disease`).
     pub tags: HashSet<Name>,
+    /// State fields declared directly on this condition (own only, not inherited).
+    pub own_state_fields: Vec<(Name, Ty)>,
+    /// Merged state fields: inherited ancestor fields + own fields, in ancestor-first order.
+    /// Populated by the post-collect `merge_condition_state_fields` pass.
+    pub merged_state_fields: Vec<(Name, Ty)>,
 }
 
 #[derive(Debug, Clone)]

@@ -873,13 +873,73 @@ impl<'a> Checker<'a> {
             }
         }
 
+        // Type-check this condition's own state field declarations
+        if !c.state_fields.is_empty() {
+            // Push a scope so defaults can reference params
+            self.scope.push(BlockKind::Derive);
+            for param in &c.params {
+                self.scope.bind(
+                    param.name.clone(),
+                    VarBinding {
+                        ty: self.env.resolve_type(&param.ty),
+                        mutable: false,
+                        is_local: false,
+                    },
+                );
+            }
+            for sf in &c.state_fields {
+                let field_ty = self.env.resolve_type(&sf.ty);
+                // Reject disallowed types
+                match &field_ty {
+                    Ty::Condition | Ty::ActiveCondition | Ty::ModuleAlias(_) | Ty::Fn(_, _) => {
+                        self.error(
+                            format!(
+                                "condition state field `{}` cannot have type {}; \
+                                 Condition, ActiveCondition, Module, and FnRef are disallowed",
+                                sf.name, field_ty
+                            ),
+                            sf.span,
+                        );
+                    }
+                    _ => {}
+                }
+                // Type-check default expression
+                let def_ty = self.check_expr_expecting(&sf.default, Some(&field_ty));
+                if !def_ty.is_error() && !self.types_compatible(&def_ty, &field_ty) {
+                    self.error(
+                        format!(
+                            "state field `{}` default has type {}, expected {}",
+                            sf.name, def_ty, field_ty
+                        ),
+                        sf.default.span,
+                    );
+                }
+            }
+            self.scope.pop();
+        }
+
+        // Use merged state fields (own + inherited) for the state binding type.
+        // Falls back to own fields if the condition has no ConditionInfo (shouldn't happen).
+        let state_ty_fields: Vec<(Name, Ty)> = self
+            .env
+            .conditions
+            .get(&c.name)
+            .map(|info| info.merged_state_fields.clone())
+            .unwrap_or_default();
+
+        // Collect inherited ancestor params for binding in block scopes.
+        // Ancestor params are bound first, child params shadow them.
+        let inherited_params = self.collect_inherited_params(&c.name, &c.extends);
+
         for clause in &c.clauses {
             match clause {
                 ConditionClause::Modify(m) => {
-                    self.check_modify_clause(
+                    self.check_modify_clause_with_state(
                         m,
                         Some((&c.receiver_name, &c.receiver_type, &c.receiver_with_groups)),
                         &c.params,
+                        &state_ty_fields,
+                        &inherited_params,
                     );
                 }
                 ConditionClause::Suppress(s) => {
@@ -915,12 +975,33 @@ impl<'a> Checker<'a> {
                         &c.receiver_with_groups,
                         c.receiver_type.span,
                     );
+                    // Bind inherited ancestor params first (child params shadow later)
+                    for (name, ty) in &inherited_params {
+                        self.scope.bind(
+                            name.clone(),
+                            VarBinding {
+                                ty: ty.clone(),
+                                mutable: false,
+                                is_local: false,
+                            },
+                        );
+                    }
                     for param in &c.params {
                         self.scope.bind(
                             param.name.clone(),
                             VarBinding {
                                 ty: self.env.resolve_type(&param.ty),
                                 mutable: false,
+                                is_local: false,
+                            },
+                        );
+                    }
+                    if !state_ty_fields.is_empty() {
+                        self.scope.bind(
+                            "state".into(),
+                            VarBinding {
+                                ty: Ty::ConditionState(state_ty_fields.clone()),
+                                mutable: true,
                                 is_local: false,
                             },
                         );
@@ -957,6 +1038,17 @@ impl<'a> Checker<'a> {
                         &c.receiver_with_groups,
                         c.receiver_type.span,
                     );
+                    // Bind inherited ancestor params first (child params shadow later)
+                    for (name, ty) in &inherited_params {
+                        self.scope.bind(
+                            name.clone(),
+                            VarBinding {
+                                ty: ty.clone(),
+                                mutable: false,
+                                is_local: false,
+                            },
+                        );
+                    }
                     for param in &c.params {
                         self.scope.bind(
                             param.name.clone(),
@@ -976,11 +1068,71 @@ impl<'a> Checker<'a> {
                             is_local: false,
                         },
                     );
+                    if !state_ty_fields.is_empty() {
+                        self.scope.bind(
+                            "state".into(),
+                            VarBinding {
+                                ty: Ty::ConditionState(state_ty_fields.clone()),
+                                mutable: true,
+                                is_local: false,
+                            },
+                        );
+                    }
                     self.check_block(&pc.body);
                     self.scope.pop();
                 }
             }
         }
+    }
+
+    /// Collect inherited params from ancestor conditions in DFS order.
+    /// Returns (name, type) pairs for all ancestor params not shadowed by the child's own params.
+    fn collect_inherited_params(
+        &self,
+        condition_name: &Name,
+        extends: &[Spanned<Name>],
+    ) -> Vec<(Name, Ty)> {
+        if extends.is_empty() {
+            return Vec::new();
+        }
+        let mut result = Vec::new();
+        let mut seen = HashSet::new();
+
+        fn walk(
+            name: &Name,
+            env: &crate::env::TypeEnv,
+            result: &mut Vec<(Name, Ty)>,
+            seen: &mut HashSet<Name>,
+            root_name: &Name,
+        ) {
+            if !seen.insert(name.clone()) {
+                return;
+            }
+            if let Some(info) = env.conditions.get(name) {
+                // Recurse into parents first
+                for parent in &info.extends {
+                    walk(parent, env, result, seen, root_name);
+                }
+                // Add this ancestor's params (skip the root condition itself)
+                if name != root_name {
+                    for param in &info.params {
+                        // Only add if not already seen (earlier ancestor or duplicate)
+                        if !result.iter().any(|(n, _)| n == &param.name) {
+                            result.push((param.name.clone(), param.ty.clone()));
+                        }
+                    }
+                }
+            }
+        }
+
+        walk(
+            condition_name,
+            self.env,
+            &mut result,
+            &mut seen,
+            condition_name,
+        );
+        result
     }
 
     fn check_option(&mut self, o: &OptionDecl) {

@@ -92,6 +92,9 @@ fn collect_inner(program: &Program, modules: Option<&ModuleMap>) -> (TypeEnv, Ve
     // Validate condition extends (parent existence, receiver compat, cycles)
     validate_condition_extends(program, &env, &mut diagnostics);
 
+    // Merge inherited state fields after extends validation
+    merge_condition_state_fields(&mut env, &mut diagnostics);
+
     // If module map provided, populate ownership and visibility
     if let Some(modules) = modules {
         populate_module_metadata(&mut env, modules, &mut diagnostics);
@@ -734,10 +737,7 @@ fn collect_entity(e: &EntityDecl, env: &mut TypeEnv, diagnostics: &mut Vec<Diagn
                                 ),
                                 g.span,
                             )
-                            .with_help(format!(
-                                "declare it with: group {} {{ ... }}",
-                                g.name
-                            )),
+                            .with_help(format!("declare it with: group {} {{ ... }}", g.name)),
                         );
                         None
                     }
@@ -1015,11 +1015,8 @@ fn collect_fn(
     for tag in tags {
         if !env.tags.contains(tag) {
             diagnostics.push(
-                Diagnostic::error(
-                    format!("undeclared tag `{tag}` on function `{name}`"),
-                    span,
-                )
-                .with_help(format!("declare it with: tag {tag}")),
+                Diagnostic::error(format!("undeclared tag `{tag}` on function `{name}`"), span)
+                    .with_help(format!("declare it with: tag {tag}")),
             );
         }
         tag_set.insert(tag.clone());
@@ -1439,6 +1436,43 @@ fn collect_condition(
             c.receiver_type.span,
         ));
     }
+
+    // Detect implicit name shadowing: `state` and `self` are reserved
+    if c.receiver_name == "state" {
+        diagnostics.push(Diagnostic::error(
+            format!(
+                "condition `{name}` receiver `state` shadows the implicit condition state binding"
+            ),
+            span,
+        ));
+    }
+    if c.receiver_name == "self" {
+        diagnostics.push(Diagnostic::error(
+            format!(
+                "condition `{name}` receiver `self` shadows the implicit self binding in periodic blocks"
+            ),
+            span,
+        ));
+    }
+    for p in &c.params {
+        if p.name == "state" {
+            diagnostics.push(Diagnostic::error(
+                format!(
+                    "condition `{name}` parameter `state` shadows the implicit condition state binding"
+                ),
+                p.span,
+            ));
+        }
+        if p.name == "self" {
+            diagnostics.push(Diagnostic::error(
+                format!(
+                    "condition `{name}` parameter `self` shadows the implicit self binding in periodic blocks"
+                ),
+                p.span,
+            ));
+        }
+    }
+
     // Validate tags: each must be declared in env.tags
     let mut tag_set = HashSet::new();
     for tag in &c.tags {
@@ -1453,6 +1487,14 @@ fn collect_condition(
         }
         tag_set.insert(tag.clone());
     }
+
+    // Resolve own state field types (not yet type-checking defaults — that happens in Pass 2)
+    let own_state_fields: Vec<(Name, Ty)> = c
+        .state_fields
+        .iter()
+        .map(|sf| (sf.name.clone(), env.resolve_type(&sf.ty)))
+        .collect();
+
     env.conditions.insert(
         name.clone(),
         ConditionInfo {
@@ -1462,6 +1504,8 @@ fn collect_condition(
             receiver_name: c.receiver_name.clone(),
             receiver_type: env.resolve_type(&c.receiver_type),
             tags: tag_set,
+            own_state_fields,
+            merged_state_fields: Vec::new(), // populated by merge_condition_state_fields()
         },
     );
 }
@@ -1789,6 +1833,115 @@ pub fn validate_condition_extends(
                     color.insert(name.clone(), 2); // Black
                 }
             }
+        }
+    }
+}
+
+/// Post-collect pass: merge inherited state fields for conditions with `extends`.
+///
+/// For each condition, walks the ancestor chain in DFS order (parents first),
+/// collects their state fields, checks for:
+/// - Sibling parent conflicts (two parents declare the same field name)
+/// - Child redeclaration of an inherited field name
+/// Then stores the merged result (ancestors + own) in `merged_state_fields`.
+fn merge_condition_state_fields(env: &mut TypeEnv, diagnostics: &mut Vec<Diagnostic>) {
+    // Collect the list of all condition names to iterate (avoid borrow issues)
+    let cond_names: Vec<Name> = env.conditions.keys().cloned().collect();
+
+    // For conditions without extends, merged = own
+    for name in &cond_names {
+        let info = &env.conditions[name];
+        if info.extends.is_empty() {
+            let own = info.own_state_fields.clone();
+            env.conditions.get_mut(name).unwrap().merged_state_fields = own;
+        }
+    }
+
+    // For conditions with extends, walk ancestor chain and merge
+    for name in &cond_names {
+        let info = &env.conditions[name];
+        if info.extends.is_empty() {
+            continue;
+        }
+
+        // Walk the ancestor chain in DFS order (parents first, diamond dedup)
+        let mut merged: Vec<(Name, Ty)> = Vec::new();
+        let mut seen_fields: HashSet<Name> = HashSet::new();
+        let mut visited: HashSet<Name> = HashSet::new();
+        let mut has_error = false;
+
+        fn walk_ancestors(
+            cond_name: &Name,
+            env: &TypeEnv,
+            merged: &mut Vec<(Name, Ty)>,
+            seen_fields: &mut HashSet<Name>,
+            visited: &mut HashSet<Name>,
+            diagnostics: &mut Vec<Diagnostic>,
+            has_error: &mut bool,
+            is_root: bool,
+        ) {
+            if !visited.insert(cond_name.clone()) {
+                return; // diamond dedup or cycle (already caught by validate_condition_extends)
+            }
+            let info = match env.conditions.get(cond_name) {
+                Some(i) => i,
+                None => return, // unknown condition (already reported)
+            };
+
+            // Recurse into parents first (ancestor-first order)
+            for parent_name in &info.extends {
+                walk_ancestors(
+                    parent_name,
+                    env,
+                    merged,
+                    seen_fields,
+                    visited,
+                    diagnostics,
+                    has_error,
+                    false,
+                );
+            }
+
+            // Add this condition's own state fields
+            for (field_name, field_ty) in &info.own_state_fields {
+                if !seen_fields.insert(field_name.clone()) {
+                    // Field name already exists from an ancestor or sibling parent
+                    if is_root {
+                        diagnostics.push(Diagnostic::error(
+                            format!(
+                                "condition `{cond_name}` redeclares inherited state field `{field_name}`"
+                            ),
+                            Span::dummy(),
+                        ));
+                    } else {
+                        diagnostics.push(Diagnostic::error(
+                            format!(
+                                "conflicting state field `{field_name}` in condition inheritance \
+                                 chain: multiple ancestors declare the same field name"
+                            ),
+                            Span::dummy(),
+                        ));
+                    }
+                    *has_error = true;
+                } else {
+                    merged.push((field_name.clone(), field_ty.clone()));
+                }
+            }
+        }
+
+        walk_ancestors(
+            name,
+            env,
+            &mut merged,
+            &mut seen_fields,
+            &mut visited,
+            diagnostics,
+            &mut has_error,
+            true,
+        );
+
+        if !has_error {
+            env.conditions.get_mut(name).unwrap().merged_state_fields = merged;
         }
     }
 }

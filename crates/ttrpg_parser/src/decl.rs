@@ -1083,10 +1083,13 @@ impl Parser {
         self.skip_newlines();
 
         let mut tags = Vec::new();
+        let mut state_fields = Vec::new();
         let mut clauses = Vec::new();
         let mut seen_on_apply = false;
         let mut seen_on_remove = false;
         let mut seen_tags = false;
+        let mut seen_state = false;
+        let mut seen_executable = false; // tracks whether we've seen on_apply/on_remove/periodic/modify
         let mut seen_periodic_tags: Vec<ttrpg_ast::Name> = Vec::new();
         while !matches!(self.peek(), TokenKind::RBrace | TokenKind::Eof) {
             if self.at_ident("tags") {
@@ -1107,7 +1110,19 @@ impl Parser {
                     let (tag_name, _) = self.expect_ident()?;
                     tags.push(tag_name);
                 }
+            } else if self.at_ident("state") {
+                if seen_state {
+                    self.error("duplicate `state` block in condition body");
+                    return Err(());
+                }
+                if seen_executable {
+                    self.error("`state` block must appear before `on_apply`, `on_remove`, `periodic`, and `modify` blocks");
+                    return Err(());
+                }
+                seen_state = true;
+                state_fields = self.parse_state_block()?;
             } else if self.at_ident("modify") {
+                seen_executable = true;
                 clauses.push(ConditionClause::Modify(self.parse_modify_clause()?));
             } else if self.at_ident("suppress") {
                 // Disambiguate: suppress [selector](...) vs suppress event_name(...)
@@ -1124,6 +1139,7 @@ impl Parser {
                     return Err(());
                 }
                 seen_on_apply = true;
+                seen_executable = true;
                 clauses.push(ConditionClause::OnApply(self.parse_lifecycle_block()?));
             } else if self.at_ident("on_remove") {
                 if seen_on_remove {
@@ -1131,8 +1147,10 @@ impl Parser {
                     return Err(());
                 }
                 seen_on_remove = true;
+                seen_executable = true;
                 clauses.push(ConditionClause::OnRemove(self.parse_lifecycle_block()?));
             } else if self.at_ident("periodic") {
+                seen_executable = true;
                 let pc = self.parse_periodic_clause()?;
                 if seen_periodic_tags.contains(&pc.tag) {
                     self.error(format!(
@@ -1145,7 +1163,7 @@ impl Parser {
                 clauses.push(ConditionClause::Periodic(pc));
             } else {
                 self.error(format!(
-                    "expected `tags`, `modify`, `suppress`, `on_apply`, `on_remove`, or `periodic` in condition body, found {}",
+                    "expected `tags`, `state`, `modify`, `suppress`, `on_apply`, `on_remove`, or `periodic` in condition body, found {}",
                     self.peek()
                 ));
                 return Err(());
@@ -1164,7 +1182,45 @@ impl Parser {
             receiver_with_groups,
             tags,
             clauses,
+            state_fields,
         })
+    }
+
+    /// Parse `state { field: Type = default, ... }` inside a condition body.
+    fn parse_state_block(&mut self) -> Result<Vec<StateFieldDecl>, ()> {
+        self.expect_soft_keyword("state")?;
+        self.expect(&TokenKind::LBrace)?;
+        self.skip_newlines();
+
+        let mut fields = Vec::new();
+        while !matches!(self.peek(), TokenKind::RBrace | TokenKind::Eof) {
+            let start = self.start_span();
+            let (name, _) = self.expect_ident()?;
+            self.expect(&TokenKind::Colon)?;
+            let ty = self.parse_type()?;
+            if !matches!(self.peek(), TokenKind::Eq) {
+                self.error(format!(
+                    "state field `{name}` requires a default value (e.g., `{name}: int = 0`)"
+                ));
+                return Err(());
+            }
+            self.advance();
+            let default = self.parse_expr()?;
+            let span = self.end_span(start);
+            fields.push(StateFieldDecl {
+                name,
+                ty,
+                default,
+                span,
+            });
+            // Allow comma or newline separator
+            if matches!(self.peek(), TokenKind::Comma) {
+                self.advance();
+            }
+            self.skip_newlines();
+        }
+        self.expect(&TokenKind::RBrace)?;
+        Ok(fields)
     }
 
     /// Parse `stacking all | first | best by highest(<param>) ties oldest`.

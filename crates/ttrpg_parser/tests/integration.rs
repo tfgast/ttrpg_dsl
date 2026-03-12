@@ -3622,3 +3622,267 @@ fn test_qualified_enum_variant_multifield_struct_body() {
         _ => panic!("expected Call"),
     }
 }
+
+// ── Condition state block parser conformance ────────────────────
+
+fn find_condition<'a>(program: &'a Program, name: &str) -> &'a ConditionDecl {
+    for item in &program.items {
+        if let TopLevel::System(sys) = &item.node {
+            for decl in &sys.decls {
+                if let DeclKind::Condition(c) = &decl.node {
+                    if c.name == name {
+                        return c;
+                    }
+                }
+            }
+        }
+    }
+    panic!("condition `{name}` not found in parsed output");
+}
+
+#[test]
+fn test_condition_state_block_basic() {
+    let source = r#"system "test" {
+    entity Character { HP: int }
+    condition Poisoned(potency: int) on bearer: Character {
+        state {
+            ticks_elapsed: int = 0
+            cumulative_damage: int = 0
+        }
+        on_apply {
+            bearer.HP -= 1
+        }
+    }
+}"#;
+    let (program, diagnostics) = parse(source, FileId::SYNTH);
+    assert!(
+        diagnostics.is_empty(),
+        "state block should parse, got: {:?}",
+        diagnostics.iter().map(|d| &d.message).collect::<Vec<_>>()
+    );
+    let cond = find_condition(&program, "Poisoned");
+    assert_eq!(cond.state_fields.len(), 2);
+    assert_eq!(cond.state_fields[0].name, "ticks_elapsed");
+    assert_eq!(cond.state_fields[1].name, "cumulative_damage");
+}
+
+#[test]
+fn test_condition_state_block_comma_separated() {
+    let source = r#"system "test" {
+    entity Character { HP: int }
+    condition Burning on bearer: Character {
+        state {
+            ticks: int = 0, total: int = 0
+        }
+    }
+}"#;
+    let (program, diagnostics) = parse(source, FileId::SYNTH);
+    assert!(
+        diagnostics.is_empty(),
+        "comma-separated state fields should parse, got: {:?}",
+        diagnostics.iter().map(|d| &d.message).collect::<Vec<_>>()
+    );
+    let cond = find_condition(&program, "Burning");
+    assert_eq!(cond.state_fields.len(), 2);
+    assert_eq!(cond.state_fields[0].name, "ticks");
+    assert_eq!(cond.state_fields[1].name, "total");
+}
+
+#[test]
+fn test_condition_state_block_default_references_param() {
+    let source = r#"system "test" {
+    entity Character { HP: int }
+    condition Poisoned(potency: int) on bearer: Character {
+        state {
+            remaining: int = potency
+        }
+    }
+}"#;
+    let (program, diagnostics) = parse(source, FileId::SYNTH);
+    assert!(
+        diagnostics.is_empty(),
+        "state default referencing param should parse, got: {:?}",
+        diagnostics.iter().map(|d| &d.message).collect::<Vec<_>>()
+    );
+    let cond = find_condition(&program, "Poisoned");
+    assert_eq!(cond.state_fields.len(), 1);
+    assert_eq!(cond.state_fields[0].name, "remaining");
+}
+
+#[test]
+fn test_condition_state_block_empty() {
+    let source = r#"system "test" {
+    entity Character { HP: int }
+    condition Prone on bearer: Character {
+        state { }
+    }
+}"#;
+    let (program, diagnostics) = parse(source, FileId::SYNTH);
+    assert!(
+        diagnostics.is_empty(),
+        "empty state block should parse, got: {:?}",
+        diagnostics.iter().map(|d| &d.message).collect::<Vec<_>>()
+    );
+    let cond = find_condition(&program, "Prone");
+    assert!(cond.state_fields.is_empty());
+}
+
+#[test]
+fn test_condition_state_block_before_all_executable_blocks() {
+    let source = r#"system "test" {
+    entity Character { HP: int }
+    derive calc_hp(target: Character) -> int { target.HP }
+    condition Buffed on bearer: Character {
+        tags: #buff
+        state {
+            stacks: int = 1
+        }
+        on_apply { bearer.HP += 1 }
+        on_remove { bearer.HP -= 1 }
+        periodic #tick { bearer.HP += 1 }
+        modify calc_hp(target: bearer) { result = result + state.stacks }
+    }
+}"#;
+    let (program, diagnostics) = parse(source, FileId::SYNTH);
+    assert!(
+        diagnostics.is_empty(),
+        "state block with all clause types should parse, got: {:?}",
+        diagnostics.iter().map(|d| &d.message).collect::<Vec<_>>()
+    );
+    let cond = find_condition(&program, "Buffed");
+    assert_eq!(cond.state_fields.len(), 1);
+    assert_eq!(cond.clauses.len(), 4); // on_apply, on_remove, periodic, modify
+}
+
+#[test]
+fn test_condition_state_block_after_tags_is_ok() {
+    let source = r#"system "test" {
+    entity Character { HP: int }
+    condition Cursed on bearer: Character {
+        tags: #curse
+        state {
+            severity: int = 1
+        }
+    }
+}"#;
+    let (program, diagnostics) = parse(source, FileId::SYNTH);
+    assert!(
+        diagnostics.is_empty(),
+        "state after tags should parse, got: {:?}",
+        diagnostics.iter().map(|d| &d.message).collect::<Vec<_>>()
+    );
+    let cond = find_condition(&program, "Cursed");
+    assert_eq!(cond.state_fields.len(), 1);
+    assert_eq!(cond.tags.len(), 1);
+}
+
+#[test]
+fn test_condition_no_state_block() {
+    let source = r#"system "test" {
+    entity Character { HP: int }
+    condition Prone on bearer: Character {
+        on_apply { bearer.HP -= 0 }
+    }
+}"#;
+    let (program, diagnostics) = parse(source, FileId::SYNTH);
+    assert!(diagnostics.is_empty());
+    let cond = find_condition(&program, "Prone");
+    assert!(cond.state_fields.is_empty());
+}
+
+// ── State block parser error cases ──────────────────────────────
+
+#[test]
+fn test_condition_duplicate_state_block_error() {
+    let source = r#"system "test" {
+    entity Character { HP: int }
+    condition Bad on bearer: Character {
+        state { x: int = 0 }
+        state { y: int = 1 }
+    }
+}"#;
+    let (_, diagnostics) = parse(source, FileId::SYNTH);
+    assert!(
+        diagnostics
+            .iter()
+            .any(|d| d.message.contains("duplicate `state`")),
+        "expected duplicate state error, got: {:?}",
+        diagnostics.iter().map(|d| &d.message).collect::<Vec<_>>()
+    );
+}
+
+#[test]
+fn test_condition_state_after_on_apply_error() {
+    let source = r#"system "test" {
+    entity Character { HP: int }
+    condition Bad on bearer: Character {
+        on_apply { bearer.HP -= 1 }
+        state { x: int = 0 }
+    }
+}"#;
+    let (_, diagnostics) = parse(source, FileId::SYNTH);
+    assert!(
+        diagnostics
+            .iter()
+            .any(|d| d.message.contains("must appear before")),
+        "expected ordering error, got: {:?}",
+        diagnostics.iter().map(|d| &d.message).collect::<Vec<_>>()
+    );
+}
+
+#[test]
+fn test_condition_state_after_periodic_error() {
+    let source = r#"system "test" {
+    entity Character { HP: int }
+    condition Bad on bearer: Character {
+        periodic #tick { bearer.HP -= 1 }
+        state { x: int = 0 }
+    }
+}"#;
+    let (_, diagnostics) = parse(source, FileId::SYNTH);
+    assert!(
+        diagnostics
+            .iter()
+            .any(|d| d.message.contains("must appear before")),
+        "expected ordering error, got: {:?}",
+        diagnostics.iter().map(|d| &d.message).collect::<Vec<_>>()
+    );
+}
+
+#[test]
+fn test_condition_state_after_modify_error() {
+    let source = r#"system "test" {
+    entity Character { HP: int }
+    derive calc(target: Character) -> int { target.HP }
+    condition Bad on bearer: Character {
+        modify calc(target: bearer) { result = result + 1 }
+        state { x: int = 0 }
+    }
+}"#;
+    let (_, diagnostics) = parse(source, FileId::SYNTH);
+    assert!(
+        diagnostics
+            .iter()
+            .any(|d| d.message.contains("must appear before")),
+        "expected ordering error, got: {:?}",
+        diagnostics.iter().map(|d| &d.message).collect::<Vec<_>>()
+    );
+}
+
+#[test]
+fn test_condition_state_field_missing_default_error() {
+    let source = r#"system "test" {
+    entity Character { HP: int }
+    condition Bad on bearer: Character {
+        state { x: int }
+    }
+}"#;
+    let (_, diagnostics) = parse(source, FileId::SYNTH);
+    assert!(
+        diagnostics
+            .iter()
+            .any(|d| d.message.contains("requires a default value")),
+        "expected missing default error, got: {:?}",
+        diagnostics.iter().map(|d| &d.message).collect::<Vec<_>>()
+    );
+}

@@ -1330,6 +1330,8 @@ mod tests {
                 receiver_name: "target".into(),
                 receiver_type: Ty::Entity("Character".into()),
                 tags: HashSet::new(),
+                own_state_fields: vec![],
+                merged_state_fields: vec![],
             },
         );
 
@@ -1500,6 +1502,8 @@ mod tests {
                 receiver_name: "target".into(),
                 receiver_type: Ty::Entity("Character".into()),
                 tags: HashSet::new(),
+                own_state_fields: vec![],
+                merged_state_fields: vec![],
             },
         );
 
@@ -1687,6 +1691,8 @@ mod tests {
                 receiver_name: "t".into(),
                 receiver_type: Ty::Entity("Character".into()),
                 tags: HashSet::new(),
+                own_state_fields: vec![],
+                merged_state_fields: vec![],
             },
         );
         type_env.conditions.insert(
@@ -1698,6 +1704,8 @@ mod tests {
                 receiver_name: "t".into(),
                 receiver_type: Ty::Entity("Character".into()),
                 tags: HashSet::new(),
+                own_state_fields: vec![],
+                merged_state_fields: vec![],
             },
         );
 
@@ -1898,6 +1906,8 @@ mod tests {
                 receiver_name: "t".into(),
                 receiver_type: Ty::Entity("Character".into()),
                 tags: HashSet::new(),
+                own_state_fields: vec![],
+                merged_state_fields: vec![],
             },
         );
         type_env.options.insert("Variant".into());
@@ -2056,6 +2066,8 @@ mod tests {
                 receiver_name: "t".into(),
                 receiver_type: Ty::Entity("Character".into()),
                 tags: HashSet::new(),
+                own_state_fields: vec![],
+                merged_state_fields: vec![],
             },
         );
 
@@ -2391,6 +2403,8 @@ mod tests {
                 receiver_name: "t".into(),
                 receiver_type: Ty::Entity("Character".into()),
                 tags: HashSet::new(),
+                own_state_fields: vec![],
+                merged_state_fields: vec![],
             },
         );
 
@@ -2791,6 +2805,8 @@ mod tests {
                 receiver_type: Ty::Entity("Character".into()),
                 params: vec![],
                 tags: HashSet::new(),
+                own_state_fields: vec![],
+                merged_state_fields: vec![],
             },
         );
 
@@ -2930,6 +2946,8 @@ mod tests {
                 receiver_type: Ty::Entity("Character".into()),
                 params: vec![],
                 tags: HashSet::new(),
+                own_state_fields: vec![],
+                merged_state_fields: vec![],
             },
         );
 
