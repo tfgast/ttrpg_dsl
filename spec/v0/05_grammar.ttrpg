@@ -132,41 +132,41 @@
 // 1. Program structure
 // =========================
 
-program         = top_level* EOF
-top_level       = import_decl | use_decl | system_block
-import_decl     = "import" STRING term
-use_decl        = "use" (STRING | IDENT) ("as" IDENT)? term
-system_block    = "system" (STRING | IDENT) "{" decl* "}"
+// program         = top_level* EOF
+// top_level       = import_decl | use_decl | system_block
+// import_decl     = "import" STRING term
+// use_decl        = "use" (STRING | IDENT) ("as" IDENT)? term
+// system_block    = "system" (STRING | IDENT) "{" decl* "}"
 
 
 // =========================
 // 2. Declarations
 // =========================
 
-decl            = enum_decl
-                | group_decl
-                | struct_decl
-                | entity_decl
-                | derive_decl
-                | mechanic_decl
-                | function_decl
-                | action_decl
-                | reaction_decl
-                | hook_decl
-                | condition_decl
-                | prompt_decl
-                | option_decl
-                | event_decl
-                | const_decl
-                | tag_decl
-                | move_decl          // PbtA sugar (desugars to mechanic + action)
+// decl            = enum_decl
+//                 | group_decl
+//                 | struct_decl
+//                 | entity_decl
+//                 | derive_decl
+//                 | mechanic_decl
+//                 | function_decl
+//                 | action_decl
+//                 | reaction_decl
+//                 | hook_decl
+//                 | condition_decl
+//                 | prompt_decl
+//                 | option_decl
+//                 | event_decl
+//                 | const_decl
+//                 | tag_decl
+//                 | move_decl          // PbtA sugar (desugars to mechanic + action)
 
 // Note: `table` is a reserved keyword for future use. The parser
 // recognizes `table` in declaration position but currently produces
 // a parse error. Table declarations are not implemented in v0.
 
 // --- Const declaration ---
-const_decl      = "const" IDENT (":" type)? "=" expr term
+// const_decl      = "const" IDENT (":" type)? "=" expr term
 
 // Named compile-time constant. The value expression is evaluated in
 // derive scope (no dice, no mutation, no entity access). Consts share
@@ -183,7 +183,7 @@ const_decl      = "const" IDENT (":" type)? "=" expr term
 //   const STATS: list<int> = [10, 12, 14]
 
 // --- Tag declaration ---
-tag_decl        = "tag" "#"? IDENT term
+// tag_decl        = "tag" "#"? IDENT term
 // The `#` is optional in the declaration; both `tag #Attack` and
 // `tag Attack` are accepted. The `#` prefix is required when using
 // the tag on a declaration: `derive foo() -> int #Attack { ... }`.
@@ -193,36 +193,36 @@ tag_decl        = "tag" "#"? IDENT term
 // See 02_declarations.ttrpg for usage details.
 
 // --- Enum ---
-enum_decl       = "enum" IDENT "ordered"? "{" enum_variants "}"
-enum_variants   = enum_variant (("," | NL) enum_variant)* ","?
-enum_variant    = IDENT                             // no data:  STR, miss
-                | IDENT "(" field_list ")"          // with data: hit(amount: int)
+// enum_decl       = "enum" IDENT "ordered"? "{" enum_variants "}"
+// enum_variants   = enum_variant (("," | NL) enum_variant)* ","?
+// enum_variant    = IDENT                             // no data:  STR, miss
+//                 | IDENT "(" field_list ")"          // with data: hit(amount: int)
 
 // --- Struct ---
-struct_decl     = "struct" IDENT "{" field_defs "}"
+// struct_decl     = "struct" IDENT "{" field_defs "}"
 
 // --- Group (reusable optional-group schema) ---
-group_decl      = "group" IDENT "{" field_defs "}"
+// group_decl      = "group" IDENT "{" field_defs "}"
 
 // --- Entity ---
-entity_decl     = "entity" IDENT "{" entity_members? "}"
+// entity_decl     = "entity" IDENT "{" entity_members? "}"
 
-entity_members  = entity_member (("," | NL) entity_member)* ","?
-entity_member   = field_def | optional_group_decl | include_group_decl
+// entity_members  = entity_member (("," | NL) entity_member)* ","?
+// entity_member   = field_def | optional_group_decl | include_group_decl
 
-optional_group_decl = "optional" IDENT ("{" field_defs "}")?
-include_group_decl  = "include" IDENT
+// optional_group_decl = "optional" IDENT ("{" field_defs "}")?
+// include_group_decl  = "include" IDENT
 // Two forms:
 //   optional Spellcasting { ... }   inline group schema
 //   optional Spellcasting           attach top-level `group Spellcasting`
 //   include CombatStats             attach top-level required group
 
 // --- Field definitions ---
-field_list      = field_entry ("," field_entry)* ","?
-field_entry     = IDENT ":" type
+// field_list      = field_entry ("," field_entry)* ","?
+// field_entry     = IDENT ":" type
 
-field_defs      = (field_def (("," | NL) field_def)* ","?)?
-field_def       = "restricted"? IDENT ":" type ("=" expr)?
+// field_defs      = (field_def (("," | NL) field_def)* ","?)?
+// field_def       = "restricted"? IDENT ":" type ("=" expr)?
 
 // The optional `restricted` modifier marks a field as mutable only within
 // the system that declares it or the system that declares the entity
@@ -248,39 +248,39 @@ field_def       = "restricted"? IDENT ":" type ("=" expr)?
 // it is the modifier; otherwise it is the field name.
 
 // --- Derive (pure, no dice, no mutation, no receiver) ---
-derive_decl     = "derive" IDENT "(" params ")" "->" type tag_list? block
+// derive_decl     = "derive" IDENT "(" params ")" "->" type tag_list? block
 
 // --- Mechanic (can roll, no mutation, no receiver) ---
-mechanic_decl   = "mechanic" IDENT "(" params ")" "->" type tag_list? block
+// mechanic_decl   = "mechanic" IDENT "(" params ")" "->" type tag_list? block
 
 // --- Function (can roll, can mutate, can emit, no receiver, no modify pipeline) ---
 // Return type is optional; when absent, defaults to unit (void).
 // Functions can call actions, other functions, derives, and mechanics.
 // Unlike derive/mechanic, conditions cannot modify function calls.
-function_decl   = "function" IDENT "(" params ")" ("->" type)? tag_list? block
+// function_decl   = "function" IDENT "(" params ")" ("->" type)? tag_list? block
 
 // --- Action (can roll, can mutate, has receiver) ---
 // Return type is optional. When present, the resolve block must produce
 // a value of that type. On veto or requires/cost failure, `none` is returned
 // (so the declared type should typically be option<T>). When absent the
 // action returns unit and the resolve block value is discarded.
-action_decl     = "action" IDENT "on" IDENT ":" constrained_type
-                      "(" params ")" ("->" type)? tag_list? "{"
-                      cost_clause?
-                      requires_clause*
-                      resolve_block
-                  "}"
+// action_decl     = "action" IDENT "on" IDENT ":" constrained_type
+//                       "(" params ")" ("->" type)? tag_list? "{"
+//                       cost_clause?
+//                       requires_clause*
+//                       resolve_block
+//                   "}"
 
-tag_list        = ("#" IDENT)+
+// tag_list        = ("#" IDENT)+
 // Tags appear after the closing ")" of the parameter list and before "{".
 // Each tag must have been declared via `tag #name`. Same syntax as on
 // derive_decl and mechanic_decl (which already support tags via fn_body).
 
-cost_clause     = "cost" "free" term                  // explicit no-cost
-                | "cost" "{" cost_entry ("," cost_entry)* "}" term
-cost_entry      = IDENT                              // a cost token (see mapping below)
-requires_clause = "requires" "{" expr "}" term       // multiple blocks are combined with &&
-resolve_block   = "resolve" block
+// cost_clause     = "cost" "free" term                  // explicit no-cost
+//                 | "cost" "{" cost_entry ("," cost_entry)* "}" term
+// cost_entry      = IDENT                              // a cost token (see mapping below)
+// requires_clause = "requires" "{" expr "}" term       // multiple blocks are combined with &&
+// resolve_block   = "resolve" block
 
 // --- Cost token → budget field mapping ---
 //
@@ -350,20 +350,20 @@ resolve_block   = "resolve" block
 //     |            free_interactions
 
 // --- Reaction (can roll, can mutate, has receiver + trigger) ---
-reaction_decl   = "reaction" IDENT "on" IDENT ":" constrained_type
-                      "(" "trigger" ":" trigger_expr ")" "{"
-                      cost_clause?
-                      resolve_block
-                  "}"
+// reaction_decl   = "reaction" IDENT "on" IDENT ":" constrained_type
+//                       "(" "trigger" ":" trigger_expr ")" "{"
+//                       cost_clause?
+//                       resolve_block
+//                   "}"
 
-trigger_expr    = IDENT "(" trigger_bindings ")"
-trigger_bindings = trigger_binding ("," trigger_binding)* ","?
-trigger_binding  = IDENT ":" expr                   // e.g., reactor: reactor
-                 | IDENT                             // positional
+// trigger_expr    = IDENT "(" trigger_bindings ")"
+// trigger_bindings = trigger_binding ("," trigger_binding)* ","?
+// trigger_binding  = IDENT ":" expr                   // e.g., reactor: reactor
+//                  | IDENT                             // positional
 
 // --- Hook (mandatory triggered action, no cost, not suppressible) ---
-hook_decl       = "hook" IDENT "on" IDENT ":" constrained_type
-                      "(" "trigger" ":" trigger_expr ")" block
+// hook_decl       = "hook" IDENT "on" IDENT ":" constrained_type
+//                       "(" "trigger" ":" trigger_expr ")" block
 
 // Hooks share the trigger_expr syntax with reactions.
 // Unlike reactions, hooks have NO cost clause and cannot be
@@ -375,13 +375,13 @@ hook_decl       = "hook" IDENT "on" IDENT ":" constrained_type
 // wrapping is unnecessary — the block IS the resolve body.
 
 // --- Event (declares the shape of a trigger event) ---
-event_decl      = "event" IDENT "(" params ")" ("{" field_defs "}")? term
+// event_decl      = "event" IDENT "(" params ")" ("{" field_defs "}")? term
 
 // --- Condition (declarative modifiers, has receiver, no mutation) ---
-condition_decl  = "condition" IDENT params? tag_list?
-                      "on" IDENT ":" constrained_type
-                      stacking_clause?
-                      "{" condition_clause* "}"
+// condition_decl  = "condition" IDENT params? tag_list?
+//                       "on" IDENT ":" constrained_type
+//                       stacking_clause?
+//                       "{" condition_clause* "}"
 //
 // Include directives copy declarative clauses from a source condition at
 // compile time. Only the specified clause type is copied (modify, suppress,
@@ -401,21 +401,21 @@ condition_decl  = "condition" IDENT params? tag_list?
 // See 03_conditions.ttrpg for full semantic details.
 // Grammar only: policy syntax and examples.
 //
-stacking_clause = "stacking" stacking_policy
-stacking_policy = "all"
-                | "first"
-                | "best" "by" stacking_dir "(" IDENT ")" "ties" "oldest"
-stacking_dir    = "highest" | "lowest"
+// stacking_clause = "stacking" stacking_policy
+// stacking_policy = "all"
+//                 | "first"
+//                 | "best" "by" stacking_dir "(" IDENT ")" "ties" "oldest"
+// stacking_dir    = "highest" | "lowest"
 
-condition_clause = modify_clause | suppress_clause | suppress_modify_clause | lifecycle_clause | periodic_clause | include_clause
-include_clause   = "include" include_kind IDENT ("(" include_args ")")? term
-include_kind     = "modify" | "suppress" | "suppress" "-" "modify"
-include_args     = include_arg ("," include_arg)*
-include_arg      = IDENT ":" (IDENT | literal)
-state_block      = "state" "{" state_field_decl* "}"
-state_field_decl = IDENT ":" type_expr "=" expr term
-lifecycle_clause = ("on_apply" | "on_remove") block
-periodic_clause  = "periodic" "#" IDENT block
+// condition_clause = modify_clause | suppress_clause | suppress_modify_clause | lifecycle_clause | periodic_clause | include_clause
+// include_clause   = "include" include_kind IDENT ("(" include_args ")")? term
+// include_kind     = "modify" | "suppress" | "suppress" "-" "modify"
+// include_args     = include_arg ("," include_arg)*
+// include_arg      = IDENT ":" (IDENT | literal)
+// state_block      = "state" "{" state_field_decl* "}"
+// state_field_decl = IDENT ":" type_expr "=" expr term
+// lifecycle_clause = ("on_apply" | "on_remove") block
+// periodic_clause  = "periodic" "#" IDENT block
 //
 // --- Condition body ordering ---
 //
@@ -448,22 +448,22 @@ periodic_clause  = "periodic" "#" IDENT block
 // See 03_conditions.ttrpg for full semantic details (scoping, capabilities,
 // execution model, stacking, inheritance).
 
-modify_clause   = "modify" modify_target "(" modify_bindings? ")" tag_list? modify_body
-                | "modify" IDENT "." "cost" "(" modify_bindings? ")" cost_modify_body
-modify_target   = IDENT                             // name of target mechanic/derive
-                | "[" selector_pred ("," selector_pred)* ","? "]"  // selector
-selector_pred   = "#" IDENT                          // tag predicate
-                | "returns" type                     // return type predicate
-                | "has" IDENT (":" type)?            // param predicate
-modify_bindings = modify_binding ("," modify_binding)* ","?
-modify_binding  = IDENT ":" expr                    // e.g., attacker: bearer
-                | IDENT ":" "_"                     // wildcard (matches any value)
-modify_body     = "{" modify_stmt* "}"
-modify_stmt     = "let" IDENT (":" type)? "=" expr term   // local binding (either phase)
-                | IDENT "=" expr term                // Phase 1: override input parameter
-                | "result" "." IDENT "=" expr term   // Phase 2: rewrite output field
-                | "if" expr modify_body
-                      ("else" modify_body)? term     // conditional (either phase)
+// modify_clause   = "modify" modify_target "(" modify_bindings? ")" tag_list? modify_body
+//                 | "modify" IDENT "." "cost" "(" modify_bindings? ")" cost_modify_body
+// modify_target   = IDENT                             // name of target mechanic/derive
+//                 | "[" selector_pred ("," selector_pred)* ","? "]"  // selector
+// selector_pred   = "#" IDENT                          // tag predicate
+//                 | "returns" type                     // return type predicate
+//                 | "has" IDENT (":" type)?            // param predicate
+// modify_bindings = modify_binding ("," modify_binding)* ","?
+// modify_binding  = IDENT ":" expr                    // e.g., attacker: bearer
+//                 | IDENT ":" "_"                     // wildcard (matches any value)
+// modify_body     = "{" modify_stmt* "}"
+// modify_stmt     = "let" IDENT (":" type)? "=" expr term   // local binding (either phase)
+//                 | IDENT "=" expr term                // Phase 1: override input parameter
+//                 | "result" "." IDENT "=" expr term   // Phase 2: rewrite output field
+//                 | "if" expr modify_body
+//                       ("else" modify_body)? term     // conditional (either phase)
 
 // Phase 1 stmts (IDENT = expr) execute before the target function.
 // Phase 2 stmts (result.IDENT = expr) execute after.
@@ -488,22 +488,22 @@ modify_stmt     = "let" IDENT (":" type)? "=" expr term   // local binding (eith
 // assignments, `let` bindings, and `if`/`else` are allowed.
 // `cost = free` waives cost; `cost = token1, token2` replaces tokens.
 
-cost_modify_body = "{" cost_modify_stmt* "}"
-cost_modify_stmt = "cost" "=" "free" term                              // waive cost
-                 | "cost" "=" cost_entry ("," cost_entry)* term        // replace cost tokens
-                 | "let" IDENT (":" type)? "=" expr term               // local binding
-                 | "if" expr cost_modify_body
-                       ("else" cost_modify_body)? term                 // conditional
+// cost_modify_body = "{" cost_modify_stmt* "}"
+// cost_modify_stmt = "cost" "=" "free" term                              // waive cost
+//                  | "cost" "=" cost_entry ("," cost_entry)* term        // replace cost tokens
+//                  | "let" IDENT (":" type)? "=" expr term               // local binding
+//                  | "if" expr cost_modify_body
+//                        ("else" cost_modify_body)? term                 // conditional
 
-suppress_clause = "suppress" IDENT "(" modify_bindings ")" term
+// suppress_clause = "suppress" IDENT "(" modify_bindings ")" term
 // Declares that this condition prevents the named trigger event
 // from firing when bindings match. e.g.:
 //   suppress entity_leaves_reach(entity: bearer)
 // means "while this condition is active, entity_leaves_reach
 // does not fire when target == bearer"
 
-suppress_modify_clause = "suppress" "[" selector_pred ("," selector_pred)* ","? "]"
-                             ("(" modify_bindings? ")")? term
+// suppress_modify_clause = "suppress" "[" selector_pred ("," selector_pred)* ","? "]"
+//                              ("(" modify_bindings? ")")? term
 // Suppresses modify clauses matching the selector predicates.
 // Disambiguated from event suppress by the leading `[`.
 // Bindings are optional — omitting them suppresses all matching
@@ -516,15 +516,15 @@ suppress_modify_clause = "suppress" "[" selector_pred ("," selector_pred)* ","? 
 // #tag, returns Type, has param: Type?
 
 // --- Prompt (human decision point) ---
-prompt_decl     = "prompt" IDENT "(" params ")" "->" type "{"
-                      hint_clause?
-                      suggest_clause?
-                      default_clause?
-                  "}"
+// prompt_decl     = "prompt" IDENT "(" params ")" "->" type "{"
+//                       hint_clause?
+//                       suggest_clause?
+//                       default_clause?
+//                   "}"
 
-hint_clause     = "hint" ":" STRING term
-suggest_clause  = "suggest" ":" expr term
-default_clause  = "default" block
+// hint_clause     = "hint" ":" STRING term
+// suggest_clause  = "suggest" ":" expr term
+// default_clause  = "default" block
 
 // Prompts are DECLARED as above but INVOKED like function calls:
 //   let choice = choose(target, options: ["Comply", "Suffer"])
@@ -532,29 +532,29 @@ default_clause  = "default" block
 // The runtime suspends execution and waits for human input.
 
 // --- Option (variant/homebrew rules) ---
-option_decl     = "option" IDENT ("extends" STRING)? "{"
-                      option_body
-                  "}"
+// option_decl     = "option" IDENT ("extends" STRING)? "{"
+//                       option_body
+//                   "}"
 
-option_body     = description_clause?
-                  default_clause?
-                  when_clause?
+// option_body     = description_clause?
+//                   default_clause?
+//                   when_clause?
 
-description_clause = "description" ":" STRING term
-default_clause     = "default" ":" ("on" | "off") term
-when_clause        = "when" "enabled" "{" modify_clause* "}"
+// description_clause = "description" ":" STRING term
+// default_clause     = "default" ":" ("on" | "off") term
+// when_clause        = "when" "enabled" "{" modify_clause* "}"
 
 
 // =========================
 // 3. Parameters
 // =========================
 
-params          = (param ("," param)* ","?)?
-param           = IDENT ":" constrained_type ("=" expr)?
-constrained_type = type with_clause?
-with_clause     = "with" group_constraint ("," group_constraint)*   // conjunctive (AND)
-                | "with" group_constraint ("|" group_constraint)*   // disjunctive (OR)
-group_constraint = IDENT ("as" IDENT)?
+// params          = (param ("," param)* ","?)?
+// param           = IDENT ":" constrained_type ("=" expr)?
+// constrained_type = type with_clause?
+// with_clause     = "with" group_constraint ("," group_constraint)*   // conjunctive (AND)
+//                 | "with" group_constraint ("|" group_constraint)*   // disjunctive (OR)
+// group_constraint = IDENT ("as" IDENT)?
 
 // --- Conjunctive `with` (AND) ---
 //
@@ -611,21 +611,21 @@ group_constraint = IDENT ("as" IDENT)?
 // 4. Types
 // =========================
 
-type            = "int" | "bool" | "string" | "float"
-                | "DiceExpr" | "RollResult"
-                | "TurnBudget" | "Duration" | "Position" | "Direction"
-                | "Condition" | "ActiveCondition" | "ActiveCondition" "<" IDENT ">" | "Invocation"
-                | "entity"                           // polymorphic any-entity type alias
-                | "any"                              // dynamically typed, narrowed via `is`
-                | fn_type                            // function reference type
-                | IDENT                              // user-defined type
-                | "map" "<" type "," type ">"
-                | "list" "<" type ">"
-                | "set" "<" type ">"
-                | "option" "<" type ">"
-                | "resource" "(" expr "..=" expr ")"
+// type            = "int" | "bool" | "string" | "float"
+//                 | "DiceExpr" | "RollResult"
+//                 | "TurnBudget" | "Duration" | "Position" | "Direction"
+//                 | "Condition" | "ActiveCondition" | "ActiveCondition" "<" IDENT ">" | "Invocation"
+//                 | "entity"                           // polymorphic any-entity type alias
+//                 | "any"                              // dynamically typed, narrowed via `is`
+//                 | fn_type                            // function reference type
+//                 | IDENT                              // user-defined type
+//                 | "map" "<" type "," type ">"
+//                 | "list" "<" type ">"
+//                 | "set" "<" type ">"
+//                 | "option" "<" type ">"
+//                 | "resource" "(" expr "..=" expr ")"
 
-fn_type         = "fn" "(" (type ("," type)*)? ")" ("->" type)?
+// fn_type         = "fn" "(" (type ("," type)*)? ")" ("->" type)?
 
 // fn_type describes a function reference type. `fn` is a soft keyword —
 // recognized as a type constructor only when followed by `(`. The return
@@ -652,7 +652,7 @@ fn_type         = "fn" "(" (type ("," type)*)? ")" ("->" type)?
 // 5. Statements and blocks
 // =========================
 
-term            = NL | ";" | &"}" | EOF
+// term            = NL | ";" | &"}" | EOF
 // `term` terminates statements and clauses.
 // NL is a real newline. ";" is a semicolon, which the lexer
 // converts to NL (so the parser sees both as identical tokens).
@@ -661,7 +661,7 @@ term            = NL | ";" | &"}" | EOF
 // (use_decl, the last decl in a system block) at end of input
 // without a trailing newline.
 
-block           = "{" stmt* "}"
+// block           = "{" stmt* "}"
 
 // --- Block value semantics ---
 //
@@ -700,22 +700,22 @@ block           = "{" stmt* "}"
 //     otherwise block value is discarded (no constraint).
 //   - reaction/hook resolve: block value is discarded (no constraint).
 
-stmt            = let_stmt | assign_stmt | grant_stmt | revoke_stmt
-                | emit_stmt | with_budget_stmt | with_cost_payer_stmt
-                | return_stmt | expr_stmt
+// stmt            = let_stmt | assign_stmt | grant_stmt | revoke_stmt
+//                 | emit_stmt | with_budget_stmt | with_cost_payer_stmt
+//                 | return_stmt | expr_stmt
 
-let_stmt        = "let" IDENT (":" type)? "=" expr term
-assign_stmt     = lvalue assign_op expr term
-assign_op       = "=" | "+=" | "-="
-lvalue          = IDENT ("." IDENT | "[" expr "]")*
-expr_stmt       = expr term
+// let_stmt        = "let" IDENT (":" type)? "=" expr term
+// assign_stmt     = lvalue assign_op expr term
+// assign_op       = "=" | "+=" | "-="
+// lvalue          = IDENT ("." IDENT | "[" expr "]")*
+// expr_stmt       = expr term
 
 // --- Return statement ---
 //
 // Early exit from a function, action, reaction, hook, or lifecycle block.
 // NOT allowed in derive, mechanic, condition, or prompt blocks.
 // Bare `return` exits with unit; `return expr` exits with a value.
-return_stmt     = "return" expr? term
+// return_stmt     = "return" expr? term
 
 // --- Grant and revoke (optional group management) ---
 //
@@ -732,8 +732,8 @@ return_stmt     = "return" expr? term
 // expression statement parsing (function call). When followed by an lvalue,
 // it enters the revoke_stmt path. No ambiguity.
 //
-grant_stmt      = "grant" lvalue "{" struct_body? "}" term
-revoke_stmt     = "revoke" lvalue term
+// grant_stmt      = "grant" lvalue "{" struct_body? "}" term
+// revoke_stmt     = "revoke" lvalue term
 // Parser disambiguates: if the token after "revoke" is "(", fall through
 // to expr_stmt (function call). Otherwise, parse as revoke_stmt.
 
@@ -753,7 +753,7 @@ revoke_stmt     = "revoke" lvalue term
 //   emit Damaged(target: target, amount: damage)
 //   emit TurnStarted(actor: actor)
 //
-emit_stmt       = "emit" IDENT "(" arg_list? ")" term
+// emit_stmt       = "emit" IDENT "(" arg_list? ")" term
 
 // --- with_budget (scoped turn budget provisioning) ---
 //
@@ -774,11 +774,11 @@ emit_stmt       = "emit" IDENT "(" arg_list? ")" term
 //       }
 //   }
 
-with_budget_stmt = "with_budget" "(" expr "," "{" budget_fields "}" ")" block
-budget_fields    = budget_field ("," budget_field)* ","?
-budget_field     = IDENT ":" expr
+// with_budget_stmt = "with_budget" "(" expr "," "{" budget_fields "}" ")" block
+// budget_fields    = budget_field ("," budget_field)* ","?
+// budget_field     = IDENT ":" expr
 
-with_cost_payer_stmt = "with_cost_payer" "(" expr ")" block
+// with_cost_payer_stmt = "with_cost_payer" "(" expr ")" block
 // Sets the cost payer entity for the duration of the block.
 // Actions within deduct costs from the payer's budget rather than
 // the acting entity's budget. See 04_runtime.ttrpg for details.
@@ -798,38 +798,38 @@ with_cost_payer_stmt = "with_cost_payer" "(" expr ")" block
 //   unary (! -)
 //   postfix (. [] ())
 
-expr            = or_expr
-or_expr         = and_expr ("||" and_expr)*
-and_expr        = cmp_expr ("&&" cmp_expr)*
-cmp_expr        = in_expr (cmp_op in_expr)?
-cmp_op          = "==" | "!=" | ">=" | "<=" | ">" | "<"
-in_expr         = add_expr ("in" add_expr | "has" IDENT ("as" IDENT)? | "is" type)?
-add_expr        = mul_expr (("+" | "-") mul_expr)*
-mul_expr        = unary_expr (("*" | "/") unary_expr)*
-unary_expr      = "!" unary_expr
-                | "-" unary_expr
-                | postfix_expr
-postfix_expr    = primary_expr postfix_op*
-postfix_op      = "." IDENT                          // field access
-                | "[" expr "]"                        // index
-                | "(" arg_list? ")"                   // call
+// expr            = or_expr
+// or_expr         = and_expr ("||" and_expr)*
+// and_expr        = cmp_expr ("&&" cmp_expr)*
+// cmp_expr        = in_expr (cmp_op in_expr)?
+// cmp_op          = "==" | "!=" | ">=" | "<=" | ">" | "<"
+// in_expr         = add_expr ("in" add_expr | "has" IDENT ("as" IDENT)? | "is" type)?
+// add_expr        = mul_expr (("+" | "-") mul_expr)*
+// mul_expr        = unary_expr (("*" | "/") unary_expr)*
+// unary_expr      = "!" unary_expr
+//                 | "-" unary_expr
+//                 | postfix_expr
+// postfix_expr    = primary_expr postfix_op*
+// postfix_op      = "." IDENT                          // field access
+//                 | "[" expr "]"                        // index
+//                 | "(" arg_list? ")"                   // call
 //
 // Qualified name resolution: `Module.Name` is parsed as field access
 // (primary IDENT, then "." IDENT). During type checking, if the left
 // operand resolves to a module alias (from `use "System" as Alias`),
 // the checker rewrites it to a qualified lookup in that module's
 // namespace. See 02_declarations.ttrpg "Qualified access via aliases".
-primary_expr    = INT | STRING
-                | "true" | "false" | "none"
-                | dice_lit
-                | IDENT
-                | struct_lit
-                | list_lit
-                | map_lit
-                | "(" expr ")"
-                | if_expr
-                | match_expr
-                | for_expr
+// primary_expr    = INT | STRING
+//                 | "true" | "false" | "none"
+//                 | dice_lit
+//                 | IDENT
+//                 | struct_lit
+//                 | list_lit
+//                 | map_lit
+//                 | "(" expr ")"
+//                 | if_expr
+//                 | match_expr
+//                 | for_expr
 
 // Method-call chaining is represented by postfix composition:
 //   obj.method(args)  parses as:
@@ -908,8 +908,8 @@ primary_expr    = INT | STRING
 // version, the same method syntax would apply.
 
 // --- Dice literals ---
-dice_lit        = INT "d" INT filter?
-filter          = ("kh" | "kl" | "dh" | "dl") INT
+// dice_lit        = INT "d" INT filter?
+// filter          = ("kh" | "kl" | "dh" | "dl") INT
 
 // Note: dice_lit produces a value of type DiceExpr.
 // Operators +, -, * applied to DiceExpr values use dice algebra
@@ -932,21 +932,21 @@ filter          = ("kh" | "kl" | "dh" | "dl") INT
 // them on struct and unit types. Spread (`..base`) is not valid on
 // entity types.
 //
-struct_lit      = IDENT "{" struct_body? "}"
-struct_body     = struct_member ("," struct_member)* ("," ".." expr)? ","?
-                | ".." expr ","?
-struct_member   = group_init | struct_field
-struct_field    = IDENT ":" expr
-group_init      = IDENT "{" (struct_field ("," struct_field)* ","?)? "}"
+// struct_lit      = IDENT "{" struct_body? "}"
+// struct_body     = struct_member ("," struct_member)* ("," ".." expr)? ","?
+//                 | ".." expr ","?
+// struct_member   = group_init | struct_field
+// struct_field    = IDENT ":" expr
+// group_init      = IDENT "{" (struct_field ("," struct_field)* ","?)? "}"
 
 // --- List literal / list comprehension ---
-list_lit            = "[" (list_comprehension | list_elements)? "]"
-list_elements       = expr ("," expr)* ","?
-list_comprehension  = expr "for" pattern "in" for_source ("if" expr)?
+// list_lit            = "[" (list_comprehension | list_elements)? "]"
+// list_elements       = expr ("," expr)* ","?
+// list_comprehension  = expr "for" pattern "in" for_source ("if" expr)?
 
 // --- Map literal ---
-map_lit             = "{" (map_entry ("," map_entry)* ","?)? "}"
-map_entry           = expr ":" expr
+// map_lit             = "{" (map_entry ("," map_entry)* ","?)? "}"
+// map_entry           = expr ":" expr
 
 // --- If expression ---
 //
@@ -963,8 +963,8 @@ map_entry           = expr ":" expr
 // the parser disables the struct-literal heuristic for `expr` so that
 // `if x {}` is parsed as `if (x) {}`, not `if (x {}) ???`. Struct literals
 // inside sub-expressions (parens, brackets, function args) are unaffected.
-if_expr         = "if" expr block ("else" (block | if_expr))?
-                | "if" "let" pattern "=" expr block ("else" (block | if_expr))?
+// if_expr         = "if" expr block ("else" (block | if_expr))?
+//                 | "if" "let" pattern "=" expr block ("else" (block | if_expr))?
 
 // --- Has expression (optional group presence check) ---
 //
@@ -1030,17 +1030,17 @@ if_expr         = "if" expr block ("else" (block | if_expr))?
 
 // Pattern match: `match expr { pattern => body, ... }`
 // Arms are patterns tested against the scrutinee value.
-match_expr      = pattern_match | guard_match
+// match_expr      = pattern_match | guard_match
 
-pattern_match   = "match" expr "{" pattern_arm (("," | NL) pattern_arm)* ","? "}"
-pattern_arm     = pattern "=>" (expr | block)
-pattern         = "_"                                             // wildcard
-                | "-"? INT | STRING | "true" | "false" | "none"   // literal (none for option<T>)
-                | "some" "(" pattern ")"                          // option destructure
-                | IDENT "." IDENT                                 // qualified variant
-                | IDENT "." IDENT "(" (pattern ("," pattern)* ","?)? ")" // qualified destructure
-                | IDENT "(" (pattern ("," pattern)* ","?)? ")"         // bare destructure
-                | IDENT                                           // binding or bare variant
+// pattern_match   = "match" expr "{" pattern_arm (("," | NL) pattern_arm)* ","? "}"
+// pattern_arm     = pattern "=>" (expr | block)
+// pattern         = "_"                                             // wildcard
+//                 | "-"? INT | STRING | "true" | "false" | "none"   // literal (none for option<T>)
+//                 | "some" "(" pattern ")"                          // option destructure
+//                 | IDENT "." IDENT                                 // qualified variant
+//                 | IDENT "." IDENT "(" (pattern ("," pattern)* ","?)? ")" // qualified destructure
+//                 | IDENT "(" (pattern ("," pattern)* ","?)? ")"         // bare destructure
+//                 | IDENT                                           // binding or bare variant
 
 // --- Pattern IDENT disambiguation (static semantic rule) ---
 //
@@ -1066,10 +1066,10 @@ pattern         = "_"                                             // wildcard
 // Guard match: `match { bool_expr => body, ... }`
 // No scrutinee. Each arm is a boolean expression, tested top-to-bottom.
 // First truthy arm wins. `_` is always-true (like `else`).
-guard_match     = "match" "{" guard_arm (("," | NL) guard_arm)* ","? "}"
-guard_arm       = guard "=>" (expr | block)
-guard           = "_"                                // always matches (must be last)
-                | expr                               // boolean expression
+// guard_match     = "match" "{" guard_arm (("," | NL) guard_arm)* ","? "}"
+// guard_arm       = guard "=>" (expr | block)
+// guard           = "_"                                // always matches (must be last)
+//                 | expr                               // boolean expression
 
 // --- For expression ---
 //
@@ -1088,14 +1088,14 @@ guard           = "_"                                // always matches (must be 
 // Since `..` and `..=` are not binary expression operators, the
 // expression parser naturally stops before them, disambiguating
 // range from collection forms without lookahead.
-for_expr        = "for" pattern "in" for_source block
-for_source      = expr "..=" expr                       // range (inclusive)
-                | expr ".." expr                        // range (half-open)
-                | expr                                  // collection (list or set)
+// for_expr        = "for" pattern "in" for_source block
+// for_source      = expr "..=" expr                       // range (inclusive)
+//                 | expr ".." expr                        // range (half-open)
+//                 | expr                                  // collection (list or set)
 
 // --- Call arguments ---
-arg_list        = arg ("," arg)* ","?
-arg             = (IDENT ":")? expr                   // optional named arg
+// arg_list        = arg ("," arg)* ","?
+// arg             = (IDENT ":")? expr                   // optional named arg
 
 
 // =========================
@@ -1106,16 +1106,16 @@ arg             = (IDENT ":")? expr                   // optional named arg
 // Parseable as a declaration (included in `decl`), but the compiler
 // lowers it to canonical forms before type checking.
 
-move_decl       = "move" IDENT "on" IDENT ":" type
-                      "(" params ")" "{"
-                      trigger_clause
-                      roll_clause
-                      outcome_block+
-                  "}"
+// move_decl       = "move" IDENT "on" IDENT ":" type
+//                       "(" params ")" "{"
+//                       trigger_clause
+//                       roll_clause
+//                       outcome_block+
+//                   "}"
 
-trigger_clause  = "trigger" ":" STRING term
-roll_clause     = "roll" ":" expr term
-outcome_block   = "on" IDENT block
+// trigger_clause  = "trigger" ":" STRING term
+// roll_clause     = "roll" ":" expr term
+// outcome_block   = "on" IDENT block
 
 // The roll clause takes an arbitrary expression that evaluates to
 // DiceExpr. The receiver parameter is in scope. Typical usage:

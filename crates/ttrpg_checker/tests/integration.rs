@@ -154,8 +154,39 @@ fn expect_warnings(source: &str, expected_fragments: &[&str]) {
 }
 
 // ═══════════════════════════════════════════════════════════════
-// Full example acceptance test
+// Spec file acceptance tests — all spec/v0/*.ttrpg must check cleanly
 // ═══════════════════════════════════════════════════════════════
+
+#[test]
+fn test_spec_01_type_system_no_errors() {
+    let source = include_str!("../../../spec/v0/01_type_system.ttrpg");
+    expect_no_errors(source);
+}
+
+#[test]
+fn test_spec_02_declarations_no_errors() {
+    // 02 uses `use` statements and multiple systems, so it needs module-aware checking
+    let source = include_str!("../../../spec/v0/02_declarations.ttrpg");
+    expect_multi_no_errors(&[("spec/v0/02_declarations.ttrpg", source)]);
+}
+
+#[test]
+fn test_spec_03_conditions_no_errors() {
+    let source = include_str!("../../../spec/v0/03_conditions.ttrpg");
+    expect_no_errors(source);
+}
+
+#[test]
+fn test_spec_04_runtime_no_errors() {
+    let source = include_str!("../../../spec/v0/04_runtime.ttrpg");
+    expect_no_errors(source);
+}
+
+#[test]
+fn test_spec_05_grammar_no_errors() {
+    let source = include_str!("../../../spec/v0/05_grammar.ttrpg");
+    expect_no_errors(source);
+}
 
 #[test]
 fn test_full_example_no_errors() {

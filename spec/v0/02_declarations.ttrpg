@@ -3,6 +3,8 @@
 //
 // Block categories, call restrictions, receivers, const, group
 // aliases, disjunctive with, cost free, tags, modules/imports.
+//
+// Self-contained — all declarations check cleanly.
 // ============================================================
 
 
@@ -140,6 +142,48 @@
 // becomes the first argument. See 05_grammar.ttrpg for
 // the full resolution rules.
 
+
+system "v0 Spec — Declarations" {
+
+
+// --- Supporting declarations ---
+//
+// Minimal stubs for types, functions, and events referenced by
+// the examples below. See other spec files for full definitions.
+
+enum Ability { STR, DEX, CON, INT, WIS, CHA }
+enum RollMode { normal, advantage, disadvantage }
+
+struct Weapon {
+    range: int
+}
+
+group Spellcasting {
+    spell_slots: int
+    spell_dc: int
+}
+
+group KiPowers {
+    ki_points: int
+}
+
+entity Character {
+    position: Position
+    abilities: map<Ability, int>
+    AC: int
+    HP: int
+    level: int
+    optional Spellcasting
+    optional KiPowers
+}
+
+event Damaged(target: Character, amount: int)
+
+derive choose_attack_ability(attacker: Character, weapon: Weapon) -> Ability { STR }
+derive proficiency_bonus(level: int) -> int { level }
+derive d20_expr(score: int, proficiency: int, mode: RollMode) -> DiceExpr { 1d20 + score + proficiency }
+
+
 // EXAMPLE: explicit receiver, all field access names its source
 action Attack on attacker: Character (target: Character, weapon: Weapon) {
     cost { action }
@@ -155,7 +199,7 @@ derive modifier(score: int) -> int {
 }
 
 // EXAMPLE: mechanic — no receiver, can roll but cannot mutate
-mechanic attack_roll(
+mechanic attack_roll_example(
     attacker: Character,
     target: Character,
     weapon: Weapon,
@@ -218,6 +262,9 @@ derive total_resources(c: Character) -> int {
     let ki = if c has KiPowers as kp { c.kp.ki_points } else { 0 }
     spells + ki
 }
+
+
+} // end system "v0 Spec — Declarations"
 
 // Aliases work for both reads and writes (in mutation contexts).
 // They are purely syntactic — the checker resolves them at check time
@@ -544,14 +591,21 @@ derive total_resources(c: Character) -> int {
 
 // file: dnd5e/core.ttrpg
 system "D&D 5e Core" {
-    // Ability, modifier(), proficiency_bonus(), ...
+    enum CoreRollMode { normal, advantage, disadvantage }
+    entity Combatant {
+        position: Position
+    }
 }
 
 // file: dnd5e/combat.ttrpg
 use "D&D 5e Core"
 
 system "D&D 5e Combat" {
-    // Can reference Ability, modifier(), etc. from Core
+    // Can reference CoreRollMode, Combatant, etc. from Core
+    mechanic attack_roll(attacker: Combatant, target: Combatant, mode: CoreRollMode = normal) -> RollResult {
+        roll(1d20)
+    }
+    derive flanking_position(attacker: Combatant, target: Combatant) -> bool { false }
 }
 
 // --- Qualified access via aliases ---
@@ -580,13 +634,15 @@ system "D&D 5e Combat" {
 // file: homebrew/flanking.ttrpg
 use "D&D 5e Combat"
 
-option flanking extends "D&D 5e Combat" {
-    description: "Melee attackers on opposite sides gain advantage"
-    default: off
-    when enabled {
-        modify attack_roll(attacker: _, target: _) {
-            if flanking_position(attacker, target) {
-                mode = advantage
+system "Flanking Homebrew" {
+    option flanking extends "D&D 5e Combat" {
+        description: "Melee attackers on opposite sides gain advantage"
+        default: off
+        when enabled {
+            modify attack_roll(attacker: _, target: _) {
+                if flanking_position(attacker, target) {
+                    mode = advantage
+                }
             }
         }
     }

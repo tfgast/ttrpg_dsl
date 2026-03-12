@@ -3,7 +3,96 @@
 //
 // Modify pipeline, stacking, lifecycle hooks, state fields,
 // periodic blocks, suspension, cost modification.
+//
+// Self-contained — all declarations check cleanly.
 // ============================================================
+
+system "v0 Spec — Conditions" {
+
+
+// --- Supporting declarations ---
+//
+// Minimal stubs for types, functions, and events referenced by
+// the condition examples below. See other spec files for full
+// definitions.
+
+enum Ability { STR, DEX, CON, INT, WIS, CHA }
+enum RollMode { normal, advantage, disadvantage }
+enum DamageType { slashing, piercing, bludgeoning, fire, cold }
+enum SaveResult { success, failure }
+
+enum Duration {
+    end_of_turn,
+    start_of_next_turn,
+    rounds(count: int),
+    minutes(count: int),
+    indefinite
+}
+
+enum EffectSource {
+    Unknown,
+    Spell(name: string, caster_level: int)
+}
+
+struct TurnBudget {
+    actions: int = 0
+    bonus_actions: int = 0
+    reactions: int = 0
+    movement: int = 0
+}
+
+struct ResistanceResult {
+    amount: int
+}
+
+entity Character {
+    name: string
+    level: int = 1
+    abilities: map<Ability, int>
+    AC: int
+    HP: resource(0..=max_HP)
+    max_HP: int
+    speed: int = 30
+    position: Position
+    took_fire_damage: bool = false
+    poisoned_flag: bool = false
+}
+
+mechanic attack_roll(
+    attacker: Character,
+    target: Character,
+    mode: RollMode = normal
+) -> RollResult {
+    roll(1d20)
+}
+
+derive initial_budget(actor: Character) -> TurnBudget {
+    TurnBudget { actions: 1, movement: actor.speed }
+}
+
+derive fire_resistance(target: Character) -> ResistanceResult {
+    ResistanceResult { amount: 0 }
+}
+
+derive saving_throw(
+    target: Character,
+    ability: Ability,
+    mode: RollMode = normal
+) -> SaveResult {
+    SaveResult.success
+}
+
+event Damaged(target: entity, amount: int) {}
+event StatusGained(target: Character, status: string) {}
+event StatusLost(target: Character, status: string) {}
+event PoisonSummary(target: Character, total_damage: int, rounds: int) {}
+event PoisonSpread(source: Character, count: int) {}
+event CharacterDead(target: entity) {}
+event SpellDamaged(caster: entity, target: entity, spell_name: string, amount: int) {}
+
+condition Dead on bearer: entity {}
+
+tag round_end_damage
 
 
 // --- Conditions and `modify` ---
@@ -500,12 +589,10 @@ condition Bleeding on bearer: entity
 {
     periodic #round_end_damage {
         if bearer is Character {
-            bearer.hp = bearer.hp - 1
-            if bearer.hp <= -10 {
-                bearer.hp = -10
+            bearer.HP -= 1
+            if bearer.HP <= 0 {
                 remove_condition(bearer, "Bleeding")
-                remove_condition(bearer, "Unconscious")
-                apply_condition(bearer, Dead, Duration.Indefinite)
+                apply_condition(bearer, Dead, Duration.indefinite)
                 emit CharacterDead(target: bearer)
             }
         }
@@ -519,7 +606,9 @@ condition InsideBladeBarrier on bearer: entity
     periodic #round_end_damage {
         if let EffectSource.Spell(zone_name, cl) = self.source {
             let damage = roll(8d8).total
-            bearer.TakeDamage(bearer, damage, DamageType.Slashing)
+            if bearer is Character {
+                bearer.HP -= damage
+            }
             emit SpellDamaged(caster: bearer, target: bearer,
                 spell_name: zone_name, amount: damage)
         }
@@ -668,3 +757,5 @@ condition InsideBladeBarrier on bearer: entity
 //
 // EXAMPLE: Cost modification emits a ModifyApplied effect showing
 // the old and new cost, allowing the host to log the change.
+
+} // end system "v0 Spec — Conditions"

@@ -3,7 +3,11 @@
 //
 // Three-stage roll pipeline:  DiceExpr -> RollResult -> int
 // Primitives, composites, coercion rules, dice algebra.
+//
+// Self-contained — all declarations check cleanly.
 // ============================================================
+
+system "v0 Spec — Type System" {
 
 
 // --- Primitive types ---
@@ -1112,3 +1116,5 @@ unit AbstractDistance {
 // and recognized by parser position. `unit` joins the declaration-
 // starting keywords (enum, struct, entity, ...). `suffix` is
 // recognized only between a unit name and the opening brace.
+
+} // end system "v0 Spec — Type System"

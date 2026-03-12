@@ -2,10 +2,34 @@
 // v0 Spec — Part 4: Runtime
 //
 // Turn state, events, hooks, emit, with_budget, builtins.
+// This file is self-contained and checkable: ttrpg check spec/v0/04_runtime.ttrpg
 // ============================================================
 
+system "v0 Spec — Runtime" {
 
-// --- Turn state ---
+    // --- Supporting declarations (stubs for self-contained checking) ---
+
+    enum Ability { STR, DEX, CON, INT, WIS, CHA }
+    enum RollMode { normal, advantage, disadvantage }
+
+    entity Character {
+        name: string
+        level: int = 1
+        abilities: map<Ability, int>
+        AC: int
+        HP: resource(0..=max_HP)
+        max_HP: int
+        speed: int = 30
+        position: Position
+        concentrating_on: option<Invocation>
+    }
+
+    event turn_start(actor: Character) {}
+
+    // --- End supporting declarations ---
+
+
+    // --- Turn state ---
 //
 // The action economy is managed by the runtime. The DSL declares:
 //   1. initial_budget(actor) — derive returning the starting TurnBudget
@@ -404,3 +428,5 @@ hook Regenerate on creature: Character (
 // The `turn` keyword (available in action/reaction/hook resolve blocks):
 //   Refers to the current turn's mutable TurnBudget.
 //   turn.movement, turn.actions, etc. are readable and assignable.
+
+} // end system "v0 Spec — Runtime"
