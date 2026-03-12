@@ -1,8 +1,6 @@
 # Design: Tags and Signature Selectors for Modify Targets
 
-**Issue:** tdsl-1p69
-**Status:** Draft
-**Last updated:** 2026-02-27
+**Status:** Implemented
 
 ---
 

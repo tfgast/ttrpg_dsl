@@ -1,8 +1,6 @@
 # Design: Host-Driven Spatial Zone Protocol
 
-**Issue:** tdsl-lj6q.4
-**Status:** Draft
-**Last updated:** 2026-03-10
+**Status:** Implemented
 
 ---
 

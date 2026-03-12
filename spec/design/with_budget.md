@@ -1,4 +1,6 @@
-# `with_budget` Statement — Function-Provisioned Turn Budgets
+# Design: `with_budget` Statement — Function-Provisioned Turn Budgets
+
+**Status:** Implemented
 
 ## Context
 
