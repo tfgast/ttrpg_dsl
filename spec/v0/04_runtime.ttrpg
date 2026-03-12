@@ -10,7 +10,7 @@ system "v0 Spec — Runtime" {
     // --- Supporting declarations (stubs for self-contained checking) ---
 
     enum Ability { STR, DEX, CON, INT, WIS, CHA }
-    enum RollMode { normal, advantage, disadvantage }
+    enum RollMode { Normal, Advantage, Disadvantage }
 
     entity Character {
         name: string

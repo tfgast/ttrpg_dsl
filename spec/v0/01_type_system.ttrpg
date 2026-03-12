@@ -609,11 +609,11 @@ enum Presence {
 // Temporal anchor for conditions and temporary effects.
 
 enum Duration {
-    end_of_turn,
-    start_of_next_turn,
-    rounds(count: int),
-    minutes(count: int),
-    indefinite
+    EndOfTurn,
+    StartOfNextTurn,
+    Rounds(count: int),
+    Minutes(count: int),
+    Indefinite
 }
 
 

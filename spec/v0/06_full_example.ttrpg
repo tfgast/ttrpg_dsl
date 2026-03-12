@@ -15,29 +15,29 @@ system "D&D 5e Combat" {
     // --- Enums ---
 
     enum Ability { STR, DEX, CON, INT, WIS, CHA }
-    enum RollMode { normal, advantage, disadvantage, auto_fail, auto_succeed }
+    enum RollMode { Normal, Advantage, Disadvantage, AutoFail, AutoSucceed }
 
     enum DamageType {
-        slashing, piercing, bludgeoning,
-        fire, cold, lightning, thunder, poison,
-        acid, necrotic, radiant, psychic, force
+        Slashing, Piercing, Bludgeoning,
+        Fire, Cold, Lightning, Thunder, Poison,
+        Acid, Necrotic, Radiant, Psychic, Force
     }
 
-    enum WeaponProperty { light, heavy, finesse, thrown, versatile, reach }
+    enum WeaponProperty { Light, Heavy, Finesse, Thrown, Versatile, Reach }
 
     enum Duration {
-        end_of_turn,
-        start_of_next_turn,
-        rounds(count: int),
-        minutes(count: int),
-        indefinite
+        EndOfTurn,
+        StartOfNextTurn,
+        Rounds(count: int),
+        Minutes(count: int),
+        Indefinite
     }
 
-    enum SaveResult { success, failure }
+    enum SaveResult { Success, Failure }
 
     enum ResolvedDamage {
-        miss,
-        hit(amount: int)
+        Miss,
+        Hit(amount: int)
     }
 
 
@@ -143,7 +143,7 @@ system "D&D 5e Combat" {
         attacker: Character,
         weapon: Weapon
     ) -> Ability {
-        if finesse in weapon.properties {
+        if Finesse in weapon.properties {
             let str_mod = modifier(attacker.abilities[STR])
             let dex_mod = modifier(attacker.abilities[DEX])
             if dex_mod > str_mod { DEX } else { weapon.ability }
@@ -156,12 +156,12 @@ system "D&D 5e Combat" {
         score: int,
         proficiency: int = 0,
         bonus: int = 0,
-        mode: RollMode = normal
+        mode: RollMode = Normal
     ) -> DiceExpr {
         let base: DiceExpr = match mode {
-            normal       => 1d20,
-            advantage    => 2d20kh1,
-            disadvantage => 2d20kl1
+            Normal       => 1d20,
+            Advantage    => 2d20kh1,
+            Disadvantage => 2d20kl1
         }
         base + modifier(score) + proficiency + bonus
     }
@@ -170,7 +170,7 @@ system "D&D 5e Combat" {
         attacker: Character,
         target: Character,
         weapon: Weapon,
-        mode: RollMode = normal,
+        mode: RollMode = Normal,
         bonus_dice: DiceExpr = 0d1
     ) -> RollResult {
         let ability = choose_attack_ability(attacker, weapon)
@@ -186,12 +186,12 @@ system "D&D 5e Combat" {
         target: Character,
         ability: Ability,
         DC: int,
-        mode: RollMode = normal,
+        mode: RollMode = Normal,
         bonus: int = 0
     ) -> SaveResult {
         match mode {
-            auto_fail    => SaveResult.failure,
-            auto_succeed => SaveResult.success,
+            AutoFail    => SaveResult.Failure,
+            AutoSucceed => SaveResult.Success,
             _ => {
                 let prof = if ability in target.proficient_saves {
                     proficiency_bonus(target.level)
@@ -205,7 +205,7 @@ system "D&D 5e Combat" {
                     mode: mode
                 )
                 let save: RollResult = roll(expr)
-                if save.total >= DC { SaveResult.success } else { SaveResult.failure }
+                if save.total >= DC { SaveResult.Success } else { SaveResult.Failure }
             }
         }
     }
@@ -230,22 +230,22 @@ system "D&D 5e Combat" {
         attacker: Character,
         target: Character,
         weapon: Weapon,
-        mode: RollMode = normal
+        mode: RollMode = Normal
     ) -> ResolvedDamage {
         let atk: RollResult = attack_roll(attacker, target, weapon, mode)
         match {
-            atk.unmodified == 1 => ResolvedDamage.miss,
+            atk.unmodified == 1 => ResolvedDamage.Miss,
             atk.unmodified == 20 => {
                 let dmg: RollResult = roll(damage_expr(attacker, weapon, critical: true))
                 let final_dmg = apply_resistances(target, dmg.total, weapon.damage.type)
-                ResolvedDamage.hit(final_dmg)
+                ResolvedDamage.Hit(final_dmg)
             },
             atk >= target.AC => {
                 let dmg: RollResult = roll(damage_expr(attacker, weapon, critical: false))
                 let final_dmg = apply_resistances(target, dmg.total, weapon.damage.type)
-                ResolvedDamage.hit(final_dmg)
+                ResolvedDamage.Hit(final_dmg)
             },
-            _ => ResolvedDamage.miss
+            _ => ResolvedDamage.Miss
         }
     }
 
@@ -286,12 +286,12 @@ system "D&D 5e Combat" {
         resolve {
             let result = resolve_melee_attack(attacker, target, weapon)
             match result {
-                hit(amount) => {
+                Hit(amount) => {
                     target.HP -= amount
                     // Fire the Damaged event — matching hooks execute inline
                     emit Damaged(target: target, attacker: attacker, amount: amount)
                 },
-                miss => {}
+                Miss => {}
             }
         }
     }
@@ -326,8 +326,8 @@ system "D&D 5e Combat" {
             for i in 0..num_attacks {
                 let result = resolve_melee_attack(attacker, target, weapon)
                 match result {
-                    hit(amount) => { target.HP -= amount },
-                    miss => {}
+                    Hit(amount) => { target.HP -= amount },
+                    Miss => {}
                 }
             }
         }
@@ -345,7 +345,7 @@ system "D&D 5e Combat" {
         cost { action }
 
         resolve {
-            apply_condition(actor, Dodging, Duration.start_of_next_turn)
+            apply_condition(actor, Dodging, Duration.StartOfNextTurn)
         }
     }
 
@@ -353,7 +353,7 @@ system "D&D 5e Combat" {
         cost { action }
 
         resolve {
-            apply_condition(actor, Disengaging, Duration.end_of_turn)
+            apply_condition(actor, Disengaging, Duration.EndOfTurn)
         }
     }
 
@@ -361,7 +361,7 @@ system "D&D 5e Combat" {
         cost { action }
 
         resolve {
-            apply_condition(actor, Hidden, Duration.indefinite)
+            apply_condition(actor, Hidden, Duration.Indefinite)
         }
     }
 
@@ -414,8 +414,8 @@ system "D&D 5e Combat" {
                 reactor, trigger.entity, reactor.equipped_weapon
             )
             match result {
-                hit(amount) => { trigger.entity.HP -= amount },
-                miss => {}
+                Hit(amount) => { trigger.entity.HP -= amount },
+                Miss => {}
             }
         }
     }
@@ -457,7 +457,7 @@ system "D&D 5e Combat" {
     // Checks if the target has dropped to 0 HP and applies Prone if so.
     hook DeathDrop on target: Character (trigger: Damaged(target: target)) {
         if target.HP <= 0 {
-            apply_condition(target, Prone, Duration.indefinite)
+            apply_condition(target, Prone, Duration.Indefinite)
         }
     }
 
@@ -466,13 +466,13 @@ system "D&D 5e Combat" {
 
     condition Prone on bearer: Character {
         modify attack_roll(attacker: bearer) {
-            mode = disadvantage
+            mode = Disadvantage
         }
         modify attack_roll(target: bearer) {
             mode = if distance(attacker.position, bearer.position) <= 5 {
-                advantage
+                Advantage
             } else {
-                disadvantage
+                Disadvantage
             }
         }
         modify initial_budget(actor: bearer) {
@@ -482,10 +482,10 @@ system "D&D 5e Combat" {
 
     condition Dodging on bearer: Character {
         modify attack_roll(target: bearer) {
-            mode = disadvantage
+            mode = Disadvantage
         }
         modify saving_throw(target: bearer, ability: DEX) {
-            mode = advantage
+            mode = Advantage
         }
     }
 
@@ -500,7 +500,7 @@ system "D&D 5e Combat" {
     condition Hidden on bearer: Character {
         // Hidden grants advantage on attack rolls made by the bearer
         modify attack_roll(attacker: bearer) {
-            mode = advantage
+            mode = Advantage
         }
     }
 
@@ -509,13 +509,13 @@ system "D&D 5e Combat" {
     // so no dice are rolled at all.
     condition Stunned on bearer: Character {
         modify attack_roll(target: bearer) {
-            mode = advantage
+            mode = Advantage
         }
         modify saving_throw(target: bearer, ability: STR) {
-            mode = auto_fail
+            mode = AutoFail
         }
         modify saving_throw(target: bearer, ability: DEX) {
-            mode = auto_fail
+            mode = AutoFail
         }
     }
 
@@ -524,13 +524,13 @@ system "D&D 5e Combat" {
     // result is replaced in Phase 2.
     condition Petrified on bearer: Character {
         modify attack_roll(target: bearer) {
-            mode = advantage
+            mode = Advantage
         }
         modify saving_throw(target: bearer, ability: STR) {
-            result = SaveResult.failure
+            result = SaveResult.Failure
         }
         modify saving_throw(target: bearer, ability: DEX) {
-            result = SaveResult.failure
+            result = SaveResult.Failure
         }
     }
 
@@ -572,7 +572,7 @@ system "D&D 5e Combat" {
             bearer.HP -= 1
             if bearer.HP <= 0 {
                 remove_condition(bearer, "Bleeding")
-                apply_condition(bearer, Stunned, Duration.indefinite)
+                apply_condition(bearer, Stunned, Duration.Indefinite)
             }
         }
     }
@@ -627,7 +627,7 @@ system "D&D 5e Combat" {
         resolve {
             let inv = invocation()
             for target in targets {
-                apply_condition(target, Blessed, Duration.rounds(10))
+                apply_condition(target, Blessed, Duration.Rounds(10))
             }
             emit ConcentrationStarted(caster: caster, inv: inv)
         }
@@ -678,7 +678,7 @@ system "D&D 5e Combat" {
     // Example: Barbarian Rage grants resistance to physical damage types.
 
     derive physical_damage_types() -> set<DamageType> {
-        [bludgeoning, piercing, slashing].to_set()
+        [Bludgeoning, Piercing, Slashing].to_set()
     }
 
     action Rage on barbarian: Character () {
@@ -689,7 +689,7 @@ system "D&D 5e Combat" {
             for dt in physical_damage_types() {
                 barbarian.resistances += dt
             }
-            apply_condition(barbarian, Raging, Duration.rounds(10))
+            apply_condition(barbarian, Raging, Duration.Rounds(10))
         }
     }
 
@@ -725,7 +725,7 @@ system "D&D 5e Combat" {
 
     condition Raging on bearer: Character {
         modify saving_throw(target: bearer, ability: STR) {
-            mode = advantage
+            mode = Advantage
         }
     }
 }

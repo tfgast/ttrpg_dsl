@@ -17,16 +17,16 @@ system "v0 Spec — Conditions" {
 // definitions.
 
 enum Ability { STR, DEX, CON, INT, WIS, CHA }
-enum RollMode { normal, advantage, disadvantage }
-enum DamageType { slashing, piercing, bludgeoning, fire, cold }
-enum SaveResult { success, failure }
+enum RollMode { Normal, Advantage, Disadvantage }
+enum DamageType { Slashing, Piercing, Bludgeoning, Fire, Cold }
+enum SaveResult { Success, Failure }
 
 enum Duration {
-    end_of_turn,
-    start_of_next_turn,
-    rounds(count: int),
-    minutes(count: int),
-    indefinite
+    EndOfTurn,
+    StartOfNextTurn,
+    Rounds(count: int),
+    Minutes(count: int),
+    Indefinite
 }
 
 enum EffectSource {
@@ -61,7 +61,7 @@ entity Character {
 mechanic attack_roll(
     attacker: Character,
     target: Character,
-    mode: RollMode = normal
+    mode: RollMode = Normal
 ) -> RollResult {
     roll(1d20)
 }
@@ -77,9 +77,9 @@ derive fire_resistance(target: Character) -> ResistanceResult {
 derive saving_throw(
     target: Character,
     ability: Ability,
-    mode: RollMode = normal
+    mode: RollMode = Normal
 ) -> SaveResult {
-    SaveResult.success
+    SaveResult.Success
 }
 
 event Damaged(target: entity, amount: int) {}
@@ -126,15 +126,15 @@ tag round_end_damage
 condition Prone on bearer: Character {
     // When attack_roll is called with attacker == bearer: set mode to disadvantage
     modify attack_roll(attacker: bearer) {
-        mode = disadvantage
+        mode = Disadvantage
     }
 
     // When attack_roll is called with target == bearer: mode depends on distance
     modify attack_roll(target: bearer) {
         mode = if distance(attacker.position, bearer.position) <= 5 {
-            advantage
+            Advantage
         } else {
-            disadvantage
+            Disadvantage
         }
     }
 
@@ -179,8 +179,8 @@ condition Prone on bearer: Character {
 //   derive resolve_roll_mode(actor: Character, base_mode: RollMode) -> RollMode {
 //       let has_adv = /* check conditions granting advantage */
 //       let has_dis = /* check conditions granting disadvantage */
-//       match { has_adv && has_dis => normal, has_adv => advantage,
-//               has_dis => disadvantage, _ => base_mode }
+//       match { has_adv && has_dis => Normal, has_adv => Advantage,
+//               has_dis => Disadvantage, _ => base_mode }
 //   }
 //
 // This keeps the modify system simple (last-writer-wins pipeline)
@@ -422,7 +422,7 @@ condition Poisoned(potency: int) on bearer: Character {
     }
 
     modify saving_throw(target: bearer) {
-        mode = disadvantage
+        mode = Disadvantage
     }
 }
 
@@ -592,7 +592,7 @@ condition Bleeding on bearer: entity
             bearer.HP -= 1
             if bearer.HP <= 0 {
                 remove_condition(bearer, "Bleeding")
-                apply_condition(bearer, Dead, Duration.indefinite)
+                apply_condition(bearer, Dead, Duration.Indefinite)
                 emit CharacterDead(target: bearer)
             }
         }

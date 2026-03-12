@@ -152,7 +152,7 @@ system "v0 Spec — Declarations" {
 // the examples below. See other spec files for full definitions.
 
 enum Ability { STR, DEX, CON, INT, WIS, CHA }
-enum RollMode { normal, advantage, disadvantage }
+enum RollMode { Normal, Advantage, Disadvantage }
 
 struct Weapon {
     range: int
@@ -203,7 +203,7 @@ mechanic attack_roll_example(
     attacker: Character,
     target: Character,
     weapon: Weapon,
-    mode: RollMode = normal
+    mode: RollMode = Normal
 ) -> RollResult {
     // Can call roll(), but CANNOT write `target.HP -= ...`
     let ability = choose_attack_ability(attacker, weapon)
@@ -590,23 +590,23 @@ derive total_resources(c: Character) -> int {
 // see C's declarations without an explicit `use "C"`.
 
 // file: dnd5e/core.ttrpg
-system "D&D 5e Core" {
-    enum CoreRollMode { normal, advantage, disadvantage }
-    entity Combatant {
-        position: Position
-    }
-}
+// system "D&D 5e Core" {
+//     enum CoreRollMode { Normal, Advantage, Disadvantage }
+//     entity Combatant {
+//         position: Position
+//     }
+// }
 
 // file: dnd5e/combat.ttrpg
-use "D&D 5e Core"
-
-system "D&D 5e Combat" {
-    // Can reference CoreRollMode, Combatant, etc. from Core
-    mechanic attack_roll(attacker: Combatant, target: Combatant, mode: CoreRollMode = normal) -> RollResult {
-        roll(1d20)
-    }
-    derive flanking_position(attacker: Combatant, target: Combatant) -> bool { false }
-}
+// use "D&D 5e Core"
+//
+// system "D&D 5e Combat" {
+//     // Can reference CoreRollMode, Combatant, etc. from Core
+//     mechanic attack_roll(attacker: Combatant, target: Combatant, mode: CoreRollMode = Normal) -> RollResult {
+//         roll(1d20)
+//     }
+//     derive flanking_position(attacker: Combatant, target: Combatant) -> bool { false }
+// }
 
 // --- Qualified access via aliases ---
 //
@@ -632,18 +632,18 @@ system "D&D 5e Combat" {
 //   - Alias collides with builtin function name: error
 
 // file: homebrew/flanking.ttrpg
-use "D&D 5e Combat"
-
-system "Flanking Homebrew" {
-    option flanking extends "D&D 5e Combat" {
-        description: "Melee attackers on opposite sides gain advantage"
-        default: off
-        when enabled {
-            modify attack_roll(attacker: _, target: _) {
-                if flanking_position(attacker, target) {
-                    mode = advantage
-                }
-            }
-        }
-    }
-}
+// use "D&D 5e Combat"
+//
+// system "Flanking Homebrew" {
+//     option flanking extends "D&D 5e Combat" {
+//         description: "Melee attackers on opposite sides gain advantage"
+//         default: off
+//         when enabled {
+//             modify attack_roll(attacker: _, target: _) {
+//                 if flanking_position(attacker, target) {
+//                     mode = Advantage
+//                 }
+//             }
+//         }
+//     }
+// }

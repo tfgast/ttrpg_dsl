@@ -233,7 +233,7 @@ fn standard_combatants() -> (GameState, EntityRef, EntityRef) {
     let longsword = add_weapon(
         &mut state,
         "Longsword",
-        damage_spec(1, 8, "slashing"),
+        damage_spec(1, 8, "Slashing"),
         "STR",
         weapon_properties(&[]),
         5,
@@ -243,9 +243,9 @@ fn standard_combatants() -> (GameState, EntityRef, EntityRef) {
     let shortsword = add_weapon(
         &mut state,
         "Shortsword",
-        damage_spec(1, 6, "piercing"),
+        damage_spec(1, 6, "Piercing"),
         "DEX",
-        weapon_properties(&["finesse", "light"]),
+        weapon_properties(&["Finesse", "Light"]),
         5,
         None,
     );
@@ -386,7 +386,7 @@ fn apply_resistances_immune() {
     let sword = add_weapon(
         &mut state,
         "Sword",
-        damage_spec(1, 8, "slashing"),
+        damage_spec(1, 8, "Slashing"),
         "STR",
         weapon_properties(&[]),
         5,
@@ -404,7 +404,7 @@ fn apply_resistances_immune() {
         20,
         30,
         damage_type_set(&[]),
-        damage_type_set(&["fire"]), // immunities: fire
+        damage_type_set(&["Fire"]), // immunities: fire
         damage_type_set(&[]),
         Value::Set(BTreeSet::new()),
         pos,
@@ -420,7 +420,7 @@ fn apply_resistances_immune() {
             vec![
                 Value::Entity(target),
                 Value::Int(20),
-                enum_variant("DamageType", "fire"),
+                enum_variant("DamageType", "Fire"),
             ],
         )
         .unwrap();
@@ -436,7 +436,7 @@ fn apply_resistances_resistant() {
     let sword = add_weapon(
         &mut state,
         "Sword",
-        damage_spec(1, 8, "slashing"),
+        damage_spec(1, 8, "Slashing"),
         "STR",
         weapon_properties(&[]),
         5,
@@ -453,7 +453,7 @@ fn apply_resistances_resistant() {
         20,
         20,
         30,
-        damage_type_set(&["fire"]), // resistances: fire
+        damage_type_set(&["Fire"]), // resistances: fire
         damage_type_set(&[]),
         damage_type_set(&[]),
         Value::Set(BTreeSet::new()),
@@ -470,7 +470,7 @@ fn apply_resistances_resistant() {
             vec![
                 Value::Entity(target),
                 Value::Int(20),
-                enum_variant("DamageType", "fire"),
+                enum_variant("DamageType", "Fire"),
             ],
         )
         .unwrap();
@@ -487,7 +487,7 @@ fn apply_resistances_vulnerable() {
     let sword = add_weapon(
         &mut state,
         "Sword",
-        damage_spec(1, 8, "slashing"),
+        damage_spec(1, 8, "Slashing"),
         "STR",
         weapon_properties(&[]),
         5,
@@ -506,7 +506,7 @@ fn apply_resistances_vulnerable() {
         30,
         damage_type_set(&[]),
         damage_type_set(&[]),
-        damage_type_set(&["fire"]), // vulnerabilities: fire
+        damage_type_set(&["Fire"]), // vulnerabilities: fire
         Value::Set(BTreeSet::new()),
         pos,
         sword,
@@ -521,7 +521,7 @@ fn apply_resistances_vulnerable() {
             vec![
                 Value::Entity(target),
                 Value::Int(20),
-                enum_variant("DamageType", "fire"),
+                enum_variant("DamageType", "Fire"),
             ],
         )
         .unwrap();
@@ -538,7 +538,7 @@ fn apply_resistances_normal() {
     let sword = add_weapon(
         &mut state,
         "Sword",
-        damage_spec(1, 8, "slashing"),
+        damage_spec(1, 8, "Slashing"),
         "STR",
         weapon_properties(&[]),
         5,
@@ -572,7 +572,7 @@ fn apply_resistances_normal() {
             vec![
                 Value::Entity(target),
                 Value::Int(20),
-                enum_variant("DamageType", "fire"),
+                enum_variant("DamageType", "Fire"),
             ],
         )
         .unwrap();
@@ -667,7 +667,7 @@ fn attack_roll_emits_roll_dice() {
                 Value::Entity(fighter),
                 Value::Entity(goblin),
                 Value::Entity(longsword),
-                enum_variant("RollMode", "normal"),
+                enum_variant("RollMode", "Normal"),
             ],
         )
         .unwrap();
@@ -711,7 +711,7 @@ fn resolve_melee_attack_hit() {
                 Value::Entity(fighter),
                 Value::Entity(goblin),
                 Value::Entity(longsword),
-                enum_variant("RollMode", "normal"),
+                enum_variant("RollMode", "Normal"),
             ],
         )
         .unwrap();
@@ -724,7 +724,7 @@ fn resolve_melee_attack_hit() {
             fields,
         } => {
             assert_eq!(enum_name, "ResolvedDamage");
-            assert_eq!(variant, "hit");
+            assert_eq!(variant, "Hit");
             assert_eq!(fields.get("amount"), Some(&Value::Int(7)));
         }
         other => panic!("expected ResolvedDamage.hit, got {other:?}"),
@@ -753,7 +753,7 @@ fn resolve_melee_attack_nat_20_crit() {
                 Value::Entity(fighter),
                 Value::Entity(goblin),
                 Value::Entity(longsword),
-                enum_variant("RollMode", "normal"),
+                enum_variant("RollMode", "Normal"),
             ],
         )
         .unwrap();
@@ -765,7 +765,7 @@ fn resolve_melee_attack_nat_20_crit() {
             fields,
         } => {
             assert_eq!(enum_name, "ResolvedDamage");
-            assert_eq!(variant, "hit");
+            assert_eq!(variant, "Hit");
             assert_eq!(fields.get("amount"), Some(&Value::Int(14)));
         }
         other => panic!("expected ResolvedDamage.hit (crit), got {other:?}"),
@@ -792,7 +792,7 @@ fn resolve_melee_attack_nat_1_miss() {
                 Value::Entity(fighter),
                 Value::Entity(goblin),
                 Value::Entity(longsword),
-                enum_variant("RollMode", "normal"),
+                enum_variant("RollMode", "Normal"),
             ],
         )
         .unwrap();
@@ -802,7 +802,7 @@ fn resolve_melee_attack_nat_1_miss() {
             enum_name, variant, ..
         } => {
             assert_eq!(enum_name, "ResolvedDamage");
-            assert_eq!(variant, "miss");
+            assert_eq!(variant, "Miss");
         }
         other => panic!("expected ResolvedDamage.miss, got {other:?}"),
     }
@@ -828,7 +828,7 @@ fn resolve_melee_attack_below_ac_miss() {
                 Value::Entity(fighter),
                 Value::Entity(goblin),
                 Value::Entity(longsword),
-                enum_variant("RollMode", "normal"),
+                enum_variant("RollMode", "Normal"),
             ],
         )
         .unwrap();
@@ -838,7 +838,7 @@ fn resolve_melee_attack_below_ac_miss() {
             enum_name, variant, ..
         } => {
             assert_eq!(enum_name, "ResolvedDamage");
-            assert_eq!(variant, "miss");
+            assert_eq!(variant, "Miss");
         }
         other => panic!("expected ResolvedDamage.miss, got {other:?}"),
     }
@@ -936,7 +936,7 @@ fn attack_action_out_of_range() {
     let longsword = add_weapon(
         &mut state,
         "Longsword",
-        damage_spec(1, 8, "slashing"),
+        damage_spec(1, 8, "Slashing"),
         "STR",
         weapon_properties(&[]),
         5,
@@ -945,9 +945,9 @@ fn attack_action_out_of_range() {
     let shortsword = add_weapon(
         &mut state,
         "Shortsword",
-        damage_spec(1, 6, "piercing"),
+        damage_spec(1, 6, "Piercing"),
         "DEX",
-        weapon_properties(&["finesse", "light"]),
+        weapon_properties(&["Finesse", "Light"]),
         5,
         None,
     );
@@ -1076,7 +1076,7 @@ fn dodge_action() {
     assert!(handler.log.iter().any(|e| matches!(
         e,
         Effect::ApplyCondition { condition, duration, .. }
-        if condition == "Dodging" && matches!(duration, Value::EnumVariant { enum_name, variant, .. } if enum_name == "Duration" && variant == "start_of_next_turn")
+        if condition == "Dodging" && matches!(duration, Value::EnumVariant { enum_name, variant, .. } if enum_name == "Duration" && variant == "StartOfNextTurn")
     )));
     assert!(matches!(
         handler.log.last().unwrap(),
@@ -1103,7 +1103,7 @@ fn disengage_action() {
     assert!(handler.log.iter().any(|e| matches!(
         e,
         Effect::ApplyCondition { condition, duration, .. }
-        if condition == "Disengaging" && matches!(duration, Value::EnumVariant { enum_name, variant, .. } if enum_name == "Duration" && variant == "end_of_turn")
+        if condition == "Disengaging" && matches!(duration, Value::EnumVariant { enum_name, variant, .. } if enum_name == "Duration" && variant == "EndOfTurn")
     )));
     assert!(matches!(
         handler.log.last().unwrap(),
@@ -1263,7 +1263,7 @@ fn prone_on_attacker_disadvantage() {
         &fighter,
         "Prone",
         ConditionArgs {
-            duration: duration_variant("indefinite"),
+            duration: duration_variant("Indefinite"),
             ..Default::default()
         },
     );
@@ -1291,7 +1291,7 @@ fn prone_on_attacker_disadvantage() {
                 Value::Entity(fighter),
                 Value::Entity(goblin),
                 Value::Entity(longsword),
-                enum_variant("RollMode", "normal"),
+                enum_variant("RollMode", "Normal"),
             ],
         )
         .unwrap();
@@ -1332,7 +1332,7 @@ fn prone_on_target_melee_advantage() {
         &goblin,
         "Prone",
         ConditionArgs {
-            duration: duration_variant("indefinite"),
+            duration: duration_variant("Indefinite"),
             ..Default::default()
         },
     );
@@ -1360,7 +1360,7 @@ fn prone_on_target_melee_advantage() {
                 Value::Entity(fighter),
                 Value::Entity(goblin),
                 Value::Entity(longsword),
-                enum_variant("RollMode", "normal"),
+                enum_variant("RollMode", "Normal"),
             ],
         )
         .unwrap();
@@ -1390,7 +1390,7 @@ fn prone_on_target_ranged_disadvantage() {
     let longsword = add_weapon(
         &mut state,
         "Longbow",
-        damage_spec(1, 8, "piercing"),
+        damage_spec(1, 8, "Piercing"),
         "DEX",
         weapon_properties(&[]),
         150,
@@ -1399,9 +1399,9 @@ fn prone_on_target_ranged_disadvantage() {
     let shortsword = add_weapon(
         &mut state,
         "Shortsword",
-        damage_spec(1, 6, "piercing"),
+        damage_spec(1, 6, "Piercing"),
         "DEX",
-        weapon_properties(&["finesse", "light"]),
+        weapon_properties(&["Finesse", "Light"]),
         5,
         None,
     );
@@ -1447,7 +1447,7 @@ fn prone_on_target_ranged_disadvantage() {
         &goblin,
         "Prone",
         ConditionArgs {
-            duration: duration_variant("indefinite"),
+            duration: duration_variant("Indefinite"),
             ..Default::default()
         },
     );
@@ -1474,7 +1474,7 @@ fn prone_on_target_ranged_disadvantage() {
                 Value::Entity(fighter),
                 Value::Entity(goblin),
                 Value::Entity(longsword),
-                enum_variant("RollMode", "normal"),
+                enum_variant("RollMode", "Normal"),
             ],
         )
         .unwrap();
@@ -1505,7 +1505,7 @@ fn prone_modifies_initial_budget() {
         &fighter,
         "Prone",
         ConditionArgs {
-            duration: duration_variant("indefinite"),
+            duration: duration_variant("Indefinite"),
             ..Default::default()
         },
     );
@@ -1555,7 +1555,7 @@ fn disengaging_suppresses_entity_leaves_reach() {
         &goblin,
         "Disengaging",
         ConditionArgs {
-            duration: duration_variant("end_of_turn"),
+            duration: duration_variant("EndOfTurn"),
             ..Default::default()
         },
     );
@@ -1714,7 +1714,7 @@ fn saving_throw_normal_success() {
         )
         .unwrap();
 
-    assert_eq!(val, enum_variant("SaveResult", "success"));
+    assert_eq!(val, enum_variant("SaveResult", "Success"));
     assert!(
         handler
             .log
@@ -1747,7 +1747,7 @@ fn saving_throw_normal_failure() {
         )
         .unwrap();
 
-    assert_eq!(val, enum_variant("SaveResult", "failure"));
+    assert_eq!(val, enum_variant("SaveResult", "Failure"));
 }
 
 #[test]
@@ -1761,7 +1761,7 @@ fn stunned_auto_fails_str_save() {
         &fighter,
         "Stunned",
         ConditionArgs {
-            duration: duration_variant("indefinite"),
+            duration: duration_variant("Indefinite"),
             ..Default::default()
         },
     );
@@ -1784,7 +1784,7 @@ fn stunned_auto_fails_str_save() {
         .unwrap();
 
     // Result is failure despite easy DC
-    assert_eq!(val, enum_variant("SaveResult", "failure"));
+    assert_eq!(val, enum_variant("SaveResult", "Failure"));
 
     // No RollDice effect — roll was bypassed entirely
     assert!(
@@ -1814,7 +1814,7 @@ fn stunned_does_not_affect_wis_save() {
         &fighter,
         "Stunned",
         ConditionArgs {
-            duration: duration_variant("indefinite"),
+            duration: duration_variant("Indefinite"),
             ..Default::default()
         },
     );
@@ -1837,7 +1837,7 @@ fn stunned_does_not_affect_wis_save() {
         )
         .unwrap();
 
-    assert_eq!(val, enum_variant("SaveResult", "success"));
+    assert_eq!(val, enum_variant("SaveResult", "Success"));
 
     // RollDice WAS emitted — WIS save is unaffected by Stunned
     assert!(
@@ -1859,7 +1859,7 @@ fn petrified_overrides_str_save_result() {
         &fighter,
         "Petrified",
         ConditionArgs {
-            duration: duration_variant("indefinite"),
+            duration: duration_variant("Indefinite"),
             ..Default::default()
         },
     );
@@ -1885,7 +1885,7 @@ fn petrified_overrides_str_save_result() {
         .unwrap();
 
     // Result is failure despite high roll — Phase 2 override
-    assert_eq!(val, enum_variant("SaveResult", "failure"));
+    assert_eq!(val, enum_variant("SaveResult", "Failure"));
 
     // RollDice WAS emitted — the mechanic body ran normally
     assert!(
@@ -1922,13 +1922,13 @@ fn auto_succeed_bypasses_roll() {
                 Value::Entity(fighter),
                 enum_variant("Ability", "STR"),
                 Value::Int(30), // impossibly high DC
-                enum_variant("RollMode", "auto_succeed"),
+                enum_variant("RollMode", "AutoSucceed"),
             ],
         )
         .unwrap();
 
     // Success despite impossible DC — auto_succeed short-circuits
-    assert_eq!(val, enum_variant("SaveResult", "success"));
+    assert_eq!(val, enum_variant("SaveResult", "Success"));
 
     // No RollDice — roll was bypassed entirely
     assert!(
