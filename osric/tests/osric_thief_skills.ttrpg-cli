@@ -81,12 +81,10 @@ assert_eq skill_base_for_class(Monk, PickPockets, 5), 0
 // ── DEX adjustment table ───────────────────────────────────────
 
 // ClimbWalls, HearNoise, ReadLanguages always 0
-assert_eq dex_thief_adj(ClimbWalls, 9), 0
-assert_eq dex_thief_adj(ClimbWalls, 18), 0
-assert_eq dex_thief_adj(HearNoise, 9), 0
-assert_eq dex_thief_adj(HearNoise, 18), 0
-assert_eq dex_thief_adj(ReadLanguages, 9), 0
-assert_eq dex_thief_adj(ReadLanguages, 18), 0
+for skill in [ClimbWalls, HearNoise, ReadLanguages] {
+    assert_eq dex_thief_adj(skill, 9), 0
+    assert_eq dex_thief_adj(skill, 18), 0
+}
 
 // Penalties at low DEX
 assert_eq dex_thief_adj(OpenLocks, 9), -10
@@ -188,36 +186,22 @@ rolls clear
 
 // ── Skills improve with level ──────────────────────────────────
 
-assert thief_skill_base(ClimbWalls, 15) >= thief_skill_base(ClimbWalls, 1)
-assert thief_skill_base(FindTraps, 15) >= thief_skill_base(FindTraps, 1)
-assert thief_skill_base(HearNoise, 15) >= thief_skill_base(HearNoise, 1)
-assert thief_skill_base(HideInShadows, 15) >= thief_skill_base(HideInShadows, 1)
-assert thief_skill_base(MoveSilently, 15) >= thief_skill_base(MoveSilently, 1)
-assert thief_skill_base(OpenLocks, 15) >= thief_skill_base(OpenLocks, 1)
-assert thief_skill_base(PickPockets, 15) >= thief_skill_base(PickPockets, 1)
-assert thief_skill_base(ReadLanguages, 15) >= thief_skill_base(ReadLanguages, 1)
+let all_skills = [ClimbWalls, FindTraps, HearNoise, HideInShadows, MoveSilently, OpenLocks, PickPockets, ReadLanguages]
 
-assert assassin_skill_base(ClimbWalls, 14) >= assassin_skill_base(ClimbWalls, 1)
-assert assassin_skill_base(FindTraps, 14) >= assassin_skill_base(FindTraps, 1)
-assert assassin_skill_base(HearNoise, 14) >= assassin_skill_base(HearNoise, 1)
-assert assassin_skill_base(HideInShadows, 14) >= assassin_skill_base(HideInShadows, 1)
-assert assassin_skill_base(MoveSilently, 14) >= assassin_skill_base(MoveSilently, 1)
-assert assassin_skill_base(OpenLocks, 14) >= assassin_skill_base(OpenLocks, 1)
-assert assassin_skill_base(PickPockets, 14) >= assassin_skill_base(PickPockets, 1)
-assert assassin_skill_base(ReadLanguages, 14) >= assassin_skill_base(ReadLanguages, 1)
+for skill in all_skills {
+    assert thief_skill_base(skill, 15) >= thief_skill_base(skill, 1)
+}
 
-assert monk_skill_base(ClimbWalls, 17) >= monk_skill_base(ClimbWalls, 1)
-assert monk_skill_base(FindTraps, 17) >= monk_skill_base(FindTraps, 1)
-assert monk_skill_base(HearNoise, 17) >= monk_skill_base(HearNoise, 1)
-assert monk_skill_base(HideInShadows, 17) >= monk_skill_base(HideInShadows, 1)
-assert monk_skill_base(MoveSilently, 17) >= monk_skill_base(MoveSilently, 1)
-assert monk_skill_base(OpenLocks, 17) >= monk_skill_base(OpenLocks, 1)
+for skill in all_skills {
+    assert assassin_skill_base(skill, 14) >= assassin_skill_base(skill, 1)
+}
+
+for skill in [ClimbWalls, FindTraps, HearNoise, HideInShadows, MoveSilently, OpenLocks] {
+    assert monk_skill_base(skill, 17) >= monk_skill_base(skill, 1)
+}
 
 // ── Thief vs Assassin: Thief generally better at same level ────
 
-assert skill_base_for_class(Thief, OpenLocks, 5) >= skill_base_for_class(Assassin, OpenLocks, 5)
-assert skill_base_for_class(Thief, FindTraps, 5) >= skill_base_for_class(Assassin, FindTraps, 5)
-assert skill_base_for_class(Thief, HideInShadows, 5) >= skill_base_for_class(Assassin, HideInShadows, 5)
-assert skill_base_for_class(Thief, MoveSilently, 5) >= skill_base_for_class(Assassin, MoveSilently, 5)
-assert skill_base_for_class(Thief, PickPockets, 5) >= skill_base_for_class(Assassin, PickPockets, 5)
-assert skill_base_for_class(Thief, ReadLanguages, 5) >= skill_base_for_class(Assassin, ReadLanguages, 5)
+for skill in [OpenLocks, FindTraps, HideInShadows, MoveSilently, PickPockets, ReadLanguages] {
+    assert skill_base_for_class(Thief, skill, 5) >= skill_base_for_class(Assassin, skill, 5)
+}

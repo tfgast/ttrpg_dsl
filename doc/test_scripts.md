@@ -424,6 +424,16 @@ for i in 1..=4 {
     assert_eq fighter.level, i
 }
 
+// For loop over a list or set
+for x in [10, 20, 30] {
+    assert x >= 10
+}
+
+// For loop over an expression that returns a list
+for item in equipment_package(Fighter) {
+    assert item != ""
+}
+
 // Nested loops
 repeat 3 {
     repeat 2 {
@@ -434,6 +444,9 @@ repeat 3 {
 
 The loop variable (e.g., `i`) is available in any expression context
 inside the loop body. It is removed after the loop ends.
+
+For collection iteration, the expression after `in` is evaluated once
+before the loop starts. It must produce a list or set.
 
 ## Known limitations
 

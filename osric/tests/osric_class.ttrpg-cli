@@ -147,29 +147,16 @@ assert_eq monk.can_backstab, false
 
 // ── class_def: all classes return matching class field ──────────
 
-assert_eq class_def(Fighter).class, Class.Fighter
-assert_eq class_def(Paladin).class, Class.Paladin
-assert_eq class_def(Ranger).class, Class.Ranger
-assert_eq class_def(Cleric).class, Class.Cleric
-assert_eq class_def(Druid).class, Class.Druid
-assert_eq class_def(Thief).class, Class.Thief
-assert_eq class_def(Assassin).class, Class.Assassin
-assert_eq class_def(MagicUser).class, Class.MagicUser
-assert_eq class_def(Illusionist).class, Class.Illusionist
-assert_eq class_def(Monk).class, Class.Monk
+let all_classes = [Fighter, Class.Paladin, Class.Ranger, Class.Cleric, Class.Druid, Thief, Assassin, Class.MagicUser, Class.Illusionist, Monk]
+for c in all_classes {
+    assert_eq class_def(c).class, c
+}
 
 // ── XP table: all classes start at 0 XP for level 1 ───────────
 
-assert_eq xp_for_level(Fighter, 1), 0
-assert_eq xp_for_level(Paladin, 1), 0
-assert_eq xp_for_level(Ranger, 1), 0
-assert_eq xp_for_level(Cleric, 1), 0
-assert_eq xp_for_level(Druid, 1), 0
-assert_eq xp_for_level(Thief, 1), 0
-assert_eq xp_for_level(Assassin, 1), 0
-assert_eq xp_for_level(MagicUser, 1), 0
-assert_eq xp_for_level(Illusionist, 1), 0
-assert_eq xp_for_level(Monk, 1), 0
+for c in all_classes {
+    assert_eq xp_for_level(c, 1), 0
+}
 
 // ── XP table: spot checks per class ────────────────────────────
 
@@ -251,42 +238,28 @@ assert_eq check_level_up(Cleric, 19, 2700000), true
 
 // ── Fighter group shares combat group ──────────────────────────
 
-assert_eq class_def(Fighter).combat_group, CombatGroup.FighterGroup
-assert_eq class_def(Paladin).combat_group, CombatGroup.FighterGroup
-assert_eq class_def(Ranger).combat_group, CombatGroup.FighterGroup
+for c in [Fighter, Class.Paladin, Class.Ranger] {
+    assert_eq class_def(c).combat_group, CombatGroup.FighterGroup
+}
 
 // ── Thief group: backstab + thief skills ───────────────────────
 
-assert_eq class_def(Thief).has_thief_skills, true
-assert_eq class_def(Thief).can_backstab, true
-assert_eq class_def(Assassin).has_thief_skills, true
-assert_eq class_def(Assassin).can_backstab, true
-
-// ── Caster spell progressions ──────────────────────────────────
-
-assert_eq class_def(Cleric).spell_progression, SpellProgression.Cleric
-assert_eq class_def(Druid).spell_progression, SpellProgression.Druid
-assert_eq class_def(MagicUser).spell_progression, SpellProgression.MagicUser
-assert_eq class_def(Illusionist).spell_progression, SpellProgression.Illusionist
-assert_eq class_def(Paladin).spell_progression, SpellProgression.Paladin
-assert_eq class_def(Ranger).spell_progression, SpellProgression.Ranger
+for c in [Thief, Assassin] {
+    assert_eq class_def(c).has_thief_skills, true
+    assert_eq class_def(c).can_backstab, true
+}
 
 // ── Non-caster spell progressions ──────────────────────────────
 
-assert_eq class_def(Fighter).spell_progression, SpellProgression.NonCaster
-assert_eq class_def(Thief).spell_progression, SpellProgression.NonCaster
-assert_eq class_def(Assassin).spell_progression, SpellProgression.NonCaster
-assert_eq class_def(Monk).spell_progression, SpellProgression.NonCaster
+for c in [Fighter, Thief, Assassin, Monk] {
+    assert_eq class_def(c).spell_progression, SpellProgression.NonCaster
+}
 
 // ── Exceptional strength: only fighter types ───────────────────
 
-assert_eq class_def(Fighter).has_exceptional_str, true
-assert_eq class_def(Paladin).has_exceptional_str, true
-assert_eq class_def(Ranger).has_exceptional_str, true
-assert_eq class_def(Cleric).has_exceptional_str, false
-assert_eq class_def(Druid).has_exceptional_str, false
-assert_eq class_def(Thief).has_exceptional_str, false
-assert_eq class_def(Assassin).has_exceptional_str, false
-assert_eq class_def(MagicUser).has_exceptional_str, false
-assert_eq class_def(Illusionist).has_exceptional_str, false
-assert_eq class_def(Monk).has_exceptional_str, false
+for c in [Fighter, Class.Paladin, Class.Ranger] {
+    assert_eq class_def(c).has_exceptional_str, true
+}
+for c in [Class.Cleric, Class.Druid, Thief, Assassin, Class.MagicUser, Class.Illusionist, Monk] {
+    assert_eq class_def(c).has_exceptional_str, false
+}

@@ -17,18 +17,14 @@ assert_eq spec_damage_bonus(Double), 3
 // ── Class eligibility ───────────────────────────────────────────
 
 // Fighter types can specialize
-assert can_specialize(Fighter)
-assert can_specialize(Paladin)
-assert can_specialize(Ranger)
+for c in [Fighter, Class.Paladin, Class.Ranger] {
+    assert can_specialize(c)
+}
 
 // Non-fighter types cannot
-assert (can_specialize(Cleric)) == false
-assert (can_specialize(MagicUser)) == false
-assert (can_specialize(Thief)) == false
-assert (can_specialize(Assassin)) == false
-assert (can_specialize(Druid)) == false
-assert (can_specialize(Monk)) == false
-assert (can_specialize(Illusionist)) == false
+for c in [Class.Cleric, Class.MagicUser, Thief, Assassin, Class.Druid, Monk, Class.Illusionist] {
+    assert (can_specialize(c)) == false
+}
 
 // ── Double specialisation restrictions ──────────────────────────
 

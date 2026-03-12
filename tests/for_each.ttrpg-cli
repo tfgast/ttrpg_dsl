@@ -1,0 +1,59 @@
+// Test for-each iteration over lists and sets
+
+source -s <<END
+    const ITEMS: list<int> = [10, 20, 30]
+
+    derive get_items() -> list<int> { ITEMS }
+
+    entity Counter {
+        value: int = 0
+    }
+END
+
+// ── for-each over a list literal ─────────────────────────────
+
+let total = 0
+for x in [1, 2, 3] {
+    let total = total + x
+}
+assert_eq total, 6
+
+// ── for-each over a derive call ──────────────────────────────
+
+let sum = 0
+for v in get_items() {
+    let sum = sum + v
+}
+assert_eq sum, 60
+
+// ── for-each with entity mutation ────────────────────────────
+
+spawn Counter c { value: 0 }
+for amount in [5, 10, 15] {
+    set c.value += amount
+}
+assert_eq c.value, 30
+
+// ── for-each over strings ────────────────────────────────────
+
+let count = 0
+for name in ["alpha", "bravo", "charlie"] {
+    let count = count + 1
+}
+assert_eq count, 3
+
+// ── integer range still works ────────────────────────────────
+
+let range_sum = 0
+for i in 0..5 {
+    let range_sum = range_sum + i
+}
+assert_eq range_sum, 10
+
+// ── inclusive range still works ──────────────────────────────
+
+let incl_sum = 0
+for i in 1..=3 {
+    let incl_sum = incl_sum + i
+}
+assert_eq incl_sum, 6

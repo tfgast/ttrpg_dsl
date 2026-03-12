@@ -152,9 +152,9 @@ assert_eq prime_req_xp_bonus(Druid, { STR: 10, DEX: 10, CON: 10, INT: 10, WIS: 1
 assert_eq prime_req_xp_bonus(Druid, { STR: 10, DEX: 10, CON: 10, INT: 10, WIS: 16, CHA: 15 }), 0
 
 // Assassin, Illusionist, Monk: always 0
-assert_eq prime_req_xp_bonus(Assassin, { STR: 18, DEX: 18, CON: 18, INT: 18, WIS: 18, CHA: 18 }), 0
-assert_eq prime_req_xp_bonus(Illusionist, { STR: 18, DEX: 18, CON: 18, INT: 18, WIS: 18, CHA: 18 }), 0
-assert_eq prime_req_xp_bonus(Monk, { STR: 18, DEX: 18, CON: 18, INT: 18, WIS: 18, CHA: 18 }), 0
+for c in [Assassin, Class.Illusionist, Monk] {
+    assert_eq prime_req_xp_bonus(c, { STR: 18, DEX: 18, CON: 18, INT: 18, WIS: 18, CHA: 18 }), 0
+}
 
 // ── base_movement ────────────────────────────────────────────────
 

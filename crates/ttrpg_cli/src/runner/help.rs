@@ -439,12 +439,13 @@ const COMMANDS: &[CommandInfo] = &[
     },
     CommandInfo {
         name: "for",
-        syntax: "for <var> in <start>..<end> { ... }",
-        description: "Loop with a variable over a range",
-        detail: "Iterate a variable over an integer range, executing the block each time.\n  Use .. for exclusive (0..3 = 0,1,2) or ..= for inclusive (0..=3 = 0,1,2,3).\n  The loop variable is available in expressions inside the body.\n  The closing } must appear on its own line.",
+        syntax: "for <var> in <range-or-expr> { ... }",
+        description: "Loop with a variable over a range, list, or set",
+        detail: "Iterate a variable over an integer range or a collection expression.\n  Ranges: use .. for exclusive (0..3 = 0,1,2) or ..= for inclusive (0..=3 = 0,1,2,3).\n  Collections: any expression that evaluates to a list or set.\n  The loop variable is available in expressions inside the body.\n  The closing } must appear on its own line.",
         examples: &[
             "for i in 0..10 {\n    set fighter.level = i\n    assert_eq fighter.level, i\n}",
             "for i in 1..=4 {\n    set counter.value += i\n}",
+            "for item in equipment_package(Fighter) {\n    assert item != \"\"\n}",
         ],
         category: "Loops",
     },

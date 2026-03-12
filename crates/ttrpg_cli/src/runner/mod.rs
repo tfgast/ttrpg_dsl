@@ -100,6 +100,8 @@ enum LoopKind {
         end: i64,
         inclusive: bool,
     },
+    /// `for VAR in EXPR { ... }` — iterate over a list or set.
+    ForEach { var: String, items: Vec<Value> },
 }
 
 /// State for accumulating a multi-line loop block.
@@ -482,40 +484,61 @@ impl Runner {
             ));
         }
 
-        // Parse range: START..=END or START..END
-        let (start, end, inclusive) = if let Some((left, right)) = range_str.split_once("..=") {
-            let s: i64 = left.trim().parse().map_err(|_| {
-                CliError::Message(format!("for: invalid range start '{}'", left.trim()))
-            })?;
-            let e: i64 = right.trim().parse().map_err(|_| {
-                CliError::Message(format!("for: invalid range end '{}'", right.trim()))
-            })?;
-            (s, e, true)
+        // Try to parse as range: START..=END or START..END
+        let loop_kind = if let Some((left, right)) = range_str.split_once("..=") {
+            if let (Ok(s), Ok(e)) = (left.trim().parse::<i64>(), right.trim().parse::<i64>()) {
+                LoopKind::For {
+                    var: var.to_string(),
+                    start: s,
+                    end: e,
+                    inclusive: true,
+                }
+            } else {
+                // Not a valid integer range — try as expression
+                self.for_each_kind(var, range_str)?
+            }
         } else if let Some((left, right)) = range_str.split_once("..") {
-            let s: i64 = left.trim().parse().map_err(|_| {
-                CliError::Message(format!("for: invalid range start '{}'", left.trim()))
-            })?;
-            let e: i64 = right.trim().parse().map_err(|_| {
-                CliError::Message(format!("for: invalid range end '{}'", right.trim()))
-            })?;
-            (s, e, false)
+            if let (Ok(s), Ok(e)) = (left.trim().parse::<i64>(), right.trim().parse::<i64>()) {
+                LoopKind::For {
+                    var: var.to_string(),
+                    start: s,
+                    end: e,
+                    inclusive: false,
+                }
+            } else {
+                // Not a valid integer range — try as expression
+                self.for_each_kind(var, range_str)?
+            }
         } else {
-            return Err(CliError::Message(
-                "for: expected range with '..' (e.g. `0..10` or `0..=9`)".into(),
-            ));
+            // No '..' found — evaluate as expression (list/set iteration)
+            self.for_each_kind(var, range_str)?
         };
 
         self.loop_state = Some(LoopState {
-            kind: LoopKind::For {
-                var: var.to_string(),
-                start,
-                end,
-                inclusive,
-            },
+            kind: loop_kind,
             lines: Vec::new(),
             brace_depth: 1,
         });
         Ok(())
+    }
+
+    /// Evaluate an expression and build a `ForEach` loop kind from it.
+    fn for_each_kind(&mut self, var: &str, expr_str: &str) -> Result<LoopKind, CliError> {
+        let value = self.eval(expr_str)?;
+        let items = match value {
+            Value::List(items) => items,
+            Value::Set(items) => items.into_iter().collect(),
+            other => {
+                return Err(CliError::Message(format!(
+                    "for: expected list or set, got {}",
+                    format_value(&other, &self.unit_suffixes)
+                )));
+            }
+        };
+        Ok(LoopKind::ForEach {
+            var: var.to_string(),
+            items,
+        })
     }
 
     /// Execute a completed loop block.
@@ -541,7 +564,15 @@ impl Runner {
                         self.exec(line)?;
                     }
                 }
-                // Clean up loop variable
+                self.variables.remove(var);
+            }
+            LoopKind::ForEach { ref var, ref items } => {
+                for item in items {
+                    self.variables.insert(var.clone(), item.clone());
+                    for line in &state.lines {
+                        self.exec(line)?;
+                    }
+                }
                 self.variables.remove(var);
             }
         }
