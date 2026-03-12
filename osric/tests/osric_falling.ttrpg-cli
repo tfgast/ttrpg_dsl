@@ -111,4 +111,24 @@ spawn Character short_faller { name: "ShortFaller", classes: [ClassLevel { class
 do FallDamage(short_faller, 5)
 assert_eq short_faller.hp, 40
 
+// ── Feather Fall negates falling damage ──────────────────────
+
+spawn Character ff_faller { name: "Feathered Faller", classes: [ClassLevel { class: Fighter, level: 5 }], abilities: { STR: 14, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 40, hp: 40 }, saving_throws: some(fighter_saves(5)) }
+
+// Apply FeatherFalling condition
+call apply_condition(ff_faller, FeatherFalling, Duration.Segments(5))
+
+// 50ft fall would normally deal 15d6 — with feather fall, 0 damage
+rolls clear
+rolls 6 6 6 6 6 6 6 6 6 6 6 6 6 6 6
+do FallDamage(ff_faller, 50)
+assert_eq ff_faller.hp, 40
+
+// Without feather fall: confirm damage still works
+spawn Character no_ff_faller { name: "Normal Faller 2", classes: [ClassLevel { class: Fighter, level: 5 }], abilities: { STR: 14, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 40, hp: 40 }, saving_throws: some(fighter_saves(5)) }
+rolls clear
+rolls 3 4 5
+do FallDamage(no_ff_faller, 20)
+assert_eq no_ff_faller.hp, 28
+
 rolls clear

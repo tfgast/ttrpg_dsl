@@ -767,7 +767,12 @@ system "OSRIC Potions" {
 
     condition PotionFlying on bearer: Character
         stacking first
-    {}
+    {
+        tags: #movement
+        modify get_movement_speed(target: bearer, mode: Fly) {
+            result = entity_movement(bearer)
+        }
+    }
 
     function resolve_potion_flying(drinker: Character) {
         let duration_turns = roll(1d4).total
@@ -786,7 +791,12 @@ system "OSRIC Potions" {
 
     condition PotionLevitation on bearer: Character
         stacking first
-    {}
+    {
+        tags: #movement
+        modify get_movement_speed(target: bearer, mode: Levitate) {
+            result = 20ft
+        }
+    }
 
     function resolve_potion_levitation(drinker: Character) {
         let duration_turns = roll(1d4).total
@@ -896,7 +906,12 @@ system "OSRIC Potions" {
 
     condition PotionClimbing(climb_pct: int) on bearer: Character
         stacking first
-    {}
+    {
+        tags: #movement
+        modify get_movement_speed(target: bearer, mode: Climb) {
+            result = entity_movement(bearer)
+        }
+    }
 
     // Armour penalty to climbing per §2.13.2
     derive climbing_armor_penalty(char: Character) -> int {

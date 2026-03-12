@@ -115,6 +115,10 @@ system "OSRIC Spell Registry" {
             def: CHARM_PERSON_DEF,
             resolve: SpellResolve.Targeted(resolve: resolve_charm_person)
         },
+        SpellId.FeatherFall => SpellEntry {
+            def: FEATHER_FALL_DEF,
+            resolve: SpellResolve.Targeted(resolve: resolve_feather_fall)
+        },
         SpellId.MagicMissile => SpellEntry {
             def: MAGIC_MISSILE_DEF,
             resolve: SpellResolve.Targeted(resolve: resolve_magic_missile)
@@ -127,7 +131,15 @@ system "OSRIC Spell Registry" {
             def: SLEEP_DEF,
             resolve: SpellResolve.Area(resolve: resolve_sleep)
         },
+        SpellId.SpiderClimb => SpellEntry {
+            def: SPIDER_CLIMB_DEF,
+            resolve: SpellResolve.Touch(resolve: resolve_spider_climb)
+        },
         // --- Magic-User level 2 ---
+        SpellId.LevitateMU => SpellEntry {
+            def: LEVITATE_DEF,
+            resolve: SpellResolve.Targeted(resolve: resolve_levitate)
+        },
         SpellId.Forget => SpellEntry {
             def: FORGET_DEF,
             resolve: SpellResolve.Targeted(resolve: resolve_forget)

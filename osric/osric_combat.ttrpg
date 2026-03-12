@@ -932,6 +932,32 @@ system "OSRIC Combat" {
         }
     }
 
+    // Speed for a specific movement mode. Walk delegates to the
+    // existing entity_movement derive (which handles ancestry,
+    // armour caps, encumbrance, etc.). Other modes check the
+    // monster's movement_modes map; characters get non-walk modes
+    // only from conditions (via modify blocks).
+    // Returns 0ft when the entity lacks the requested mode.
+    derive get_movement_speed(target: entity, mode: MovementMode) -> Feet {
+        if mode == Walk {
+            entity_movement(target)
+        } else if target is Monster {
+            if target.movement_modes.keys().contains(mode) {
+                target.movement_modes[mode]
+            } else {
+                0ft
+            }
+        } else {
+            0ft
+        }
+    }
+
+    // True when the entity has a non-zero speed for the given mode
+    // (from innate stats or active conditions).
+    derive has_movement_mode(target: entity, mode: MovementMode) -> bool {
+        get_movement_speed(target, mode).value > 0
+    }
+
     // Combat movement rate for unarmed attack modifiers.
     // Returns the Feet value as an int for table lookups.
     derive combat_movement_rate(target: entity) -> int {

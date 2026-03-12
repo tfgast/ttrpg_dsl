@@ -562,6 +562,7 @@ fn monster_entity_fields() {
         "intelligence",
         "alignment",
         "base_movement",
+        "movement_modes",
         "attacks",
         "size",
         "special",

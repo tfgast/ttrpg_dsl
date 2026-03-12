@@ -54,6 +54,13 @@ system "OSRIC Falling" {
         }
     }
 
+    // Falling damage dice for a specific entity. Wraps
+    // falling_damage_dice so that conditions (e.g. Feather Fall)
+    // can modify the result for their bearer.
+    derive fall_damage_dice_for(target: entity, distance_ft: int) -> DiceExpr {
+        falling_damage_dice(distance_ft)
+    }
+
     // Apply falling damage. Rolls the appropriate dice for the
     // distance fallen. If allow_save is true, a save vs
     // DeathParalysisPoison is attempted; success halves damage.
@@ -105,9 +112,23 @@ system "OSRIC Falling" {
         cost free
         requires { target.saving_throws != none }
         resolve {
-            let result = apply_falling_damage(distance_ft, target.saving_throws.unwrap(), allow_save, save_bonus)
-            if result.damage_taken > 0 {
-                target.TakeDamage(target, result.damage_taken, DamageType.Fall)
+            // Use the entity-aware derive so condition modifiers
+            // (e.g. FeatherFalling) can zero out the dice.
+            let dice = fall_damage_dice_for(target, distance_ft)
+            let base = roll(dice).total
+
+            if base > 0 {
+                if allow_save {
+                    let saved = roll_saving_throw(target.saving_throws.unwrap(), SaveCategory.DeathParalysisPoison, save_bonus)
+                    if saved {
+                        let halved = max(1, base div 2)
+                        target.TakeDamage(target, halved, DamageType.Fall)
+                    } else {
+                        target.TakeDamage(target, base, DamageType.Fall)
+                    }
+                } else {
+                    target.TakeDamage(target, base, DamageType.Fall)
+                }
             }
         }
     }

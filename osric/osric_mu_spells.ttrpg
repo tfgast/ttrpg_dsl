@@ -14,6 +14,7 @@ import "osric_class.ttrpg"
 import "osric_combat.ttrpg"
 import "osric_conditions.ttrpg"
 import "osric_core.ttrpg"
+import "osric_falling.ttrpg"
 import "osric_saves.ttrpg"
 import "osric_spells.ttrpg"
 
@@ -23,6 +24,7 @@ use "OSRIC Character"
 use "OSRIC Classes"
 use "OSRIC Combat"
 use "OSRIC Conditions"
+use "OSRIC Falling"
 use "OSRIC Saves"
 use "OSRIC Spells"
 
@@ -130,6 +132,93 @@ system "OSRIC MU Spells" {
 
 
     // ========================================================
+    //  FEATHER FALL (§1.8.5.1)
+    //
+    //  Arcane transmutation, level 1. Range: 10ft/MU level.
+    //  Duration: 1 segment per MU level.
+    //  Creatures or objects in a 10 cubic ft area fall slowly
+    //  and take no damage from falling. Weight limit: 200 lbs
+    //  + 200 lbs per caster level. No saving throw.
+    //  Casting time: Fast.
+    // ========================================================
+
+    condition FeatherFalling on bearer: entity
+        stacking first
+    {
+        tags: #movement
+        modify fall_damage_dice_for(target: bearer, distance_ft: _) {
+            result = 0d6
+        }
+    }
+
+    const FEATHER_FALL_DEF: SpellDef = SpellDef {
+        name: "Feather Fall",
+        class_type: Arcane,
+        school: Transmutation,
+        level: 1,
+        range: SpellRange.Special(description: "10ft/MU level"),
+        duration: SpellDuration.Special(description: "1 segment/MU level"),
+        area: [SpellArea { shape: AreaShape.Cube(side: 10ft) }],
+        components: SpellComponents { material: true },
+        casting_time: CastingTime.Fast,
+        saving_throw: SpellSave.NoSave,
+        description: "Creatures fall slowly and lightly, taking no damage from falling. Weight limit: 200 lbs + 200 lbs per caster level."
+    }
+
+    // Resolve Feather Fall. No save, applies to all targets.
+    // Duration is 1 segment per caster level (≈1 round per 10 levels).
+    // Modelled as rounds since segments are the smallest tracked unit.
+    function resolve_feather_fall(caster: entity, targets: list<entity>) {
+        let cl = caster_level(caster, Arcane)
+        let duration_segments = cl
+        let source = EffectSource.Spell(name: "Feather Fall", caster_level: cl)
+        resolve_no_save_condition(caster, targets, "Feather Fall", FeatherFalling, Duration.Segments(duration_segments), source)
+    }
+
+
+    // ========================================================
+    //  SPIDER CLIMB (§1.8.5.1)
+    //
+    //  Arcane transmutation, level 1. Range: Touch.
+    //  Duration: 1 round + 1 round per MU level.
+    //  Target's hands and feet become sticky, allowing
+    //  wall and ceiling climbing at 30ft per round. Difficult
+    //  to handle small objects while in effect.
+    //  One willing creature. Casting time: Fast. No save.
+    // ========================================================
+
+    condition SpiderClimbing on bearer: entity
+        stacking first
+    {
+        tags: #movement
+        modify get_movement_speed(target: bearer, mode: Climb) {
+            result = 30ft
+        }
+    }
+
+    const SPIDER_CLIMB_DEF: SpellDef = SpellDef {
+        name: "Spider Climb",
+        class_type: Arcane,
+        school: Transmutation,
+        level: 1,
+        range: SpellRange.Touch,
+        duration: SpellDuration.Special(description: "1 round + 1 round/MU level"),
+        components: SpellComponents { material: true },
+        casting_time: CastingTime.Fast,
+        saving_throw: SpellSave.NoSave,
+        description: "Target can climb walls and ceilings at 30ft per round. Difficult to handle small objects."
+    }
+
+    // Resolve Spider Climb. Touch range, no save, willing target.
+    function resolve_spider_climb(caster: entity, targets: list<entity>) {
+        let cl = caster_level(caster, Arcane)
+        let duration_rounds = 1 + cl
+        let source = EffectSource.Spell(name: "Spider Climb", caster_level: cl)
+        resolve_no_save_condition(caster, targets, "Spider Climb", SpiderClimbing, Duration.Rounds(duration_rounds), source)
+    }
+
+
+    // ========================================================
     //  CHARM PERSON (§1.8.5.1)
     //
     //  Arcane enchantment, level 1. Range: 120ft.
@@ -167,6 +256,73 @@ system "OSRIC MU Spells" {
                 if !saved {
                     apply_condition(target, Charmed, Duration.Indefinite, source)
                     emit SpellApplied(caster: caster, target: target, spell_name: "Charm Person")
+                }
+            }
+        }
+    }
+
+
+    // ========================================================
+    //  LEVITATE (§1.8.5.2)
+    //
+    //  Arcane transmutation, level 2. Range: 20ft/MU level.
+    //  Duration: 1 turn per MU level.
+    //  Vertical movement only — 20ft/round on self, 10ft/round
+    //  on others. No horizontal movement (aerial agility I).
+    //  Max weight: 100 lbs per caster level.
+    //  Unwilling targets get a saving throw (negates).
+    //  Willing targets: no save needed.
+    //  Casting time: 2 segments.
+    // ========================================================
+
+    condition Levitating(vertical_speed: Feet) on bearer: entity
+        stacking first
+    {
+        tags: #movement
+        modify get_movement_speed(target: bearer, mode: Levitate) {
+            result = vertical_speed
+        }
+    }
+
+    const LEVITATE_DEF: SpellDef = SpellDef {
+        name: "Levitate",
+        class_type: Arcane,
+        school: Transmutation,
+        level: 2,
+        range: SpellRange.Special(description: "20ft/MU level"),
+        duration: SpellDuration.Special(description: "1 turn/MU level"),
+        components: SpellComponents { material: true },
+        casting_time: CastingTime.Segments(count: 2),
+        saving_throw: SpellSave.Special(description: "Negates (unwilling only)"),
+        description: "Vertical movement at 20ft/round (self) or 10ft/round (other). No horizontal movement. Unwilling targets may save."
+    }
+
+    // Resolve Levitate. Self-cast gets 20ft/round speed and no
+    // save. Targeting another creature uses 10ft/round; unwilling
+    // targets get a saving throw to negate.
+    function resolve_levitate(caster: entity, targets: list<entity>) {
+        let cl = caster_level(caster, Arcane)
+        let duration_turns = cl
+        let source = EffectSource.Spell(name: "Levitate", caster_level: cl)
+        for target in targets {
+            if target == caster {
+                apply_condition(target, Levitating(vertical_speed: 20ft), Duration.Turns(duration_turns), source)
+                emit SpellApplied(caster: caster, target: target, spell_name: "Levitate")
+            } else {
+                // Unwilling targets get a save; willing targets can
+                // choose to forgo it (modelled as auto-fail here —
+                // the host prompt for ResistSpell can return none
+                // for willing targets).
+                let result = target.ResistSpell(category: some(SpellsUnlisted))
+                if let some(saved) = result {
+                    if !saved {
+                        apply_condition(target, Levitating(vertical_speed: 10ft), Duration.Turns(duration_turns), source)
+                        emit SpellApplied(caster: caster, target: target, spell_name: "Levitate")
+                    }
+                } else {
+                    // Willing target — no save, 10ft/round
+                    apply_condition(target, Levitating(vertical_speed: 10ft), Duration.Turns(duration_turns), source)
+                    emit SpellApplied(caster: caster, target: target, spell_name: "Levitate")
                 }
             }
         }

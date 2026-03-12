@@ -489,3 +489,117 @@ call resolve_forget(fg_caster_3, [fg_target_3a, fg_target_3b, fg_target_3c])
 assert_condition fg_target_3a, Forgotten
 assert_no_condition fg_target_3b, Forgotten
 assert_condition fg_target_3c, Forgotten
+
+
+// ══════════════════════════════════════════════════════════════
+//  MOVEMENT BUFF SPELLS
+// ══════════════════════════════════════════════════════════════
+
+// ── MovementMode enum & get_movement_speed ────────────────────
+
+// Walk speed delegates to entity_movement
+spawn Character mv_fighter { name: "MV Fighter", classes: [ClassLevel { class: Fighter, level: 1 }], abilities: { STR: 14, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 10, hp: 10 } }
+assert_eq get_movement_speed(mv_fighter, Walk).value, 120
+assert_eq get_movement_speed(mv_fighter, Fly).value, 0
+assert_eq get_movement_speed(mv_fighter, Climb).value, 0
+assert_eq get_movement_speed(mv_fighter, Levitate).value, 0
+assert (has_movement_mode(mv_fighter, Walk)) == true
+assert (has_movement_mode(mv_fighter, Fly)) == false
+
+// Monster with extra movement modes
+spawn Monster mv_dragon { name: "MV Dragon", hit_dice: 10d8, max_hp: 50, hp: 50, ac: 18, morale: 10, morale_checks_made: 0, xp_value: 0, intelligence: 12, base_movement: 90ft, movement_modes: { Fly: 240ft }, attacks: [MonsterAttack { name: "Bite", damage: 3d8 }], size: Huge, special: [] }
+assert_eq get_movement_speed(mv_dragon, Walk).value, 90
+assert_eq get_movement_speed(mv_dragon, Fly).value, 240
+assert (has_movement_mode(mv_dragon, Fly)) == true
+assert (has_movement_mode(mv_dragon, Swim)) == false
+
+// Monster with swim speed
+spawn Monster mv_shark { name: "MV Shark", hit_dice: 5d8, max_hp: 25, hp: 25, ac: 14, morale: 8, morale_checks_made: 0, xp_value: 0, intelligence: 1, base_movement: 0ft, movement_modes: { Swim: 180ft }, attacks: [MonsterAttack { name: "Bite", damage: 2d6 }], size: Large, special: [] }
+assert_eq get_movement_speed(mv_shark, Walk).value, 0
+assert_eq get_movement_speed(mv_shark, Swim).value, 180
+assert (has_movement_mode(mv_shark, Swim)) == true
+
+// ── Feather Fall SpellDef ─────────────────────────────────────
+
+assert_eq FEATHER_FALL_DEF.level, 1
+assert_eq FEATHER_FALL_DEF.school, SpellSchool.Transmutation
+
+// ── Feather Fall resolve: condition applied ──────────────────
+
+spawn Character ff_caster { name: "FF Caster", classes: [ClassLevel { class: MagicUser, level: 3 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 8, hp: 8 } }
+spawn Character ff_target { name: "FF Target", classes: [ClassLevel { class: Fighter, level: 1 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 10, hp: 10 } }
+
+rolls clear
+call resolve_feather_fall(ff_caster, [ff_target])
+assert_condition ff_target, FeatherFalling
+
+// ── Feather Fall via FinishCasting ──────────────────────────
+
+spawn Character ff_dispatch_caster { name: "FF Dispatch", classes: [ClassLevel { class: MagicUser, level: 5 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 12, hp: 12 } }
+spawn Character ff_dispatch_target { name: "FF Dispatch Target", classes: [ClassLevel { class: Fighter, level: 1 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 10, hp: 10 } }
+
+rolls clear
+do ff_dispatch_caster.FinishCasting(id: FeatherFall, targets: [ff_dispatch_target])
+assert_condition ff_dispatch_target, FeatherFalling
+
+// ── Spider Climb SpellDef ─────────────────────────────────────
+
+assert_eq SPIDER_CLIMB_DEF.level, 1
+assert_eq SPIDER_CLIMB_DEF.school, SpellSchool.Transmutation
+
+// ── Spider Climb resolve: grants climb speed ────────────────
+
+spawn Character sc_caster { name: "SC Caster", classes: [ClassLevel { class: MagicUser, level: 3 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 8, hp: 8 } }
+spawn Character sc_target { name: "SC Target", classes: [ClassLevel { class: Fighter, level: 1 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 10, hp: 10 } }
+
+// No climb speed before spell
+assert_eq get_movement_speed(sc_target, Climb).value, 0
+
+rolls clear
+// Touch attack d20=18 (hit)
+rolls 18
+do sc_caster.FinishCasting(id: SpiderClimb, targets: [sc_target])
+assert_condition sc_target, SpiderClimbing
+
+// Climb speed is now 30ft
+assert_eq get_movement_speed(sc_target, Climb).value, 30
+assert (has_movement_mode(sc_target, Climb)) == true
+
+// Walk speed unchanged
+assert_eq get_movement_speed(sc_target, Walk).value, 120
+
+// ── Levitate SpellDef ─────────────────────────────────────────
+
+assert_eq LEVITATE_DEF.level, 2
+assert_eq LEVITATE_DEF.school, SpellSchool.Transmutation
+
+// ── Levitate resolve: self-cast → 20ft/round ────────────────
+
+spawn Character lev_self_caster { name: "Lev Self", classes: [ClassLevel { class: MagicUser, level: 5 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 12, hp: 12 } }
+
+rolls clear
+call resolve_levitate(lev_self_caster, [lev_self_caster])
+assert_condition lev_self_caster, Levitating
+assert_eq get_movement_speed(lev_self_caster, Levitate).value, 20
+
+// ── Levitate resolve: other target, failed save → 10ft/round ──
+
+spawn Character lev_other_caster { name: "Lev Other Caster", classes: [ClassLevel { class: MagicUser, level: 5 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 12, hp: 12 } }
+spawn Character lev_other_target { name: "Lev Other Target", classes: [ClassLevel { class: Fighter, level: 1 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 10, hp: 10 } }
+
+rolls clear
+rolls 1
+call resolve_levitate(lev_other_caster, [lev_other_target])
+assert_condition lev_other_target, Levitating
+assert_eq get_movement_speed(lev_other_target, Levitate).value, 10
+
+// ── Levitate resolve: other target, save succeeds → no effect ──
+
+spawn Character lev_save_caster { name: "Lev Save Caster", classes: [ClassLevel { class: MagicUser, level: 5 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 12, hp: 12 } }
+spawn Character lev_save_target { name: "Lev Save Target", classes: [ClassLevel { class: Fighter, level: 1 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 10, hp: 10 } }
+
+rolls clear
+rolls 20
+call resolve_levitate(lev_save_caster, [lev_save_target])
+assert_no_condition lev_save_target, Levitating
+assert_eq get_movement_speed(lev_save_target, Levitate).value, 0

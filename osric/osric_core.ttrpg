@@ -109,6 +109,13 @@ system "OSRIC" {
 
     enum Size ordered { Tiny, Small, Medium, Large, Huge, Gargantuan }
 
+    // --- Movement modes ---
+    // Walk is the default; others are granted by spells, potions,
+    // or innate monster abilities. Swim is included for aquatic
+    // creatures and water-breathing effects.
+
+    enum MovementMode { Walk, Fly, Swim, Climb, Burrow, Levitate }
+
     // --- Encumbrance tiers (§1.5.3.3) ---
 
     enum EncumbranceTier ordered { Unencumbered, Light, Moderate, Heavy, Overloaded }
@@ -486,11 +493,14 @@ system "OSRIC" {
         // Magic-User level 1
         BurningHands,
         CharmPerson,
+        FeatherFall,
         MagicMissile,
         ShockingGrasp,
         Sleep,
+        SpiderClimb,
         // Magic-User level 2
         Forget,
+        LevitateMU,
         RayOfEnfeeblement,
         Scare,
         // Magic-User level 3
@@ -645,6 +655,7 @@ system "OSRIC" {
         intelligence: int = 1
         alignment: Alignment = Alignment.TrueNeutral
         base_movement: Feet = 120ft
+        movement_modes: map<MovementMode, Feet> = {}
         attacks: list<MonsterAttack>
         size: Size = Size.Medium
         special: list<string>
