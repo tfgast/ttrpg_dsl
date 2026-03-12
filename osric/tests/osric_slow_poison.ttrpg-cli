@@ -15,15 +15,12 @@ call apply_condition(sp_victim, SlowPoisoned(cleric_level: 3), Duration.Indefini
 assert_condition sp_victim, SlowPoisoned
 assert_no_condition sp_victim, Dead
 
-// Turn 1: still alive
-call process_periodic_conditions([sp_victim], "turn_end")
-assert_condition sp_victim, SlowPoisoned
-assert_no_condition sp_victim, Dead
-
-// Turn 2: still alive
-call process_periodic_conditions([sp_victim], "turn_end")
-assert_condition sp_victim, SlowPoisoned
-assert_no_condition sp_victim, Dead
+// Turns 1-2: still alive
+repeat 2 {
+    call process_periodic_conditions([sp_victim], "turn_end")
+    assert_condition sp_victim, SlowPoisoned
+    assert_no_condition sp_victim, Dead
+}
 
 // Turn 3: timer expires → character dies
 call process_periodic_conditions([sp_victim], "turn_end")

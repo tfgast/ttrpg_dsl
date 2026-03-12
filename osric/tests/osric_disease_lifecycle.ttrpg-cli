@@ -13,13 +13,11 @@ spawn Character dis_inc { name: "Incubating", classes: [ClassLevel { class: Figh
 call apply_condition(dis_inc, Diseased(stat_penalty: 4, roll_penalty: 3, is_fatal: false, source: DiseaseSource.Plague, incubation_days: 3, duration_days: 2), Duration.Indefinite)
 assert_condition dis_inc, Diseased
 
-// Day 1: still incubating
-call process_periodic_conditions([dis_inc], "day_end")
-assert_condition dis_inc, Diseased
-
-// Day 2: still incubating
-call process_periodic_conditions([dis_inc], "day_end")
-assert_condition dis_inc, Diseased
+// Days 1-2: still incubating
+repeat 2 {
+    call process_periodic_conditions([dis_inc], "day_end")
+    assert_condition dis_inc, Diseased
+}
 
 // ── Transition to Active phase at incubation end ────────────────
 
@@ -39,17 +37,11 @@ assert_condition dis_inc, Diseased
 
 // ── Recovery phase: penalties decrease 1/day ────────────────────
 
-// Recovery day 1: penalty drops from 4→3 (stat) and 3→2 (roll)
-call process_periodic_conditions([dis_inc], "day_end")
-assert_condition dis_inc, Diseased
-
-// Recovery day 2: penalty drops 3→2 / 2→1
-call process_periodic_conditions([dis_inc], "day_end")
-assert_condition dis_inc, Diseased
-
-// Recovery day 3: penalty drops 2→1 / 1→0
-call process_periodic_conditions([dis_inc], "day_end")
-assert_condition dis_inc, Diseased
+// Recovery days 1-3: penalties decrease 1/day, condition persists
+repeat 3 {
+    call process_periodic_conditions([dis_inc], "day_end")
+    assert_condition dis_inc, Diseased
+}
 
 // Recovery day 4: penalty drops 1→0 / already 0 → condition removed
 call process_periodic_conditions([dis_inc], "day_end")
@@ -65,8 +57,9 @@ assert_condition dis_fatal, Diseased
 assert_no_condition dis_fatal, Dead
 
 // Incubation: 2 days
-call process_periodic_conditions([dis_fatal], "day_end")
-call process_periodic_conditions([dis_fatal], "day_end")
+repeat 2 {
+    call process_periodic_conditions([dis_fatal], "day_end")
+}
 assert_condition dis_fatal, Diseased
 assert_no_condition dis_fatal, Dead
 
