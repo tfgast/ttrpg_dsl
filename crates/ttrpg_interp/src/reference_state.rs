@@ -175,6 +175,7 @@ impl GameState {
             applied_at,
             source: args.source,
             tags: args.tags,
+            state_fields: BTreeMap::new(),
         };
         self.conditions.entry(entity.0).or_default().push(cond);
     }
@@ -392,6 +393,14 @@ impl WritableState for GameState {
     fn remove_condition_by_id(&mut self, entity: &EntityRef, id: u64) {
         if let Some(conds) = self.conditions.get_mut(&entity.0) {
             conds.retain(|c| c.id != id);
+        }
+    }
+
+    fn set_condition_state(&mut self, entity: &EntityRef, condition_id: u64, fields: BTreeMap<Name, Value>) {
+        if let Some(conds) = self.conditions.get_mut(&entity.0) {
+            if let Some(cond) = conds.iter_mut().find(|c| c.id == condition_id) {
+                cond.state_fields = fields;
+            }
         }
     }
 
@@ -1092,6 +1101,7 @@ mod tests {
             applied_at: 0,
             source: effect_source_unknown(),
             tags: BTreeSet::new(),
+            state_fields: BTreeMap::new(),
         };
         state.add_condition(&entity, cond);
 
@@ -1117,6 +1127,7 @@ mod tests {
             applied_at: 0,
             source: effect_source_unknown(),
             tags: BTreeSet::new(),
+            state_fields: BTreeMap::new(),
         };
         state.add_condition(&entity, cond);
 
@@ -1132,6 +1143,7 @@ mod tests {
             applied_at: 0,
             source: effect_source_unknown(),
             tags: BTreeSet::new(),
+            state_fields: BTreeMap::new(),
         };
         state.add_condition(&entity, cond2);
 
@@ -1257,6 +1269,7 @@ mod tests {
             applied_at: 0,
             source: effect_source_unknown(),
             tags: BTreeSet::new(),
+            state_fields: BTreeMap::new(),
         };
         state.add_condition(&ghost, cond);
         assert!(state.read_conditions(&ghost).is_none());
@@ -1594,6 +1607,7 @@ mod tests {
                 applied_at: 5,
                 source: effect_source_unknown(),
                 tags: BTreeSet::new(),
+                state_fields: BTreeMap::new(),
             },
         );
 
@@ -1652,6 +1666,7 @@ mod tests {
                 applied_at: 8,
                 source: effect_source_unknown(),
                 tags: BTreeSet::new(),
+                state_fields: BTreeMap::new(),
             },
         );
 

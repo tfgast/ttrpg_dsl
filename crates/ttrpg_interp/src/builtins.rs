@@ -610,7 +610,28 @@ fn builtin_apply_condition(
         }
     }
 
+    // Evaluate state field defaults in ancestor order with params in scope
+    let initial_state = {
+        let chain = crate::pipeline::collect_ancestor_order(env.interp.program, cond_name.as_str());
+        let mut fields = BTreeMap::new();
+        for decl in &chain {
+            for sf in &decl.state_fields {
+                env.push_scope();
+                // Bind condition params so defaults can reference them
+                for (pname, pval) in &cond_args {
+                    env.bind(pname.clone(), pval.clone());
+                }
+                let val = crate::eval::eval_expr(env, &sf.default)?;
+                env.pop_scope();
+                fields.insert(sf.name.clone(), val);
+            }
+        }
+        fields
+    };
+    let state_map = if initial_state.is_empty() { None } else { Some(initial_state) };
+
     // Phase 2: Execute on_apply lifecycle blocks (token available via env)
+    // State map is threaded through all ancestor blocks — on_apply can read/write state.
     let saved_token = env.current_condition_token;
     env.current_condition_token = Some(token);
     let lifecycle_result = crate::pipeline::execute_lifecycle_blocks(
@@ -620,9 +641,10 @@ fn builtin_apply_condition(
         &cond_args,
         crate::pipeline::LifecycleKind::OnApply,
         token.0,
+        state_map,
     );
     env.current_condition_token = saved_token;
-    lifecycle_result?;
+    let state_fields = lifecycle_result?.unwrap_or_default();
 
     // Phase 3: Activate the condition (using pre-allocated ID)
     let effect = Effect::ApplyCondition {
@@ -634,6 +656,7 @@ fn builtin_apply_condition(
         source,
         tags,
         condition_id: token.0,
+        state_fields,
     };
     match env.handler.handle(effect) {
         Response::Acknowledged | Response::Override(_) => {
@@ -767,7 +790,12 @@ fn remove_condition_instances(
             _ => {} // Treat unexpected responses as acknowledged
         }
 
-        // Phase 2: on_remove lifecycle blocks
+        // Phase 2: on_remove lifecycle blocks (thread state map)
+        let state_map = if instance.state_fields.is_empty() {
+            None
+        } else {
+            Some(instance.state_fields.clone())
+        };
         let lifecycle_result = crate::pipeline::execute_lifecycle_blocks(
             env,
             instance.name.as_str(),
@@ -775,11 +803,22 @@ fn remove_condition_instances(
             &instance.params,
             crate::pipeline::LifecycleKind::OnRemove,
             instance.id,
+            state_map,
         );
-        if let Err(e) = lifecycle_result
-            && first_error.is_none()
-        {
-            first_error = Some(e);
+        match lifecycle_result {
+            Ok(Some(final_state)) if !final_state.is_empty() => {
+                // Write back final state (no-op if condition was already removed)
+                let effect = Effect::SetConditionState {
+                    target,
+                    condition_id: instance.id,
+                    fields: final_state,
+                };
+                env.handler.handle(effect);
+            }
+            Err(e) if first_error.is_none() => {
+                first_error = Some(e);
+            }
+            _ => {}
         }
 
         // Phase 3: Always remove the condition, even if on_remove errored
@@ -908,7 +947,12 @@ fn builtin_revoke(env: &mut Env, args: &[Value], span: Span) -> Result<Value, Ru
             continue;
         }
 
-        // on_remove lifecycle
+        // on_remove lifecycle (thread state map)
+        let state_map = if instance.state_fields.is_empty() {
+            None
+        } else {
+            Some(instance.state_fields.clone())
+        };
         let lifecycle_result = crate::pipeline::execute_lifecycle_blocks(
             env,
             instance.name.as_str(),
@@ -916,11 +960,21 @@ fn builtin_revoke(env: &mut Env, args: &[Value], span: Span) -> Result<Value, Ru
             &instance.params,
             crate::pipeline::LifecycleKind::OnRemove,
             instance.id,
+            state_map,
         );
-        if let Err(e) = lifecycle_result
-            && first_error.is_none()
-        {
-            first_error = Some(e);
+        match lifecycle_result {
+            Ok(Some(final_state)) if !final_state.is_empty() => {
+                let effect = Effect::SetConditionState {
+                    target: *entity,
+                    condition_id: instance.id,
+                    fields: final_state,
+                };
+                env.handler.handle(effect);
+            }
+            Err(e) if first_error.is_none() => {
+                first_error = Some(e);
+            }
+            _ => {}
         }
 
         // Always remove
@@ -1451,6 +1505,13 @@ fn builtin_process_periodic_conditions(
                 cond_instance.name.as_str(),
             );
 
+            // Thread state map through all ancestor periodic blocks
+            let mut current_state = if cond_instance.state_fields.is_empty() {
+                None
+            } else {
+                Some(cond_instance.state_fields.clone())
+            };
+
             for decl in &chain {
                 for clause in &decl.clauses {
                     let pc = match clause {
@@ -1467,10 +1528,38 @@ fn builtin_process_periodic_conditions(
                     for (pname, pval) in &cond_instance.params {
                         env.bind(pname.clone(), pval.clone());
                     }
+                    // Bind state fields as mutable struct
+                    if let Some(ref state_fields) = current_state {
+                        env.bind(
+                            Name::from("state"),
+                            Value::Struct {
+                                name: Name::from("state"),
+                                fields: state_fields.clone(),
+                            },
+                        );
+                    }
                     let result = crate::eval::eval_block(env, &pc.body);
+                    // Read back mutated state before popping scope
+                    if current_state.is_some() {
+                        if let Some(Value::Struct { fields, .. }) = env.lookup(&Name::from("state")).cloned() {
+                            current_state = Some(fields);
+                        }
+                    }
                     env.pop_scope();
                     env.return_value = None; // clear early-return flag
                     result?;
+                }
+            }
+
+            // Write back final state if it was modified
+            if let Some(final_state) = current_state {
+                if !final_state.is_empty() {
+                    let effect = Effect::SetConditionState {
+                        target: bearer,
+                        condition_id: cond_instance.id,
+                        fields: final_state,
+                    };
+                    env.handler.handle(effect);
                 }
             }
         }
@@ -1796,6 +1885,7 @@ mod tests {
             applied_at: 0,
             source: effect_source_unknown(),
             tags: BTreeSet::new(),
+            state_fields: BTreeMap::new(),
         };
         let state = ConditionsState {
             known_entity: 1,

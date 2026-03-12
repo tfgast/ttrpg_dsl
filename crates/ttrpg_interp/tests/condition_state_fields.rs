@@ -3,8 +3,17 @@
 //! Verifies the checker's state field type-checking, the post-collect merge
 //! pass for inherited state fields, and error detection for conflicts.
 
-use ttrpg_ast::FileId;
+use std::collections::VecDeque;
+
+use rustc_hash::FxHashMap;
+use ttrpg_ast::{FileId, Name};
 use ttrpg_ast::diagnostic::Severity;
+use ttrpg_interp::Interpreter;
+use ttrpg_interp::adapter::StateAdapter;
+use ttrpg_interp::effect::{Effect, EffectHandler, Response};
+use ttrpg_interp::reference_state::GameState;
+use ttrpg_interp::state::StateProvider;
+use ttrpg_interp::value::Value;
 
 fn setup(source: &str) -> (ttrpg_ast::ast::Program, ttrpg_checker::CheckResult) {
     let (program, parse_errors) = ttrpg_parser::parse(source, FileId::SYNTH);
@@ -411,4 +420,300 @@ system "test" {
         "expected reserved name error, got: {:?}",
         errors
     );
+}
+
+// ── Runtime integration tests ────────────────────────────────────
+
+struct ScriptedHandler {
+    script: VecDeque<Response>,
+    log: Vec<Effect>,
+}
+
+impl ScriptedHandler {
+    fn new() -> Self {
+        ScriptedHandler {
+            script: VecDeque::new(),
+            log: Vec::new(),
+        }
+    }
+}
+
+impl EffectHandler for ScriptedHandler {
+    fn handle(&mut self, effect: Effect) -> Response {
+        self.log.push(effect);
+        self.script.pop_front().unwrap_or(Response::Acknowledged)
+    }
+}
+
+fn make_character(state: &mut GameState, hp: i64) -> ttrpg_interp::state::EntityRef {
+    let mut fields = FxHashMap::default();
+    fields.insert("HP".into(), Value::Int(hp));
+    state.add_entity("Character", fields)
+}
+
+/// Run a function on an entity, returning the mutated state and effect log.
+///
+/// Takes ownership of `state` and returns it (possibly mutated) alongside the log,
+/// because `StateAdapter::new()` consumes the state.
+fn run_function(
+    source: &str,
+    function_name: &str,
+    state: GameState,
+    entity: ttrpg_interp::state::EntityRef,
+) -> (GameState, Vec<Effect>) {
+    let (program, check_result) = setup(source);
+    let interp = Interpreter::new(&program, &check_result.env).unwrap();
+    let adapter = StateAdapter::new(state);
+    let mut handler = ScriptedHandler::new();
+    adapter.run(&mut handler, |adapted_state, handler| {
+        interp
+            .evaluate_function(
+                adapted_state,
+                handler,
+                function_name,
+                vec![Value::Entity(entity)],
+            )
+            .unwrap();
+    });
+    (adapter.into_inner(), handler.log)
+}
+
+#[test]
+fn state_defaults_initialized_in_apply_condition() {
+    let source = r#"
+system "test" {
+    entity Character { HP: int }
+    condition Poisoned on bearer: Character {
+        state {
+            ticks: int = 0
+            total_damage: int = 42
+        }
+    }
+    function do_apply(target: Character) {
+        apply_condition(target, Poisoned, Duration.Indefinite)
+    }
+}
+"#;
+    let mut state = GameState::new();
+    let entity = make_character(&mut state, 100);
+    let (state, _log) = run_function(source, "do_apply", state, entity);
+
+    // Check that state_fields are stored on the condition instance
+    // (ApplyCondition effect is intercepted by StateAdapter, so check state directly)
+    let conds = state.read_conditions(&entity).unwrap();
+    assert_eq!(conds.len(), 1);
+    assert_eq!(conds[0].state_fields.len(), 2);
+    let key_ticks: Name = "ticks".into();
+    let key_total: Name = "total_damage".into();
+    assert_eq!(conds[0].state_fields.get(&key_ticks), Some(&Value::Int(0)));
+    assert_eq!(conds[0].state_fields.get(&key_total), Some(&Value::Int(42)));
+}
+
+#[test]
+fn state_mutated_in_on_apply() {
+    let source = r#"
+system "test" {
+    entity Character { HP: int }
+    condition Poisoned on bearer: Character {
+        state {
+            ticks: int = 0
+        }
+        on_apply {
+            state.ticks = 5
+        }
+    }
+    function do_apply(target: Character) {
+        apply_condition(target, Poisoned, Duration.Indefinite)
+    }
+}
+"#;
+    let mut state = GameState::new();
+    let entity = make_character(&mut state, 100);
+    let (state, _log) = run_function(source, "do_apply", state, entity);
+
+    // on_apply set ticks to 5 — this should be in the final state_fields
+    let conds = state.read_conditions(&entity).unwrap();
+    let key: Name = "ticks".into();
+    assert_eq!(conds[0].state_fields.get(&key), Some(&Value::Int(5)));
+}
+
+#[test]
+fn inherited_state_sharing_in_on_apply() {
+    // Parent sets state.x = 10 in on_apply, child reads it and sets state.y = state.x + 1
+    let source = r#"
+system "test" {
+    entity Character { HP: int }
+    condition Parent on bearer: Character {
+        state {
+            x: int = 0
+        }
+        on_apply {
+            state.x = 10
+        }
+    }
+    condition Child extends Parent on bearer: Character {
+        state {
+            y: int = 0
+        }
+        on_apply {
+            // Parent on_apply already ran — state.x is 10
+            state.y = state.x + 1
+        }
+    }
+    function do_apply(target: Character) {
+        apply_condition(target, Child, Duration.Indefinite)
+    }
+}
+"#;
+    let mut state = GameState::new();
+    let entity = make_character(&mut state, 100);
+    let (state, _log) = run_function(source, "do_apply", state, entity);
+
+    let conds = state.read_conditions(&entity).unwrap();
+    assert_eq!(conds[0].state_fields.get::<Name>(&"x".into()), Some(&Value::Int(10)));
+    assert_eq!(conds[0].state_fields.get::<Name>(&"y".into()), Some(&Value::Int(11)));
+}
+
+#[test]
+fn state_mutated_in_periodic() {
+    let source = r#"
+system "test" {
+    tag round_end
+    entity Character { HP: int }
+    condition Ticking on bearer: Character {
+        state {
+            count: int = 0
+        }
+        on_apply {
+            state.count = 1
+        }
+        periodic #round_end {
+            state.count = state.count + 1
+        }
+    }
+    function do_apply(target: Character) {
+        apply_condition(target, Ticking, Duration.Indefinite)
+    }
+    function do_tick(target: Character) {
+        process_periodic_conditions([target], "round_end")
+    }
+}
+"#;
+    let mut state = GameState::new();
+    let entity = make_character(&mut state, 100);
+    let (state, _log) = run_function(source, "do_apply", state, entity);
+
+    // After on_apply: count = 1
+    let conds = state.read_conditions(&entity).unwrap();
+    assert_eq!(conds[0].state_fields.get::<Name>(&"count".into()), Some(&Value::Int(1)));
+
+    // After periodic: count = 2
+    let (state, _log) = run_function(source, "do_tick", state, entity);
+
+    let conds = state.read_conditions(&entity).unwrap();
+    assert_eq!(conds[0].state_fields.get::<Name>(&"count".into()), Some(&Value::Int(2)));
+
+    // Second tick: count = 3
+    let (state, _log) = run_function(source, "do_tick", state, entity);
+    let conds = state.read_conditions(&entity).unwrap();
+    assert_eq!(conds[0].state_fields.get::<Name>(&"count".into()), Some(&Value::Int(3)));
+}
+
+#[test]
+fn state_readable_in_on_remove_runtime() {
+    // Set state in on_apply, verify it's available in on_remove via side effect
+    let source = r#"
+system "test" {
+    entity Character {
+        HP: int
+        last_tick_count: int
+    }
+    condition Ticking on bearer: Character {
+        state {
+            count: int = 0
+        }
+        on_apply {
+            state.count = 42
+        }
+        on_remove {
+            // Write state value to entity field for test verification
+            bearer.last_tick_count = state.count
+        }
+    }
+    function do_apply(target: Character) {
+        apply_condition(target, Ticking, Duration.Indefinite)
+    }
+    function do_remove(target: Character) {
+        remove_condition(target, Ticking)
+    }
+}
+"#;
+    let mut state = GameState::new();
+    let mut fields = FxHashMap::default();
+    fields.insert("HP".into(), Value::Int(100));
+    fields.insert("last_tick_count".into(), Value::Int(0));
+    let entity = state.add_entity("Character", fields);
+
+    let (state, _log) = run_function(source, "do_apply", state, entity);
+    let (state, _log) = run_function(source, "do_remove", state, entity);
+
+    // on_remove should have written state.count (42) to bearer.last_tick_count
+    let val = state.read_field(&entity, "last_tick_count").unwrap();
+    assert_eq!(val, Value::Int(42));
+}
+
+#[test]
+fn state_default_references_params() {
+    let source = r#"
+system "test" {
+    entity Character { HP: int }
+    condition Scaled(potency: int = 5) on bearer: Character {
+        state {
+            initial_potency: int = potency
+        }
+    }
+    function do_apply(target: Character) {
+        apply_condition(target, Scaled(potency: 10), Duration.Indefinite)
+    }
+}
+"#;
+    let mut state = GameState::new();
+    let entity = make_character(&mut state, 100);
+    let (state, _log) = run_function(source, "do_apply", state, entity);
+
+    let conds = state.read_conditions(&entity).unwrap();
+    assert_eq!(
+        conds[0].state_fields.get::<Name>(&"initial_potency".into()),
+        Some(&Value::Int(10))
+    );
+}
+
+#[test]
+fn no_state_fields_no_effect() {
+    // Conditions without state fields should not emit SetConditionState
+    let source = r#"
+system "test" {
+    tag round_end
+    entity Character { HP: int }
+    condition Simple on bearer: Character {
+        periodic #round_end {
+            bearer.HP = bearer.HP - 1
+        }
+    }
+    function do_apply(target: Character) {
+        apply_condition(target, Simple, Duration.Indefinite)
+    }
+    function do_tick(target: Character) {
+        process_periodic_conditions([target], "round_end")
+    }
+}
+"#;
+    let mut state = GameState::new();
+    let entity = make_character(&mut state, 100);
+    let (state, _log) = run_function(source, "do_apply", state, entity);
+    let (_state, log) = run_function(source, "do_tick", state, entity);
+
+    // No SetConditionState should be emitted for stateless conditions
+    let set_state = log.iter().find(|e| matches!(e, Effect::SetConditionState { .. }));
+    assert!(set_state.is_none(), "should not emit SetConditionState for stateless condition");
 }

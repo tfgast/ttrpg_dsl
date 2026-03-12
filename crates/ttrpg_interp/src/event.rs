@@ -1233,6 +1233,7 @@ mod tests {
                 applied_at: 0,
                 source: effect_source_unknown(),
                 tags: BTreeSet::new(),
+                state_fields: BTreeMap::new(),
             }],
         );
         state.conditions.insert(2, vec![]);
@@ -1392,6 +1393,7 @@ mod tests {
                 applied_at: 0,
                 source: effect_source_unknown(),
                 tags: BTreeSet::new(),
+                state_fields: BTreeMap::new(),
             }],
         );
         state.conditions.insert(2, vec![]);

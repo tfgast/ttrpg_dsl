@@ -142,6 +142,10 @@ pub(crate) enum LifecycleKind {
 /// with the bearer and condition params in scope. The `in_lifecycle_block`
 /// counter is incremented to prevent `apply_condition`/`remove_condition`/`revoke()`
 /// calls inside the blocks.
+///
+/// If `state_map` is `Some`, threads a mutable state map through all ancestor
+/// blocks. Each block gets `state` bound as a mutable struct; after each block
+/// the mutated value is read back. Returns the final state map.
 pub(crate) fn execute_lifecycle_blocks(
     env: &mut Env,
     condition_name: &str,
@@ -149,10 +153,13 @@ pub(crate) fn execute_lifecycle_blocks(
     params: &BTreeMap<Name, Value>,
     kind: LifecycleKind,
     condition_instance_id: u64,
-) -> Result<(), RuntimeError> {
+    state_map: Option<BTreeMap<Name, Value>>,
+) -> Result<Option<BTreeMap<Name, Value>>, RuntimeError> {
     let chain = collect_ancestor_order(env.interp.program, condition_name);
     env.lifecycle_condition_stack.push(condition_instance_id);
     env.in_lifecycle_block += 1;
+
+    let mut current_state = state_map;
 
     let result = (|| {
         for decl in &chain {
@@ -167,7 +174,23 @@ pub(crate) fn execute_lifecycle_blocks(
                 for (pname, pval) in params {
                     env.bind(pname.clone(), pval.clone());
                 }
+                // Bind state fields as a mutable struct if present
+                if let Some(ref state_fields) = current_state {
+                    env.bind(
+                        Name::from("state"),
+                        Value::Struct {
+                            name: Name::from("state"),
+                            fields: state_fields.clone(),
+                        },
+                    );
+                }
                 let r = crate::eval::eval_block(env, block);
+                // Read back mutated state before popping scope
+                if current_state.is_some() {
+                    if let Some(Value::Struct { fields, .. }) = env.lookup(&Name::from("state")).cloned() {
+                        current_state = Some(fields);
+                    }
+                }
                 env.pop_scope();
                 env.return_value = None; // clear early-return flag at call boundary
                 r?;
@@ -178,7 +201,8 @@ pub(crate) fn execute_lifecycle_blocks(
 
     env.in_lifecycle_block -= 1;
     env.lifecycle_condition_stack.pop();
-    result
+    result?;
+    Ok(current_state)
 }
 
 /// Collect modifiers from conditions and options, returning owned data.
@@ -298,6 +322,7 @@ pub(crate) fn collect_modifiers_owned(
                                 condition_params: condition.params.clone(),
                                 condition_id: Some(condition.id),
                                 condition_duration: Some(condition.duration.clone()),
+                                condition_state_fields: condition.state_fields.clone(),
                             },
                         ));
                     }
@@ -361,6 +386,7 @@ pub(crate) fn collect_modifiers_owned(
                     condition_params: BTreeMap::new(),
                     condition_id: None,
                     condition_duration: None,
+                    condition_state_fields: BTreeMap::new(),
                 });
             }
         }
@@ -478,6 +504,8 @@ pub(crate) struct OwnedModifier {
     pub condition_id: Option<u64>,
     /// Duration of the condition (for hooks that need to check e.g. "until_next_use").
     pub condition_duration: Option<Value>,
+    /// Condition state fields (for read-only access in modify body/bindings).
+    pub condition_state_fields: BTreeMap<Name, Value>,
 }
 
 /// Check if a condition modify clause's bindings match the current call params.
@@ -516,6 +544,16 @@ fn check_modify_bindings(
         }
         for (name, val) in bound_params {
             env.bind(name.clone(), val.clone());
+        }
+        // Bind state fields as read-only struct
+        if !condition.state_fields.is_empty() {
+            env.bind(
+                Name::from("state"),
+                Value::Struct {
+                    name: Name::from("state"),
+                    fields: condition.state_fields.clone(),
+                },
+            );
         }
 
         // Wildcard binding — always matches
@@ -617,6 +655,17 @@ pub(crate) fn run_phase1(
             env.bind(name.clone(), val.clone());
         }
 
+        // Bind state fields as read-only struct for condition modifiers
+        if !modifier.condition_state_fields.is_empty() {
+            env.bind(
+                Name::from("state"),
+                Value::Struct {
+                    name: Name::from("state"),
+                    fields: modifier.condition_state_fields.clone(),
+                },
+            );
+        }
+
         // Execute modify stmts (Phase 1: param overrides only)
         let result = exec_modify_stmts_phase1(env, &modifier.clause.body, &mut params);
 
@@ -689,6 +738,17 @@ pub(crate) fn run_phase2(
         // Bind all params of the target function
         for (name, val) in params {
             env.bind(name.clone(), val.clone());
+        }
+
+        // Bind state fields as read-only struct for condition modifiers
+        if !modifier.condition_state_fields.is_empty() {
+            env.bind(
+                Name::from("state"),
+                Value::Struct {
+                    name: Name::from("state"),
+                    fields: modifier.condition_state_fields.clone(),
+                },
+            );
         }
 
         // Bind result
@@ -1351,6 +1411,7 @@ mod tests {
                 applied_at: 0,
                 source: effect_source_unknown(),
                 tags: BTreeSet::new(),
+                state_fields: BTreeMap::new(),
             }],
         );
 
@@ -1522,6 +1583,7 @@ mod tests {
                 applied_at: 0,
                 source: effect_source_unknown(),
                 tags: BTreeSet::new(),
+                state_fields: BTreeMap::new(),
             }],
         );
 
@@ -1726,6 +1788,7 @@ mod tests {
                     applied_at: 0,
                     source: effect_source_unknown(),
                     tags: BTreeSet::new(),
+                    state_fields: BTreeMap::new(),
                 },
                 ActiveCondition {
                     id: 2,
@@ -1738,6 +1801,7 @@ mod tests {
                     applied_at: 0,
                     source: effect_source_unknown(),
                     tags: BTreeSet::new(),
+                    state_fields: BTreeMap::new(),
                 },
             ],
         );
@@ -1927,6 +1991,7 @@ mod tests {
                 applied_at: 0,
                 source: effect_source_unknown(),
                 tags: BTreeSet::new(),
+                state_fields: BTreeMap::new(),
             }],
         );
         state.enabled_options.push("Variant".into());
@@ -2087,6 +2152,7 @@ mod tests {
                 applied_at: 0,
                 source: effect_source_unknown(),
                 tags: BTreeSet::new(),
+                state_fields: BTreeMap::new(),
             }],
         );
 
@@ -2423,6 +2489,7 @@ mod tests {
                 applied_at: 0,
                 source: effect_source_unknown(),
                 tags: BTreeSet::new(),
+                state_fields: BTreeMap::new(),
             }],
         );
 
@@ -2826,6 +2893,7 @@ mod tests {
                 applied_at: 0,
                 source: effect_source_unknown(),
                 tags: BTreeSet::new(),
+                state_fields: BTreeMap::new(),
             }],
         );
 
@@ -2967,6 +3035,7 @@ mod tests {
                 applied_at: 0,
                 source: effect_source_unknown(),
                 tags: BTreeSet::new(),
+                state_fields: BTreeMap::new(),
             }],
         );
 

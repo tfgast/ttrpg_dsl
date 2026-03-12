@@ -581,7 +581,7 @@ Condition tags describe **what the condition is** (`#curse`, `#disease`, `#poiso
 - **Allowed:** `transfer_conditions()`, `suspend()`, `condition_token()`, `despawn()`, field mutations
 - `on_apply` fires before activation — error prevents application
 - `on_remove` fires before removal — error does NOT prevent removal
-- `bearer` + condition params in scope; `invocation()` unavailable
+- `bearer` + condition params + `state` (mutable, if declared) in scope; `invocation()` unavailable
 - Use `extends` (not `apply_condition` in on_apply) for conditions that imply other conditions
 
 **Periodic blocks (`periodic #tag { ... }`):**
@@ -589,7 +589,7 @@ Condition tags describe **what the condition is** (`#curse`, `#disease`, `#poiso
 - Per-round effects co-located with the condition — replaces standalone processing functions
 - Tag must be declared with `tag` at system level; no duplicate tags per condition
 - Executed by `process_periodic_conditions(combatants, "tag_name")` from the combat loop
-- **Scope:** `bearer` + condition params + `self` (full `ActiveCondition` instance)
+- **Scope:** `bearer` + condition params + `self` (full `ActiveCondition` instance) + `state` (mutable state fields, if declared)
 - **Full function-body permissions:** mutations, dice, emit, `apply_condition()`, `remove_condition()`, action calls — NOT restricted like lifecycle blocks
 - Only stacking winners execute; inherits via `extends` (parent before child)
 
@@ -1004,11 +1004,64 @@ condition Poisoned(potency: int) on bearer: Character {
 - **Forbidden inside lifecycle blocks:** `apply_condition()`, `remove_condition()`, `revoke(invocation)`, `invocation()` (prevents reentrancy). `revoke entity.Group` is allowed.
 - `on_apply` fires **before** activation (modify/suppress not yet in effect). Error → condition never applied.
 - `on_remove` fires **before** removal (modify/suppress still in effect). Error → condition still removed.
-- `bearer` + condition parameters in scope. `invocation()` not available.
+- `bearer` + condition parameters + `state` (if declared) in scope. `invocation()` not available.
 - **Available in lifecycle blocks:** `suspend()`, `condition_token()`, `transfer_conditions()`, `despawn()` — see Suspension and Transfer patterns below.
 - `transfer_conditions()` is safe in lifecycle blocks because it skips on_apply/on_remove hooks (no reentrancy risk).
-- With `extends`, ancestor lifecycle blocks run first (DFS post-order).
+- With `extends`, ancestor lifecycle blocks run first (DFS post-order). One mutable state map is threaded through the full chain — parent mutations visible to child blocks.
 - **Design principle:** use `extends` for conditions that imply others, not `apply_condition()` in on_apply.
+
+### Condition State Fields
+
+State fields are per-instance mutable fields private to the condition. They provide internal bookkeeping (counters, accumulators, cached values) without polluting the condition's public interface. Unlike params (immutable, externally matchable), state fields are mutable and invisible to `conditions()`, stacking, and `remove_condition()`.
+
+```ttrpg
+entity Character {
+    HP: resource(0..=max_HP)
+    max_HP: int = 20
+}
+
+tag round_end_damage
+event Damaged(target: Character, amount: int)
+event PoisonSummary(target: Character, total_damage: int, rounds: int)
+
+condition Poisoned(potency: int) on bearer: Character
+    stacking first
+{
+    state {
+        ticks_elapsed: int = 0
+        cumulative_damage: int = 0
+    }
+
+    on_apply {
+        state.cumulative_damage = roll(dice(potency, 6)).total
+        bearer.HP -= state.cumulative_damage
+        emit Damaged(target: bearer, amount: state.cumulative_damage)
+    }
+
+    periodic #round_end_damage {
+        state.ticks_elapsed += 1
+        let tick_dmg = roll(1d4).total
+        state.cumulative_damage += tick_dmg
+        bearer.HP -= tick_dmg
+    }
+
+    on_remove {
+        emit PoisonSummary(target: bearer, total_damage: state.cumulative_damage,
+                           rounds: state.ticks_elapsed)
+    }
+}
+```
+
+**Key rules:**
+
+- Declared in a `state { ... }` block inside the condition body, before executable blocks
+- Each field: `name: Type = default_expr` — defaults are required
+- Access via `state.field_name` prefix — **mutable** in on_apply, on_remove, periodic; **read-only** in modify
+- `state` is a reserved identifier inside conditions — cannot be used as a param or receiver name
+- Allowed types: all value types including entity refs, enums, lists, structs. Disallowed: Condition, ActiveCondition, Module, FnRef
+- Default expressions may reference condition parameters
+- **Inheritance:** child sees parent state fields, can add its own, cannot redeclare parent field names. Sibling parents with the same field name is a checker error.
+- **Persistence:** one mutable state map threaded through the full inherited dispatch chain. on_apply: final map travels with ApplyCondition effect. periodic/on_remove: written back via SetConditionState at dispatch exit. If condition removed mid-block, write-back is a no-op.
 
 ### Condition with Periodic Blocks
 
@@ -1048,7 +1101,7 @@ condition OnFire on bearer: Creature
 
 - `periodic #tag { ... }` — tag must be declared with `tag` at system level
 - Multiple periodic blocks allowed (different tags); duplicate tags per condition is a parser error
-- **Scope:** `bearer` + condition params + `self` (the `ActiveCondition` instance: `.name`, `.duration`, `.source`, `.id`, `.applied_at`, `.tags`)
+- **Scope:** `bearer` + condition params + `self` (the `ActiveCondition` instance: `.name`, `.duration`, `.source`, `.id`, `.applied_at`, `.tags`) + `state` (mutable state fields, if declared)
 - **Full permissions:** unlike lifecycle blocks, periodic blocks CAN call `apply_condition()`, `remove_condition()`, and actions
 - **Processing:** `process_periodic_conditions(combatants, "round_end_damage")` — iterates combatants, snapshots conditions, executes matching periodic blocks on stacking winners only
 - **Snapshot semantics:** conditions removed mid-pass are skipped; conditions applied to the same bearer don't tick until the next call

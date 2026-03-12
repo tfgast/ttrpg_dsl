@@ -602,6 +602,20 @@ impl EffectHandler for CliHandler<'_> {
                 ));
                 Response::Acknowledged
             }
+
+            Effect::SetConditionState {
+                target,
+                condition_id,
+                fields,
+            } => {
+                self.log(format!(
+                    "[SetConditionState] condition_id={condition_id} fields={fields:?}"
+                ));
+                self.game_state
+                    .borrow_mut()
+                    .set_condition_state(&target, condition_id, fields);
+                Response::Acknowledged
+            }
         }
     }
 }

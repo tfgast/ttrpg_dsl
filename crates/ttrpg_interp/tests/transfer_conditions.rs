@@ -102,6 +102,7 @@ fn add_tagged_condition(
             applied_at: 0,
             source: Value::Void,
             tags: tags.iter().map(|t| (*t).into()).collect(),
+            state_fields: BTreeMap::new(),
         },
     );
 }
@@ -249,6 +250,7 @@ system "test" {
             applied_at: 10,
             source: Value::Str("divine".into()),
             tags: std::collections::BTreeSet::from(["transferable".into()]),
+            state_fields: BTreeMap::new(),
         },
     );
 
@@ -346,6 +348,7 @@ system "test" {
             applied_at: 0,
             source: Value::Void,
             tags: std::collections::BTreeSet::from(["transferable".into()]),
+            state_fields: BTreeMap::new(),
         },
     );
 

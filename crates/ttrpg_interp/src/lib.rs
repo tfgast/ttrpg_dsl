@@ -1166,6 +1166,7 @@ system "test" {
                 applied_at: 0,
                 source: effect_source_unknown(),
                 tags: BTreeSet::new(),
+                state_fields: BTreeMap::new(),
             }],
         );
 
@@ -1727,6 +1728,7 @@ system "test" {
                 applied_at: 0,
                 source: effect_source_unknown(),
                 tags: BTreeSet::new(),
+                state_fields: BTreeMap::new(),
             }],
         );
 

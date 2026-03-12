@@ -105,6 +105,8 @@ pub enum Effect {
         /// Pre-allocated condition ID. If non-zero, the host must use this
         /// as `ActiveCondition.id` instead of auto-assigning.
         condition_id: u64,
+        /// Initial state field values (evaluated from defaults during on_apply).
+        state_fields: BTreeMap<Name, Value>,
     },
     RemoveCondition {
         target: EntityRef,
@@ -156,6 +158,14 @@ pub enum Effect {
     RemoveSuspensionSource {
         entity: EntityRef,
         source_id: u64,
+    },
+    /// Update per-instance state fields on an existing condition.
+    /// Emitted at the end of periodic/on_remove dispatch. No-op if the
+    /// condition id no longer exists on the bearer.
+    SetConditionState {
+        target: EntityRef,
+        condition_id: u64,
+        fields: BTreeMap<Name, Value>,
     },
     TransferConditions {
         from: EntityRef,
@@ -300,6 +310,7 @@ pub enum EffectKind {
     RemoveEntity,
     AddSuspension,
     RemoveSuspensionSource,
+    SetConditionState,
     TransferConditions,
 }
 
@@ -330,6 +341,7 @@ impl EffectKind {
             Effect::RemoveEntity { .. } => EffectKind::RemoveEntity,
             Effect::AddSuspension { .. } => EffectKind::AddSuspension,
             Effect::RemoveSuspensionSource { .. } => EffectKind::RemoveSuspensionSource,
+            Effect::SetConditionState { .. } => EffectKind::SetConditionState,
             Effect::TransferConditions { .. } => EffectKind::TransferConditions,
         }
     }

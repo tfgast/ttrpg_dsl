@@ -384,6 +384,12 @@ contains the intersection of parameters (those present in all functions in M wit
 identical types) and — when the body uses `result` — the common return type
 (guaranteed identical by the check above).
 
+For condition-sourced modify clauses, "condition params" means the effective
+inherited parameter map for the concrete active condition instance. Ancestor
+parameter defaults are materialized first and descendant parameters later, so a
+descendant declaration shadows an ancestor declaration with the same name. The
+checker and runtime binding-evaluation paths should use the same precedence.
+
 **Implementation note:** The naive full scan of `env.functions` per selector is
 acceptable for typical system sizes. If performance becomes a concern, pre-index
 candidate functions by kind, tag set, and parameter names to reduce matching to

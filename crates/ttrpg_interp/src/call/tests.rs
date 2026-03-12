@@ -1255,6 +1255,7 @@ fn builtin_remove_condition_emits_effect() {
             applied_at: 0,
             source: effect_source_unknown(),
             tags: BTreeSet::new(),
+            state_fields: BTreeMap::new(),
         }],
     );
     let mut handler = ScriptedHandler::new();
@@ -1331,6 +1332,7 @@ fn remove_condition_empty_args_preserves_exact_match() {
             applied_at: 0,
             source: effect_source_unknown(),
             tags: BTreeSet::new(),
+            state_fields: BTreeMap::new(),
         }],
     );
     let mut handler = ScriptedHandler::new();
@@ -1392,6 +1394,7 @@ fn remove_condition_string_form_uses_none_params() {
             applied_at: 0,
             source: effect_source_unknown(),
             tags: BTreeSet::new(),
+            state_fields: BTreeMap::new(),
         }],
     );
     let mut handler = ScriptedHandler::new();
@@ -1455,6 +1458,7 @@ fn remove_condition_active_condition_uses_id() {
             applied_at: 11,
             source: effect_source_unknown(),
             tags: BTreeSet::new(),
+            state_fields: BTreeMap::new(),
         }],
     );
     let mut handler = ScriptedHandler::new();
@@ -2464,6 +2468,7 @@ fn remove_condition_rejects_invalid_response() {
             applied_at: 0,
             source: effect_source_unknown(),
             tags: BTreeSet::new(),
+            state_fields: BTreeMap::new(),
         }],
     );
     // First response is for the ConditionRemovalGate (Acknowledged),

@@ -149,6 +149,9 @@ pub struct ActiveCondition {
     /// Tags from the condition declaration (e.g., `#curse`, `#disease`).
     /// Static categorical properties of the condition type.
     pub tags: BTreeSet<Name>,
+    /// Per-instance mutable state fields declared in `state { ... }`.
+    /// Private to the condition hierarchy — not exposed in `to_value()`.
+    pub state_fields: BTreeMap<Name, Value>,
 }
 
 impl ActiveCondition {
@@ -344,6 +347,10 @@ pub trait WritableState: StateProvider {
     /// Add a suspension record to an entity.
     fn add_suspension(&mut self, entity: &EntityRef, record: SuspensionRecord);
 
+    /// Update the state fields of a condition instance by id.
+    /// No-op if the condition id does not exist on any entity.
+    fn set_condition_state(&mut self, entity: &EntityRef, condition_id: u64, fields: BTreeMap<Name, Value>);
+
     /// Remove the suspension record with the given `source_id` from an entity.
     ///
     /// If this was the last `freeze_durations` record, adjusts `applied_at`
@@ -445,6 +452,7 @@ mod tests {
                 applied_at: 0,
                 source: effect_source_unknown(),
                 tags: BTreeSet::new(),
+                state_fields: BTreeMap::new(),
             }],
         );
 
@@ -496,6 +504,7 @@ mod tests {
             applied_at: 0,
             source: effect_source_unknown(),
             tags: BTreeSet::new(),
+            state_fields: BTreeMap::new(),
         };
         assert_eq!(cond.id, 42);
         assert_eq!(cond.name, "Stunned");
@@ -516,6 +525,7 @@ mod tests {
             applied_at: 42,
             source: effect_source_unknown(),
             tags: BTreeSet::new(),
+            state_fields: BTreeMap::new(),
         };
         let val = cond.to_value();
         match &val {
@@ -545,6 +555,7 @@ mod tests {
             applied_at: 0,
             source: effect_source_unknown(),
             tags: BTreeSet::new(),
+            state_fields: BTreeMap::new(),
         };
         let val = cond.to_value();
         match &val {
@@ -575,6 +586,7 @@ mod tests {
             applied_at: 0,
             source: effect_source_unknown(),
             tags,
+            state_fields: BTreeMap::new(),
         };
         let val = cond.to_value();
         match &val {

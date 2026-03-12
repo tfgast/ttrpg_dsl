@@ -414,6 +414,7 @@ fn collect_and_apply_cost_modifiers(
         gained_at: u64,
         condition_id: u64,
         condition_duration: Value,
+        condition_state_fields: std::collections::BTreeMap<Name, Value>,
     }
     let mut cost_modifiers: Vec<CostModifier> = Vec::new();
 
@@ -468,6 +469,16 @@ fn collect_and_apply_cost_modifiers(
                     for (name, val) in &condition.params {
                         env.bind(name.clone(), val.clone());
                     }
+                    // Bind state fields as read-only struct
+                    if !condition.state_fields.is_empty() {
+                        env.bind(
+                            Name::from("state"),
+                            Value::Struct {
+                                name: Name::from("state"),
+                                fields: condition.state_fields.clone(),
+                            },
+                        );
+                    }
 
                     for (idx, binding) in clause.bindings.iter().enumerate() {
                         let param_val = match &binding_vals[idx] {
@@ -509,6 +520,7 @@ fn collect_and_apply_cost_modifiers(
                         gained_at: condition.gained_at,
                         condition_id: condition.id,
                         condition_duration: condition.duration.clone(),
+                        condition_state_fields: condition.state_fields.clone(),
                     });
                 }
             }
@@ -538,6 +550,17 @@ fn collect_and_apply_cost_modifiers(
         // Bind condition params
         for (name, val) in &modifier.condition_params {
             env.bind(name.clone(), val.clone());
+        }
+
+        // Bind state fields as read-only struct
+        if !modifier.condition_state_fields.is_empty() {
+            env.bind(
+                Name::from("state"),
+                Value::Struct {
+                    name: Name::from("state"),
+                    fields: modifier.condition_state_fields.clone(),
+                },
+            );
         }
 
         // Execute cost modify statements
@@ -598,6 +621,7 @@ fn collect_and_apply_cost_modifiers(
                 condition_params: m.condition_params.clone(),
                 condition_id: Some(m.condition_id),
                 condition_duration: Some(m.condition_duration.clone()),
+                condition_state_fields: m.condition_state_fields.clone(),
             })
             .collect();
         emit_modify_applied_events(env, &owned, action_name, call_span)?;

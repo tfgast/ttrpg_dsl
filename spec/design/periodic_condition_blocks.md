@@ -145,8 +145,10 @@ The periodic block body has access to:
 - `self` — the full `ActiveCondition` instance being processed, providing
   access to `self.source`, `self.id`, `self.duration`, `self.applied_at`,
   `self.name`, and `self.tags`
-- Condition parameters (e.g., `controller`, `hostile_on_loss` for parameterized
-  conditions)
+- Condition parameters from one effective inherited parameter map. Ancestors are
+  materialized first and descendants later, so if both a parent and child
+  declare the same parameter name, the child's binding shadows the parent's
+  binding in periodic execution.
 
 **Why `self` instead of just `source`:** The standalone functions being replaced
 have full access to condition instance data via `conditions()` — for example,
@@ -155,9 +157,10 @@ the full instance as `self` preserves this expressiveness. For `stacking all`
 conditions, `self.id` is needed to remove or reason about a specific instance.
 
 **Note on lifecycle blocks:** Lifecycle blocks (`on_apply` / `on_remove`) bind
-only `bearer` and declared condition params — they do not bind `self`. Periodic
-blocks are intentionally broader in scope because they replace standalone
-functions that had full access to condition instance data.
+only `bearer` and the same effective inherited condition-parameter map — they do
+not bind `self`. Periodic blocks are intentionally broader in scope because
+they replace standalone functions that had full access to condition instance
+data.
 
 The body uses the same statement grammar as function bodies — `let`, `if`,
 `if let`, field assignment, function calls, `emit`.
@@ -177,7 +180,8 @@ When `process_periodic_conditions(combatants, tag)` is called:
 4. If the condition is a stacking winner and its declaration (including
    ancestors) has a `periodic` block tagged with `tag`:
 5. Execute the block with `bearer` bound to the combatant, `self` bound to
-   the active condition instance, and condition params bound from the instance
+   the active condition instance, and the effective inherited condition
+   parameter map bound from the instance
 
 #### Snapshot Semantics
 
@@ -359,7 +363,8 @@ Add built-in function `process_periodic_conditions(combatants, tag)`:
    b. For each ancestor (parent-first), check for a `periodic` clause matching
       the requested tag
    c. If found, execute the block body with `bearer`, `self` (the active
-      condition instance), and condition params bound from the instance
+      condition instance), and the effective inherited condition parameter map
+      bound from the instance
    d. Skip snapshot entries whose condition has been removed since the snapshot
 4. Conditions applied to the current bearer during execution are not processed
    in this pass (cross-bearer applies may be processed; see Snapshot Semantics)
@@ -429,9 +434,10 @@ integration tests:
   mutations are order-dependent (see Snapshot Semantics).
 - **Inheritance**: Periodic blocks inherit via ancestor chain, same as lifecycle
   blocks.
-- **Scope**: Periodic blocks bind `bearer`, condition params, and `self` (the
-  full `ActiveCondition` instance). This is intentionally broader than lifecycle
-  blocks.
+- **Scope**: Periodic blocks bind `bearer`, the effective inherited condition
+  parameter map, and `self` (the full `ActiveCondition` instance). Descendant
+  parameter names shadow matching ancestor names. This is intentionally broader
+  than lifecycle blocks.
 - **Stacking**: Only stacking winners execute periodic blocks, using the same
   winner computation as modifier collection.
 - **No duplicate tags**: A single condition declaration may not have two periodic

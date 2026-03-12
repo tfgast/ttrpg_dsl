@@ -379,6 +379,14 @@ condition_decl  = "condition" IDENT params? extends_clause? tag_list?
                       stacking_clause?
                       "{" condition_clause* "}"
 extends_clause  = "extends" IDENT ("," IDENT)*
+//
+// Condition-owned scopes use one effective parameter map for the concrete
+// active condition instance. The runtime materializes ancestor parameters
+// first and descendant parameters later. If multiple declarations in the
+// extends chain reuse the same parameter name, the later descendant binding
+// shadows the earlier ancestor binding. This applies anywhere condition
+// parameters are in scope: lifecycle blocks, periodic blocks, modify bodies,
+// modify binding evaluation, suppress bindings, and cost modifiers.
 
 // --- Stacking policy (same-condition instance precedence) ---
 //
@@ -414,8 +422,64 @@ stacking_policy = "all"
 stacking_dir    = "highest" | "lowest"
 
 condition_clause = modify_clause | suppress_clause | suppress_modify_clause | lifecycle_clause | periodic_clause
+state_block      = "state" "{" state_field_decl* "}"
+state_field_decl = IDENT ":" type_expr "=" expr term
 lifecycle_clause = ("on_apply" | "on_remove") block
 periodic_clause  = "periodic" "#" IDENT block
+//
+// --- Condition body ordering ---
+//
+// Inside the condition body `{ ... }`, clauses must appear in this order:
+//   1. `tags:` and `suppress` declarations (any order, metadata)
+//   2. `state { ... }` block (optional, at most one)
+//   3. Executable blocks: on_apply, on_remove, periodic, modify (any order)
+//
+// A `state` block appearing after any executable block is a parser error.
+// Duplicate `state` blocks are a parser error.
+//
+// --- State block ---
+//
+// Declares per-instance mutable fields private to the condition hierarchy.
+// Each field requires a type annotation and a default expression. Default
+// expressions may reference condition parameters. At most one state block
+// per condition declaration.
+//
+// `state` is a soft keyword, recognized only in condition body position.
+// The name `state` is reserved inside conditions — it cannot be used as a
+// condition parameter name or receiver name (checker error).
+//
+// SCOPING:
+//   State fields are accessed via the `state` prefix: `state.field_name`.
+//   - **Mutable** in on_apply, on_remove, and periodic blocks:
+//     `state.x = expr`, `state.x += expr`, `state.x -= expr`
+//   - **Read-only** in modify blocks (all phases: body, binding evaluation,
+//     cost modifiers). Modify syntax does not admit arbitrary assignment;
+//     state is bound as an immutable value in modify expressions.
+//   - NOT visible outside condition-owned blocks (functions, actions, etc.)
+//
+// PERSISTENCE (snapshot-in / snapshot-out):
+//   One mutable state map is threaded through the full inherited lifecycle
+//   or periodic dispatch (all ancestor blocks share the same map). Parent
+//   mutations are visible to child blocks within the same dispatch.
+//   - on_apply: state map starts from defaults, final map travels with the
+//     ApplyCondition effect.
+//   - periodic/on_remove: state is cloned from the instance, mutated across
+//     the ancestor chain, then written back via SetConditionState effect.
+//   - modify: state is bound as an immutable snapshot, no write-back.
+//   - SetConditionState is a no-op if the condition was removed mid-block.
+//
+// INHERITANCE:
+//   - Child conditions see parent state fields (full read/write access)
+//   - Child can declare additional fields in its own `state { }` block
+//   - Child CANNOT redeclare or shadow a parent field name (checker error)
+//   - Sibling parents declaring the same field name is a checker error
+//   - Initialization order follows DFS linearization: grandparent → parent
+//     → child. Diamond dedup handled by ancestor walk.
+//
+// ALLOWED TYPES:
+//   All value types including entity refs, enums, lists, structs.
+//   Disallowed: Condition, ActiveCondition, Module, FnRef.
+//
 // At most one on_apply and one on_remove per condition (parser error on
 // duplicates). Lifecycle blocks have hook-like execution semantics: they
 // can mutate entity state, emit events, roll dice, and call derives,
@@ -442,9 +506,14 @@ periodic_clause  = "periodic" "#" IDENT block
 //   - CAN call apply_condition(), remove_condition() (unlike lifecycle blocks)
 //   - `invocation()` is NOT available
 //
-// Scoping: `bearer` (the receiver), condition parameters, and `self`
-// (the full ActiveCondition instance) are in scope. `self` provides
-// access to .name, .duration, .source, .id, .applied_at, .tags.
+// Scoping: `bearer` (the receiver), the effective condition parameter map,
+// `self` (the full ActiveCondition instance), and `state` (the mutable
+// condition state fields) are in scope. `self` provides access to .name,
+// .duration, .source, .id, .applied_at, .tags. `state` provides access to
+// declared state fields via `state.field_name`.
+// Effective condition parameters are materialized ancestor-first; if both a
+// parent and child declare the same name, the child's binding shadows the
+// parent's binding in the periodic block.
 //
 // Executed by `process_periodic_conditions(combatants, tag_string)`.
 // Only stacking winners execute. Ancestor periodic blocks run before

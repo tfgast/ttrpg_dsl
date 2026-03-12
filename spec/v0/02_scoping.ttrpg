@@ -541,8 +541,20 @@ condition Prone on bearer: Character {
 //   - Can roll dice
 //   - Can call derives, mechanics, functions
 //
-// Scoping: `bearer` (the receiver) and condition parameters are in scope.
+// Scoping: `bearer` (the receiver), condition parameters, and `state`
+// (mutable condition state fields, if declared) are in scope.
 // `invocation()` is NOT available (checker error).
+//
+// PARAMETER MATERIALIZATION:
+//   For a concrete active condition instance, the runtime builds one effective
+//   parameter map across the full extends chain. Ancestor parameters are
+//   materialized first and descendant parameters later. If multiple condition
+//   declarations in that chain reuse the same parameter name, the later
+//   descendant binding shadows the earlier ancestor binding.
+//
+//   The same effective parameter map is used for lifecycle blocks, periodic
+//   blocks, modify bodies, modify binding evaluation, suppress bindings, and
+//   cost modifiers.
 //
 // RESTRICTIONS (enforced by checker + runtime):
 //   - apply_condition() — forbidden (prevents reentrancy)
@@ -621,6 +633,100 @@ condition Poisoned(potency: int) on bearer: Character {
 }
 
 
+// --- Condition state fields (state { ... }) ---
+//
+// Conditions can declare per-instance mutable fields in a `state { }` block.
+// State fields are private to the condition hierarchy — they are not visible
+// through `conditions()`, `self`, or any external API. They provide internal
+// bookkeeping without polluting the condition's public interface.
+//
+// SYNTAX: state { field_name: Type = default_expr }
+//   - Each field requires a type annotation and a default expression.
+//   - Default expressions may reference condition parameters.
+//   - At most one state block per condition declaration.
+//   - Must appear before executable blocks (on_apply, on_remove, periodic, modify).
+//
+// SCOPING:
+//   State fields are accessed via the `state` prefix: `state.field_name`.
+//   - Mutable in on_apply, on_remove, periodic blocks
+//   - Read-only in modify blocks (all phases)
+//   - NOT accessible outside condition-owned blocks
+//
+// IDENTIFIER RESERVATION:
+//   `state` is reserved inside conditions — it cannot be used as a condition
+//   parameter name or receiver name. The checker enforces this.
+//
+// PERSISTENCE (snapshot-in / snapshot-out):
+//   One mutable state map is threaded through the FULL inherited dispatch
+//   (all ancestor blocks in a single on_apply/on_remove/periodic chain
+//   share the same mutable state map). Parent mutations are visible to
+//   child blocks within the same dispatch.
+//   - on_apply: defaults evaluated in ancestor order, state mutated across
+//     the full on_apply chain, final map included in ApplyCondition effect.
+//   - periodic/on_remove: state cloned from instance, mutated across
+//     ancestor chain, written back via SetConditionState effect at exit.
+//   - modify: state bound as immutable snapshot, no write-back.
+//   - If the condition is removed mid-block (e.g., self-removal in periodic),
+//     SetConditionState is a no-op (condition no longer exists).
+//
+// INHERITANCE:
+//   - Child conditions see parent state fields (full read/write access)
+//   - Child can add its own fields in a separate `state { }` block
+//   - Child CANNOT redeclare or shadow a parent field name (checker error)
+//   - If two sibling parents declare the same field name, it is a checker error
+//   - Init order follows DFS linearization: grandparent → parent → child
+//
+// TYPES:
+//   Allowed: all Value types including entity refs, enums, lists, structs.
+//   Disallowed: Condition, ActiveCondition, Module, FnRef.
+//
+// PARAMS vs STATE FIELDS:
+//   - Params: immutable, externally matchable, used by stacking/remove_condition
+//   - State fields: mutable, private, ignored by stacking and remove_condition
+//   - conditions() and external queries never expose state field values
+
+// EXAMPLE: poison tracking cumulative damage across ticks
+condition PoisonTracked(potency: int) on bearer: Character {
+    state {
+        ticks_elapsed: int = 0
+        cumulative_damage: int = 0
+    }
+
+    on_apply {
+        state.cumulative_damage = roll(dice(potency, 6)).total
+        bearer.HP -= state.cumulative_damage
+        emit Damaged(target: bearer, amount: state.cumulative_damage)
+    }
+
+    periodic #round_end_damage {
+        state.ticks_elapsed += 1
+        let tick_dmg = roll(1d4).total
+        state.cumulative_damage += tick_dmg
+        bearer.HP -= tick_dmg
+    }
+
+    on_remove {
+        emit PoisonSummary(target: bearer, total_damage: state.cumulative_damage,
+                           rounds: state.ticks_elapsed)
+    }
+}
+
+// EXAMPLE: inherited state — child sees parent fields
+condition IntensePoison(potency: int) extends PoisonTracked on bearer: Character {
+    state {
+        spread_count: int = 0
+    }
+
+    // parent periodic runs first, state.ticks_elapsed already incremented
+    periodic #round_end_damage {
+        if state.ticks_elapsed >= 3 {
+            state.spread_count += 1
+            emit PoisonSpread(source: bearer, count: state.spread_count)
+        }
+    }
+}
+
+
 // --- Condition periodic blocks (periodic #tag { ... }) ---
 //
 // Conditions can include periodic blocks that execute during the combat
@@ -639,11 +745,16 @@ condition Poisoned(potency: int) on bearer: Character {
 //
 // SCOPING:
 //   `bearer`  — the entity carrying the condition (receiver)
-//   condition parameters — bound from the active condition instance
+//   condition parameters — bound from the effective active-condition
+//                          parameter map (ancestor-first, descendant names
+//                          shadow earlier ancestor names)
 //   `self`    — the full ActiveCondition instance being processed
 //              (.name, .duration, .source, .id, .applied_at, .tags)
+//   `state`   — mutable condition state fields (if declared). Accessed
+//              via `state.field_name`. Threaded through the full ancestor
+//              dispatch chain (parent mutations visible to child blocks).
 //
-//   Note: lifecycle blocks bind only `bearer` + params. Periodic blocks
+//   Note: lifecycle blocks bind `bearer` + params + state. Periodic blocks
 //   additionally bind `self` because they replace standalone functions
 //   that had full access to condition instance data via `conditions()`.
 //
@@ -809,6 +920,10 @@ condition InsideBladeBarrier on bearer: entity
 // Bindings work the same as regular modify clauses: the action's
 // receiver and declared parameters are bindable. In the example above,
 // `actor` is Dash's receiver name, bound to the condition's `bearer`.
+// Condition-owned names visible while checking and evaluating the cost
+// modifier come from the same effective inherited parameter map used by
+// lifecycle/periodic/modify scopes, so descendant parameter names shadow
+// matching ancestor names.
 //
 // Cost modify bodies support:
 //   - `cost = token1, token2` — replace the cost with new tokens

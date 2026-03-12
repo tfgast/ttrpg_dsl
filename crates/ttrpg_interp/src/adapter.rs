@@ -175,10 +175,11 @@ pub struct AdaptedHandler<'a, S: WritableState, H: EffectHandler> {
 }
 
 /// The mutation effect kinds.
-const MUTATION_KINDS: [EffectKind; 15] = [
+const MUTATION_KINDS: [EffectKind; 16] = [
     EffectKind::MutateField,
     EffectKind::ApplyCondition,
     EffectKind::RemoveCondition,
+    EffectKind::SetConditionState,
     EffectKind::MutateTurnField,
     EffectKind::GrantGroup,
     EffectKind::RevokeGroup,
@@ -350,6 +351,7 @@ fn apply_mutation<S: WritableState>(
             source,
             tags,
             condition_id,
+            state_fields,
         } => {
             // Bearer type compatibility: skip if target entity type doesn't match
             // the condition's declared receiver_type (Ty::AnyEntity always passes)
@@ -379,8 +381,16 @@ fn apply_mutation<S: WritableState>(
                     applied_at,
                     source: source.clone(),
                     tags: tags.clone(),
+                    state_fields: state_fields.clone(),
                 },
             );
+        }
+        Effect::SetConditionState {
+            target,
+            condition_id,
+            fields,
+        } => {
+            state.set_condition_state(target, *condition_id, fields.clone());
         }
         Effect::RemoveCondition {
             target,
@@ -579,6 +589,7 @@ fn apply_mutation_with_override<S: WritableState>(
             source,
             tags,
             condition_id,
+            state_fields,
             ..
         } => {
             let applied_at = state.read_game_time();
@@ -595,6 +606,7 @@ fn apply_mutation_with_override<S: WritableState>(
                     applied_at,
                     source: source.clone(),
                     tags: tags.clone(),
+                    state_fields: state_fields.clone(),
                 },
             );
         }
@@ -1042,6 +1054,14 @@ mod tests {
             // No-op for test state
         }
 
+        fn set_condition_state(&mut self, entity: &EntityRef, condition_id: u64, fields: BTreeMap<Name, Value>) {
+            if let Some(conds) = self.conditions.get_mut(&entity.0) {
+                if let Some(cond) = conds.iter_mut().find(|c| c.id == condition_id) {
+                    cond.state_fields = fields;
+                }
+            }
+        }
+
         fn remove_suspension_source(&mut self, _entity: &EntityRef, _source_id: u64) {
             // No-op for test state
         }
@@ -1367,6 +1387,7 @@ mod tests {
                 source: effect_source_unknown(),
                 tags: BTreeSet::new(),
                 condition_id: 0,
+                state_fields: BTreeMap::new(),
             })
         });
 
@@ -1395,6 +1416,7 @@ mod tests {
                 applied_at: 0,
                 source: effect_source_unknown(),
                 tags: BTreeSet::new(),
+                state_fields: BTreeMap::new(),
             }],
         );
         let adapter = StateAdapter::new(state);
@@ -1631,6 +1653,7 @@ mod tests {
                 source: effect_source_unknown(),
                 tags: BTreeSet::new(),
                 condition_id: 0,
+                state_fields: BTreeMap::new(),
             })
         });
 
@@ -1666,6 +1689,7 @@ mod tests {
                     applied_at: 0,
                     source: effect_source_unknown(),
                     tags: BTreeSet::new(),
+                    state_fields: BTreeMap::new(),
                 },
                 ActiveCondition {
                     id: 2,
@@ -1678,6 +1702,7 @@ mod tests {
                     applied_at: 0,
                     source: effect_source_unknown(),
                     tags: BTreeSet::new(),
+                    state_fields: BTreeMap::new(),
                 },
             ],
         );
@@ -2119,6 +2144,7 @@ mod tests {
                 applied_at: 0,
                 source: effect_source_unknown(),
                 tags: BTreeSet::new(),
+                state_fields: BTreeMap::new(),
             },
         );
         state.add_condition(
@@ -2134,6 +2160,7 @@ mod tests {
                 applied_at: 0,
                 source: effect_source_unknown(),
                 tags: BTreeSet::new(),
+                state_fields: BTreeMap::new(),
             },
         );
 

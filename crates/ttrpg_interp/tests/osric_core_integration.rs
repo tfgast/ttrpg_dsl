@@ -167,8 +167,15 @@ fn osric_core_has_all_enums() {
     );
 
     // SpellId: at least 24 variants (grows as spells are added)
-    let spell_id_count = enums.iter().find(|(name, _)| *name == "SpellId").map(|(_, c)| *c).unwrap_or(0);
-    assert!(spell_id_count >= 24, "SpellId should have at least 24 variants, found {spell_id_count}");
+    let spell_id_count = enums
+        .iter()
+        .find(|(name, _)| *name == "SpellId")
+        .map(|(_, c)| *c)
+        .unwrap_or(0);
+    assert!(
+        spell_id_count >= 24,
+        "SpellId should have at least 24 variants, found {spell_id_count}"
+    );
 
     // AreaShape: 7 variants (Radius, Sphere, Cube, Wall, Cone, Line, Special)
     assert!(enums.contains(&("AreaShape", 7)), "missing AreaShape enum");
@@ -201,7 +208,10 @@ fn osric_core_has_all_enums() {
         "missing SpellUseLimit enum"
     );
 
-    assert!(enums.len() >= 37, "expected at least 37 enums, got {enums:?}");
+    assert!(
+        enums.len() >= 37,
+        "expected at least 37 enums, got {enums:?}"
+    );
 }
 
 #[test]
