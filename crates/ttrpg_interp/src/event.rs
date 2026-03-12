@@ -468,40 +468,39 @@ fn is_suppressed(
                 continue;
             }
 
-            // Collect ancestor chain (parents first, then self)
-            let ancestor_decls = crate::pipeline::collect_ancestor_order(
-                env.interp.program,
-                condition.name.as_str(),
-            );
+            // Look up the condition decl directly
+            let cond_decl = match env.interp.program.conditions.get(condition.name.as_str()) {
+                Some(d) => d,
+                None => continue,
+            };
 
-            for cond_decl in &ancestor_decls {
-                for clause_item in &cond_decl.clauses {
-                    let suppress = match clause_item {
-                        ConditionClause::Suppress(s) => s,
-                        ConditionClause::Modify(_)
-                        | ConditionClause::SuppressModify(_)
-                        | ConditionClause::OnApply(_)
-                        | ConditionClause::OnRemove(_)
-                        | ConditionClause::Periodic(_) => continue,
-                    };
+            for clause_item in &cond_decl.clauses {
+                let suppress = match clause_item {
+                    ConditionClause::Suppress(s) => s,
+                    ConditionClause::Modify(_)
+                    | ConditionClause::SuppressModify(_)
+                    | ConditionClause::OnApply(_)
+                    | ConditionClause::OnRemove(_)
+                    | ConditionClause::Periodic(_)
+                    | ConditionClause::Include(_) => continue,
+                };
 
-                    if suppress.event_name != event_name {
-                        continue;
-                    }
+                if suppress.event_name != event_name {
+                    continue;
+                }
 
-                    // Check suppress bindings
-                    if check_suppress_bindings(
-                        env,
-                        &suppress.bindings,
-                        &cond_decl.receiver_name,
-                        &Value::Entity(condition.bearer),
-                        &condition.params,
-                        event_params,
-                        event_fields,
-                        payload_fields,
-                    )? {
-                        return Ok(true);
-                    }
+                // Check suppress bindings
+                if check_suppress_bindings(
+                    env,
+                    &suppress.bindings,
+                    &cond_decl.receiver_name,
+                    &Value::Entity(condition.bearer),
+                    &condition.params,
+                    event_params,
+                    event_fields,
+                    payload_fields,
+                )? {
+                    return Ok(true);
                 }
             }
         }
@@ -1173,6 +1172,7 @@ mod tests {
                         span: dummy_span(),
                     }],
                     span: dummy_span(),
+                    included_from: None,
                 })]),
             ),
         ]);
@@ -1207,12 +1207,11 @@ mod tests {
             ConditionInfo {
                 name: "Stunned".into(),
                 params: vec![],
-                extends: vec![],
+
                 receiver_name: "bearer".into(),
                 receiver_type: Ty::Entity("Character".into()),
                 tags: HashSet::new(),
-                own_state_fields: vec![],
-                merged_state_fields: vec![],
+                state_fields: vec![],
             },
         );
 
@@ -1318,6 +1317,7 @@ mod tests {
                         span: dummy_span(),
                     }],
                     span: dummy_span(),
+                    included_from: None,
                 })]),
             ),
         ]);
@@ -1367,12 +1367,11 @@ mod tests {
             ConditionInfo {
                 name: "Silenced".into(),
                 params: vec![],
-                extends: vec![],
+
                 receiver_name: "bearer".into(),
                 receiver_type: Ty::Entity("Character".into()),
                 tags: HashSet::new(),
-                own_state_fields: vec![],
-                merged_state_fields: vec![],
+                state_fields: vec![],
             },
         );
 

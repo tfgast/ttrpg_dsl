@@ -401,24 +401,20 @@ condition Prone on bearer: Character {
 //   Suppression is total: a suppressed instance contributes NO
 //   effects — its modify clauses, suppress clauses, suppress_modify
 //   clauses, and cost modifiers are all excluded from collection.
-//   The winner's full ancestor chain (via extends) still contributes.
 //
 // PARAMETER CONSTRAINT:
 //   For `best by`, <param> must name an int parameter declared on
-//   this condition. Inherited parent parameters do not qualify unless
-//   the child also declares them.
+//   this condition.
 //
-// INHERITANCE:
+// STACKING NOT COPIED:
 //   The stacking clause belongs to the concrete declared condition.
-//   It is NOT merged or inherited via `extends`. A child condition
-//   must declare its own stacking policy. Omitting it defaults to
-//   `all` regardless of the parent's policy.
+//   It is NOT copied by `include`. A condition must declare its own
+//   stacking policy. Omitting it defaults to `all`.
 //
 // EVALUATION:
 //   Before collecting any clauses from a condition instance, the
 //   runtime computes a per-bearer allowlist of winning condition_ids.
-//   Non-winners are skipped entirely — their ancestor chain is not
-//   walked. This applies uniformly across all collection paths:
+//   Non-winners are skipped entirely. This applies uniformly across all collection paths:
 //   modify/suppress_modify (pipeline.rs), cost modifiers (action.rs),
 //   and suppress clauses (event.rs).
 //
@@ -545,17 +541,6 @@ condition Prone on bearer: Character {
 // (mutable condition state fields, if declared) are in scope.
 // `invocation()` is NOT available (checker error).
 //
-// PARAMETER MATERIALIZATION:
-//   For a concrete active condition instance, the runtime builds one effective
-//   parameter map across the full extends chain. Ancestor parameters are
-//   materialized first and descendant parameters later. If multiple condition
-//   declarations in that chain reuse the same parameter name, the later
-//   descendant binding shadows the earlier ancestor binding.
-//
-//   The same effective parameter map is used for lifecycle blocks, periodic
-//   blocks, modify bodies, modify binding evaluation, suppress bindings, and
-//   cost modifiers.
-//
 // RESTRICTIONS (enforced by checker + runtime):
 //   - apply_condition() — forbidden (prevents reentrancy)
 //   - remove_condition() — forbidden (same reasoning)
@@ -585,19 +570,15 @@ condition Prone on bearer: Character {
 //   If on_remove errors, the condition is STILL removed (removal must
 //   succeed for state consistency).
 //
-// INHERITANCE (extends):
-//   If `condition Stunned extends Incapacitated` and both have lifecycle
-//   blocks, ancestor blocks run first (DFS post-order):
-//     on_apply:  Incapacitated.on_apply → Stunned.on_apply
-//     on_remove: Incapacitated.on_remove → Stunned.on_remove
-//   If an ancestor's on_apply errors, descendant blocks do not run and
-//   the condition is not applied.
+// CLAUSE COPYING (include):
+//   Use `include modify/suppress/suppress-modify CondName` to copy
+//   declarative clauses from another condition at compile time.
+//   Lifecycle hooks, periodic blocks, state, stacking, and tags are
+//   NOT copied — only the specified clause type.
 //
 // DESIGN PRINCIPLE:
-//   Conditions that imply other conditions should use `extends`, not
-//   imperative apply_condition() inside on_apply. `extends` gives
-//   automatic inheritance of modify/suppress clauses and automatic
-//   cleanup on removal.
+//   Conditions that share declarative effects should use `include`,
+//   not imperative apply_condition() inside on_apply.
 
 // EXAMPLE: lifecycle hooks for status tracking and cleanup
 condition Burning(damage_per_tick: int) on bearer: Character {
@@ -711,14 +692,17 @@ condition PoisonTracked(potency: int) on bearer: Character {
     }
 }
 
-// EXAMPLE: inherited state — child sees parent fields
-condition IntensePoison(potency: int) extends PoisonTracked on bearer: Character {
+// EXAMPLE: include copies modify clauses from another condition
+condition IntensePoison(potency: int) on bearer: Character {
+    include modify PoisonTracked
+
     state {
         spread_count: int = 0
+        ticks_elapsed: int = 0
     }
 
-    // parent periodic runs first, state.ticks_elapsed already incremented
     periodic #round_end_damage {
+        state.ticks_elapsed += 1
         if state.ticks_elapsed >= 3 {
             state.spread_count += 1
             emit PoisonSpread(source: bearer, count: state.spread_count)
@@ -745,14 +729,11 @@ condition IntensePoison(potency: int) extends PoisonTracked on bearer: Character
 //
 // SCOPING:
 //   `bearer`  — the entity carrying the condition (receiver)
-//   condition parameters — bound from the effective active-condition
-//                          parameter map (ancestor-first, descendant names
-//                          shadow earlier ancestor names)
+//   condition parameters — bound from the active-condition parameter map
 //   `self`    — the full ActiveCondition instance being processed
 //              (.name, .duration, .source, .id, .applied_at, .tags)
 //   `state`   — mutable condition state fields (if declared). Accessed
-//              via `state.field_name`. Threaded through the full ancestor
-//              dispatch chain (parent mutations visible to child blocks).
+//              via `state.field_name`.
 //
 //   Note: lifecycle blocks bind `bearer` + params + state. Periodic blocks
 //   additionally bind `self` because they replace standalone functions

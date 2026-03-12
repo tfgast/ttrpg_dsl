@@ -631,6 +631,44 @@ pub struct EventDecl {
     pub fields: Vec<FieldDef>,
 }
 
+// ── Include clause (condition clause copying) ────────────────────
+
+/// What kind of clauses to include from a source condition.
+#[derive(Clone, Debug, PartialEq)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
+pub enum IncludeKind {
+    Modify,
+    Suppress,
+    SuppressModify,
+}
+
+/// A named argument in an include directive, binding a source condition param.
+#[derive(Clone)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
+pub struct IncludeArg {
+    pub name: Name,
+    pub value: IncludeArgValue,
+    pub span: Span,
+}
+
+/// Value in an include argument: a name reference or a constant literal.
+#[derive(Clone)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
+pub enum IncludeArgValue {
+    Name(Name),
+    Literal(ExprKind),
+}
+
+/// `include modify CondName(param: value, ...)` — copy declarative clauses from another condition.
+#[derive(Clone)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
+pub struct IncludeClause {
+    pub kind: IncludeKind,
+    pub source_condition: Name,
+    pub args: Vec<IncludeArg>,
+    pub span: Span,
+}
+
 /// Controls how multiple instances of the same condition interact on a single bearer.
 #[derive(Clone, Debug, Default, PartialEq)]
 #[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
@@ -661,9 +699,6 @@ pub struct ConditionDecl {
     /// Optional parameters: `condition Frightened(source: Character) on ...`.
     /// Empty vec means no parameters.
     pub params: Vec<Param>,
-    /// Optional parent conditions: `condition Stunned extends Incapacitated on ...`.
-    /// Child inherits all modify/suppress clauses from parents.
-    pub extends: Vec<Spanned<Name>>,
     /// Stacking policy for multiple instances on the same bearer.
     pub stacking: StackingPolicy,
     pub receiver_name: Name,
@@ -687,7 +722,6 @@ impl ConditionDecl {
         Self {
             name: name.into(),
             params: vec![],
-            extends: vec![],
             stacking: StackingPolicy::default(),
             receiver_name: receiver_name.into(),
             receiver_type,
@@ -700,11 +734,6 @@ impl ConditionDecl {
 
     pub fn with_params(mut self, params: Vec<Param>) -> Self {
         self.params = params;
-        self
-    }
-
-    pub fn with_extends(mut self, extends: Vec<Spanned<Name>>) -> Self {
-        self.extends = extends;
         self
     }
 
@@ -754,6 +783,8 @@ pub enum ConditionClause {
     OnRemove(LifecycleBlock),
     /// Periodic effect block: `periodic #tag { ... }`.
     Periodic(PeriodicClause),
+    /// Include directive (pre-expansion only; replaced by expand_includes).
+    Include(IncludeClause),
 }
 
 /// An imperative block that runs when a condition is applied or removed.
@@ -787,6 +818,8 @@ pub struct ModifyClause {
     pub id: ModifyClauseId,
     /// Optional tags for provenance and targeted suppression.
     pub tags: Vec<Name>,
+    /// If this clause was copied by an `include` directive, the span of that directive.
+    pub included_from: Option<Span>,
 }
 
 #[derive(Clone)]
@@ -837,6 +870,8 @@ pub struct SuppressClause {
     pub event_name: Name,
     pub bindings: Vec<ModifyBinding>,
     pub span: Span,
+    /// If this clause was copied by an `include` directive, the span of that directive.
+    pub included_from: Option<Span>,
 }
 
 #[derive(Clone)]
@@ -845,6 +880,8 @@ pub struct SuppressModifyClause {
     pub predicates: Vec<SelectorPredicate>,
     pub bindings: Vec<ModifyBinding>,
     pub span: Span,
+    /// If this clause was copied by an `include` directive, the span of that directive.
+    pub included_from: Option<Span>,
 }
 
 #[derive(Clone)]

@@ -564,8 +564,9 @@ condition Afflicted on bearer: Character { }
 condition BestowCurse on bearer: Character {
     tags: #curse
 }
-condition MummyRot(severity: int) extends Afflicted on bearer: Character {
+condition MummyRot(severity: int) on bearer: Character {
     tags: #curse, #disease
+    include modify Afflicted
 }
 ```
 
@@ -582,7 +583,7 @@ Condition tags describe **what the condition is** (`#curse`, `#disease`, `#poiso
 - `on_apply` fires before activation — error prevents application
 - `on_remove` fires before removal — error does NOT prevent removal
 - `bearer` + condition params + `state` (mutable, if declared) in scope; `invocation()` unavailable
-- Use `extends` (not `apply_condition` in on_apply) for conditions that imply other conditions
+- Use `include modify/suppress` (not `apply_condition` in on_apply) for conditions that share clauses with other conditions
 
 **Periodic blocks (`periodic #tag { ... }`):**
 
@@ -591,7 +592,7 @@ Condition tags describe **what the condition is** (`#curse`, `#disease`, `#poiso
 - Executed by `process_periodic_conditions(combatants, "tag_name")` from the combat loop
 - **Scope:** `bearer` + condition params + `self` (full `ActiveCondition` instance) + `state` (mutable state fields, if declared)
 - **Full function-body permissions:** mutations, dice, emit, `apply_condition()`, `remove_condition()`, action calls — NOT restricted like lifecycle blocks
-- Only stacking winners execute; inherits via `extends` (parent before child)
+- Only stacking winners execute
 
 ### Event
 
@@ -1008,8 +1009,7 @@ condition Poisoned(potency: int) on bearer: Character {
 - `bearer` + condition parameters + `state` (if declared) in scope. `invocation()` not available.
 - **Available in lifecycle blocks:** `suspend()`, `condition_token()`, `transfer_conditions()`, `despawn()` — see Suspension and Transfer patterns below.
 - `transfer_conditions()` is safe in lifecycle blocks because it skips on_apply/on_remove hooks (no reentrancy risk).
-- With `extends`, ancestor lifecycle blocks run first (DFS post-order). One mutable state map is threaded through the full chain — parent mutations visible to child blocks.
-- **Design principle:** use `extends` for conditions that imply others, not `apply_condition()` in on_apply.
+- **Design principle:** use `include modify/suppress` for conditions that share declarative clauses, not `apply_condition()` in on_apply.
 
 ### Condition State Fields
 
@@ -1123,9 +1123,9 @@ When multiple instances of the same condition exist on one bearer, the `stacking
 
 **Suppressed instances** remain in state (duration keeps ticking). When the winner expires, the next-best becomes the new winner on next evaluation.
 
-The `stacking` clause belongs to the concrete condition — it is NOT inherited via `extends`.
+The `stacking` clause belongs to the concrete condition — it is not copied by `include`.
 
-For `best by`, the named parameter must be `int` and declared on that condition (not inherited).
+For `best by`, the named parameter must be `int` and declared on that condition.
 
 ```ttrpg-with-preamble
 mechanic attack_roll(

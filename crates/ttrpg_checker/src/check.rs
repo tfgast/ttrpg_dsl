@@ -812,11 +812,6 @@ impl<'a> Checker<'a> {
         for param in &c.params {
             self.check_type_visible(&param.ty);
         }
-        // Check visibility of extended parent conditions
-        for parent in &c.extends {
-            self.check_name_visible(parent.node.as_str(), Namespace::Condition, parent.span);
-        }
-
         // Type-check default expressions for condition parameters
         // Bind incrementally so later defaults can reference earlier params
         self.scope.push(BlockKind::Derive);
@@ -918,18 +913,13 @@ impl<'a> Checker<'a> {
             self.scope.pop();
         }
 
-        // Use merged state fields (own + inherited) for the state binding type.
-        // Falls back to own fields if the condition has no ConditionInfo (shouldn't happen).
+        // State fields for the state binding type.
         let state_ty_fields: Vec<(Name, Ty)> = self
             .env
             .conditions
             .get(&c.name)
-            .map(|info| info.merged_state_fields.clone())
+            .map(|info| info.state_fields.clone())
             .unwrap_or_default();
-
-        // Collect inherited ancestor params for binding in block scopes.
-        // Ancestor params are bound first, child params shadow them.
-        let inherited_params = self.collect_inherited_params(&c.name, &c.extends);
 
         for clause in &c.clauses {
             match clause {
@@ -939,7 +929,7 @@ impl<'a> Checker<'a> {
                         Some((&c.receiver_name, &c.receiver_type, &c.receiver_with_groups)),
                         &c.params,
                         &state_ty_fields,
-                        &inherited_params,
+                        &[],
                     );
                 }
                 ConditionClause::Suppress(s) => {
@@ -975,17 +965,6 @@ impl<'a> Checker<'a> {
                         &c.receiver_with_groups,
                         c.receiver_type.span,
                     );
-                    // Bind inherited ancestor params first (child params shadow later)
-                    for (name, ty) in &inherited_params {
-                        self.scope.bind(
-                            name.clone(),
-                            VarBinding {
-                                ty: ty.clone(),
-                                mutable: false,
-                                is_local: false,
-                            },
-                        );
-                    }
                     for param in &c.params {
                         self.scope.bind(
                             param.name.clone(),
@@ -1038,17 +1017,6 @@ impl<'a> Checker<'a> {
                         &c.receiver_with_groups,
                         c.receiver_type.span,
                     );
-                    // Bind inherited ancestor params first (child params shadow later)
-                    for (name, ty) in &inherited_params {
-                        self.scope.bind(
-                            name.clone(),
-                            VarBinding {
-                                ty: ty.clone(),
-                                mutable: false,
-                                is_local: false,
-                            },
-                        );
-                    }
                     for param in &c.params {
                         self.scope.bind(
                             param.name.clone(),
@@ -1081,58 +1049,20 @@ impl<'a> Checker<'a> {
                     self.check_block(&pc.body);
                     self.scope.pop();
                 }
-            }
-        }
-    }
-
-    /// Collect inherited params from ancestor conditions in DFS order.
-    /// Returns (name, type) pairs for all ancestor params not shadowed by the child's own params.
-    fn collect_inherited_params(
-        &self,
-        condition_name: &Name,
-        extends: &[Spanned<Name>],
-    ) -> Vec<(Name, Ty)> {
-        if extends.is_empty() {
-            return Vec::new();
-        }
-        let mut result = Vec::new();
-        let mut seen = HashSet::new();
-
-        fn walk(
-            name: &Name,
-            env: &crate::env::TypeEnv,
-            result: &mut Vec<(Name, Ty)>,
-            seen: &mut HashSet<Name>,
-            root_name: &Name,
-        ) {
-            if !seen.insert(name.clone()) {
-                return;
-            }
-            if let Some(info) = env.conditions.get(name) {
-                // Recurse into parents first
-                for parent in &info.extends {
-                    walk(parent, env, result, seen, root_name);
-                }
-                // Add this ancestor's params (skip the root condition itself)
-                if name != root_name {
-                    for param in &info.params {
-                        // Only add if not already seen (earlier ancestor or duplicate)
-                        if !result.iter().any(|(n, _)| n == &param.name) {
-                            result.push((param.name.clone(), param.ty.clone()));
-                        }
-                    }
+                ConditionClause::Include(inc) => {
+                    // Include directives should be expanded before checking.
+                    // If one reaches here, it means expand_includes didn't run or
+                    // the source condition doesn't exist (already reported).
+                    self.error(
+                        format!(
+                            "unexpanded `include` directive referencing `{}`",
+                            inc.source_condition
+                        ),
+                        inc.span,
+                    );
                 }
             }
         }
-
-        walk(
-            condition_name,
-            self.env,
-            &mut result,
-            &mut seen,
-            condition_name,
-        );
-        result
     }
 
     fn check_option(&mut self, o: &OptionDecl) {

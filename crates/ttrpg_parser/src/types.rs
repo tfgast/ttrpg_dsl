@@ -59,9 +59,7 @@ impl Parser {
                         self.advance();
                         ty
                     }
-                    "ActiveCondition"
-                        if !matches!(self.peek_at(1), TokenKind::Dot) =>
-                    {
+                    "ActiveCondition" if !matches!(self.peek_at(1), TokenKind::Dot) => {
                         self.advance();
                         if matches!(self.peek(), TokenKind::Lt) {
                             self.expect(&TokenKind::Lt)?;

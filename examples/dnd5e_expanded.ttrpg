@@ -1208,7 +1208,8 @@ system "D&D 5e Expanded" {
         }
     }
 
-    condition Stunned extends Incapacitated on bearer: Character {
+    condition Stunned on bearer: Character {
+        include modify Incapacitated
         // RESOLVED: auto_fail bypasses the roll entirely.              [ttrpg_dsl-34x]
         modify attack_roll(target: bearer) {
             mode = Advantage
@@ -1416,8 +1417,8 @@ system "D&D 5e Expanded" {
     //  RESOLVED (formerly "remaining") language gaps:
     //
     //  [RESOLVED] CONDITION COMPOSITION / INHERITANCE           [ttrpg_dsl-7r4]
-    //     - `condition Stunned extends Incapacitated on bearer: Character { ... }`
-    //     - Child inherits all modify/suppress clauses from parents
+    //     - `condition Stunned on bearer: Character { include modify Incapacitated ... }`
+    //     - `include modify/suppress ParentCond` pulls in clause types from another condition
     //
     //  [RESOLVED] AUTO-SUCCEED / AUTO-FAIL                      [ttrpg_dsl-34x]
     //     - RollMode enum extended with auto_fail, auto_succeed

@@ -424,105 +424,106 @@ fn collect_and_apply_cost_modifiers(
             continue;
         }
 
-        // Collect ancestor chain (parents first, then self)
-        let ancestor_decls =
-            crate::pipeline::collect_ancestor_order(env.interp.program, condition.name.as_str());
+        // Look up the condition decl directly
+        let cond_decl = match env.interp.program.conditions.get(condition.name.as_str()) {
+            Some(d) => d,
+            None => continue,
+        };
 
-        for cond_decl in &ancestor_decls {
-            for clause_item in &cond_decl.clauses {
-                let clause = match clause_item {
-                    ConditionClause::Modify(c) => c,
-                    ConditionClause::Suppress(_)
-                    | ConditionClause::SuppressModify(_)
-                    | ConditionClause::OnApply(_)
-                    | ConditionClause::OnRemove(_)
-                    | ConditionClause::Periodic(_) => continue,
-                };
+        for clause_item in &cond_decl.clauses {
+            let clause = match clause_item {
+                ConditionClause::Modify(c) => c,
+                ConditionClause::Suppress(_)
+                | ConditionClause::SuppressModify(_)
+                | ConditionClause::OnApply(_)
+                | ConditionClause::OnRemove(_)
+                | ConditionClause::Periodic(_)
+                | ConditionClause::Include(_) => continue,
+            };
 
-                // Only match Cost targets for this action
-                match &clause.target {
-                    ModifyTarget::Cost(name) if name == action_name => {}
-                    _ => continue,
+            // Only match Cost targets for this action
+            match &clause.target {
+                ModifyTarget::Cost(name) if name == action_name => {}
+                _ => continue,
+            }
+
+            // Check bindings: evaluate each binding expression and compare
+            // with the actual parameter values. Resolve each binding.name
+            // against the action/reaction scope (receiver + params are bound
+            // in the calling scope before cost evaluation).
+            let bindings_match = if clause.bindings.is_empty() {
+                true
+            } else {
+                let mut all_match = true;
+
+                // Resolve action param values before pushing condition scope
+                let binding_vals: Vec<Option<Value>> = clause
+                    .bindings
+                    .iter()
+                    .map(|b| env.lookup(&b.name).cloned())
+                    .collect();
+
+                env.push_scope();
+                env.bind(
+                    cond_decl.receiver_name.clone(),
+                    Value::Entity(condition.bearer),
+                );
+                for (name, val) in &condition.params {
+                    env.bind(name.clone(), val.clone());
+                }
+                // Bind state fields as read-only struct
+                if !condition.state_fields.is_empty() {
+                    env.bind(
+                        Name::from("state"),
+                        Value::Struct {
+                            name: Name::from("state"),
+                            fields: condition.state_fields.clone(),
+                        },
+                    );
                 }
 
-                // Check bindings: evaluate each binding expression and compare
-                // with the actual parameter values. Resolve each binding.name
-                // against the action/reaction scope (receiver + params are bound
-                // in the calling scope before cost evaluation).
-                let bindings_match = if clause.bindings.is_empty() {
-                    true
-                } else {
-                    let mut all_match = true;
+                for (idx, binding) in clause.bindings.iter().enumerate() {
+                    let param_val = match &binding_vals[idx] {
+                        Some(val) => val.clone(),
+                        None => {
+                            all_match = false;
+                            break;
+                        }
+                    };
 
-                    // Resolve action param values before pushing condition scope
-                    let binding_vals: Vec<Option<Value>> = clause
-                        .bindings
-                        .iter()
-                        .map(|b| env.lookup(&b.name).cloned())
-                        .collect();
-
-                    env.push_scope();
-                    env.bind(
-                        cond_decl.receiver_name.clone(),
-                        Value::Entity(condition.bearer),
-                    );
-                    for (name, val) in &condition.params {
-                        env.bind(name.clone(), val.clone());
-                    }
-                    // Bind state fields as read-only struct
-                    if !condition.state_fields.is_empty() {
-                        env.bind(
-                            Name::from("state"),
-                            Value::Struct {
-                                name: Name::from("state"),
-                                fields: condition.state_fields.clone(),
-                            },
-                        );
-                    }
-
-                    for (idx, binding) in clause.bindings.iter().enumerate() {
-                        let param_val = match &binding_vals[idx] {
-                            Some(val) => val.clone(),
-                            None => {
-                                all_match = false;
-                                break;
+                    if let Some(ref expr) = binding.value {
+                        match eval_expr(env, expr) {
+                            Ok(val) => {
+                                if !value_eq(env.state, &param_val, &val) {
+                                    all_match = false;
+                                    break;
+                                }
                             }
-                        };
-
-                        if let Some(ref expr) = binding.value {
-                            match eval_expr(env, expr) {
-                                Ok(val) => {
-                                    if !value_eq(env.state, &param_val, &val) {
-                                        all_match = false;
-                                        break;
-                                    }
-                                }
-                                Err(e) => {
-                                    env.pop_scope();
-                                    return Err(e);
-                                }
+                            Err(e) => {
+                                env.pop_scope();
+                                return Err(e);
                             }
                         }
-                        // None = wildcard, always matches
                     }
-
-                    env.pop_scope();
-                    all_match
-                };
-
-                if bindings_match {
-                    cost_modifiers.push(CostModifier {
-                        source: ModifySource::Condition(condition.name.clone()),
-                        clause: clause.clone(),
-                        bearer: condition.bearer,
-                        receiver_name: cond_decl.receiver_name.clone(),
-                        condition_params: condition.params.clone(),
-                        gained_at: condition.gained_at,
-                        condition_id: condition.id,
-                        condition_duration: condition.duration.clone(),
-                        condition_state_fields: condition.state_fields.clone(),
-                    });
+                    // None = wildcard, always matches
                 }
+
+                env.pop_scope();
+                all_match
+            };
+
+            if bindings_match {
+                cost_modifiers.push(CostModifier {
+                    source: ModifySource::Condition(condition.name.clone()),
+                    clause: clause.clone(),
+                    bearer: condition.bearer,
+                    receiver_name: cond_decl.receiver_name.clone(),
+                    condition_params: condition.params.clone(),
+                    gained_at: condition.gained_at,
+                    condition_id: condition.id,
+                    condition_duration: condition.duration.clone(),
+                    condition_state_fields: condition.state_fields.clone(),
+                });
             }
         }
     }

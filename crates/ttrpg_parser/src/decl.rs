@@ -1029,7 +1029,8 @@ impl Parser {
     // ── Condition ────────────────────────────────────────────────
 
     fn parse_condition_decl(&mut self) -> Result<ConditionDecl, ()> {
-        const HELP: &str = "syntax: condition <name>[(<params>)] [extends <parent>] on <self>: <Type> { [tags: #a, #b] ... }";
+        const HELP: &str =
+            "syntax: condition <name>[(<params>)] on <self>: <Type> { [tags: #a, #b] ... }";
         self.expect_soft_keyword("condition")?;
         let (name, _) = self.expect_ident()?;
         // Optional parameters: condition Frightened(source: Character) on ...
@@ -1041,22 +1042,13 @@ impl Parser {
         } else {
             Vec::new()
         };
-        let extends = if self.at_ident("extends") {
-            self.advance();
-            let mut parents = Vec::new();
-            let start = self.start_span();
-            let (name, _) = self.expect_ident()?;
-            parents.push(Spanned::new(name, self.end_span(start)));
-            while matches!(self.peek(), TokenKind::Comma) {
-                self.advance();
-                let start = self.start_span();
-                let (name, _) = self.expect_ident()?;
-                parents.push(Spanned::new(name, self.end_span(start)));
-            }
-            parents
-        } else {
-            Vec::new()
-        };
+        if self.at_ident("extends") {
+            self.error_with_help(
+                "condition `extends` has been replaced by `include` clauses inside the condition body",
+                "use `include modify ParentCondition` inside the condition body instead",
+            );
+            return Err(());
+        }
         if !self.at_ident("on") {
             self.error_with_help(
                 format!(
@@ -1161,9 +1153,11 @@ impl Parser {
                 }
                 seen_periodic_tags.push(pc.tag.clone());
                 clauses.push(ConditionClause::Periodic(pc));
+            } else if self.at_ident("include") {
+                clauses.push(ConditionClause::Include(self.parse_include_clause()?));
             } else {
                 self.error(format!(
-                    "expected `tags`, `state`, `modify`, `suppress`, `on_apply`, `on_remove`, or `periodic` in condition body, found {}",
+                    "expected `tags`, `state`, `modify`, `suppress`, `include`, `on_apply`, `on_remove`, or `periodic` in condition body, found {}",
                     self.peek()
                 ));
                 return Err(());
@@ -1175,7 +1169,6 @@ impl Parser {
         Ok(ConditionDecl {
             name,
             params,
-            extends,
             stacking,
             receiver_name,
             receiver_type,
@@ -1379,6 +1372,7 @@ impl Parser {
             span: self.end_span(start),
             id: ModifyClauseId(0), // placeholder; build_index() assigns real IDs
             tags,
+            included_from: None,
         })
     }
 
@@ -1664,6 +1658,7 @@ impl Parser {
             event_name,
             bindings,
             span: self.end_span(start),
+            included_from: None,
         })
     }
 
@@ -1699,6 +1694,109 @@ impl Parser {
         Ok(SuppressModifyClause {
             predicates,
             bindings,
+            span: self.end_span(start),
+            included_from: None,
+        })
+    }
+
+    // ── Include (condition clause copying) ────────────────────────
+
+    fn parse_include_clause(&mut self) -> Result<IncludeClause, ()> {
+        let start = self.start_span();
+        self.expect_soft_keyword("include")?;
+
+        // Parse kind: modify | suppress | suppress-modify (suppress followed by -)
+        let kind = if self.at_ident("modify") {
+            self.advance();
+            IncludeKind::Modify
+        } else if self.at_ident("suppress") {
+            self.advance();
+            if matches!(self.peek(), TokenKind::Minus) {
+                self.advance();
+                if !self.at_ident("modify") {
+                    self.error("expected `modify` after `suppress-`");
+                    return Err(());
+                }
+                self.advance();
+                IncludeKind::SuppressModify
+            } else {
+                IncludeKind::Suppress
+            }
+        } else {
+            self.error(format!(
+                "expected `modify`, `suppress`, or `suppress-modify` after `include`, found {}",
+                self.peek()
+            ));
+            return Err(());
+        };
+
+        // Parse source condition name
+        let (source_condition, _) = self.expect_ident()?;
+
+        // Optional named args: (name: value, ...)
+        let args = if matches!(self.peek(), TokenKind::LParen) {
+            self.advance();
+            let mut args = Vec::new();
+            if !matches!(self.peek(), TokenKind::RParen) {
+                loop {
+                    let arg_start = self.start_span();
+                    let (arg_name, _) = self.expect_ident()?;
+                    self.expect(&TokenKind::Colon)?;
+                    // Value: identifier or literal
+                    let value = match self.peek() {
+                        TokenKind::Int(n) => {
+                            let n = *n;
+                            self.advance();
+                            IncludeArgValue::Literal(ExprKind::IntLit(n))
+                        }
+                        TokenKind::String(s) => {
+                            let s = s.to_string();
+                            self.advance();
+                            IncludeArgValue::Literal(ExprKind::StringLit(s))
+                        }
+                        TokenKind::Ident(name) if &**name == "true" => {
+                            self.advance();
+                            IncludeArgValue::Literal(ExprKind::BoolLit(true))
+                        }
+                        TokenKind::Ident(name) if &**name == "false" => {
+                            self.advance();
+                            IncludeArgValue::Literal(ExprKind::BoolLit(false))
+                        }
+                        TokenKind::Ident(_) => {
+                            let (name, _) = self.expect_ident()?;
+                            IncludeArgValue::Name(name)
+                        }
+                        _ => {
+                            self.error(format!(
+                                "expected identifier or literal in include arg, found {}",
+                                self.peek()
+                            ));
+                            return Err(());
+                        }
+                    };
+                    args.push(IncludeArg {
+                        name: arg_name,
+                        value,
+                        span: self.end_span(arg_start),
+                    });
+                    if !matches!(self.peek(), TokenKind::Comma) {
+                        break;
+                    }
+                    self.advance();
+                }
+            }
+            self.expect(&TokenKind::RParen)?;
+            args
+        } else {
+            Vec::new()
+        };
+
+        self.expect_term()?;
+
+        Ok(IncludeClause {
+            kind,
+            source_condition,
+            args,
             span: self.end_span(start),
         })
     }

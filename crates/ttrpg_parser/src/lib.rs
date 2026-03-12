@@ -1,5 +1,6 @@
 mod decl;
 pub mod diagnostic;
+pub mod expand;
 mod expr;
 pub mod lower;
 pub mod manifest;
@@ -11,6 +12,7 @@ mod stmt;
 mod types;
 
 pub use diagnostic::{Diagnostic, Severity, SourceMap};
+pub use expand::expand_includes;
 pub use lower::lower_moves;
 use parser::Parser;
 pub use resolve::FileSystemInfo;
@@ -124,6 +126,9 @@ pub fn parse_multi(sources: &[(String, String)]) -> ParseMultiResult {
         merged.items.extend(p.items);
     }
     merged.build_index();
+
+    // Expand include directives in conditions
+    merged = expand_includes(merged, &mut all_diagnostics);
 
     // Resolve modules
     let (module_map, resolve_diags) = resolve::resolve_modules(&mut merged, &file_systems_info);

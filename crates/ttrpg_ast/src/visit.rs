@@ -253,7 +253,6 @@ impl VisitSpansMut for EventDecl {
 impl VisitSpansMut for ConditionDecl {
     fn visit_spans_mut(&mut self, f: &mut dyn FnMut(&mut Span)) {
         self.params.visit_spans_mut(f);
-        self.extends.visit_spans_mut(f);
         if let StackingPolicy::BestBy { param, .. } = &mut self.stacking {
             param.visit_spans_mut(f);
         }
@@ -281,6 +280,7 @@ impl VisitSpansMut for ConditionClause {
                 lb.visit_spans_mut(f);
             }
             ConditionClause::Periodic(pc) => pc.visit_spans_mut(f),
+            ConditionClause::Include(inc) => inc.visit_spans_mut(f),
         }
     }
 }
@@ -384,6 +384,15 @@ impl VisitSpansMut for SuppressModifyClause {
         self.span.visit_spans_mut(f);
         self.predicates.visit_spans_mut(f);
         self.bindings.visit_spans_mut(f);
+    }
+}
+
+impl VisitSpansMut for IncludeClause {
+    fn visit_spans_mut(&mut self, f: &mut dyn FnMut(&mut Span)) {
+        self.span.visit_spans_mut(f);
+        for arg in &mut self.args {
+            arg.span.visit_spans_mut(f);
+        }
     }
 }
 

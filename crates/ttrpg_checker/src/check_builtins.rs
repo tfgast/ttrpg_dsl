@@ -767,10 +767,7 @@ impl Checker<'_> {
     ) -> Ty {
         if args.len() != 2 {
             self.error(
-                format!(
-                    "`has_condition` expects 2 arguments, found {}",
-                    args.len()
-                ),
+                format!("`has_condition` expects 2 arguments, found {}", args.len()),
                 span,
             );
             return Ty::Error;

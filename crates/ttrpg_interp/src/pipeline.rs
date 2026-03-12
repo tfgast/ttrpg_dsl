@@ -16,39 +16,7 @@ use crate::{Env, MAX_EMIT_DEPTH, action, event};
 
 // ── Supporting types ────────────────────────────────────────────
 
-use ttrpg_ast::ast::{ConditionDecl, Program};
-
-/// DFS post-order traversal of the condition extends hierarchy.
-///
-/// Returns `[grandparent, parent, child]` — ancestors first, so inherited
-/// clauses apply before the child's own clauses. A `HashSet` prevents
-/// diamond duplicates.
-pub(crate) fn collect_ancestor_order<'p>(
-    program: &'p Program,
-    condition_name: &str,
-) -> Vec<&'p ConditionDecl> {
-    let mut result = Vec::new();
-    let mut visited = HashSet::new();
-    fn walk<'p>(
-        program: &'p Program,
-        name: &str,
-        visited: &mut HashSet<Name>,
-        result: &mut Vec<&'p ConditionDecl>,
-    ) {
-        if !visited.insert(Name::from(name)) {
-            return; // already visited (diamond dedup or cycle)
-        }
-        if let Some(decl) = program.conditions.get(name) {
-            // Recurse into parents first (post-order)
-            for parent in &decl.extends {
-                walk(program, parent.node.as_str(), visited, result);
-            }
-            result.push(decl);
-        }
-    }
-    walk(program, condition_name, &mut visited, &mut result);
-    result
-}
+use ttrpg_ast::ast::Program;
 
 /// Compute the set of winning condition instance IDs for stacking policies.
 ///
@@ -155,14 +123,14 @@ pub(crate) fn execute_lifecycle_blocks(
     condition_instance_id: u64,
     state_map: Option<BTreeMap<Name, Value>>,
 ) -> Result<Option<BTreeMap<Name, Value>>, RuntimeError> {
-    let chain = collect_ancestor_order(env.interp.program, condition_name);
+    let decl = env.interp.program.conditions.get(condition_name);
     env.lifecycle_condition_stack.push(condition_instance_id);
     env.in_lifecycle_block += 1;
 
     let mut current_state = state_map;
 
     let result = (|| {
-        for decl in &chain {
+        if let Some(decl) = decl {
             for clause in &decl.clauses {
                 let block = match (kind, clause) {
                     (LifecycleKind::OnApply, ConditionClause::OnApply(lb)) => &lb.body,
@@ -254,80 +222,77 @@ pub(crate) fn collect_modifiers_owned(
                 continue;
             }
 
-            // Collect ancestor chain (parents first, then self)
-            let ancestor_decls =
-                collect_ancestor_order(env.interp.program, condition.name.as_str());
-            if ancestor_decls.is_empty() {
-                continue;
-            }
+            // Look up the condition decl directly
+            let cond_decl = match env.interp.program.conditions.get(condition.name.as_str()) {
+                Some(d) => d,
+                None => continue,
+            };
 
-            // Check each clause across all ancestors
-            for cond_decl in &ancestor_decls {
-                for clause_item in &cond_decl.clauses {
-                    // Collect suppress-modify clauses
-                    if let ConditionClause::SuppressModify(sm) = clause_item {
-                        suppressions.push(ActiveSuppressModify {
-                            clause: sm.clone(),
-                            bearer: Value::Entity(condition.bearer),
-                            receiver_name: cond_decl.receiver_name.clone(),
-                            condition_params: condition.params.clone(),
-                        });
-                        continue;
-                    }
+            for clause_item in &cond_decl.clauses {
+                // Collect suppress-modify clauses
+                if let ConditionClause::SuppressModify(sm) = clause_item {
+                    suppressions.push(ActiveSuppressModify {
+                        clause: sm.clone(),
+                        bearer: Value::Entity(condition.bearer),
+                        receiver_name: cond_decl.receiver_name.clone(),
+                        condition_params: condition.params.clone(),
+                    });
+                    continue;
+                }
 
-                    let clause = match clause_item {
-                        ConditionClause::Modify(c) => c,
-                        ConditionClause::Suppress(_)
-                        | ConditionClause::SuppressModify(_)
-                        | ConditionClause::OnApply(_)
-                        | ConditionClause::OnRemove(_)
-                        | ConditionClause::Periodic(_) => continue,
-                    };
+                let clause = match clause_item {
+                    ConditionClause::Modify(c) => c,
+                    ConditionClause::Suppress(_)
+                    | ConditionClause::SuppressModify(_)
+                    | ConditionClause::OnApply(_)
+                    | ConditionClause::OnRemove(_)
+                    | ConditionClause::Periodic(_)
+                    | ConditionClause::Include(_) => continue,
+                };
 
-                    // Does the target function name match?
-                    match &clause.target {
-                        ModifyTarget::Named(name) => {
-                            if name != fn_name {
-                                continue;
-                            }
-                        }
-                        ModifyTarget::Selector(_) => {
-                            match env.interp.type_env.selector_matches.get(&clause.id) {
-                                Some(set) if set.contains(fn_name) => {}
-                                _ => continue,
-                            }
-                        }
-                        ModifyTarget::Cost(_) => {
-                            // Cost modifiers are handled separately; skip here
+                // Does the target function name match?
+                match &clause.target {
+                    ModifyTarget::Named(name) => {
+                        if name != fn_name {
                             continue;
                         }
                     }
-
-                    // Check bindings: each binding maps a param name to an expression.
-                    // Evaluate the expression in a scope with the condition receiver bound.
-                    // The binding matches if param[binding.name] equals the evaluated value.
-                    if check_modify_bindings(
-                        env,
-                        clause,
-                        condition,
-                        &cond_decl.receiver_name,
-                        fn_info,
-                        bound_params,
-                    )? {
-                        condition_modifiers.push((
-                            condition.gained_at,
-                            OwnedModifier {
-                                source: ModifySource::Condition(condition.name.clone()),
-                                clause: clause.clone(),
-                                bearer: Some(Value::Entity(condition.bearer)),
-                                receiver_name: Some(cond_decl.receiver_name.clone()),
-                                condition_params: condition.params.clone(),
-                                condition_id: Some(condition.id),
-                                condition_duration: Some(condition.duration.clone()),
-                                condition_state_fields: condition.state_fields.clone(),
-                            },
-                        ));
+                    ModifyTarget::Selector(_) => {
+                        match env.interp.type_env.selector_matches.get(&clause.id) {
+                            Some(set) if set.contains(fn_name) => {}
+                            _ => continue,
+                        }
                     }
+                    ModifyTarget::Cost(_) => {
+                        // Cost modifiers are handled separately; skip here
+                        continue;
+                    }
+                }
+
+                // Check bindings: each binding maps a param name to an expression.
+                // Evaluate the expression in a scope with the condition receiver bound.
+                // The binding matches if param[binding.name] equals the evaluated value.
+                if check_modify_bindings(
+                    env,
+                    clause,
+                    condition,
+                    &cond_decl.receiver_name,
+                    fn_info,
+                    bound_params,
+                )? {
+                    condition_modifiers.push((
+                        condition.gained_at,
+                        OwnedModifier {
+                            source: ModifySource::Condition(condition.name.clone()),
+                            clause: clause.clone(),
+                            bearer: Some(Value::Entity(condition.bearer)),
+                            receiver_name: Some(cond_decl.receiver_name.clone()),
+                            condition_params: condition.params.clone(),
+                            condition_id: Some(condition.id),
+                            condition_duration: Some(condition.duration.clone()),
+                            condition_state_fields: condition.state_fields.clone(),
+                        },
+                    ));
                 }
             }
         }
@@ -1350,6 +1315,7 @@ mod tests {
                     span: dummy_span(),
                     id: ModifyClauseId(0),
                     tags: vec![],
+                    included_from: None,
                 })]),
             ),
         ]);
@@ -1388,12 +1354,11 @@ mod tests {
             ConditionInfo {
                 name: "Prone".into(),
                 params: vec![],
-                extends: vec![],
+
                 receiver_name: "target".into(),
                 receiver_type: Ty::Entity("Character".into()),
                 tags: HashSet::new(),
-                own_state_fields: vec![],
-                merged_state_fields: vec![],
+                state_fields: vec![],
             },
         );
 
@@ -1532,6 +1497,7 @@ mod tests {
                     span: dummy_span(),
                     id: ModifyClauseId(0),
                     tags: vec![],
+                    included_from: None,
                 })]),
             ),
         ]);
@@ -1561,12 +1527,11 @@ mod tests {
             ConditionInfo {
                 name: "Boosted".into(),
                 params: vec![],
-                extends: vec![],
+
                 receiver_name: "target".into(),
                 receiver_type: Ty::Entity("Character".into()),
                 tags: HashSet::new(),
-                own_state_fields: vec![],
-                merged_state_fields: vec![],
+                state_fields: vec![],
             },
         );
 
@@ -1690,6 +1655,7 @@ mod tests {
                         span: dummy_span(),
                         id: ModifyClauseId(0),
                         tags: vec![],
+                        included_from: None,
                     })]),
             ),
             DeclKind::Condition(
@@ -1713,6 +1679,7 @@ mod tests {
                         span: dummy_span(),
                         id: ModifyClauseId(0),
                         tags: vec![],
+                        included_from: None,
                     })]),
             ),
         ]);
@@ -1751,12 +1718,11 @@ mod tests {
             ConditionInfo {
                 name: "Alpha".into(),
                 params: vec![],
-                extends: vec![],
+
                 receiver_name: "t".into(),
                 receiver_type: Ty::Entity("Character".into()),
                 tags: HashSet::new(),
-                own_state_fields: vec![],
-                merged_state_fields: vec![],
+                state_fields: vec![],
             },
         );
         type_env.conditions.insert(
@@ -1764,12 +1730,11 @@ mod tests {
             ConditionInfo {
                 name: "Beta".into(),
                 params: vec![],
-                extends: vec![],
+
                 receiver_name: "t".into(),
                 receiver_type: Ty::Entity("Character".into()),
                 tags: HashSet::new(),
-                own_state_fields: vec![],
-                merged_state_fields: vec![],
+                state_fields: vec![],
             },
         );
 
@@ -1908,6 +1873,7 @@ mod tests {
                         span: dummy_span(),
                         id: ModifyClauseId(0),
                         tags: vec![],
+                        included_from: None,
                     })]),
             ),
             DeclKind::Option(OptionDecl {
@@ -1930,6 +1896,7 @@ mod tests {
                     span: dummy_span(),
                     id: ModifyClauseId(0),
                     tags: vec![],
+                    included_from: None,
                 }]),
             }),
         ]);
@@ -1968,12 +1935,11 @@ mod tests {
             ConditionInfo {
                 name: "Buff".into(),
                 params: vec![],
-                extends: vec![],
+
                 receiver_name: "t".into(),
                 receiver_type: Ty::Entity("Character".into()),
                 tags: HashSet::new(),
-                own_state_fields: vec![],
-                merged_state_fields: vec![],
+                state_fields: vec![],
             },
         );
         type_env.options.insert("Variant".into());
@@ -2091,6 +2057,7 @@ mod tests {
                         span: dummy_span(),
                         id: ModifyClauseId(0),
                         tags: vec![],
+                        included_from: None,
                     })]),
             ),
         ]);
@@ -2129,12 +2096,11 @@ mod tests {
             ConditionInfo {
                 name: "Shared".into(),
                 params: vec![],
-                extends: vec![],
+
                 receiver_name: "t".into(),
                 receiver_type: Ty::Entity("Character".into()),
                 tags: HashSet::new(),
-                own_state_fields: vec![],
-                merged_state_fields: vec![],
+                state_fields: vec![],
             },
         );
 
@@ -2296,6 +2262,7 @@ mod tests {
                     span: dummy_span(),
                     id: ModifyClauseId(0),
                     tags: vec![],
+                    included_from: None,
                 }]),
             }),
         ]);
@@ -2429,6 +2396,7 @@ mod tests {
                         span: dummy_span(),
                         id: ModifyClauseId(0),
                         tags: vec![],
+                        included_from: None,
                     })]),
             ),
         ]);
@@ -2467,12 +2435,11 @@ mod tests {
             ConditionInfo {
                 name: "Buff".into(),
                 params: vec![],
-                extends: vec![],
+
                 receiver_name: "t".into(),
                 receiver_type: Ty::Entity("Character".into()),
                 tags: HashSet::new(),
-                own_state_fields: vec![],
-                merged_state_fields: vec![],
+                state_fields: vec![],
             },
         );
 
@@ -2671,6 +2638,7 @@ mod tests {
                     span: dummy_span(),
                     id: ModifyClauseId(0),
                     tags: vec![],
+                    included_from: None,
                 }]),
             }),
             // Alpha declared second
@@ -2694,6 +2662,7 @@ mod tests {
                     span: dummy_span(),
                     id: ModifyClauseId(0),
                     tags: vec![],
+                    included_from: None,
                 }]),
             }),
         ]);
@@ -2832,6 +2801,7 @@ mod tests {
                         span: dummy_span(),
                         id: ModifyClauseId(0),
                         tags: vec![],
+                        included_from: None,
                     })]),
             ),
         ]);
@@ -2869,13 +2839,12 @@ mod tests {
             "C".into(),
             ConditionInfo {
                 name: "C".into(),
-                extends: vec![],
+
                 receiver_name: "target".into(),
                 receiver_type: Ty::Entity("Character".into()),
                 params: vec![],
                 tags: HashSet::new(),
-                own_state_fields: vec![],
-                merged_state_fields: vec![],
+                state_fields: vec![],
             },
         );
 
@@ -2974,6 +2943,7 @@ mod tests {
                         span: dummy_span(),
                         id: ModifyClauseId(0),
                         tags: vec![],
+                        included_from: None,
                     })]),
             ),
         ]);
@@ -3011,13 +2981,12 @@ mod tests {
             "C".into(),
             ConditionInfo {
                 name: "C".into(),
-                extends: vec![],
+
                 receiver_name: "target".into(),
                 receiver_type: Ty::Entity("Character".into()),
                 params: vec![],
                 tags: HashSet::new(),
-                own_state_fields: vec![],
-                merged_state_fields: vec![],
+                state_fields: vec![],
             },
         );
 

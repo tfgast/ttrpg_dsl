@@ -1,5 +1,6 @@
 ---
 source: crates/ttrpg_cli/src/format.rs
+assertion_line: 1133
 expression: format_condition_signature(&ci)
 ---
-condition Paralyzed extends Incapacitated on bearer: Character
+condition Frightened(source: Character) on bearer: Character

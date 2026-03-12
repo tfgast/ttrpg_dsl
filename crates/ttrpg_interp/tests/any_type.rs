@@ -358,16 +358,20 @@ system "test" {
 
 #[test]
 fn is_on_non_any_non_entity_is_error() {
-    let errors = setup_expect_errors(r#"
+    let errors = setup_expect_errors(
+        r#"
 system "test" {
     derive check() -> bool {
         let x: int = 42
         x is int
     }
 }
-"#);
+"#,
+    );
     assert!(
-        errors.iter().any(|e| e.contains("`is` can only be used with")),
+        errors
+            .iter()
+            .any(|e| e.contains("`is` can only be used with")),
         "expected error about `is` on int, got: {:?}",
         errors
     );
@@ -375,16 +379,20 @@ system "test" {
 
 #[test]
 fn is_any_is_error() {
-    let errors = setup_expect_errors(r#"
+    let errors = setup_expect_errors(
+        r#"
 system "test" {
     derive check() -> bool {
         let x: any = to_any(42)
         x is any
     }
 }
-"#);
+"#,
+    );
     assert!(
-        errors.iter().any(|e| e.contains("`is any` is not meaningful")),
+        errors
+            .iter()
+            .any(|e| e.contains("`is any` is not meaningful")),
         "expected error about `is any`, got: {:?}",
         errors
     );

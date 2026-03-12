@@ -150,10 +150,7 @@ impl Checker<'_> {
             Ty::Entity(name) => {
                 if let Ty::Entity(target_name) = &target_ty {
                     if name == target_name {
-                        self.warning(
-                            format!("`is {}` is always true here", target_name),
-                            span,
-                        );
+                        self.warning(format!("`is {}` is always true here", target_name), span);
                     }
                 } else {
                     self.error(
@@ -182,10 +179,7 @@ impl Checker<'_> {
                 if let Ty::TypedActiveCondition(target_name) = &target_ty {
                     if name == target_name {
                         self.warning(
-                            format!(
-                                "`is {}` is always true here",
-                                target_ty.display()
-                            ),
+                            format!("`is {}` is always true here", target_ty.display()),
                             span,
                         );
                     }
@@ -213,10 +207,7 @@ impl Checker<'_> {
     }
 
     /// Extract `(path_key, target_ty)` narrowing tuples from an `is` condition.
-    pub(crate) fn extract_is_narrowings(
-        &self,
-        expr: &Spanned<ExprKind>,
-    ) -> Vec<(Name, Ty)> {
+    pub(crate) fn extract_is_narrowings(&self, expr: &Spanned<ExprKind>) -> Vec<(Name, Ty)> {
         match &expr.node {
             ExprKind::Is {
                 expr: is_expr,

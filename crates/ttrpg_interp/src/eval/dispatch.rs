@@ -575,21 +575,23 @@ fn value_matches_type(val: &Value, ty: &TypeExpr, env: &Env) -> bool {
             }
         }
         // Structs
-        (Value::Struct { name: sname, .. }, TypeExpr::Named(name)) => sname.as_ref() == name.as_ref(),
+        (Value::Struct { name: sname, .. }, TypeExpr::Named(name)) => {
+            sname.as_ref() == name.as_ref()
+        }
         // Enums
-        (Value::EnumVariant { enum_name, .. }, TypeExpr::Named(name)) => enum_name.as_ref() == name.as_ref(),
+        (Value::EnumVariant { enum_name, .. }, TypeExpr::Named(name)) => {
+            enum_name.as_ref() == name.as_ref()
+        }
         // Containers with element type checking
-        (Value::List(items), TypeExpr::List(inner)) => {
-            items.iter().all(|item| value_matches_type(item, &inner.node, env))
-        }
-        (Value::Set(items), TypeExpr::Set(inner)) => {
-            items.iter().all(|item| value_matches_type(item, &inner.node, env))
-        }
-        (Value::Map(entries), TypeExpr::Map(kt, vt)) => {
-            entries.iter().all(|(k, v)| {
-                value_matches_type(k, &kt.node, env) && value_matches_type(v, &vt.node, env)
-            })
-        }
+        (Value::List(items), TypeExpr::List(inner)) => items
+            .iter()
+            .all(|item| value_matches_type(item, &inner.node, env)),
+        (Value::Set(items), TypeExpr::Set(inner)) => items
+            .iter()
+            .all(|item| value_matches_type(item, &inner.node, env)),
+        (Value::Map(entries), TypeExpr::Map(kt, vt)) => entries.iter().all(|(k, v)| {
+            value_matches_type(k, &kt.node, env) && value_matches_type(v, &vt.node, env)
+        }),
         (Value::Option(inner), TypeExpr::OptionType(inner_ty)) => match inner {
             Some(v) => value_matches_type(v, &inner_ty.node, env),
             None => true, // none matches any option<T>
@@ -599,9 +601,13 @@ fn value_matches_type(val: &Value, ty: &TypeExpr, env: &Env) -> bool {
         // Opaque built-in types
         (Value::Condition { .. }, TypeExpr::Condition) => true,
         // ActiveCondition struct matches ActiveCondition<CondName> if the name field matches
-        (Value::Struct { name: sname, fields }, TypeExpr::TypedActiveCondition(cond_name))
-            if sname.as_ref() == "ActiveCondition" =>
-        {
+        (
+            Value::Struct {
+                name: sname,
+                fields,
+            },
+            TypeExpr::TypedActiveCondition(cond_name),
+        ) if sname.as_ref() == "ActiveCondition" => {
             matches!(fields.get(&Name::from("name")), Some(Value::Str(n)) if n == cond_name.as_ref())
         }
         (Value::Position(_), TypeExpr::Position) => true,

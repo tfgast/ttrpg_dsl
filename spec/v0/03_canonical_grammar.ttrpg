@@ -374,19 +374,23 @@ hook_decl       = "hook" IDENT "on" IDENT ":" constrained_type
 event_decl      = "event" IDENT "(" params ")" ("{" field_defs "}")? term
 
 // --- Condition (declarative modifiers, has receiver, no mutation) ---
-condition_decl  = "condition" IDENT params? extends_clause? tag_list?
+condition_decl  = "condition" IDENT params? tag_list?
                       "on" IDENT ":" constrained_type
                       stacking_clause?
                       "{" condition_clause* "}"
-extends_clause  = "extends" IDENT ("," IDENT)*
 //
-// Condition-owned scopes use one effective parameter map for the concrete
-// active condition instance. The runtime materializes ancestor parameters
-// first and descendant parameters later. If multiple declarations in the
-// extends chain reuse the same parameter name, the later descendant binding
-// shadows the earlier ancestor binding. This applies anywhere condition
-// parameters are in scope: lifecycle blocks, periodic blocks, modify bodies,
-// modify binding evaluation, suppress bindings, and cost modifiers.
+// Include directives copy declarative clauses from a source condition at
+// compile time. Only the specified clause type is copied (modify, suppress,
+// or suppress-modify). Lifecycle hooks, periodic blocks, state, stacking,
+// and tags are NOT copied.
+//
+//   include modify SourceCondition
+//   include suppress SourceCondition
+//   include suppress-modify SourceCondition
+//   include modify SourceCondition(param: value, ...)
+//
+// With param args, source condition parameters are substituted in the
+// copied clause bodies. Values can be names or constant literals.
 
 // --- Stacking policy (same-condition instance precedence) ---
 //
@@ -402,10 +406,8 @@ extends_clause  = "extends" IDENT ("," IDENT)*
 //   best by lowest(<param>) ties oldest  — lowest param value wins
 //
 // <param> must name an int parameter declared on this condition.
-// Inherited parent parameters do not qualify unless also declared
-// on the child. The stacking clause belongs to the concrete declared
-// condition and is NOT inherited via extends. The winning instance
-// still contributes inherited parent clauses.
+// The stacking clause belongs to the concrete declared
+// condition and is NOT copied by include.
 //
 // Tie-breaking: gained_at (oldest first). If gained_at ties, lowest
 // condition_id wins, for full determinism.
@@ -421,7 +423,11 @@ stacking_policy = "all"
                 | "best" "by" stacking_dir "(" IDENT ")" "ties" "oldest"
 stacking_dir    = "highest" | "lowest"
 
-condition_clause = modify_clause | suppress_clause | suppress_modify_clause | lifecycle_clause | periodic_clause
+condition_clause = modify_clause | suppress_clause | suppress_modify_clause | lifecycle_clause | periodic_clause | include_clause
+include_clause   = "include" include_kind IDENT ("(" include_args ")")? term
+include_kind     = "modify" | "suppress" | "suppress" "-" "modify"
+include_args     = include_arg ("," include_arg)*
+include_arg      = IDENT ":" (IDENT | literal)
 state_block      = "state" "{" state_field_decl* "}"
 state_field_decl = IDENT ":" type_expr "=" expr term
 lifecycle_clause = ("on_apply" | "on_remove") block

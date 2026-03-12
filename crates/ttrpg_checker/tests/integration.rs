@@ -14,6 +14,10 @@ fn check_source(source: &str) -> CheckResult {
             .collect::<Vec<_>>()
             .join("\n\n")
     );
+    let mut program = program;
+    program.build_index();
+    let mut expand_diags = Vec::new();
+    let program = ttrpg_parser::expand_includes(program, &mut expand_diags);
     check(&program)
 }
 
@@ -31,6 +35,7 @@ fn check_lowered(source: &str) -> (ttrpg_ast::ast::Program, CheckResult) {
     );
     let mut lower_diags = Vec::new();
     let program = ttrpg_parser::lower_moves(program, &mut lower_diags);
+    let program = ttrpg_parser::expand_includes(program, &mut lower_diags);
     assert!(
         lower_diags.is_empty(),
         "lowering errors:\n{}",
@@ -63,6 +68,7 @@ fn lower_source(
     );
     let mut lower_diags = Vec::new();
     let program = ttrpg_parser::lower_moves(program, &mut lower_diags);
+    let program = ttrpg_parser::expand_includes(program, &mut lower_diags);
     (program, lower_diags)
 }
 

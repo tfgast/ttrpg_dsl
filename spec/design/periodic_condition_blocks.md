@@ -269,19 +269,17 @@ process_periodic_conditions([bearer], "round_end_damage")
 Instance #5's block completes fully (already-started blocks are not cancelled).
 Instance #8 is skipped because it was removed.
 
-**Example 3: Inherited parent+child periodic blocks**
+**Example 3: Condition with its own periodic block**
 
-Setup: `condition BaseDot` has `periodic #round_end_damage { /* 1 damage */ }`.
-`condition BurningDot extends BaseDot` also has `periodic #round_end_damage { /* fire VFX */ }`.
+Setup: `condition BurningDot` has `periodic #round_end_damage { /* 1 damage + fire VFX */ }`.
 A combatant has `BurningDot`.
 
 ```
 process_periodic_conditions([bearer], "round_end_damage")
 ```
 
-1. `collect_ancestor_order("BurningDot")` → `[BaseDot, BurningDot]`
-2. Execute `BaseDot`'s periodic block (1 damage)
-3. Execute `BurningDot`'s periodic block (fire VFX)
+1. Look up `BurningDot` declaration
+2. Execute `BurningDot`'s periodic block (1 damage + fire VFX)
 
 Both blocks execute, parent first.
 

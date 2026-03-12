@@ -764,21 +764,47 @@ fn condition_with_params() {
 }
 
 #[test]
-fn condition_with_extends() {
-    ok(r#"system "t" {
+fn condition_extends_gives_helpful_error() {
+    let diags = err(r#"system "t" {
     entity C {}
     condition Incapacitated on bearer: C {}
     condition Stunned extends Incapacitated on bearer: C {}
 }"#);
+    assert!(
+        diags
+            .iter()
+            .any(|d| d.message.contains("replaced by `include`")),
+        "expected error about extends being replaced: {diags:?}"
+    );
 }
 
 #[test]
-fn condition_extends_multiple() {
+fn condition_with_include_modify() {
     ok(r#"system "t" {
     entity C {}
-    condition A on bearer: C {}
-    condition B on bearer: C {}
-    condition C extends A, B on bearer: C {}
+    derive saving_throw(target: C) -> int { 10 }
+    condition Incapacitated on bearer: C {
+        modify saving_throw(target: bearer) {
+            result = 0
+        }
+    }
+    condition Stunned on bearer: C {
+        include modify Incapacitated
+    }
+}"#);
+}
+
+#[test]
+fn condition_with_include_suppress() {
+    ok(r#"system "t" {
+    entity C {}
+    event Flee(actor: C) {}
+    condition Grappled on bearer: C {
+        suppress Flee(actor: bearer)
+    }
+    condition Restrained on bearer: C {
+        include suppress Grappled
+    }
 }"#);
 }
 

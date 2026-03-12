@@ -62,6 +62,7 @@ fn check_source(full_source: &str) -> Vec<String> {
 
     let mut lower_diags = Vec::new();
     let program = ttrpg_parser::lower_moves(program, &mut lower_diags);
+    let program = ttrpg_parser::expand_includes(program, &mut lower_diags);
     errors.extend(
         lower_diags
             .iter()
@@ -208,6 +209,7 @@ fn few_shot_examples_pass_check() {
 
     let mut lower_diags = Vec::new();
     let program = ttrpg_parser::lower_moves(program, &mut lower_diags);
+    let program = ttrpg_parser::expand_includes(program, &mut lower_diags);
     assert!(
         lower_diags.is_empty(),
         "lowering errors in few_shot_examples.ttrpg: {:?}",
@@ -276,6 +278,7 @@ fn templates_pass_check() {
 
         let mut lower_diags = Vec::new();
         let program = ttrpg_parser::lower_moves(program, &mut lower_diags);
+        let program = ttrpg_parser::expand_includes(program, &mut lower_diags);
         let errs: Vec<_> = lower_diags
             .iter()
             .filter(|d| d.severity == Severity::Error)

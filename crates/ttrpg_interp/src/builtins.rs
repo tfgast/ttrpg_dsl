@@ -198,7 +198,10 @@ fn builtin_conditions(env: &Env, args: &[Value], span: Span) -> Result<Value, Ru
     };
 
     // Two-arg form: filter by condition name
-    if let Some(Value::Condition { name: cond_name, .. }) = args.get(1) {
+    if let Some(Value::Condition {
+        name: cond_name, ..
+    }) = args.get(1)
+    {
         let values = conditions
             .iter()
             .filter(|c| c.name == *cond_name)
@@ -220,20 +223,21 @@ fn builtin_conditions(env: &Env, args: &[Value], span: Span) -> Result<Value, Ru
 /// Second argument is a typed condition reference (bare identifier), not a string.
 fn builtin_has_condition(env: &Env, args: &[Value], span: Span) -> Result<Value, RuntimeError> {
     match (args.first(), args.get(1)) {
-        (Some(Value::Entity(entity)), Some(Value::Condition { name: cond_name, .. })) => {
-            match env.state.read_conditions(entity) {
-                Some(conditions) => {
-                    let has_it = conditions
-                        .iter()
-                        .any(|c| c.name == *cond_name);
-                    Ok(Value::Bool(has_it))
-                }
-                None => Err(RuntimeError::with_span(
-                    format!("has_condition() called on unknown entity: {entity:?}"),
-                    span,
-                )),
+        (
+            Some(Value::Entity(entity)),
+            Some(Value::Condition {
+                name: cond_name, ..
+            }),
+        ) => match env.state.read_conditions(entity) {
+            Some(conditions) => {
+                let has_it = conditions.iter().any(|c| c.name == *cond_name);
+                Ok(Value::Bool(has_it))
             }
-        }
+            None => Err(RuntimeError::with_span(
+                format!("has_condition() called on unknown entity: {entity:?}"),
+                span,
+            )),
+        },
         (Some(Value::Entity(_)), Some(other)) => Err(RuntimeError::with_span(
             format!(
                 "has_condition() expects Condition as second argument, got {}",
@@ -632,11 +636,10 @@ fn builtin_apply_condition(
         }
     }
 
-    // Evaluate state field defaults in ancestor order with params in scope
+    // Evaluate state field defaults with params in scope
     let initial_state = {
-        let chain = crate::pipeline::collect_ancestor_order(env.interp.program, cond_name.as_str());
         let mut fields = BTreeMap::new();
-        for decl in &chain {
+        if let Some(decl) = env.interp.program.conditions.get(cond_name.as_str()) {
             for sf in &decl.state_fields {
                 env.push_scope();
                 // Bind condition params so defaults can reference them
@@ -1525,20 +1528,21 @@ fn builtin_process_periodic_conditions(
                 continue;
             }
 
-            // Walk ancestor chain (parent-first), looking for periodic blocks with matching tag
-            let chain = crate::pipeline::collect_ancestor_order(
-                env.interp.program,
-                cond_instance.name.as_str(),
-            );
+            // Look up condition decl directly for periodic blocks with matching tag
+            let decl = env
+                .interp
+                .program
+                .conditions
+                .get(cond_instance.name.as_str());
 
-            // Thread state map through all ancestor periodic blocks
+            // Thread state map through periodic blocks
             let mut current_state = if cond_instance.state_fields.is_empty() {
                 None
             } else {
                 Some(cond_instance.state_fields.clone())
             };
 
-            for decl in &chain {
+            if let Some(decl) = decl {
                 for clause in &decl.clauses {
                     let pc = match clause {
                         ConditionClause::Periodic(pc) if pc.tag == tag.as_str() => pc,

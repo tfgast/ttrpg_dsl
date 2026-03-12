@@ -89,12 +89,6 @@ fn collect_inner(program: &Program, modules: Option<&ModuleMap>) -> (TypeEnv, Ve
     // Validate option extends chains (circular detection)
     validate_option_extends(program, &env, &mut diagnostics);
 
-    // Validate condition extends (parent existence, receiver compat, cycles)
-    validate_condition_extends(program, &env, &mut diagnostics);
-
-    // Merge inherited state fields after extends validation
-    merge_condition_state_fields(&mut env, &mut diagnostics);
-
     // If module map provided, populate ownership and visibility
     if let Some(modules) = modules {
         populate_module_metadata(&mut env, modules, &mut diagnostics);
@@ -1488,8 +1482,8 @@ fn collect_condition(
         tag_set.insert(tag.clone());
     }
 
-    // Resolve own state field types (not yet type-checking defaults — that happens in Pass 2)
-    let own_state_fields: Vec<(Name, Ty)> = c
+    // Resolve state field types (not yet type-checking defaults — that happens in Pass 2)
+    let state_fields: Vec<(Name, Ty)> = c
         .state_fields
         .iter()
         .map(|sf| (sf.name.clone(), env.resolve_type(&sf.ty)))
@@ -1500,12 +1494,10 @@ fn collect_condition(
         ConditionInfo {
             name: name.clone(),
             params: param_infos,
-            extends: c.extends.iter().map(|s| s.node.clone()).collect(),
             receiver_name: c.receiver_name.clone(),
             receiver_type: env.resolve_type(&c.receiver_type),
             tags: tag_set,
-            own_state_fields,
-            merged_state_fields: Vec::new(), // populated by merge_condition_state_fields()
+            state_fields,
         },
     );
 }
@@ -1706,242 +1698,6 @@ pub fn validate_option_extends(
                 Some((parent, _)) => current = parent.clone(),
                 None => break,
             }
-        }
-    }
-}
-
-pub fn validate_condition_extends(
-    program: &Program,
-    env: &TypeEnv,
-    diagnostics: &mut Vec<Diagnostic>,
-) {
-    use std::collections::HashMap;
-
-    // Collect all extends relationships: child -> [(parent_name, span)]
-    let mut extends_map: HashMap<Name, Vec<(Name, Span)>> = HashMap::new();
-    for item in &program.items {
-        if let TopLevel::System(system) = &item.node {
-            for decl in &system.decls {
-                if let DeclKind::Condition(c) = &decl.node
-                    && !c.extends.is_empty()
-                {
-                    let parents: Vec<(Name, Span)> =
-                        c.extends.iter().map(|s| (s.node.clone(), s.span)).collect();
-                    extends_map.insert(c.name.clone(), parents);
-                }
-            }
-        }
-    }
-
-    // Check parent existence, receiver compatibility, and parent params
-    for (child_name, parents) in &extends_map {
-        let child_info = match env.conditions.get(child_name) {
-            Some(info) => info,
-            None => continue,
-        };
-        for (parent_name, span) in parents {
-            // Parent must exist as a condition
-            let parent_info = match env.conditions.get(parent_name) {
-                Some(info) => info,
-                None => {
-                    diagnostics.push(
-                        Diagnostic::error(
-                            format!(
-                                "condition `{child_name}` extends unknown condition `{parent_name}`"
-                            ),
-                            *span,
-                        )
-                        .with_help(format!(
-                            "declare it with: condition {parent_name} on bearer: <type> {{ ... }}"
-                        )),
-                    );
-                    continue;
-                }
-            };
-
-            // Receiver type compatibility: child's receiver must be the same entity
-            // type as parent, or parent accepts AnyEntity
-            if !matches!(parent_info.receiver_type, Ty::AnyEntity)
-                && child_info.receiver_type != parent_info.receiver_type
-            {
-                diagnostics.push(Diagnostic::error(
-                    format!(
-                        "condition `{}` extends `{}` but receiver types differ: {} vs {}",
-                        child_name,
-                        parent_name,
-                        child_info.receiver_type.display(),
-                        parent_info.receiver_type.display()
-                    ),
-                    *span,
-                ));
-            }
-
-            // Parents with required params are rejected (child doesn't forward them)
-            let has_required = parent_info.params.iter().any(|p| !p.has_default);
-            if has_required {
-                diagnostics.push(Diagnostic::error(
-                    format!(
-                        "condition `{child_name}` extends `{parent_name}` which has required parameters"
-                    ),
-                    *span,
-                ));
-            }
-        }
-    }
-
-    // Cycle detection: three-color DFS for multi-parent DAGs.
-    // Gray = on current path, Black = fully explored.
-    // Visiting a Gray node means a cycle; visiting a Black node means
-    // diamond inheritance (legal, not a cycle).
-    let mut color: HashMap<Name, u8> = HashMap::new(); // 0=white, 1=gray, 2=black
-    let all_names: Vec<Name> = extends_map.keys().cloned().collect();
-    for start_name in &all_names {
-        if color.get(start_name).copied().unwrap_or(0) != 0 {
-            continue; // already explored
-        }
-        // Iterative DFS with explicit stack tracking enter/exit
-        enum Action {
-            Enter(Name),
-            Exit(Name),
-        }
-        let mut stack = vec![Action::Enter(start_name.clone())];
-        while let Some(action) = stack.pop() {
-            match action {
-                Action::Enter(ref name) => {
-                    match color.get(name).copied().unwrap_or(0) {
-                        1 => {
-                            // Gray → cycle found. Build chain for error.
-                            let span = extends_map.get(name).map_or_else(Span::dummy, |v| v[0].1);
-                            diagnostics.push(Diagnostic::error(
-                                format!("circular condition extends involving `{name}`"),
-                                span,
-                            ));
-                            continue;
-                        }
-                        2 => continue, // Black → already fully explored (diamond)
-                        _ => {}
-                    }
-                    color.insert(name.clone(), 1); // Gray
-                    stack.push(Action::Exit(name.clone()));
-                    if let Some(parents) = extends_map.get(name) {
-                        for (parent, _) in parents.iter().rev() {
-                            stack.push(Action::Enter(parent.clone()));
-                        }
-                    }
-                }
-                Action::Exit(ref name) => {
-                    color.insert(name.clone(), 2); // Black
-                }
-            }
-        }
-    }
-}
-
-/// Post-collect pass: merge inherited state fields for conditions with `extends`.
-///
-/// For each condition, walks the ancestor chain in DFS order (parents first),
-/// collects their state fields, checks for:
-/// - Sibling parent conflicts (two parents declare the same field name)
-/// - Child redeclaration of an inherited field name
-/// Then stores the merged result (ancestors + own) in `merged_state_fields`.
-fn merge_condition_state_fields(env: &mut TypeEnv, diagnostics: &mut Vec<Diagnostic>) {
-    // Collect the list of all condition names to iterate (avoid borrow issues)
-    let cond_names: Vec<Name> = env.conditions.keys().cloned().collect();
-
-    // For conditions without extends, merged = own
-    for name in &cond_names {
-        let info = &env.conditions[name];
-        if info.extends.is_empty() {
-            let own = info.own_state_fields.clone();
-            env.conditions.get_mut(name).unwrap().merged_state_fields = own;
-        }
-    }
-
-    // For conditions with extends, walk ancestor chain and merge
-    for name in &cond_names {
-        let info = &env.conditions[name];
-        if info.extends.is_empty() {
-            continue;
-        }
-
-        // Walk the ancestor chain in DFS order (parents first, diamond dedup)
-        let mut merged: Vec<(Name, Ty)> = Vec::new();
-        let mut seen_fields: HashSet<Name> = HashSet::new();
-        let mut visited: HashSet<Name> = HashSet::new();
-        let mut has_error = false;
-
-        fn walk_ancestors(
-            cond_name: &Name,
-            env: &TypeEnv,
-            merged: &mut Vec<(Name, Ty)>,
-            seen_fields: &mut HashSet<Name>,
-            visited: &mut HashSet<Name>,
-            diagnostics: &mut Vec<Diagnostic>,
-            has_error: &mut bool,
-            is_root: bool,
-        ) {
-            if !visited.insert(cond_name.clone()) {
-                return; // diamond dedup or cycle (already caught by validate_condition_extends)
-            }
-            let info = match env.conditions.get(cond_name) {
-                Some(i) => i,
-                None => return, // unknown condition (already reported)
-            };
-
-            // Recurse into parents first (ancestor-first order)
-            for parent_name in &info.extends {
-                walk_ancestors(
-                    parent_name,
-                    env,
-                    merged,
-                    seen_fields,
-                    visited,
-                    diagnostics,
-                    has_error,
-                    false,
-                );
-            }
-
-            // Add this condition's own state fields
-            for (field_name, field_ty) in &info.own_state_fields {
-                if !seen_fields.insert(field_name.clone()) {
-                    // Field name already exists from an ancestor or sibling parent
-                    if is_root {
-                        diagnostics.push(Diagnostic::error(
-                            format!(
-                                "condition `{cond_name}` redeclares inherited state field `{field_name}`"
-                            ),
-                            Span::dummy(),
-                        ));
-                    } else {
-                        diagnostics.push(Diagnostic::error(
-                            format!(
-                                "conflicting state field `{field_name}` in condition inheritance \
-                                 chain: multiple ancestors declare the same field name"
-                            ),
-                            Span::dummy(),
-                        ));
-                    }
-                    *has_error = true;
-                } else {
-                    merged.push((field_name.clone(), field_ty.clone()));
-                }
-            }
-        }
-
-        walk_ancestors(
-            name,
-            env,
-            &mut merged,
-            &mut seen_fields,
-            &mut visited,
-            diagnostics,
-            &mut has_error,
-            true,
-        );
-
-        if !has_error {
-            env.conditions.get_mut(name).unwrap().merged_state_fields = merged;
         }
     }
 }

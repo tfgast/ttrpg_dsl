@@ -9,7 +9,7 @@
 //!    param/result overrides in cost modify bodies
 //! 4. Suppress clauses: reaction suppression at runtime, hooks NOT suppressible
 //! 5. modify_applied: user-defined override takes precedence
-//! 6. Condition extends clause behavior (inheritance, ordering, diamond dedup)
+//! 6. Condition include clause behavior (modify/suppress inclusion, ordering, diamond dedup)
 //! 7. Parameterized conditions: params stored on ActiveCondition, matching on remove
 
 use std::collections::{BTreeMap, VecDeque};
@@ -27,11 +27,19 @@ use ttrpg_interp::value::Value;
 // ── Setup ──────────────────────────────────────────────────────
 
 fn setup(source: &str) -> (ttrpg_ast::ast::Program, ttrpg_checker::CheckResult) {
-    let (program, parse_errors) = ttrpg_parser::parse(source, FileId::SYNTH);
+    let (mut program, parse_errors) = ttrpg_parser::parse(source, FileId::SYNTH);
     assert!(
         parse_errors.is_empty(),
         "parse errors: {:?}",
         parse_errors.iter().map(|d| &d.message).collect::<Vec<_>>()
+    );
+    program.build_index();
+    let mut expand_diags = Vec::new();
+    let program = ttrpg_parser::expand_includes(program, &mut expand_diags);
+    assert!(
+        expand_diags.is_empty(),
+        "expand errors: {:?}",
+        expand_diags.iter().map(|d| &d.message).collect::<Vec<_>>()
     );
     let mut lower_diags = Vec::new();
     let program = ttrpg_parser::lower_moves(program, &mut lower_diags);
@@ -55,10 +63,13 @@ fn setup(source: &str) -> (ttrpg_ast::ast::Program, ttrpg_checker::CheckResult) 
 }
 
 fn setup_expect_errors(source: &str) -> Vec<String> {
-    let (program, parse_errors) = ttrpg_parser::parse(source, FileId::SYNTH);
+    let (mut program, parse_errors) = ttrpg_parser::parse(source, FileId::SYNTH);
     if !parse_errors.is_empty() {
         return parse_errors.iter().map(|d| d.message.clone()).collect();
     }
+    program.build_index();
+    let mut expand_diags = Vec::new();
+    let program = ttrpg_parser::expand_includes(program, &mut expand_diags);
     let mut lower_diags = Vec::new();
     let program = ttrpg_parser::lower_moves(program, &mut lower_diags);
     let result = ttrpg_checker::check(&program);
@@ -808,13 +819,13 @@ system "test" {
 }
 
 // ═══════════════════════════════════════════════════════════════
-// 6. Condition extends clause behavior
+// 6. Condition include clause behavior
 // ═══════════════════════════════════════════════════════════════
 
 #[test]
-fn extends_inherits_parent_modify_clauses() {
-    // Spec: "Child condition inherits ALL modify/suppress clauses from parents"
-    // Spec: "Clauses applied in ancestor order" (parents first, then child)
+fn include_modify_inherits_parent_modify_clauses() {
+    // Spec: "include modify copies modify clauses from the source condition"
+    // Spec: "Included clauses applied before the child's own clauses"
     let source = r#"
 system "test" {
     entity Character { HP: int }
@@ -829,7 +840,8 @@ system "test" {
         }
     }
 
-    condition Child extends Parent on bearer: Character {
+    condition Child on bearer: Character {
+        include modify Parent
         modify compute(target: bearer) {
             val = val * 2
         }
@@ -844,7 +856,7 @@ system "test" {
     fields.insert("HP".into(), Value::Int(10));
     let entity = state.add_entity("Character", fields);
 
-    // Only apply Child — it should inherit Parent's modify clause
+    // Only apply Child — it should include Parent's modify clause
     state.apply_condition(&entity, "Child", ConditionArgs::default());
 
     let adapter = StateAdapter::new(state);
@@ -865,8 +877,8 @@ system "test" {
 }
 
 #[test]
-fn extends_inherits_suppress_clauses() {
-    // Spec: "Child condition inherits ALL modify/suppress clauses from parents"
+fn include_suppress_inherits_suppress_clauses() {
+    // Spec: "include suppress copies suppress clauses from the source condition"
     let source = r#"
 system "test" {
     entity Character { HP: int }
@@ -884,7 +896,9 @@ system "test" {
         suppress entity_leaves_reach(entity: bearer)
     }
 
-    condition Stunned extends Incapacitated on bearer: Character {}
+    condition Stunned on bearer: Character {
+        include suppress Incapacitated
+    }
 }
 "#;
     let (program, result) = setup(source);
@@ -896,7 +910,7 @@ system "test" {
     let attacker = state.add_entity("Character", fields.clone());
     let mover = state.add_entity("Character", fields);
 
-    // Apply Stunned (which extends Incapacitated) — should inherit suppress
+    // Apply Stunned (which includes suppress from Incapacitated)
     state.apply_condition(&mover, "Stunned", ConditionArgs::default());
 
     let payload = Value::Struct {
@@ -914,13 +928,16 @@ system "test" {
         .unwrap();
     assert!(
         result.triggerable.is_empty(),
-        "Stunned (extends Incapacitated) should inherit suppress clause"
+        "Stunned (include suppress Incapacitated) should have suppress clause"
     );
 }
 
 #[test]
-fn extends_ancestor_order_parents_before_child() {
-    // Spec: "Ancestor chain collected via DFS post-order (parents first, then child)"
+fn include_modify_chain_order() {
+    // Include is non-transitive: `include modify Parent` only copies Parent's
+    // own modify clauses, not clauses Parent itself included. To get clauses
+    // from the entire ancestor chain, each level must be included explicitly.
+    // Included clauses are applied before the condition's own clauses.
     let source = r#"
 system "test" {
     entity Character { HP: int }
@@ -935,13 +952,16 @@ system "test" {
         }
     }
 
-    condition Parent extends Grandparent on bearer: Character {
+    condition Parent on bearer: Character {
+        include modify Grandparent
         modify compute(target: bearer) {
             val = val * 10
         }
     }
 
-    condition Child extends Parent on bearer: Character {
+    condition Child on bearer: Character {
+        include modify Grandparent
+        include modify Parent
         modify compute(target: bearer) {
             val = val + 1000
         }
@@ -977,8 +997,9 @@ system "test" {
 }
 
 #[test]
-fn extends_diamond_deduplication() {
-    // Spec: "Diamond inheritance deduplication via HashSet"
+fn include_modify_diamond_deduplication() {
+    // Diamond include pattern: Base's clause should apply only once
+    // despite two include paths.
     //
     //       Base
     //      /    \
@@ -986,7 +1007,6 @@ fn extends_diamond_deduplication() {
     //      \    /
     //      Diamond
     //
-    // Base's clause should apply only once despite two paths.
     let source = r#"
 system "test" {
     entity Character { HP: int }
@@ -1001,19 +1021,24 @@ system "test" {
         }
     }
 
-    condition Left extends Base on bearer: Character {
+    condition Left on bearer: Character {
+        include modify Base
         modify compute(target: bearer) {
             val = val * 10
         }
     }
 
-    condition Right extends Base on bearer: Character {
+    condition Right on bearer: Character {
+        include modify Base
         modify compute(target: bearer) {
             val = val + 100
         }
     }
 
-    condition Diamond extends Left, Right on bearer: Character {
+    condition Diamond on bearer: Character {
+        include modify Base
+        include modify Left
+        include modify Right
         modify compute(target: bearer) {
             val = val + 5000
         }
@@ -1314,9 +1339,9 @@ system "test" {
 // ═══════════════════════════════════════════════════════════════
 
 #[test]
-fn extends_inherited_bindings_use_parent_receiver_name() {
+fn include_modify_bindings_use_parent_receiver_name() {
     // Regression: check_modify_bindings always looked up the child condition's
-    // receiver name when evaluating inherited parent clauses, so if the parent
+    // receiver name when evaluating included parent clauses, so if the parent
     // used a different receiver name, bindings would fail to resolve.
     let source = r#"
 system "test" {
@@ -1332,7 +1357,9 @@ system "test" {
         }
     }
 
-    condition ChildCond extends ParentCond on bearer: Character {}
+    condition ChildCond on bearer: Character {
+        include modify ParentCond
+    }
 }
 "#;
     let (program, result) = setup(source);
@@ -1343,7 +1370,7 @@ system "test" {
     fields.insert("HP".into(), Value::Int(10));
     let entity = state.add_entity("Character", fields);
 
-    // Apply ChildCond — should inherit ParentCond's modify clause.
+    // Apply ChildCond — should include ParentCond's modify clause.
     // ParentCond uses receiver name "subject", ChildCond uses "bearer".
     state.apply_condition(&entity, "ChildCond", ConditionArgs::default());
 
@@ -1363,7 +1390,7 @@ system "test" {
     assert_eq!(
         val.unwrap(),
         Value::Int(105),
-        "inherited modify binding should use parent's receiver name 'subject', not child's 'bearer'"
+        "included modify binding should use parent's receiver name 'subject', not child's 'bearer'"
     );
 }
 

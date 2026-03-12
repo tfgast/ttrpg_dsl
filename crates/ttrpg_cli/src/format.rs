@@ -577,17 +577,10 @@ fn format_condition_signature(ci: &ConditionInfo) -> String {
     } else {
         format!("({})", params.join(", "))
     };
-    let extends = if ci.extends.is_empty() {
-        String::new()
-    } else {
-        let names: Vec<&str> = ci.extends.iter().map(|n| n.as_str()).collect();
-        format!(" extends {}", names.join(", "))
-    };
     format!(
-        "condition {}{}{} on {}: {}",
+        "condition {}{} on {}: {}",
         ci.name,
         params_str,
-        extends,
         ci.receiver_name,
         ci.receiver_type.display(),
     )
@@ -1106,42 +1099,36 @@ mod tests {
         let ci = ConditionInfo {
             name: "Prone".into(),
             params: vec![],
-            extends: vec![],
             receiver_name: "bearer".into(),
             receiver_type: Ty::Entity("Character".into()),
             tags: HashSet::new(),
-            own_state_fields: vec![],
-            merged_state_fields: vec![],
+            state_fields: vec![],
         };
         insta::assert_snapshot!(format_condition_signature(&ci));
     }
 
     #[test]
-    fn sig_condition_extends() {
+    fn sig_condition_no_params() {
         let ci = ConditionInfo {
             name: "Paralyzed".into(),
             params: vec![],
-            extends: vec!["Incapacitated".into()],
             receiver_name: "bearer".into(),
             receiver_type: Ty::Entity("Character".into()),
             tags: HashSet::new(),
-            own_state_fields: vec![],
-            merged_state_fields: vec![],
+            state_fields: vec![],
         };
         insta::assert_snapshot!(format_condition_signature(&ci));
     }
 
     #[test]
-    fn sig_condition_params_extends() {
+    fn sig_condition_with_params() {
         let ci = ConditionInfo {
             name: "Frightened".into(),
             params: vec![mk_param("source", Ty::Entity("Character".into()))],
-            extends: vec!["Afraid".into()],
             receiver_name: "bearer".into(),
             receiver_type: Ty::Entity("Character".into()),
             tags: HashSet::new(),
-            own_state_fields: vec![],
-            merged_state_fields: vec![],
+            state_fields: vec![],
         };
         insta::assert_snapshot!(format_condition_signature(&ci));
     }

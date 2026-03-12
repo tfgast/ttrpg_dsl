@@ -462,7 +462,7 @@ At most one `on_apply` and one `on_remove` per condition.
 
 **Scoping:** `bearer` + condition parameters in scope. `invocation()` unavailable.
 
-**Inheritance:** with `extends`, ancestor lifecycle blocks run first (DFS post-order).
+**Clause copying:** use `include modify/suppress/suppress-modify CondName` to copy declarative clauses from another condition at compile time.
 
 #### Suspension (Entity Presence and Freeze)
 
@@ -513,7 +513,7 @@ condition Concealed(level: int) on bearer: Character
 | `best by highest(param) ties oldest` | Highest param value wins |
 | `best by lowest(param) ties oldest` | Lowest param value wins |
 
-Suppressed instances remain in state (duration ticks). `best by` param must be `int`, declared on the condition. Not inherited via `extends`.
+Suppressed instances remain in state (duration ticks). `best by` param must be `int`, declared on the condition. Not copied by `include`.
 
 #### Periodic Blocks
 

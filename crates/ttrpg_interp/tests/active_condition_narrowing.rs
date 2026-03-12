@@ -4,10 +4,10 @@ use std::collections::{BTreeMap, BTreeSet, HashMap};
 
 use ttrpg_ast::diagnostic::Severity;
 use ttrpg_ast::{FileId, Name};
+use ttrpg_interp::Interpreter;
 use ttrpg_interp::effect::{Effect, EffectHandler, Response};
 use ttrpg_interp::state::{ActiveCondition, EntityRef, StateProvider};
 use ttrpg_interp::value::Value;
-use ttrpg_interp::Interpreter;
 
 // ── Setup ──────────────────────────────────────────────────────
 
@@ -83,10 +83,7 @@ impl StateProvider for TestState {
     fn read_conditions(&self, entity: &EntityRef) -> Option<Vec<ActiveCondition>> {
         self.conditions.get(&entity.0).cloned()
     }
-    fn read_turn_budget(
-        &self,
-        _entity: &EntityRef,
-    ) -> Option<BTreeMap<ttrpg_ast::Name, Value>> {
+    fn read_turn_budget(&self, _entity: &EntityRef) -> Option<BTreeMap<ttrpg_ast::Name, Value>> {
         None
     }
     fn read_enabled_options(&self) -> Vec<ttrpg_ast::Name> {

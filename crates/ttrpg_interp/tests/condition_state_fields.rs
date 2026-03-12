@@ -1,7 +1,7 @@
-//! Integration tests for condition state field declarations and inheritance.
+//! Integration tests for condition state field declarations.
 //!
-//! Verifies the checker's state field type-checking, the post-collect merge
-//! pass for inherited state fields, and error detection for conflicts.
+//! Verifies the checker's state field type-checking and error detection.
+//! State fields do NOT inherit via `include` — each condition declares its own.
 
 use std::collections::VecDeque;
 
@@ -16,11 +16,19 @@ use ttrpg_interp::state::StateProvider;
 use ttrpg_interp::value::Value;
 
 fn setup(source: &str) -> (ttrpg_ast::ast::Program, ttrpg_checker::CheckResult) {
-    let (program, parse_errors) = ttrpg_parser::parse(source, FileId::SYNTH);
+    let (mut program, parse_errors) = ttrpg_parser::parse(source, FileId::SYNTH);
     assert!(
         parse_errors.is_empty(),
         "parse errors: {:?}",
         parse_errors.iter().map(|d| &d.message).collect::<Vec<_>>()
+    );
+    program.build_index();
+    let mut expand_diags = Vec::new();
+    let program = ttrpg_parser::expand_includes(program, &mut expand_diags);
+    assert!(
+        expand_diags.is_empty(),
+        "expand errors: {:?}",
+        expand_diags.iter().map(|d| &d.message).collect::<Vec<_>>()
     );
     let mut lower_diags = Vec::new();
     let program = ttrpg_parser::lower_moves(program, &mut lower_diags);
@@ -44,12 +52,15 @@ fn setup(source: &str) -> (ttrpg_ast::ast::Program, ttrpg_checker::CheckResult) 
 }
 
 fn setup_expect_errors(source: &str) -> Vec<String> {
-    let (program, parse_errors) = ttrpg_parser::parse(source, FileId::SYNTH);
+    let (mut program, parse_errors) = ttrpg_parser::parse(source, FileId::SYNTH);
     assert!(
         parse_errors.is_empty(),
         "parse errors: {:?}",
         parse_errors.iter().map(|d| &d.message).collect::<Vec<_>>()
     );
+    program.build_index();
+    let mut expand_diags = Vec::new();
+    let program = ttrpg_parser::expand_includes(program, &mut expand_diags);
     let mut lower_diags = Vec::new();
     let program = ttrpg_parser::lower_moves(program, &mut lower_diags);
     let result = ttrpg_checker::check(&program);
@@ -82,24 +93,29 @@ system "test" {
 "#;
     let (_program, result) = setup(source);
     let cond_info = result.env.conditions.get("Poisoned").unwrap();
-    assert_eq!(cond_info.own_state_fields.len(), 2);
-    assert_eq!(cond_info.merged_state_fields.len(), 2);
+    assert_eq!(cond_info.state_fields.len(), 2);
 }
 
-// ── Inherited state fields ──────────────────────────────────────
+// ── State fields with include ──────────────────────────────────
 
 #[test]
-fn child_inherits_parent_state_fields() {
+fn child_with_include_has_own_state_fields() {
+    // State fields do NOT inherit via `include modify` — child must declare its own.
     let source = r#"
 system "test" {
     entity Character { HP: int }
-    condition Burning(damage_per_tick: int = 1) on bearer: Character {
+    derive calc_hp(target: Character) -> int { target.HP }
+    condition Burning on bearer: Character {
         state {
             ticks_elapsed: int = 0
             total_damage: int = 0
         }
+        modify calc_hp(target: bearer) {
+            result = result - 1
+        }
     }
-    condition IntenseBurning extends Burning on bearer: Character {
+    condition IntenseBurning on bearer: Character {
+        include modify Burning
         state {
             spread_count: int = 0
         }
@@ -108,38 +124,41 @@ system "test" {
 "#;
     let (_program, result) = setup(source);
     let parent_info = result.env.conditions.get("Burning").unwrap();
-    assert_eq!(parent_info.own_state_fields.len(), 2);
-    assert_eq!(parent_info.merged_state_fields.len(), 2);
+    assert_eq!(parent_info.state_fields.len(), 2);
 
     let child_info = result.env.conditions.get("IntenseBurning").unwrap();
-    assert_eq!(child_info.own_state_fields.len(), 1);
-    // Merged: 2 from parent + 1 own = 3
-    assert_eq!(child_info.merged_state_fields.len(), 3);
-    // Ancestor order: parent fields first, then child
-    assert_eq!(child_info.merged_state_fields[0].0, "ticks_elapsed");
-    assert_eq!(child_info.merged_state_fields[1].0, "total_damage");
-    assert_eq!(child_info.merged_state_fields[2].0, "spread_count");
+    // Only the child's own state field — no inheritance
+    assert_eq!(child_info.state_fields.len(), 1);
+    assert_eq!(child_info.state_fields[0].0, "spread_count");
 }
 
 #[test]
-fn child_accesses_inherited_state_in_lifecycle() {
+fn child_with_include_declares_own_state_fields() {
+    // Child must declare its own state fields since they don't inherit.
     let source = r#"
 system "test" {
     entity Character { HP: int }
-    condition Burning(damage_per_tick: int = 1) on bearer: Character {
+    derive calc_hp(target: Character) -> int { target.HP }
+    condition Burning on bearer: Character {
         state {
             ticks_elapsed: int = 0
+        }
+        modify calc_hp(target: bearer) {
+            result = result - 1
         }
         on_apply {
             state.ticks_elapsed = 1
         }
     }
-    condition IntenseBurning extends Burning on bearer: Character {
+    condition IntenseBurning on bearer: Character {
+        include modify Burning
         state {
+            ticks_elapsed: int = 0
             spread_count: int = 0
         }
         on_apply {
-            // Can read inherited state field
+            // Child declares its own ticks_elapsed and can use it
+            state.ticks_elapsed = 1
             state.spread_count = state.ticks_elapsed
         }
     }
@@ -149,78 +168,96 @@ system "test" {
 }
 
 #[test]
-fn grandchild_inherits_through_chain() {
+fn include_modify_chain_no_state_inheritance() {
+    // State fields do NOT inherit through include chains — each condition
+    // only has its own declared state fields.
     let source = r#"
 system "test" {
     entity Character { HP: int }
+    derive calc(target: Character) -> int { target.HP }
     condition Base on bearer: Character {
         state { a: int = 0 }
+        modify calc(target: bearer) { result = result + 1 }
     }
-    condition Mid extends Base on bearer: Character {
+    condition Mid on bearer: Character {
+        include modify Base
         state { b: int = 0 }
+        modify calc(target: bearer) { result = result + 2 }
     }
-    condition Leaf extends Mid on bearer: Character {
+    condition Leaf on bearer: Character {
+        include modify Mid
         state { c: int = 0 }
     }
 }
 "#;
     let (_program, result) = setup(source);
+    let base = result.env.conditions.get("Base").unwrap();
+    assert_eq!(base.state_fields.len(), 1);
+    assert_eq!(base.state_fields[0].0, "a");
+
+    let mid = result.env.conditions.get("Mid").unwrap();
+    assert_eq!(mid.state_fields.len(), 1);
+    assert_eq!(mid.state_fields[0].0, "b");
+
     let leaf = result.env.conditions.get("Leaf").unwrap();
-    assert_eq!(leaf.merged_state_fields.len(), 3);
-    assert_eq!(leaf.merged_state_fields[0].0, "a");
-    assert_eq!(leaf.merged_state_fields[1].0, "b");
-    assert_eq!(leaf.merged_state_fields[2].0, "c");
+    assert_eq!(leaf.state_fields.len(), 1);
+    assert_eq!(leaf.state_fields[0].0, "c");
 }
 
 // ── Error cases ──────────────────────────────────────────────────
 
 #[test]
-fn child_redeclares_parent_state_field_error() {
-    let errors = setup_expect_errors(
-        r#"
+fn child_with_include_can_declare_same_field_name() {
+    // Since state fields do NOT inherit, the child can independently
+    // declare the same field name as the include source without conflict.
+    let source = r#"
 system "test" {
     entity Character { HP: int }
+    derive calc(target: Character) -> int { target.HP }
     condition Parent on bearer: Character {
         state { x: int = 0 }
+        modify calc(target: bearer) { result = result + 1 }
     }
-    condition Child extends Parent on bearer: Character {
+    condition Child on bearer: Character {
+        include modify Parent
         state { x: int = 1 }
     }
 }
-"#,
-    );
-    assert!(
-        errors
-            .iter()
-            .any(|e| e.contains("redeclares inherited state field")),
-        "expected redeclaration error, got: {:?}",
-        errors
-    );
+"#;
+    let (_program, result) = setup(source);
+    let child_info = result.env.conditions.get("Child").unwrap();
+    assert_eq!(child_info.state_fields.len(), 1);
+    assert_eq!(child_info.state_fields[0].0, "x");
 }
 
 #[test]
-fn sibling_parent_field_conflict_error() {
-    let errors = setup_expect_errors(
-        r#"
+fn multiple_include_modify_sources() {
+    // A child can include modify clauses from multiple sources.
+    // State fields do not inherit, so each condition has only its own.
+    let source = r#"
 system "test" {
     entity Character { HP: int }
+    derive calc(target: Character) -> int { target.HP }
     condition ParentA on bearer: Character {
         state { x: int = 0 }
+        modify calc(target: bearer) { result = result + 1 }
     }
     condition ParentB on bearer: Character {
         state { x: int = 0 }
+        modify calc(target: bearer) { result = result + 2 }
     }
-    condition Child extends ParentA, ParentB on bearer: Character {}
+    condition Child on bearer: Character {
+        include modify ParentA
+        include modify ParentB
+        state { y: int = 0 }
+    }
 }
-"#,
-    );
-    assert!(
-        errors
-            .iter()
-            .any(|e| e.contains("conflicting state field") || e.contains("state field `x`")),
-        "expected sibling parent conflict error, got: {:?}",
-        errors
-    );
+"#;
+    let (_program, result) = setup(source);
+    let child_info = result.env.conditions.get("Child").unwrap();
+    // Only the child's own state field
+    assert_eq!(child_info.state_fields.len(), 1);
+    assert_eq!(child_info.state_fields[0].0, "y");
 }
 
 #[test]
@@ -274,8 +311,7 @@ system "test" {
 "#;
     let (_program, result) = setup(source);
     let info = result.env.conditions.get("Prone").unwrap();
-    assert!(info.own_state_fields.is_empty());
-    assert!(info.merged_state_fields.is_empty());
+    assert!(info.state_fields.is_empty());
 }
 
 // ── Reserved identifier tests ────────────────────────────────────
@@ -319,25 +355,28 @@ system "test" {
 }
 
 #[test]
-fn parent_default_params_materialized_in_child() {
-    // When IntenseBurning extends Burning(damage_per_tick: int = 3),
-    // the child instance should have damage_per_tick=3 available.
+fn include_modify_from_parameterized_condition() {
+    // IntenseBurning includes modify clauses from Burning which has params.
+    // The child uses its own params and lifecycle hooks.
     let source = r#"
 system "test" {
     entity Character {
         HP: int
         last_damage: int
     }
+    derive calc_damage(target: Character) -> int { target.HP }
     condition Burning(damage_per_tick: int = 3) on bearer: Character {
+        modify calc_damage(target: bearer) {
+            result = result - damage_per_tick
+        }
         on_apply {
             bearer.last_damage = damage_per_tick
         }
     }
-    condition IntenseBurning extends Burning on bearer: Character {
+    condition IntenseBurning(damage_per_tick: int = 5) on bearer: Character {
+        include modify Burning
         on_apply {
-            // Parent on_apply already set last_damage to damage_per_tick
-            // Child can also access inherited param
-            bearer.last_damage = bearer.last_damage + damage_per_tick
+            bearer.last_damage = damage_per_tick
         }
     }
 }
@@ -538,25 +577,32 @@ system "test" {
 }
 
 #[test]
-fn inherited_state_sharing_in_on_apply() {
-    // Parent sets state.x = 10 in on_apply, child reads it and sets state.y = state.x + 1
+fn child_state_fields_independent_from_parent() {
+    // State fields do NOT inherit — child declares its own x and y.
+    // The child's on_apply sets both fields independently.
     let source = r#"
 system "test" {
     entity Character { HP: int }
+    derive calc(target: Character) -> int { target.HP }
     condition Parent on bearer: Character {
         state {
             x: int = 0
+        }
+        modify calc(target: bearer) {
+            result = result + 1
         }
         on_apply {
             state.x = 10
         }
     }
-    condition Child extends Parent on bearer: Character {
+    condition Child on bearer: Character {
+        include modify Parent
         state {
+            x: int = 0
             y: int = 0
         }
         on_apply {
-            // Parent on_apply already ran — state.x is 10
+            state.x = 10
             state.y = state.x + 1
         }
     }

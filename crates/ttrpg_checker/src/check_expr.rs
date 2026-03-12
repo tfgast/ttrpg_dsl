@@ -776,14 +776,14 @@ impl Checker<'_> {
                     }
                     // `.state` → ConditionState type with merged fields
                     if field == "state" {
-                        if cond_info.merged_state_fields.is_empty() {
+                        if cond_info.state_fields.is_empty() {
                             self.error(
                                 format!("condition `{cond_name}` has no state fields"),
                                 span,
                             );
                             return Ty::Error;
                         }
-                        return Ty::ConditionState(cond_info.merged_state_fields.clone());
+                        return Ty::ConditionState(cond_info.state_fields.clone());
                     }
                 }
                 self.error(
