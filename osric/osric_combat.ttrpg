@@ -1635,17 +1635,21 @@ system "OSRIC Combat" {
 
     // Maintain an existing grappling hold for another round.
     // Re-inflicts the same damage as the initial hold without
-    // a new attack roll. Caller provides hold info from the
-    // bearer's current Grappling condition. Per §1.6.12.
-    action MaintainGrapplingHold on attacker: Character (
-        target: entity,
-        hold: GrapplingHold,
-        hold_roll: int
-    ) {
+    // a new attack roll. Reads hold info from the attacker's
+    // current Grappling condition via conditions(). Per §1.6.12.
+    action MaintainGrapplingHold on attacker: Character () {
         cost { action }
+        requires {
+            has_condition(attacker, Grappling)
+        }
         resolve {
-            let temp = grappling_temp_damage(hold_roll)
-            let real = grappling_real_damage(hold_roll)
+            let grapples = conditions(attacker, Grappling)
+            let g = first(grapples).unwrap()
+            let target = g.opponent
+            let hold = g.state.current_hold
+            let roll = g.state.roll
+            let temp = grappling_temp_damage(roll)
+            let real = grappling_real_damage(roll)
             if temp > 0 {
                 target.TakeTempDamage(attacker, temp)
             }
@@ -1662,15 +1666,20 @@ system "OSRIC Combat" {
         }
     }
 
-    // Voluntarily disengage from a grapple. Removes Grappling
-    // conditions from both the initiator and their opponent.
+    // Voluntarily disengage from a grapple. Reads the opponent
+    // from the initiator's Grappling condition, then removes
+    // Grappling conditions from both sides.
     // Note: removes ALL Grappling conditions on each entity
     // (multi-opponent pile-on needs targeted removal).
     // Per §1.6.12.
-    action DisengageGrapple on initiator: Character (
-        opponent: entity
-    ) {
+    action DisengageGrapple on initiator: Character () {
+        requires {
+            has_condition(initiator, Grappling)
+        }
         resolve {
+            let grapples = conditions(initiator, Grappling)
+            let g = first(grapples).unwrap()
+            let opponent = g.opponent
             remove_condition(initiator, "Grappling")
             remove_condition(opponent, "Grappling")
             emit GrapplingDisengaged(

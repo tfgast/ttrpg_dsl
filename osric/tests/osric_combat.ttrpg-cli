@@ -1355,7 +1355,7 @@ assert_condition grap_tgt, Grappling
 // Maintaining a hold re-inflicts the same damage as the initial hold.
 // Hold roll 5 → 4 temp, 1 real (same as WaistLock above).
 // Prior state: grap_tgt has 4 temp, hp 19.
-do MaintainGrapplingHold(grap_atk, grap_tgt, GrapplingHold.WaistLock, 5)
+do MaintainGrapplingHold(grap_atk)
 assert_eq grap_tgt.temp_damage, 8
 assert_eq grap_tgt.hp, 18
 assert_condition grap_atk, Grappling
@@ -1363,7 +1363,7 @@ assert_condition grap_tgt, Grappling
 
 // ── DisengageGrapple action ──────────────────────────────────
 // Voluntary disengage removes Grappling from both sides.
-do DisengageGrapple(grap_atk, grap_tgt)
+do DisengageGrapple(grap_atk)
 assert_no_condition grap_atk, Grappling
 assert_no_condition grap_tgt, Grappling
 
@@ -1422,7 +1422,7 @@ assert_eq grap_caster.Spellcasting.memorised_spells.len(), 1
 assert_no_condition grap_caster, CastingSpell
 
 // After disengaging, casting works again.
-do DisengageGrapple(grap_foe, grap_caster)
+do DisengageGrapple(grap_foe)
 assert_no_condition grap_caster, Grappling
 assert_eq can_begin_casting(grap_caster), true
 

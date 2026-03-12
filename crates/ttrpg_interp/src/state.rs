@@ -98,6 +98,8 @@ pub struct ConditionArgs {
     pub source: Value,
     /// Tags from the condition declaration. Default: empty.
     pub tags: BTreeSet<Name>,
+    /// Initial state field values (evaluated from defaults during on_apply).
+    pub state_fields: BTreeMap<Name, Value>,
 }
 
 impl Default for ConditionArgs {
@@ -108,6 +110,7 @@ impl Default for ConditionArgs {
             invocation: None,
             source: crate::value::effect_source_unknown(),
             tags: BTreeSet::new(),
+            state_fields: BTreeMap::new(),
         }
     }
 }

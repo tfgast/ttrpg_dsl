@@ -175,7 +175,7 @@ impl GameState {
             applied_at,
             source: args.source,
             tags: args.tags,
-            state_fields: BTreeMap::new(),
+            state_fields: args.state_fields,
         };
         self.conditions.entry(entity.0).or_default().push(cond);
     }

@@ -255,6 +255,7 @@ impl EffectHandler for CliHandler<'_> {
                 invocation,
                 source,
                 tags,
+                state_fields,
                 ..
             } => {
                 let name = self.entity_name(&target);
@@ -267,6 +268,7 @@ impl EffectHandler for CliHandler<'_> {
                         invocation,
                         source,
                         tags,
+                        state_fields: state_fields.clone(),
                     },
                 );
                 if params.is_empty() {
