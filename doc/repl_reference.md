@@ -160,6 +160,7 @@ Cannot grant/revoke required (`include`) groups.
 | `entity <name>`      | Show detailed entity type declaration (fields, groups)      |
 | `actions`            | List all actions with signatures                            |
 | `mechanics`          | List all derives and mechanics (alias: `derives`)           |
+| `functions`          | List all function declarations                              |
 | `conditions`         | List all active conditions across entities                  |
 | `condition_decls`    | List all condition declarations                             |
 | `events`             | List all event declarations                                 |
@@ -171,6 +172,7 @@ types
 entity Character
 actions
 mechanics
+functions
 conditions
 condition_decls
 events
@@ -293,6 +295,7 @@ The `query` subcommand inspects type declarations and signatures from source fil
 | `actions`             | All action signatures                    |
 | `conditions`          | All condition declarations               |
 | `mechanics` (alias: `derives`) | All derives and mechanics         |
+| `functions`           | All function declarations                |
 | `reactions`           | All reaction signatures                  |
 | `hooks`               | All hook signatures                      |
 | `entity <name>`       | Detailed entity schema (fields, groups)  |
