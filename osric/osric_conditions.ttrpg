@@ -286,7 +286,7 @@ system "OSRIC Conditions" {
         stacking best by highest(level) ties oldest
     {
         modify [#attack_resolution](target: bearer) {
-            if !has_condition(target, "Invisible") {
+            if !has_condition(target, Invisible) {
                 attack_mod = attack_mod - level
             }
         }

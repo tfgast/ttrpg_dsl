@@ -756,6 +756,64 @@ impl Checker<'_> {
         Ty::List(Box::new(Ty::TypedActiveCondition(cond_name)))
     }
 
+    /// `has_condition(entity, ConditionName) -> bool`
+    ///
+    /// Second arg must be a bare condition identifier (not a string).
+    /// Returns true if the entity has an active instance of the named condition.
+    pub(crate) fn check_typed_has_condition_call(
+        &mut self,
+        args: &[Arg],
+        span: ttrpg_ast::Span,
+    ) -> Ty {
+        if args.len() != 2 {
+            self.error(
+                format!(
+                    "`has_condition` expects 2 arguments, found {}",
+                    args.len()
+                ),
+                span,
+            );
+            return Ty::Error;
+        }
+
+        // Check first arg (entity)
+        let entity_ty = self.check_expr(&args[0].value);
+        if !entity_ty.is_error() && !entity_ty.is_entity() {
+            self.error(
+                format!(
+                    "`has_condition` expects entity as first argument, got {}",
+                    entity_ty.display()
+                ),
+                span,
+            );
+        }
+
+        // Second arg must be a bare condition identifier
+        match &args[1].value.node {
+            ttrpg_ast::ast::ExprKind::Ident(name) => {
+                if self.env.conditions.contains_key(name) {
+                    self.check_name_visible(name, Namespace::Condition, args[1].value.span);
+                } else {
+                    self.error(
+                        format!("`{name}` is not a known condition"),
+                        args[1].value.span,
+                    );
+                    return Ty::Error;
+                }
+            }
+            _ => {
+                self.error(
+                    "second argument to `has_condition` must be a condition name",
+                    args[1].value.span,
+                );
+                self.check_expr(&args[1].value);
+                return Ty::Error;
+            }
+        };
+
+        Ty::Bool
+    }
+
     /// `to_any(value) -> any` — wraps any value into the `any` type.
     pub(crate) fn check_to_any_call(&mut self, args: &[Arg], span: ttrpg_ast::Span) -> Ty {
         if args.len() != 1 {

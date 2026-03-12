@@ -245,7 +245,7 @@ system "OSRIC Spell Registry" {
         target: entity
     ) {
         requires {
-            has_condition(caster, "HoldingCharge") &&
+            has_condition(caster, HoldingCharge) &&
             caster.sc.held_touch_spell != none
         }
         resolve {

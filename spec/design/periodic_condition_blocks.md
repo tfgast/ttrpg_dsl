@@ -62,7 +62,7 @@ condition Bleeding on bearer: entity
                 apply_condition(bearer, Dead, Duration.Indefinite)
                 emit CharacterDead(target: bearer)
             } else if bearer.hp <= -6 {
-                if !has_condition(bearer, "Scarred") {
+                if !has_condition(bearer, Scarred) {
                     apply_condition(bearer, Scarred, Duration.Indefinite)
                 }
             }

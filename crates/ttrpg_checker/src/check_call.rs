@@ -195,6 +195,9 @@ impl Checker<'_> {
             "conditions" if args.len() == 2 => {
                 return self.check_typed_conditions_call(args, span)
             }
+            "has_condition" => {
+                return self.check_typed_has_condition_call(args, span)
+            }
             _ => {}
         }
 

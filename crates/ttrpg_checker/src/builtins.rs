@@ -96,7 +96,7 @@ pub fn register_builtins() -> Vec<FnInfo> {
         ),
         builtin(
             "has_condition",
-            vec![param("entity", Ty::AnyEntity), param("name", Ty::String)],
+            vec![param("entity", Ty::AnyEntity), param("name", Ty::Condition)],
             Ty::Bool,
         ),
         // Available in action/reaction/hook blocks

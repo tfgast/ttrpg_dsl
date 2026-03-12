@@ -214,17 +214,18 @@ fn builtin_conditions(env: &Env, args: &[Value], span: Span) -> Result<Value, Ru
 
 // ── has_condition ─────────────────────────────────────────────
 
-/// `has_condition(entity: Entity, name: String) -> Bool`
+/// `has_condition(entity: Entity, cond: Condition) -> Bool`
 ///
 /// Returns true if the entity currently has an active condition with the given name.
+/// Second argument is a typed condition reference (bare identifier), not a string.
 fn builtin_has_condition(env: &Env, args: &[Value], span: Span) -> Result<Value, RuntimeError> {
     match (args.first(), args.get(1)) {
-        (Some(Value::Entity(entity)), Some(Value::Str(cond_name))) => {
+        (Some(Value::Entity(entity)), Some(Value::Condition { name: cond_name, .. })) => {
             match env.state.read_conditions(entity) {
                 Some(conditions) => {
                     let has_it = conditions
                         .iter()
-                        .any(|c| c.name.as_str() == cond_name.as_str());
+                        .any(|c| c.name == *cond_name);
                     Ok(Value::Bool(has_it))
                 }
                 None => Err(RuntimeError::with_span(
@@ -235,7 +236,7 @@ fn builtin_has_condition(env: &Env, args: &[Value], span: Span) -> Result<Value,
         }
         (Some(Value::Entity(_)), Some(other)) => Err(RuntimeError::with_span(
             format!(
-                "has_condition() expects String as second argument, got {}",
+                "has_condition() expects Condition as second argument, got {}",
                 type_name(other)
             ),
             span,

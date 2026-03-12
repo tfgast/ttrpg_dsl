@@ -144,6 +144,17 @@ pub(crate) fn eval_call(
                         call_span,
                     );
                 }
+                "has_condition" => {
+                    // Typed: has_condition(entity, CondName)
+                    let entity_val = eval_expr(env, &args[0].value)?;
+                    let cond_val = eval_expr(env, &args[1].value)?;
+                    return call_builtin(
+                        env,
+                        "has_condition",
+                        vec![entity_val, cond_val],
+                        call_span,
+                    );
+                }
                 _ => {}
             }
 

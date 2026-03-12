@@ -736,7 +736,7 @@ system "OSRIC Initiative" {
                 // apply their queued spell effect. Character-only;
                 // monster spellcasting TBD.
                 if action.combatant is Character {
-                    let still_casting = has_condition(action.combatant, "CastingSpell")
+                    let still_casting = has_condition(action.combatant, CastingSpell)
                     if let some(spell_id) = action.spell_id {
                         if still_casting {
                             remove_condition(action.combatant, CastingSpell)

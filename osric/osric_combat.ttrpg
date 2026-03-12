@@ -735,7 +735,7 @@ system "OSRIC Combat" {
     ) {
         cost free
         resolve {
-            let was_unconscious = has_condition(target, "Unconscious")
+            let was_unconscious = has_condition(target, Unconscious)
             let final_damage = deal_damage(target, attacker, raw_damage, damage_type)
             target.hp = target.hp - final_damage
             emit Damaged(target: target, attacker: attacker, amount: final_damage)
@@ -2050,7 +2050,7 @@ system "OSRIC Combat" {
         cost { action }
         requires {
             wielded_melee(attacker).is_some()
-            && !has_condition(attacker, "ChargeRecovery")
+            && !has_condition(attacker, ChargeRecovery)
         }
         resolve {
             let weapon = wielded_melee(attacker).unwrap()
@@ -2100,7 +2100,7 @@ system "OSRIC Combat" {
         cost { action }
         requires {
             wielded_melee(attacker).is_some()
-            && !has_condition(attacker, "ChargeRecovery")
+            && !has_condition(attacker, ChargeRecovery)
         }
         resolve {
             let weapon = wielded_melee(attacker).unwrap()
@@ -2122,7 +2122,7 @@ system "OSRIC Combat" {
     action MonsterCharge on attacker: Monster (target: entity, attack: MonsterAttack) {
         cost { action }
         requires {
-            !has_condition(attacker, "ChargeRecovery")
+            !has_condition(attacker, ChargeRecovery)
         }
         resolve {
             apply_condition(attacker, ChargeRecovery, Duration.Rounds(10))
@@ -2255,7 +2255,7 @@ system "OSRIC Combat" {
     }
 
     derive assassination_target_is_vulnerable(target: entity) -> bool {
-        has_condition(target, "Surprised") || has_condition(target, "NormalSleep")
+        has_condition(target, Surprised) || has_condition(target, NormalSleep)
     }
 
     // Assassination mechanic: d100 roll against computed chance.
@@ -2376,7 +2376,7 @@ system "OSRIC Combat" {
                     apply_condition(bearer, Dead, Duration.Indefinite)
                     emit CharacterDead(target: bearer)
                 } else if bearer.hp <= -6 {
-                    if !has_condition(bearer, "Scarred") {
+                    if !has_condition(bearer, Scarred) {
                         apply_condition(bearer, Scarred, Duration.Indefinite)
                     }
                 }
@@ -2389,7 +2389,7 @@ system "OSRIC Combat" {
     action StabilizeBleeding on healer: entity (target: Character) {
         cost free
         requires {
-            has_condition(target, "Bleeding")
+            has_condition(target, Bleeding)
         }
         resolve {
             remove_condition(target, "Bleeding")

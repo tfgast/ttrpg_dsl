@@ -420,25 +420,25 @@ spawn Character mage { name: "Mage", hp: 30, max_hp: 30 }
 // Bless the mage before polymorph
 let blessed_id = apply_condition(mage, Blessed, Duration.Indefinite)
 assert blessed_id.is_some()
-assert has_condition(mage, "Blessed") == true
+assert has_condition(mage, Blessed) == true
 
 // Polymorph — Blessed should transfer to form
 let troll = do_polymorph(mage, 8001)
-assert has_condition(troll, "Blessed") == true
-assert has_condition(mage, "Blessed") == false
+assert has_condition(troll, Blessed) == true
+assert has_condition(mage, Blessed) == false
 
 // Apply Poisoned on the troll form (physical — won't transfer back)
 let poisoned_id = apply_condition(troll, Poisoned, Duration.Indefinite)
 assert poisoned_id.is_some()
-assert has_condition(troll, "Poisoned") == true
+assert has_condition(troll, Poisoned) == true
 
 call damage_monster(troll, 7)
 
 // Revert — Blessed transfers back, Poisoned is lost with the form
 call revert(troll)
 
-assert has_condition(mage, "Blessed") == true
-assert has_condition(mage, "Poisoned") == false
+assert has_condition(mage, Blessed) == true
+assert has_condition(mage, Poisoned) == false
 assert mage.hp == 23
 assert is_suspended(mage) == false
 
@@ -511,16 +511,16 @@ assert shield_id.is_some()
 let bear = do_polymorph(cleric, 8501)
 
 // Both conditions moved to form
-assert has_condition(bear, "Blessed") == true
-assert has_condition(bear, "Shielded") == true
-assert has_condition(cleric, "Blessed") == false
-assert has_condition(cleric, "Shielded") == false
+assert has_condition(bear, Blessed) == true
+assert has_condition(bear, Shielded) == true
+assert has_condition(cleric, Blessed) == false
+assert has_condition(cleric, Shielded) == false
 
 // Revert — both come back
 call revert(bear)
 
-assert has_condition(cleric, "Blessed") == true
-assert has_condition(cleric, "Shielded") == true
+assert has_condition(cleric, Blessed) == true
+assert has_condition(cleric, Shielded) == true
 assert is_suspended(cleric) == false
 
 
@@ -584,11 +584,11 @@ let wolf = do_polymorph(ranger, 9501)
 // Someone curses the wolf form — it's transferable, should go back to ranger
 let curse_id = apply_condition(wolf, Cursed, Duration.Indefinite)
 assert curse_id.is_some()
-assert has_condition(wolf, "Cursed") == true
+assert has_condition(wolf, Cursed) == true
 
 call revert(wolf)
 
-assert has_condition(ranger, "Cursed") == true
+assert has_condition(ranger, Cursed) == true
 assert ranger.hp == 35
 assert is_suspended(ranger) == false
 
@@ -627,7 +627,7 @@ spawn Character sculptor { name: "Sculptor", hp: 20, max_hp: 20, ac: 14 }
 // Apply Blessed before going statue (should persist through toggles)
 let sculptor_bless = apply_condition(sculptor, Blessed, Duration.Indefinite)
 assert sculptor_bless.is_some()
-assert has_condition(sculptor, "Blessed") == true
+assert has_condition(sculptor, Blessed) == true
 
 // Turn to statue
 call statue_on(sculptor)
@@ -639,7 +639,7 @@ call statue_off(sculptor)
 assert is_suspended(sculptor) == false
 
 // Blessed should still be there through the cycle
-assert has_condition(sculptor, "Blessed") == true
+assert has_condition(sculptor, Blessed) == true
 assert sculptor.hp == 20
 
 // Shift back to statue again
@@ -649,7 +649,7 @@ assert is_suspended(sculptor) == true
 // And back to flesh
 call statue_off(sculptor)
 assert is_suspended(sculptor) == false
-assert has_condition(sculptor, "Blessed") == true
+assert has_condition(sculptor, Blessed) == true
 assert sculptor.hp == 20
 
 
@@ -734,12 +734,12 @@ spawn Character shifter { name: "Shifter", hp: 50, max_hp: 50, ac: 12 }
 // Bless before any polymorph
 let shifter_bless = apply_condition(shifter, Blessed, Duration.Indefinite)
 assert shifter_bless.is_some()
-assert has_condition(shifter, "Blessed") == true
+assert has_condition(shifter, Blessed) == true
 
 // First form: Bear
 let bear = do_polymorph(shifter, "Bear", 14, 7001)
-assert has_condition(bear, "Blessed") == true
-assert has_condition(shifter, "Blessed") == false
+assert has_condition(bear, Blessed) == true
+assert has_condition(shifter, Blessed) == false
 
 // Take some damage as bear
 call damage_monster(bear, 10)
@@ -749,13 +749,13 @@ assert bear.hp == 40
 // (caller holds the original ref — this is the practical pattern)
 call revert(bear)
 assert shifter.hp == 40
-assert has_condition(shifter, "Blessed") == true
+assert has_condition(shifter, Blessed) == true
 assert is_suspended(shifter) == false
 
 // Second form: Eagle (HP carries from bear damage)
 let eagle = do_polymorph(shifter, "Eagle", 13, 7002)
-assert has_condition(eagle, "Blessed") == true
-assert has_condition(shifter, "Blessed") == false
+assert has_condition(eagle, Blessed) == true
+assert has_condition(shifter, Blessed) == false
 assert eagle.hp == 40
 
 // Take more damage as eagle
@@ -765,6 +765,6 @@ assert eagle.hp == 32
 // Final revert
 call revert(eagle)
 assert shifter.hp == 32
-assert has_condition(shifter, "Blessed") == true
+assert has_condition(shifter, Blessed) == true
 assert is_suspended(shifter) == false
 assert shifter.ac == 12

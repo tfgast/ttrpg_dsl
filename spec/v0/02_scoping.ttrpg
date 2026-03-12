@@ -1214,7 +1214,7 @@ hook Regenerate on creature: Character (
 //       // use `is` guards to narrow back to a concrete type
 //   conditions(entity: entity) -> list<ActiveCondition>
 //       // returns all active conditions on the entity, ordered oldest-first
-//   has_condition(entity: entity, name: string) -> bool
+//   has_condition(entity: entity, cond: condition) -> bool
 //       // returns true if the entity has an active condition with the given name
 //       // shorthand for any([c.name == name for c in conditions(entity)])
 //   game_time() -> int

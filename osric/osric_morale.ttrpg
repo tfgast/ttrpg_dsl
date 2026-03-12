@@ -38,6 +38,7 @@ import "osric_core.ttrpg"
 use "OSRIC"
 use "OSRIC Combat"
 use "OSRIC Ability"
+use "OSRIC Cleric Spells"
 
 system "OSRIC Morale" {
 
@@ -93,8 +94,8 @@ system "OSRIC Morale" {
     // ========================================================
 
     derive morale_condition_modifier(target: entity) -> int {
-        let bless_modifier = if has_condition(target, "Blessed") { -5 } else { 0 }
-        let curse_modifier = if has_condition(target, "Cursed") { 5 } else { 0 }
+        let bless_modifier = if has_condition(target, Blessed) { -5 } else { 0 }
+        let curse_modifier = if has_condition(target, Cursed) { 5 } else { 0 }
         bless_modifier + curse_modifier
     }
 

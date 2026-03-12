@@ -759,7 +759,7 @@ struct ActiveCondition {
 // id-based removal — see the builtins section in 02_scoping.ttrpg.
 //
 // To check whether an entity has a specific condition by name, use the
-// `has_condition(entity, "ConditionName")` builtin instead of iterating
+// `has_condition(entity, ConditionName)` builtin instead of iterating
 // over `conditions(entity)` manually.
 //
 // Example: user-defined event using ActiveCondition as a parameter type
