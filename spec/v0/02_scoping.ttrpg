@@ -1209,6 +1209,9 @@ hook Regenerate on creature: Character (
 //       // E must be an ordered enum type; returns none for out-of-range/payload variant
 //   some(x: T) -> option<T>
 //       // wraps a value in an option (the constructor for non-none options)
+//   to_any(x: T) -> any
+//       // wraps any value into the dynamic `any` type
+//       // use `is` guards to narrow back to a concrete type
 //   conditions(entity: entity) -> list<ActiveCondition>
 //       // returns all active conditions on the entity, ordered oldest-first
 //   has_condition(entity: entity, name: string) -> bool

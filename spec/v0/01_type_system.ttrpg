@@ -422,9 +422,10 @@ struct RollResult {
 //       }
 //   }
 //
-// The left operand must be an entity type (either a specific entity or the
-// polymorphic `entity` alias). The right operand must name a declared entity.
-// Using `is` on a non-entity type or with a non-entity type name is an error.
+// When used on entity-typed values:
+// - The left operand must be an entity type (specific entity or `entity`).
+// - The right operand must name a declared entity type.
+// - Using `is` with a non-entity type name on an entity value is an error.
 //
 // `is` narrowing composes with `has` narrowing via `&&`:
 //
@@ -435,6 +436,54 @@ struct RollResult {
 // The `is` operator sits at the same precedence level as `in` and `has`.
 // When the operand is already the tested type, the checker warns that
 // the check is always true.
+//
+// --- Dynamic any type ---
+//
+// `any` is a dynamically-typed value that erases compile-time type
+// information. Values are wrapped via the `to_any(x)` builtin; there is
+// no implicit widening.
+//
+//   let x: any = to_any(42)
+//   let y: any = to_any("hello")
+//   let z: any = to_any([1, 2, 3])
+//
+// Before narrowing, only `is` checks, `==` comparison, and assignment to
+// other `any` variables are permitted — no field access, no arithmetic.
+//
+// Use `is` guards to narrow an `any` value back to a concrete type.
+// The right operand of `is` can be any concrete type expression:
+//
+//   - Primitives: `x is int`, `x is string`, `x is bool`, `x is float`
+//   - Entity types: `x is Character`
+//   - Structs: `x is MyStruct`
+//   - Enums: `x is MyEnum`
+//   - Containers: `x is list<int>`, `x is option<string>`, `x is map<string, int>`
+//
+// After narrowing in an `if` then-block, the variable has the narrowed
+// type with full access to fields, operators, etc.:
+//
+//   function describe(val: any) -> string {
+//       if val is int {
+//           "number"
+//       } else if val is string {
+//           val               // narrowed to string
+//       } else {
+//           "other"
+//       }
+//   }
+//
+//   struct Pos { x: int, y: int }
+//   derive sum_if_pos(val: any) -> int {
+//       if val is Pos {
+//           val.x + val.y    // narrowed to Pos, field access works
+//       } else {
+//           0
+//       }
+//   }
+//
+// `is any` and `is entity` are not valid targets — use concrete types.
+// `to_any` accepts any type and returns `any`. It is a no-op at runtime
+// (values already carry their type information dynamically).
 
 
 // --- Position ---

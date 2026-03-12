@@ -758,6 +758,7 @@ DiceExpr  ──roll()──▶  RollResult  ──.total──▶  int
 | Type              | Notes                                         |
 |-------------------|-----------------------------------------------|
 | `entity`          | Polymorphic any-entity alias in type position  |
+| `any`             | Dynamically typed — enter via `to_any(x)`, narrow via `is` |
 | `Position`        | Opaque board location, use `distance(a, b)`    |
 | `Direction`       | Opaque spatial orientation (host-provided)      |
 | `Duration`        | `EndOfTurn`, `StartOfNextTurn`, `Rounds(n)`, `Minutes(n)`, `Indefinite` |
@@ -1450,9 +1451,11 @@ function create_giant() -> Monster {
 - Group initializers are not valid on struct or unit types
 - Entity construction in derive, mechanic, table, condition, or prompt is a checker error
 
-### Entity Type Narrowing (is)
+### Type Narrowing (is)
 
-Use `target is EntityType` to branch on entity type and access type-specific fields. The variable is narrowed within the then-block.
+Use `expr is Type` to branch on type and access type-specific fields. The variable is narrowed within the then-block.
+
+**Entity type narrowing:**
 
 ```ttrpg
 entity Character {
@@ -1476,6 +1479,39 @@ function get_power(target: entity) -> int {
 }
 ```
 
+**Any-type narrowing:**
+
+Use `to_any(x)` to wrap any value into the `any` type, then `is` guards to narrow:
+
+```ttrpg
+struct Pos {
+    x: int
+    y: int
+}
+
+derive describe(val: any) -> string {
+    if val is int {
+        "a number"
+    } else if val is Pos {
+        "a position"          // val narrowed to Pos, field access works
+    } else {
+        "something else"
+    }
+}
+```
+
+Container types use concrete type parameters:
+
+```ttrpg
+derive sum_if_ints(val: any) -> int {
+    if val is list<int> {
+        sum(val)              // narrowed to list<int>
+    } else {
+        0
+    }
+}
+```
+
 Composes with `has` narrowing via `&&`:
 
 ```ttrpg-with-preamble
@@ -1490,8 +1526,10 @@ function spellcaster_dc(target: entity) -> int {
 
 **Key rules:**
 
-- Left operand must be entity type (specific or polymorphic `entity`)
-- Right operand must name a declared entity type (not struct/enum)
+- Left operand must be `any` or entity type (specific or polymorphic `entity`)
+- For entity: right operand must name a declared entity type
+- For `any`: right operand can be any concrete type (primitives, structs, enums, containers like `list<int>`)
+- `is any` and `is entity` are not valid targets — use concrete types
 - Same precedence as `in` and `has`
 - Narrowing applies only in the then-block (not the else-block)
 

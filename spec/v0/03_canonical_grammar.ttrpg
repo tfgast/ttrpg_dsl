@@ -699,6 +699,7 @@ type            = "int" | "bool" | "string" | "float"
                 | "TurnBudget" | "Duration" | "Position" | "Direction"
                 | "Condition" | "ActiveCondition" | "Invocation"
                 | "entity"                           // polymorphic any-entity type alias
+                | "any"                              // dynamically typed, narrowed via `is`
                 | fn_type                            // function reference type
                 | IDENT                              // user-defined type
                 | "map" "<" type "," type ">"
@@ -724,6 +725,10 @@ fn_type         = "fn" "(" (type ("," type)*)? ")" ("->" type)?
 // `entity` is a checker-resolved alias for "any entity type" (Ty::AnyEntity).
 // It is useful for polymorphic parameters/receivers and can be combined with
 // with-constraints to require optional groups.
+//
+// `any` is a dynamically-typed value (Ty::Any). Values enter via `to_any(x)`.
+// The only operations on `any` before narrowing are `is`, `==`, and assignment.
+// Use `is` guards to narrow back to a concrete type.
 
 
 // =========================
@@ -911,7 +916,7 @@ or_expr         = and_expr ("||" and_expr)*
 and_expr        = cmp_expr ("&&" cmp_expr)*
 cmp_expr        = in_expr (cmp_op in_expr)?
 cmp_op          = "==" | "!=" | ">=" | "<=" | ">" | "<"
-in_expr         = add_expr ("in" add_expr | "has" IDENT ("as" IDENT)? | "is" IDENT)?
+in_expr         = add_expr ("in" add_expr | "has" IDENT ("as" IDENT)? | "is" type)?
 add_expr        = mul_expr (("+" | "-") mul_expr)*
 mul_expr        = unary_expr (("*" | "/") unary_expr)*
 unary_expr      = "!" unary_expr
@@ -1091,12 +1096,15 @@ if_expr         = "if" expr block ("else" (block | if_expr))?
 // The `has` operator sits at the same precedence level as `in`.
 // Grammar: see `in_expr` above.
 
-// --- Is expression (entity type check with narrowing) ---
+// --- Is expression (type check with narrowing) ---
 //
-// `expr is EntityType` tests whether an entity is a specific entity type
-// at runtime. Returns bool. When used as an `if` condition, the variable
-// is narrowed to the tested type within the then-block, enabling access
-// to type-specific fields:
+// `expr is Type` tests whether a value is a specific type at runtime.
+// Returns bool. When used as an `if` condition, the variable is narrowed
+// to the tested type within the then-block, enabling access to
+// type-specific fields and operations.
+//
+// The right operand is a full type expression (not just an identifier),
+// supporting primitives, named types, and parameterized containers:
 //
 //   if target is Character {
 //       target.level          // Character fields accessible
@@ -1104,9 +1112,15 @@ if_expr         = "if" expr block ("else" (block | if_expr))?
 //       target.hit_dice       // Monster fields accessible
 //   }
 //
+//   if val is list<int> {
+//       sum(val)              // narrowed to list<int>
+//   }
+//
 // Requirements:
-//   - The left operand must be an entity type (specific or `entity`).
-//   - The right operand must name a declared entity type.
+//   - The left operand must be `any`-typed or entity-typed (specific or `entity`).
+//   - For entity-typed operands, the right operand must name an entity type.
+//   - For `any`-typed operands, the right operand can be any concrete type.
+//   - `is any` and `is entity` are not valid — use a concrete type.
 //
 // The `is` operator sits at the same precedence level as `in` and `has`.
 // Grammar: see `in_expr` above.

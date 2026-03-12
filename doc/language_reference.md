@@ -33,6 +33,7 @@
 | Type              | Description                                                 |
 |-------------------|-------------------------------------------------------------|
 | `entity`          | Polymorphic any-entity alias in type position               |
+| `any`             | Dynamically typed — enter via `to_any(x)`, narrow via `is`  |
 | `fn(T1, T2) -> R` | Function reference type — see [Function References](#function-references) |
 | `Position`        | Opaque game board location                                  |
 | `Direction`       | Opaque spatial orientation (host-provided)                   |
@@ -669,7 +670,9 @@ if entity has Spellcasting as sc {
 
 ### Is Expression
 
-Tests whether an entity is a specific entity type. Enables flow-sensitive type narrowing within the then-block.
+Tests whether a value is a specific type. Enables flow-sensitive type narrowing within the then-block. Works with both `entity`-typed and `any`-typed values.
+
+**Entity narrowing:**
 
 ```
 if target is Character {
@@ -679,9 +682,31 @@ if target is Character {
 }
 ```
 
+**Any-type narrowing:**
+
+```
+let x: any = to_any(42)
+if x is int {
+    x + 1              // narrowed to int, arithmetic works
+}
+
+let val: any = to_any(Pos { x: 10, y: 20 })
+if val is Pos {
+    val.x + val.y      // narrowed to Pos, field access works
+}
+
+// Containers with concrete type parameters
+let xs: any = to_any([1, 2, 3])
+if xs is list<int> {
+    sum(xs)            // narrowed to list<int>
+}
+```
+
 Requirements:
-- Left operand must be an entity type (specific or polymorphic `entity`)
-- Right operand must name a declared entity type
+- Left operand must be `any` or entity-typed (specific or polymorphic `entity`)
+- For `entity`-typed: right operand must name a declared entity type
+- For `any`-typed: right operand can be any concrete type (primitives, structs, enums, containers)
+- `is any` and `is entity` are not valid targets
 
 Composes with `has` narrowing via `&&`:
 
@@ -753,6 +778,9 @@ emit EventName(param: value)       // fire event (named args only)
 
 ### Option
 `some(x)` `.unwrap()` `.unwrap_or(default)` `.is_some()` `.is_none()`
+
+### Any Type
+`to_any(x)` — wraps any value into `any`. Use `is` guards to narrow back to a concrete type.
 
 ### Set Methods
 `.add(e)` `.remove(e)` `.union(s)` `.intersection(s)` `.difference(s)` `.to_list()` `.contains(e)` `+=` `-=`
