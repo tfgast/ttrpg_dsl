@@ -1,0 +1,64 @@
+// OSRIC SlowPoisoned death countdown integration tests
+//
+// Tests that the SlowPoisoned condition counts down turns_remaining
+// via its periodic #turn_end block and triggers death when exhausted.
+
+load osric/*.ttrpg
+
+// ── SlowPoisoned countdown: 3-turn window ─────────────────────
+// Apply SlowPoisoned with cleric_level=3 (3 turns until death).
+// After 2 turns the character is still alive; after the 3rd, dead.
+
+spawn Character sp_victim { name: "Victim", classes: [ClassLevel { class: Fighter, level: 3 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 20, hp: 20 } }
+
+call apply_condition(sp_victim, SlowPoisoned(cleric_level: 3), Duration.Indefinite)
+assert_condition sp_victim, SlowPoisoned
+assert_no_condition sp_victim, Dead
+
+// Turn 1: still alive
+call process_periodic_conditions([sp_victim], "turn_end")
+assert_condition sp_victim, SlowPoisoned
+assert_no_condition sp_victim, Dead
+
+// Turn 2: still alive
+call process_periodic_conditions([sp_victim], "turn_end")
+assert_condition sp_victim, SlowPoisoned
+assert_no_condition sp_victim, Dead
+
+// Turn 3: timer expires → character dies
+call process_periodic_conditions([sp_victim], "turn_end")
+assert_no_condition sp_victim, SlowPoisoned
+assert_condition sp_victim, Dead
+
+// ── SlowPoisoned with cleric_level=1: dies after 1 turn ───────
+
+spawn Character sp_fast { name: "FastDeath", classes: [ClassLevel { class: Fighter, level: 1 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 10, hp: 10 } }
+
+call apply_condition(sp_fast, SlowPoisoned(cleric_level: 1), Duration.Indefinite)
+assert_condition sp_fast, SlowPoisoned
+
+call process_periodic_conditions([sp_fast], "turn_end")
+assert_no_condition sp_fast, SlowPoisoned
+assert_condition sp_fast, Dead
+
+// ── Neutralise Poison removes SlowPoisoned before death ───────
+// Apply SlowPoisoned, tick once, then remove via tag — character
+// should survive with no SlowPoisoned or Dead condition.
+
+spawn Character sp_cured { name: "Cured", classes: [ClassLevel { class: Fighter, level: 3 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 20, hp: 20 } }
+
+call apply_condition(sp_cured, SlowPoisoned(cleric_level: 3), Duration.Indefinite)
+
+// Tick once (2 turns remaining)
+call process_periodic_conditions([sp_cured], "turn_end")
+assert_condition sp_cured, SlowPoisoned
+assert_no_condition sp_cured, Dead
+
+// Remove the condition (as Neutralise Poison would)
+call remove_condition(sp_cured, "SlowPoisoned")
+assert_no_condition sp_cured, SlowPoisoned
+assert_no_condition sp_cured, Dead
+
+// Further ticks should have no effect — condition is gone
+call process_periodic_conditions([sp_cured], "turn_end")
+assert_no_condition sp_cured, Dead
