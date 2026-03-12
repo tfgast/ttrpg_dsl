@@ -1,6 +1,6 @@
 use ttrpg_ast::ast::*;
 
-use crate::check::Checker;
+use crate::check::{Checker, Namespace};
 use crate::env::*;
 use crate::ty::Ty;
 
@@ -705,6 +705,55 @@ impl Checker<'_> {
             }
             _ => {}
         }
+    }
+
+    /// `conditions(entity, ConditionName) -> list<TypedActiveCondition<ConditionName>>`
+    ///
+    /// Two-arg overload: second arg must be a bare condition identifier (not a string).
+    /// Returns a typed list where each element has params and `.state` accessible.
+    pub(crate) fn check_typed_conditions_call(
+        &mut self,
+        args: &[Arg],
+        span: ttrpg_ast::Span,
+    ) -> Ty {
+        // Check first arg (entity)
+        let entity_ty = self.check_expr(&args[0].value);
+        if !entity_ty.is_error() && !entity_ty.is_entity() {
+            self.error(
+                format!(
+                    "`conditions` expects entity as first argument, got {}",
+                    entity_ty.display()
+                ),
+                span,
+            );
+        }
+
+        // Second arg must be a bare condition identifier
+        let cond_name = match &args[1].value.node {
+            ttrpg_ast::ast::ExprKind::Ident(name) => {
+                if self.env.conditions.contains_key(name) {
+                    self.check_name_visible(name, Namespace::Condition, args[1].value.span);
+                    name.clone()
+                } else {
+                    self.error(
+                        format!("`{name}` is not a known condition"),
+                        args[1].value.span,
+                    );
+                    return Ty::Error;
+                }
+            }
+            _ => {
+                self.error(
+                    "second argument to `conditions` must be a condition name",
+                    args[1].value.span,
+                );
+                // Still check the expression for cascading errors
+                self.check_expr(&args[1].value);
+                return Ty::Error;
+            }
+        };
+
+        Ty::List(Box::new(Ty::TypedActiveCondition(cond_name)))
     }
 
     /// `to_any(value) -> any` — wraps any value into the `any` type.

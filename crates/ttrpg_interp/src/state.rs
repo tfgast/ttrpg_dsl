@@ -183,6 +183,54 @@ impl ActiveCondition {
             fields,
         }
     }
+
+    /// Convert to a typed `Value::Struct` that includes params and state.
+    ///
+    /// Used by the 2-arg `conditions(entity, CondName)` overload.
+    /// Includes base ActiveCondition fields, condition parameters, and
+    /// a `state` sub-struct containing the per-instance mutable state.
+    pub fn to_typed_value(&self) -> Value {
+        let mut fields = BTreeMap::new();
+        // Base fields
+        fields.insert(Name::from("name"), Value::Str(self.name.to_string()));
+        fields.insert(Name::from("duration"), self.duration.clone());
+        fields.insert(
+            Name::from("id"),
+            Value::Int(self.id.min(i64::MAX as u64) as i64),
+        );
+        fields.insert(
+            Name::from("applied_at"),
+            Value::Int(self.applied_at.min(i64::MAX as u64) as i64),
+        );
+        fields.insert(Name::from("source"), self.source.clone());
+        fields.insert(
+            Name::from("tags"),
+            Value::Set(
+                self.tags
+                    .iter()
+                    .map(|t| Value::Str(t.to_string()))
+                    .collect(),
+            ),
+        );
+        // Condition parameters
+        for (name, value) in &self.params {
+            fields.insert(name.clone(), value.clone());
+        }
+        // State sub-struct (read-only snapshot)
+        if !self.state_fields.is_empty() {
+            fields.insert(
+                Name::from("state"),
+                Value::Struct {
+                    name: Name::from("state"),
+                    fields: self.state_fields.clone(),
+                },
+            );
+        }
+        Value::Struct {
+            name: Name::from("ActiveCondition"),
+            fields,
+        }
+    }
 }
 
 // ── StateProvider trait ─────────────────────────────────────────

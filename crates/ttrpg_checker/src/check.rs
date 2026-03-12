@@ -1532,6 +1532,12 @@ impl<'a> Checker<'a> {
         ) {
             return true;
         }
+        // TypedActiveCondition is a subtype of ActiveCondition and Condition
+        if matches!(actual, Ty::TypedActiveCondition(_))
+            && matches!(expected, Ty::ActiveCondition | Ty::Condition)
+        {
+            return true;
+        }
         // Covariant containers: list<Sub> is compatible with list<Super>, etc.
         match (actual, expected) {
             (Ty::List(a), Ty::List(b)) => return self.types_compatible(a, b),

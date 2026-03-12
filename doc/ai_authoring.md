@@ -1013,7 +1013,7 @@ condition Poisoned(potency: int) on bearer: Character {
 
 ### Condition State Fields
 
-State fields are per-instance mutable fields private to the condition. They provide internal bookkeeping (counters, accumulators, cached values) without polluting the condition's public interface. Unlike params (immutable, externally matchable), state fields are mutable and invisible to `conditions()`, stacking, and `remove_condition()`.
+State fields are per-instance mutable fields on the condition. They provide internal bookkeeping (counters, accumulators, cached values) without polluting the condition's public interface. Unlike params (immutable, externally matchable), state fields are mutable within the condition's blocks and invisible to the untyped `conditions()` overload, stacking, and `remove_condition()`. State can be read externally via the typed `conditions(entity, CondName)` overload — see the "Typed `conditions()` overload" section under Condition Application.
 
 ```ttrpg
 entity Character {
@@ -1215,6 +1215,34 @@ function resolve_sleep(caster: entity, targets: list<entity>) {
 - `Condition` = a condition blueprint (e.g. `Prone`, `Sleeping`, `Concealed(level: 3)`)
 - `ActiveCondition` = a live instance on an entity, with `.name`, `.duration`, `.source`, `.id`, `.applied_at` fields; returned by `conditions(entity)`
 - `has_condition(entity, "Prone")` → `bool` — checks if entity has an active condition by name. Prefer over `any([c.name == X for c in conditions(entity)])`.
+
+**Typed `conditions()` overload:**
+
+`conditions(entity, ConditionName)` returns `list<ActiveCondition<ConditionName>>` — a typed list filtered to only instances of the named condition. Each element exposes condition parameters as fields and state fields via `.state`:
+
+```ttrpg-snippet
+condition Grappling(opponent: entity, hold: GrapplingHold) on bearer: entity {
+    state { current_hold: GrapplingHold = hold, controlling: bool = true }
+}
+
+/ Typed access to params and state:
+let grapples = conditions(bearer, Grappling)
+if len(grapples) > 0 {
+    let g = first(grapples).unwrap()
+    g.opponent          // param (immutable, from application time)
+    g.hold              // param
+    g.state.current_hold // state field (mutable within condition, read-only here)
+    g.state.controlling  // state field
+    g.id                // base ActiveCondition field still accessible
+    g.name              // base ActiveCondition field
+    remove_condition(bearer, g) // compatible with remove_condition
+}
+```
+
+- Second argument must be a bare condition identifier (not a string)
+- Returns empty list if no matching conditions exist
+- State access is read-only from outside the condition — only the condition's own blocks can mutate state
+- Typed results are compatible with `remove_condition()` (subtype of `ActiveCondition` and `Condition`)
 
 **`EffectSource` — condition provenance:**
 

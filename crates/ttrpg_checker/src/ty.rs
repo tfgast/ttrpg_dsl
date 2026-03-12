@@ -22,6 +22,9 @@ pub enum Ty {
     Direction,
     Condition,
     ActiveCondition,
+    /// Typed active condition: returned by `conditions(entity, CondName)`.
+    /// Carries the condition name so field access can resolve params and state.
+    TypedActiveCondition(Name),
     Invocation,
 
     // Nominal (user-defined)
@@ -110,6 +113,7 @@ impl Ty {
             Ty::Direction => "Direction".into(),
             Ty::Condition => "Condition".into(),
             Ty::ActiveCondition => "ActiveCondition".into(),
+            Ty::TypedActiveCondition(name) => format!("ActiveCondition<{name}>"),
             Ty::Invocation => "Invocation".into(),
             Ty::Enum(name) | Ty::EnumType(name) => name.to_string(),
             Ty::Struct(name) => name.to_string(),

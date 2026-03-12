@@ -737,3 +737,256 @@ system "test" {
         "should not emit SetConditionState for stateless condition"
     );
 }
+
+// ── Typed conditions() overload ────────────────────────────────
+
+#[test]
+fn typed_conditions_basic_check() {
+    // 2-arg conditions(entity, CondName) should type-check
+    setup(
+        r#"
+system "test" {
+    entity Character { HP: int }
+    condition Poisoned(potency: int = 1) on bearer: Character {
+        state {
+            ticks: int = 0
+        }
+    }
+    derive check_it(target: Character) -> bool {
+        let cs = conditions(target, Poisoned)
+        len(cs) > 0
+    }
+}
+"#,
+    );
+}
+
+#[test]
+fn typed_conditions_param_access_check() {
+    // Accessing condition parameters through typed results
+    setup(
+        r#"
+system "test" {
+    entity Character { HP: int }
+    condition Poisoned(potency: int = 1) on bearer: Character {
+        state {
+            ticks: int = 0
+        }
+    }
+    derive get_potency(target: Character) -> int {
+        let cs = conditions(target, Poisoned)
+        if len(cs) > 0 {
+            first(cs).unwrap().potency
+        } else {
+            0
+        }
+    }
+}
+"#,
+    );
+}
+
+#[test]
+fn typed_conditions_state_access_check() {
+    // Accessing state fields through .state.field
+    setup(
+        r#"
+system "test" {
+    entity Character { HP: int }
+    condition Poisoned(potency: int = 1) on bearer: Character {
+        state {
+            ticks: int = 0
+        }
+    }
+    derive get_ticks(target: Character) -> int {
+        let cs = conditions(target, Poisoned)
+        if len(cs) > 0 {
+            first(cs).unwrap().state.ticks
+        } else {
+            0
+        }
+    }
+}
+"#,
+    );
+}
+
+#[test]
+fn typed_conditions_base_fields_accessible() {
+    // Base ActiveCondition fields (name, id, duration, etc.) should still work
+    setup(
+        r#"
+system "test" {
+    entity Character { HP: int }
+    condition Poisoned on bearer: Character {}
+    derive get_id(target: Character) -> int {
+        let cs = conditions(target, Poisoned)
+        if len(cs) > 0 {
+            first(cs).unwrap().id
+        } else {
+            0
+        }
+    }
+}
+"#,
+    );
+}
+
+#[test]
+fn typed_conditions_unknown_field_error() {
+    let errors = setup_expect_errors(
+        r#"
+system "test" {
+    entity Character { HP: int }
+    condition Poisoned on bearer: Character {}
+    derive bad(target: Character) -> int {
+        let cs = conditions(target, Poisoned)
+        first(cs).unwrap().nonexistent
+    }
+}
+"#,
+    );
+    assert!(
+        errors.iter().any(|e| e.contains("no field `nonexistent`")),
+        "expected field error, got: {errors:?}"
+    );
+}
+
+#[test]
+fn typed_conditions_state_on_stateless_error() {
+    let errors = setup_expect_errors(
+        r#"
+system "test" {
+    entity Character { HP: int }
+    condition Poisoned on bearer: Character {}
+    derive bad(target: Character) -> int {
+        let cs = conditions(target, Poisoned)
+        first(cs).unwrap().state.ticks
+    }
+}
+"#,
+    );
+    assert!(
+        errors
+            .iter()
+            .any(|e| e.contains("has no state fields") || e.contains("no field `state`")),
+        "expected state error, got: {errors:?}"
+    );
+}
+
+#[test]
+fn typed_conditions_not_a_condition_error() {
+    let errors = setup_expect_errors(
+        r#"
+system "test" {
+    entity Character { HP: int }
+    derive bad(target: Character) -> bool {
+        len(conditions(target, NotACondition)) > 0
+    }
+}
+"#,
+    );
+    assert!(
+        errors
+            .iter()
+            .any(|e| e.contains("not a known condition") || e.contains("undefined")),
+        "expected unknown condition error, got: {errors:?}"
+    );
+}
+
+#[test]
+fn typed_conditions_compatible_with_remove_condition() {
+    // TypedActiveCondition should be compatible with remove_condition's Condition param
+    setup(
+        r#"
+system "test" {
+    entity Character { HP: int }
+    condition Poisoned on bearer: Character {}
+    function remove_first_poison(target: Character) {
+        let cs = conditions(target, Poisoned)
+        if len(cs) > 0 {
+            remove_condition(target, first(cs).unwrap())
+        }
+    }
+}
+"#,
+    );
+}
+
+#[test]
+fn typed_conditions_runtime_params_and_state() {
+    // Full runtime test: apply condition with params and state, then read them back
+    let source = r#"
+system "test" {
+    entity Character { HP: int }
+    condition Poisoned(potency: int) on bearer: Character {
+        state {
+            ticks: int = 0
+        }
+        on_apply {
+            state.ticks = potency * 2
+        }
+    }
+    function do_apply(target: Character) {
+        apply_condition(target, Poisoned(potency: 5), Duration.Indefinite)
+    }
+    function read_params(target: Character) {
+        let cs = conditions(target, Poisoned)
+        let c = first(cs).unwrap()
+        // Access param and state, verify they're correct via HP mutation
+        target.HP = c.potency
+    }
+    function read_state(target: Character) {
+        let cs = conditions(target, Poisoned)
+        let c = first(cs).unwrap()
+        target.HP = c.state.ticks
+    }
+}
+"#;
+    let mut state = GameState::new();
+    let entity = make_character(&mut state, 100);
+    let (state, _log) = run_function(source, "do_apply", state, entity);
+
+    // Read param: potency = 5
+    let (state, _log) = run_function(source, "read_params", state, entity);
+    let hp = state.read_field(&entity, "HP").unwrap();
+    assert_eq!(hp, Value::Int(5), "should read potency param = 5");
+
+    // Read state: ticks = potency * 2 = 10
+    let (state, _log) = run_function(source, "read_state", state, entity);
+    let hp = state.read_field(&entity, "HP").unwrap();
+    assert_eq!(hp, Value::Int(10), "should read state.ticks = 10");
+}
+
+#[test]
+fn typed_conditions_filters_by_name() {
+    // Ensure 2-arg conditions() only returns matching conditions
+    let source = r#"
+system "test" {
+    entity Character { HP: int }
+    condition Poisoned on bearer: Character {}
+    condition Stunned on bearer: Character {}
+    function do_apply(target: Character) {
+        apply_condition(target, Poisoned, Duration.Indefinite)
+        apply_condition(target, Stunned, Duration.Indefinite)
+    }
+    function count_poisoned(target: Character) {
+        target.HP = len(conditions(target, Poisoned))
+    }
+    function count_stunned(target: Character) {
+        target.HP = len(conditions(target, Stunned))
+    }
+}
+"#;
+    let mut state = GameState::new();
+    let entity = make_character(&mut state, 100);
+    let (state, _log) = run_function(source, "do_apply", state, entity);
+
+    let (state, _log) = run_function(source, "count_poisoned", state, entity);
+    let hp = state.read_field(&entity, "HP").unwrap();
+    assert_eq!(hp, Value::Int(1), "should have exactly 1 Poisoned");
+
+    let (state, _log) = run_function(source, "count_stunned", state, entity);
+    let hp = state.read_field(&entity, "HP").unwrap();
+    assert_eq!(hp, Value::Int(1), "should have exactly 1 Stunned");
+}

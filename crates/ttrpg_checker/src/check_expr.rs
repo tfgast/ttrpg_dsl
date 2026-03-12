@@ -754,6 +754,38 @@ impl Checker<'_> {
                 self.error(format!("ActiveCondition has no field `{field}`"), span);
                 Ty::Error
             }
+            Ty::TypedActiveCondition(cond_name) => {
+                // Base ActiveCondition fields (name, duration, id, etc.)
+                for (fname, ref fty) in TypeEnv::active_condition_fields() {
+                    if fname == field {
+                        return fty.clone();
+                    }
+                }
+                // Condition parameters
+                if let Some(cond_info) = self.env.conditions.get(cond_name) {
+                    for p in &cond_info.params {
+                        if p.name == field {
+                            return p.ty.clone();
+                        }
+                    }
+                    // `.state` → ConditionState type with merged fields
+                    if field == "state" {
+                        if cond_info.merged_state_fields.is_empty() {
+                            self.error(
+                                format!("condition `{cond_name}` has no state fields"),
+                                span,
+                            );
+                            return Ty::Error;
+                        }
+                        return Ty::ConditionState(cond_info.merged_state_fields.clone());
+                    }
+                }
+                self.error(
+                    format!("ActiveCondition<{cond_name}> has no field `{field}`"),
+                    span,
+                );
+                Ty::Error
+            }
             Ty::TurnBudget => {
                 // Prefer user-defined struct TurnBudget fields if present,
                 // fall back to hardcoded fields otherwise.

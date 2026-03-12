@@ -166,29 +166,50 @@ fn builtin_distance(env: &Env, args: &[Value], span: Span) -> Result<Value, Runt
 // ── conditions ────────────────────────────────────────────────────
 
 /// `conditions(entity: Entity) -> list<ActiveCondition>`
+/// `conditions(entity: Entity, cond: Condition) -> list<TypedActiveCondition>`
 ///
-/// Returns the active conditions on an entity, ordered by `gained_at` (oldest first).
+/// One-arg form: returns all active conditions on an entity, ordered by `gained_at`.
+/// Two-arg form: filters by condition name and returns typed results with params and state.
 fn builtin_conditions(env: &Env, args: &[Value], span: Span) -> Result<Value, RuntimeError> {
-    match args.first() {
-        Some(Value::Entity(entity)) => match env.state.read_conditions(entity) {
-            Some(conditions) => {
-                let values = conditions.iter().map(|c| c.to_value()).collect();
-                Ok(Value::List(values))
-            }
-            None => Err(RuntimeError::with_span(
+    let entity = match args.first() {
+        Some(Value::Entity(entity)) => entity,
+        Some(other) => {
+            return Err(RuntimeError::with_span(
+                format!("conditions() expects Entity, got {}", type_name(other)),
+                span,
+            ));
+        }
+        None => {
+            return Err(RuntimeError::with_span(
+                "conditions() requires at least 1 argument",
+                span,
+            ));
+        }
+    };
+
+    let conditions = match env.state.read_conditions(entity) {
+        Some(c) => c,
+        None => {
+            return Err(RuntimeError::with_span(
                 format!("conditions() called on unknown entity: {entity:?}"),
                 span,
-            )),
-        },
-        Some(other) => Err(RuntimeError::with_span(
-            format!("conditions() expects Entity, got {}", type_name(other)),
-            span,
-        )),
-        None => Err(RuntimeError::with_span(
-            "conditions() requires 1 argument",
-            span,
-        )),
+            ));
+        }
+    };
+
+    // Two-arg form: filter by condition name, return typed values
+    if let Some(Value::Condition { name: cond_name, .. }) = args.get(1) {
+        let values = conditions
+            .iter()
+            .filter(|c| c.name == *cond_name)
+            .map(|c| c.to_typed_value())
+            .collect();
+        return Ok(Value::List(values));
     }
+
+    // One-arg form: return all conditions as untyped values
+    let values = conditions.iter().map(|c| c.to_value()).collect();
+    Ok(Value::List(values))
 }
 
 // ── has_condition ─────────────────────────────────────────────

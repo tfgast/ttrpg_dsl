@@ -133,6 +133,17 @@ pub(crate) fn eval_call(
                     }
                     return eval_expr(env, &args[0].value);
                 }
+                "conditions" if args.len() == 2 => {
+                    // Typed 2-arg overload: conditions(entity, CondName)
+                    let entity_val = eval_expr(env, &args[0].value)?;
+                    let cond_val = eval_expr(env, &args[1].value)?;
+                    return call_builtin(
+                        env,
+                        "conditions",
+                        vec![entity_val, cond_val],
+                        call_span,
+                    );
+                }
                 _ => {}
             }
 

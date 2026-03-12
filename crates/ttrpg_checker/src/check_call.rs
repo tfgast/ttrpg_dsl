@@ -192,6 +192,9 @@ impl Checker<'_> {
             "some" => return self.check_some_call(args, span),
             "revoke" => return self.check_revoke_call(args, span),
             "to_any" => return self.check_to_any_call(args, span),
+            "conditions" if args.len() == 2 => {
+                return self.check_typed_conditions_call(args, span)
+            }
             _ => {}
         }
 
