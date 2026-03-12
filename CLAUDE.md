@@ -55,5 +55,3 @@ Prefer scripts over Rust tests when either would work — they're faster to writ
 ## Coding Conventions
 
 - Follow existing patterns in the crate you're modifying
-- Integration tests for .ttrpg rule modules go in `crates/ttrpg_interp/tests/`
-- Test file naming: `{ruleset}_{topic}_integration.rs`
