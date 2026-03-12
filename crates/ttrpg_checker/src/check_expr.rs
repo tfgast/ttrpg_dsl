@@ -751,9 +751,14 @@ impl Checker<'_> {
                         return fty.clone();
                     }
                 }
-                // Unknown fields may be condition params — typed as `any`
-                // before narrowing via `is ActiveCondition<CondName>`.
-                Ty::Any
+                self.error(
+                    format!(
+                        "ActiveCondition has no field `{field}` — \
+                         narrow with `is ActiveCondition<CondName>` to access condition params"
+                    ),
+                    span,
+                );
+                Ty::Error
             }
             Ty::TypedActiveCondition(cond_name) => {
                 // Base ActiveCondition fields (name, duration, id, etc.)

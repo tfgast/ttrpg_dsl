@@ -231,38 +231,24 @@ system "test" {
 }
 
 #[test]
-fn param_access_without_narrowing_typed_as_any() {
-    // Accessing a param field without narrowing compiles (typed as `any`)
-    // and returns the runtime value
+fn param_access_without_narrowing_is_error() {
+    // Accessing a param field without narrowing is a checker error
     let source = r#"
 system "test" {
     entity Character { HP: int }
     condition Weakened(level: int) on bearer: Character {}
-    derive get_level(actor: Character) -> any {
+    derive get_level(actor: Character) -> int {
         let conds = conditions(actor)
         let c = conds[0]
         c.level
     }
 }
 "#;
-    let (program, result) = setup(source);
-    let interp = Interpreter::new(&program, &result.env).unwrap();
-    let mut state = TestState::new();
-    state.fields.insert((1, "HP".into()), Value::Int(10));
-    let mut cond = make_condition("Weakened");
-    cond.params.insert(Name::from("level"), Value::Int(3));
-    state.conditions.insert(1, vec![cond]);
-    let mut handler = MinimalHandler;
-
-    let val = interp
-        .evaluate_derive(
-            &state,
-            &mut handler,
-            "get_level",
-            vec![Value::Entity(EntityRef(1))],
-        )
-        .unwrap();
-    assert_eq!(val, Value::Int(3));
+    let errors = setup_expect_errors(source);
+    assert!(
+        errors.iter().any(|e| e.contains("narrow with")),
+        "expected error suggesting narrowing, got: {errors:?}"
+    );
 }
 
 // ── Checker error cases ────────────────────────────────────────
