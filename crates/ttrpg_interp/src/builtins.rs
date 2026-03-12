@@ -628,7 +628,11 @@ fn builtin_apply_condition(
         }
         fields
     };
-    let state_map = if initial_state.is_empty() { None } else { Some(initial_state) };
+    let state_map = if initial_state.is_empty() {
+        None
+    } else {
+        Some(initial_state)
+    };
 
     // Phase 2: Execute on_apply lifecycle blocks (token available via env)
     // State map is threaded through all ancestor blocks — on_apply can read/write state.
@@ -1541,7 +1545,9 @@ fn builtin_process_periodic_conditions(
                     let result = crate::eval::eval_block(env, &pc.body);
                     // Read back mutated state before popping scope
                     if current_state.is_some() {
-                        if let Some(Value::Struct { fields, .. }) = env.lookup(&Name::from("state")).cloned() {
+                        if let Some(Value::Struct { fields, .. }) =
+                            env.lookup(&Name::from("state")).cloned()
+                        {
                             current_state = Some(fields);
                         }
                     }

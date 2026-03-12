@@ -205,12 +205,22 @@ system "OSRIC Monster Traits" {
     //  REGENERATION
     //
     //  Regains hp_per_round hit points at the start of each
-    //  round. Handled by combat loop, not a modify clause.
+    //  round, capped at max_hp. Fires via
+    //  process_periodic_conditions(combatants, "round_start_healing")
+    //  in the combat loop.
     // ========================================================
 
     condition Regeneration(hp_per_round: int) on bearer: entity
         stacking best by highest(hp_per_round) ties oldest
-    {}
+    {
+        periodic #round_start_healing {
+            if bearer is Monster {
+                if bearer.hp < bearer.max_hp {
+                    bearer.hp = min(bearer.hp + hp_per_round, bearer.max_hp)
+                }
+            }
+        }
+    }
 
 
     // ========================================================

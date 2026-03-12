@@ -187,7 +187,9 @@ pub(crate) fn execute_lifecycle_blocks(
                 let r = crate::eval::eval_block(env, block);
                 // Read back mutated state before popping scope
                 if current_state.is_some() {
-                    if let Some(Value::Struct { fields, .. }) = env.lookup(&Name::from("state")).cloned() {
+                    if let Some(Value::Struct { fields, .. }) =
+                        env.lookup(&Name::from("state")).cloned()
+                    {
                         current_state = Some(fields);
                     }
                 }

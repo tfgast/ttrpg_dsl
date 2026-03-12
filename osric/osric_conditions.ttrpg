@@ -501,9 +501,14 @@ system "OSRIC Conditions" {
     //
     //  Parameters:
     //    opponent       — the other combatant in this grapple
-    //    hold           — type of hold (ArmGrab, RearChoke, etc.)
+    //    hold           — initial hold type (ArmGrab, RearChoke, etc.)
     //    is_controlling — true if bearer has the controlling hold
     //    hold_roll      — modified d8 roll that determined this hold
+    //
+    //  State (mutable per-instance, persists across rounds):
+    //    current_hold   — hold type, may change as grapple progresses
+    //    controlling    — who has the controlling hold, may shift
+    //    roll           — modified d8 result, used for ongoing damage
     //
     //  Restrictions enforced at the action level:
     //    (1) cannot try unarmed fend-off attacks
@@ -528,6 +533,11 @@ system "OSRIC Conditions" {
         is_controlling: bool,
         hold_roll: int
     ) on bearer: entity {
+        state {
+            current_hold: GrapplingHold = hold
+            controlling: bool = is_controlling
+            roll: int = hold_roll
+        }
         tags: #physical
         // Suppress spellcasting while grappled (§1.6.10.7).
         modify [#spellcasting_gate](caster: bearer) {

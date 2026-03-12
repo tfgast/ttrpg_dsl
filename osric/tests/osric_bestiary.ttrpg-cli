@@ -54,6 +54,24 @@ assert any([c.name == "Regeneration" for c in conditions(troll)])
 assert any([c.name == "VulnerableToFire" for c in conditions(troll)])
 assert any([c.name == "VulnerableToAcid" for c in conditions(troll)])
 
+// ── Regeneration periodic heals at round start ───────────────
+// Monster with Regeneration(3) heals 3 HP/round, capped at max_hp.
+spawn Monster regen_troll { name: "Regen Troll", hit_dice: 6d8 + 6, max_hp: 33, hp: 33, ac: 16, attacks: [MonsterAttack { name: "Claw", damage: 1d6 + 4 }], special: [] }
+call apply_condition(regen_troll, Regeneration(hp_per_round: 3), Duration.Indefinite)
+set regen_troll.hp = 20
+assert_eq regen_troll.hp, 20
+call process_periodic_conditions([regen_troll], "round_start_healing")
+assert_eq regen_troll.hp, 23
+call process_periodic_conditions([regen_troll], "round_start_healing")
+assert_eq regen_troll.hp, 26
+// Healing caps at max_hp
+set regen_troll.hp = 32
+call process_periodic_conditions([regen_troll], "round_start_healing")
+assert_eq regen_troll.hp, 33
+// At full HP, no change
+call process_periodic_conditions([regen_troll], "round_start_healing")
+assert_eq regen_troll.hp, 33
+
 let basilisk = create_basilisk()
 assert any([c.name == "PetrifyingGaze" for c in conditions(basilisk)])
 

@@ -6,8 +6,8 @@
 use std::collections::VecDeque;
 
 use rustc_hash::FxHashMap;
-use ttrpg_ast::{FileId, Name};
 use ttrpg_ast::diagnostic::Severity;
+use ttrpg_ast::{FileId, Name};
 use ttrpg_interp::Interpreter;
 use ttrpg_interp::adapter::StateAdapter;
 use ttrpg_interp::effect::{Effect, EffectHandler, Response};
@@ -570,8 +570,14 @@ system "test" {
     let (state, _log) = run_function(source, "do_apply", state, entity);
 
     let conds = state.read_conditions(&entity).unwrap();
-    assert_eq!(conds[0].state_fields.get::<Name>(&"x".into()), Some(&Value::Int(10)));
-    assert_eq!(conds[0].state_fields.get::<Name>(&"y".into()), Some(&Value::Int(11)));
+    assert_eq!(
+        conds[0].state_fields.get::<Name>(&"x".into()),
+        Some(&Value::Int(10))
+    );
+    assert_eq!(
+        conds[0].state_fields.get::<Name>(&"y".into()),
+        Some(&Value::Int(11))
+    );
 }
 
 #[test]
@@ -605,18 +611,27 @@ system "test" {
 
     // After on_apply: count = 1
     let conds = state.read_conditions(&entity).unwrap();
-    assert_eq!(conds[0].state_fields.get::<Name>(&"count".into()), Some(&Value::Int(1)));
+    assert_eq!(
+        conds[0].state_fields.get::<Name>(&"count".into()),
+        Some(&Value::Int(1))
+    );
 
     // After periodic: count = 2
     let (state, _log) = run_function(source, "do_tick", state, entity);
 
     let conds = state.read_conditions(&entity).unwrap();
-    assert_eq!(conds[0].state_fields.get::<Name>(&"count".into()), Some(&Value::Int(2)));
+    assert_eq!(
+        conds[0].state_fields.get::<Name>(&"count".into()),
+        Some(&Value::Int(2))
+    );
 
     // Second tick: count = 3
     let (state, _log) = run_function(source, "do_tick", state, entity);
     let conds = state.read_conditions(&entity).unwrap();
-    assert_eq!(conds[0].state_fields.get::<Name>(&"count".into()), Some(&Value::Int(3)));
+    assert_eq!(
+        conds[0].state_fields.get::<Name>(&"count".into()),
+        Some(&Value::Int(3))
+    );
 }
 
 #[test]
@@ -714,6 +729,11 @@ system "test" {
     let (_state, log) = run_function(source, "do_tick", state, entity);
 
     // No SetConditionState should be emitted for stateless conditions
-    let set_state = log.iter().find(|e| matches!(e, Effect::SetConditionState { .. }));
-    assert!(set_state.is_none(), "should not emit SetConditionState for stateless condition");
+    let set_state = log
+        .iter()
+        .find(|e| matches!(e, Effect::SetConditionState { .. }));
+    assert!(
+        set_state.is_none(),
+        "should not emit SetConditionState for stateless condition"
+    );
 }

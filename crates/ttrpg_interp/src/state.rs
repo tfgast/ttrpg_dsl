@@ -349,7 +349,12 @@ pub trait WritableState: StateProvider {
 
     /// Update the state fields of a condition instance by id.
     /// No-op if the condition id does not exist on any entity.
-    fn set_condition_state(&mut self, entity: &EntityRef, condition_id: u64, fields: BTreeMap<Name, Value>);
+    fn set_condition_state(
+        &mut self,
+        entity: &EntityRef,
+        condition_id: u64,
+        fields: BTreeMap<Name, Value>,
+    );
 
     /// Remove the suspension record with the given `source_id` from an entity.
     ///

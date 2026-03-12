@@ -51,6 +51,7 @@ system "OSRIC" {
 
     // Periodic condition phase tags. Used by process_periodic_conditions()
     // to control when periodic blocks fire within the combat loop.
+    tag round_start_healing
     tag round_end_damage
 
     // --- Unit types ---

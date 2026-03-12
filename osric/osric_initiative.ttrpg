@@ -947,6 +947,7 @@ system "OSRIC Initiative" {
         actions: list<RoundAction>
     ) {
         emit RoundStart(round: round)
+        process_periodic_conditions(combatants, "round_start_healing")
         let party_won = initiative.party_segment < initiative.monster_segment
 
         // Provision action budgets for all combatants up-front.

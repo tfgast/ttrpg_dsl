@@ -396,7 +396,12 @@ impl WritableState for GameState {
         }
     }
 
-    fn set_condition_state(&mut self, entity: &EntityRef, condition_id: u64, fields: BTreeMap<Name, Value>) {
+    fn set_condition_state(
+        &mut self,
+        entity: &EntityRef,
+        condition_id: u64,
+        fields: BTreeMap<Name, Value>,
+    ) {
         if let Some(conds) = self.conditions.get_mut(&entity.0) {
             if let Some(cond) = conds.iter_mut().find(|c| c.id == condition_id) {
                 cond.state_fields = fields;
