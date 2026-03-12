@@ -41,6 +41,17 @@ ttrpg check -s                         # Snippet mode (auto-wraps in system bloc
 
 Always run `ttrpg check` on .ttrpg files before considering work done. Always run `just test` after Rust changes.
 
+## Writing Tests
+
+Read `@doc/test_scripts.md` before writing or modifying `.ttrpg-cli` test scripts. It covers all available commands (assertions, dice control, spawning, etc.) and value syntax.
+
+**Choose the right test approach:**
+
+- **`.ttrpg-cli` scripts** — for testing DSL rule logic: derive/table values, mechanic evaluation, action execution, entity state changes, error cases. Place in `{ruleset}/tests/`. Run with `just test-scripts`.
+- **Rust integration tests** — for testing Rust internals: AST structure, custom effect handlers, interpreter API surface, tests needing programmatic loops. Place in `crates/ttrpg_interp/tests/`.
+
+Prefer scripts over Rust tests when either would work — they're faster to write and closer to the DSL.
+
 ## Coding Conventions
 
 - Follow existing patterns in the crate you're modifying
