@@ -428,6 +428,26 @@ const COMMANDS: &[CommandInfo] = &[
         examples: &["zone_sync"],
         category: "Host Simulation",
     },
+    // Loops
+    CommandInfo {
+        name: "repeat",
+        syntax: "repeat <N> { ... }",
+        description: "Run commands N times",
+        detail: "Execute the enclosed block of commands N times.\n  The closing } must appear on its own line. Loops can be nested.",
+        examples: &["repeat 5 {\n    rolls 15\n    do MeleeAttack(attacker, target)\n}"],
+        category: "Loops",
+    },
+    CommandInfo {
+        name: "for",
+        syntax: "for <var> in <start>..<end> { ... }",
+        description: "Loop with a variable over a range",
+        detail: "Iterate a variable over an integer range, executing the block each time.\n  Use .. for exclusive (0..3 = 0,1,2) or ..= for inclusive (0..=3 = 0,1,2,3).\n  The loop variable is available in expressions inside the body.\n  The closing } must appear on its own line.",
+        examples: &[
+            "for i in 0..10 {\n    set fighter.level = i\n    assert_eq fighter.level, i\n}",
+            "for i in 1..=4 {\n    set counter.value += i\n}",
+        ],
+        category: "Loops",
+    },
     // Help
     CommandInfo {
         name: "help",
@@ -449,6 +469,7 @@ const CATEGORIES: &[&str] = &[
     "Options",
     "Testing",
     "Dice Control",
+    "Loops",
     "Host Simulation",
     "Help",
 ];

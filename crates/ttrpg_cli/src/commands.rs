@@ -53,6 +53,9 @@ pub enum Command {
     Place(String),
     Pos(String),
     ZoneSync,
+    // Loops
+    Repeat(String),
+    For(String),
     // Help
     Help(Option<String>),
     Unknown(String),
@@ -323,6 +326,23 @@ pub fn parse_command(line: &str) -> Option<Command> {
             }
         }
         "zone_sync" => Some(Command::ZoneSync),
+        // Loops
+        "repeat" => {
+            let s = strip_comment(tail).trim();
+            if s.is_empty() {
+                Some(Command::Unknown("repeat".into()))
+            } else {
+                Some(Command::Repeat(s.into()))
+            }
+        }
+        "for" => {
+            let s = strip_comment(tail).trim();
+            if s.is_empty() {
+                Some(Command::Unknown("for".into()))
+            } else {
+                Some(Command::For(s.into()))
+            }
+        }
         "coverage" => {
             let s = strip_comment(tail).trim();
             if s == "reset" {
@@ -1083,5 +1103,60 @@ mod tests {
     #[test]
     fn parse_zone_sync() {
         assert_eq!(parse_command("zone_sync"), Some(Command::ZoneSync));
+    }
+
+    // ── Loop commands ──────────────────────────────────────────────
+
+    #[test]
+    fn parse_repeat() {
+        assert_eq!(
+            parse_command("repeat 5 {"),
+            Some(Command::Repeat("5 {".into()))
+        );
+    }
+
+    #[test]
+    fn parse_repeat_empty_is_unknown() {
+        assert_eq!(
+            parse_command("repeat"),
+            Some(Command::Unknown("repeat".into()))
+        );
+    }
+
+    #[test]
+    fn parse_repeat_with_comment() {
+        assert_eq!(
+            parse_command("repeat 10 { // do ten times"),
+            Some(Command::Repeat("10 {".into()))
+        );
+    }
+
+    #[test]
+    fn parse_for() {
+        assert_eq!(
+            parse_command("for i in 0..10 {"),
+            Some(Command::For("i in 0..10 {".into()))
+        );
+    }
+
+    #[test]
+    fn parse_for_inclusive() {
+        assert_eq!(
+            parse_command("for i in 0..=9 {"),
+            Some(Command::For("i in 0..=9 {".into()))
+        );
+    }
+
+    #[test]
+    fn parse_for_empty_is_unknown() {
+        assert_eq!(parse_command("for"), Some(Command::Unknown("for".into())));
+    }
+
+    #[test]
+    fn parse_for_with_comment() {
+        assert_eq!(
+            parse_command("for i in 1..5 { // iterate"),
+            Some(Command::For("i in 1..5 {".into()))
+        );
     }
 }

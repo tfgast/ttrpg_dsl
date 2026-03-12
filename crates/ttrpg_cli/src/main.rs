@@ -236,6 +236,10 @@ fn exec_commands(label: &str, content: &str, coverage: bool, quiet: bool) {
         eprintln!("{label}: error: unclosed continuation at end of input");
         had_error = true;
     }
+    if runner.in_loop() {
+        eprintln!("{label}: error: unclosed loop block at end of input");
+        had_error = true;
+    }
 
     if had_error {
         process::exit(1);

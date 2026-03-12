@@ -123,6 +123,37 @@ pub(super) fn delimiters_balanced(s: &str) -> bool {
     paren == 0 && bracket == 0 && brace == 0
 }
 
+/// Count the net brace imbalance in a line (`{` = +1, `}` = -1),
+/// ignoring braces inside string literals and line comments.
+pub(super) fn brace_delta(s: &str) -> i32 {
+    let bytes = s.as_bytes();
+    let mut in_string = false;
+    let mut delta: i32 = 0;
+    let mut i = 0;
+
+    while i < bytes.len() {
+        if in_string {
+            if bytes[i] == b'\\' {
+                i += 2;
+                continue;
+            }
+            if bytes[i] == b'"' {
+                in_string = false;
+            }
+        } else {
+            match bytes[i] {
+                b'"' => in_string = true,
+                b'{' => delta += 1,
+                b'}' => delta -= 1,
+                b'/' if i + 1 < bytes.len() && bytes[i + 1] == b'/' => break,
+                _ => {}
+            }
+        }
+        i += 1;
+    }
+    delta
+}
+
 /// Check that a handle name is a bare identifier: `[a-zA-Z_][a-zA-Z0-9_]*`.
 pub(super) fn is_valid_handle(s: &str) -> bool {
     let mut chars = s.chars();

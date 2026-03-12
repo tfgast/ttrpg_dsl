@@ -89,6 +89,26 @@ struct HeredocState {
     snippet: bool,
 }
 
+/// What kind of loop we're accumulating.
+enum LoopKind {
+    /// `repeat N { ... }` — run body N times, no variable.
+    Repeat { count: usize },
+    /// `for VAR in START..END { ... }` or `for VAR in START..=END { ... }`
+    For {
+        var: String,
+        start: i64,
+        end: i64,
+        inclusive: bool,
+    },
+}
+
+/// State for accumulating a multi-line loop block.
+struct LoopState {
+    kind: LoopKind,
+    lines: Vec<String>,
+    brace_depth: i32,
+}
+
 /// State for accumulating a multi-line command via backslash continuation
 /// or auto-continuation (unclosed delimiters).
 struct ContinuationState {
@@ -116,6 +136,7 @@ pub struct Runner {
     interactive: bool,
     heredoc: Option<HeredocState>,
     continuation: Option<ContinuationState>,
+    loop_state: Option<LoopState>,
     /// Prior zone membership: `(target_id, zone_id) -> is_inside`.
     /// Tracked across `zone_sync` calls for membership diffing.
     zone_membership: HashSet<(u64, u64)>,
@@ -144,6 +165,7 @@ impl Runner {
             interactive: false,
             heredoc: None,
             continuation: None,
+            loop_state: None,
             zone_membership: HashSet::new(),
         }
     }
@@ -264,10 +286,16 @@ impl Runner {
         self.continuation.is_some()
     }
 
+    /// Returns `true` when the runner is accumulating a loop block body.
+    pub fn in_loop(&self) -> bool {
+        self.loop_state.is_some()
+    }
+
     /// Cancel any in-progress continuation (e.g. on Ctrl-C).
     pub fn cancel_continuation(&mut self) {
         self.continuation = None;
         self.heredoc = None;
+        self.loop_state = None;
     }
 
     /// Execute a single line of input. Output is collected internally.
@@ -279,6 +307,21 @@ impl Runner {
                 let snippet = state.snippet;
                 self.heredoc = None;
                 return self.cmd_source(&source, snippet);
+            }
+            state.lines.push(line.to_string());
+            return Ok(());
+        }
+
+        // If we're inside a loop block, accumulate or close.
+        if let Some(ref mut state) = self.loop_state {
+            let trimmed = line.trim();
+            // Track brace depth (string-aware)
+            let delta = brace_delta(trimmed);
+            state.brace_depth += delta;
+            if state.brace_depth <= 0 {
+                // Closing brace reached — execute the loop
+                let state = self.loop_state.take().unwrap();
+                return self.exec_loop(state);
             }
             state.lines.push(line.to_string());
             return Ok(());
@@ -316,6 +359,18 @@ impl Runner {
         {
             self.heredoc = Some(heredoc);
             return Ok(());
+        }
+
+        // Check for loop start before continuation — `repeat N {` and
+        // `for VAR in RANGE {` have an intentionally unbalanced `{`.
+        if trimmed.starts_with("repeat ") || trimmed.starts_with("for ") {
+            if let Some(cmd) = commands::parse_command(trimmed) {
+                match cmd {
+                    commands::Command::Repeat(tail) => return self.cmd_repeat(&tail),
+                    commands::Command::For(tail) => return self.cmd_for(&tail),
+                    _ => {}
+                }
+            }
         }
 
         // Check for explicit backslash continuation
@@ -372,6 +427,125 @@ impl Runner {
             lines: Vec::new(),
             snippet,
         })
+    }
+
+    /// Parse and begin a `repeat N {` loop.
+    fn cmd_repeat(&mut self, tail: &str) -> Result<(), CliError> {
+        // Expect "N {" — the opening brace must be on this line
+        let tail = tail.trim();
+        let (count_str, rest) = split_first_token(tail);
+        let count: usize = count_str.parse().map_err(|_| {
+            CliError::Message(format!("repeat: expected integer count, got '{count_str}'"))
+        })?;
+        let rest = rest.trim();
+        if rest != "{" {
+            return Err(CliError::Message(
+                "repeat: expected '{' after count (e.g. `repeat 5 {`)".into(),
+            ));
+        }
+        self.loop_state = Some(LoopState {
+            kind: LoopKind::Repeat { count },
+            lines: Vec::new(),
+            brace_depth: 1,
+        });
+        Ok(())
+    }
+
+    /// Parse and begin a `for VAR in START..END {` loop.
+    fn cmd_for(&mut self, tail: &str) -> Result<(), CliError> {
+        // Expect "VAR in START..END {" or "VAR in START..=END {"
+        let tail = tail.trim();
+
+        // Parse: VAR in RANGE {
+        let (var, rest) = split_first_token(tail);
+        if !is_valid_handle(var) {
+            return Err(CliError::Message(format!(
+                "for: expected variable name, got '{var}'"
+            )));
+        }
+        let rest = rest.trim();
+        let rest = rest
+            .strip_prefix("in ")
+            .or_else(|| rest.strip_prefix("in\t"))
+            .ok_or_else(|| CliError::Message("for: expected 'in' after variable name".into()))?
+            .trim();
+
+        // Find the opening brace
+        let brace_pos = rest.rfind('{').ok_or_else(|| {
+            CliError::Message("for: expected '{' (e.g. `for i in 0..10 {`)".into())
+        })?;
+        let range_str = rest[..brace_pos].trim();
+        let after_brace = rest[brace_pos + 1..].trim();
+        if !after_brace.is_empty() {
+            return Err(CliError::Message(
+                "for: '{' must be the last token on the line".into(),
+            ));
+        }
+
+        // Parse range: START..=END or START..END
+        let (start, end, inclusive) = if let Some((left, right)) = range_str.split_once("..=") {
+            let s: i64 = left.trim().parse().map_err(|_| {
+                CliError::Message(format!("for: invalid range start '{}'", left.trim()))
+            })?;
+            let e: i64 = right.trim().parse().map_err(|_| {
+                CliError::Message(format!("for: invalid range end '{}'", right.trim()))
+            })?;
+            (s, e, true)
+        } else if let Some((left, right)) = range_str.split_once("..") {
+            let s: i64 = left.trim().parse().map_err(|_| {
+                CliError::Message(format!("for: invalid range start '{}'", left.trim()))
+            })?;
+            let e: i64 = right.trim().parse().map_err(|_| {
+                CliError::Message(format!("for: invalid range end '{}'", right.trim()))
+            })?;
+            (s, e, false)
+        } else {
+            return Err(CliError::Message(
+                "for: expected range with '..' (e.g. `0..10` or `0..=9`)".into(),
+            ));
+        };
+
+        self.loop_state = Some(LoopState {
+            kind: LoopKind::For {
+                var: var.to_string(),
+                start,
+                end,
+                inclusive,
+            },
+            lines: Vec::new(),
+            brace_depth: 1,
+        });
+        Ok(())
+    }
+
+    /// Execute a completed loop block.
+    fn exec_loop(&mut self, state: LoopState) -> Result<(), CliError> {
+        match state.kind {
+            LoopKind::Repeat { count } => {
+                for _ in 0..count {
+                    for line in &state.lines {
+                        self.exec(line)?;
+                    }
+                }
+            }
+            LoopKind::For {
+                ref var,
+                start,
+                end,
+                inclusive,
+            } => {
+                let range_end = if inclusive { end + 1 } else { end };
+                for i in start..range_end {
+                    self.variables.insert(var.clone(), Value::Int(i));
+                    for line in &state.lines {
+                        self.exec(line)?;
+                    }
+                }
+                // Clean up loop variable
+                self.variables.remove(var);
+            }
+        }
+        Ok(())
     }
 
     /// Inner dispatch — called by `exec` and also by `cmd_assert_err`.
@@ -436,6 +610,9 @@ impl Runner {
             Command::Prompts(tail) => self.cmd_prompts(&tail),
             // Help
             Command::Help(topic) => self.cmd_help(topic.as_deref()),
+            // Loops
+            Command::Repeat(tail) => self.cmd_repeat(&tail),
+            Command::For(tail) => self.cmd_for(&tail),
             Command::Unknown(kw) => {
                 if help::is_known_command(&kw) {
                     self.help_command(&kw)

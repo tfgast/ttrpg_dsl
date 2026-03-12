@@ -11,7 +11,8 @@ interactive mode, executed sequentially from a file.
 | Derive/table value checks | AST structure inspection (enum counts, field counts) |
 | Mechanic evaluation with dice | Custom EffectHandler logic |
 | Action execution + entity state | Interpreter/checker API surface tests |
-| Error case validation | Tests needing programmatic loops |
+| Error case validation | |
+| Programmatic loops (`for`/`repeat`) | |
 | Self-contained synthetic programs (`source` heredoc) | |
 
 ## Running tests
@@ -398,6 +399,41 @@ assert hp == 15
 Variables persist for the rest of the script and can be used in any
 expression context (`eval`, `assert`, `assert_eq`, `assert_ne`, `assert_match`,
 `assert_condition`, `assert_no_condition`).
+
+### Loops
+
+Use `for` or `repeat` to run a block of commands multiple times.
+The syntax mirrors the DSL language:
+
+```
+// Repeat a fixed number of times
+repeat 5 {
+    rolls 15
+    do MeleeAttack(attacker, target)
+}
+
+// For loop with exclusive range (0, 1, 2)
+for i in 0..3 {
+    assert i >= 0
+    assert i < 3
+}
+
+// For loop with inclusive range (1, 2, 3, 4)
+for i in 1..=4 {
+    set fighter.level = i
+    assert_eq fighter.level, i
+}
+
+// Nested loops
+repeat 3 {
+    repeat 2 {
+        set counter.value += 1
+    }
+}
+```
+
+The loop variable (e.g., `i`) is available in any expression context
+inside the loop body. It is removed after the loop ends.
 
 ## Known limitations
 
