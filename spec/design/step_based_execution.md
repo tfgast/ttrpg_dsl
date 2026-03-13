@@ -20,19 +20,22 @@ The `Interpreter<'p>` struct borrows `&'p Program` and `&'p TypeEnv`, which mean
 
 1. **Single emission seam.** Replace scattered `handler.handle()` calls with a single interception point (`env.emit()`), making it possible to instrument, trace, or redirect all effects uniformly.
 
-2. **Explicit durable state.** Move execution state that is currently implicit in Rust call frames (action lifecycle phase, block instruction pointer, emit dispatch index, condition lifecycle phase) into explicit data structures that can be inspected, serialized, and resumed.
+2. **Explicit inspectable state.** Move execution state that is currently implicit in Rust call frames (action lifecycle phase, block instruction pointer, emit dispatch index, condition lifecycle phase) into explicit data structures that can be inspected and resumed in-process. This makes the execution state a first-class value rather than an opaque stack, enabling step-debugging and host-driven control flow. (Serialization to disk is a future extension that this enables but is not a v1 deliverable — see Non-goals.)
 
 3. **Pull-based execution API.** Expose an `Execution` object where the host polls for the next effect and provides a response, rather than implementing a callback trait. This enables async hosts, non-Rust embeddings, and step-debugging.
 
 4. **Synchronous reads preserved.** The interpreter reads game state synchronously during evaluation (field access, condition queries, entity lookups). This must remain a direct function call, not a yielded effect. Only effect emissions (mutations, dice, prompts, gates) suspend.
 
-5. **Callback API as compatibility shim.** The existing `EffectHandler`-based public API (`execute_action`, `evaluate_derive`, etc.) continues to work, implemented as a thin loop over the new step-based API.
+5. **Dual API surface.** The existing `Interpreter` + `EffectHandler` callback API remains a first-class path for hosts that provide `&dyn StateProvider`. The step-based `Execution<S>` API is a separate entry point for hosts that can supply owned mutable state (`S: WritableState`). Both are supported long-term.
 
 ### Non-goals
 
 - Thread-based suspension (threads are not preferred; the target is an internal resumable runner)
 - Async/await transformation of the evaluator (viral, lifetime-hostile)
 - Bytecode compilation (the tree-walking evaluator structure is fine; only the control flow needs restructuring)
+- Replacing the `Interpreter` callback API — it continues to serve `StateProvider`-only hosts
+- Concurrent execution sharing `RuntimeCore` across threads — v1 is single-threaded; `Send`/`Sync` and atomic counters can be added later if needed
+- Serialization of `Execution` state to disk — v1 targets in-process resumability only; the explicit frame stack *enables* future serialization but does not require it (would need `Serialize` bounds on `S`, a reattach strategy for `RuntimeCore`, and round-trip parity tests)
 
 ## Current Architecture
 
@@ -55,6 +58,9 @@ Today, durable execution state lives in two places:
    - Block execution progress (which statement index within `eval_block`'s loop)
    - Emit dispatch progress (which hook index, which condition handler index)
    - Condition lifecycle phase (gate → on_apply → activate)
+   - Condition removal loop progress (which instance index, accumulated error)
+   - Default argument evaluation progress (which parameter index in `fill_defaults`)
+   - Prompt suggest/default body evaluation state
    - Scoped context save/restore (`scoped_execute` saves `turn_actor`/`invocation_id`, `scoped_budget` saves budget state)
 
 The second category is the problem. When the evaluator yields at an effect boundary, these Rust call frames are destroyed. To resume, we need that state reconstructed — which means making it explicit.
@@ -65,10 +71,13 @@ The principal recursive chains that cross effect boundaries:
 
 ```
 execute_action (action.rs:199)
+  └─ bind_args / fill_defaults (args.rs:70)     ← eval_expr per default, may EFFECT
   └─ emit ActionStarted                          ← EFFECT
+  └─ [if vetoed: emit ActionCompleted(Vetoed, invocation: None) ← EFFECT]
   └─ scoped_execute (action.rs:79)
+       └─ alloc_invocation_id()                   ← only after gate passes
        └─ execute_pipeline (action.rs:120)
-            ├─ eval_expr (requires clause)
+            ├─ eval_expr (requires clause)        ← may EFFECT (effectful builtins)
             ├─ emit RequiresCheck                 ← EFFECT
             ├─ collect_and_apply_cost_modifiers
             │    └─ emit ModifyApplied (×N)       ← EFFECT
@@ -78,8 +87,9 @@ execute_action (action.rs:199)
             └─ eval_block (resolve body)
                  └─ eval_stmt (×N)
                       ├─ eval_expr
-                      │    └─ call builtins       ← may EFFECT (apply_condition, etc.)
+                      │    └─ call builtins       ← may EFFECT (apply_condition, roll, prompt, etc.)
                       ├─ emit Grant/Revoke        ← EFFECT
+                      │    └─ fill defaults       ← eval_expr per default, may EFFECT
                       ├─ eval_emit
                       │    ├─ find_matching_hooks (pure query)
                       │    ├─ execute_hook (×N)
@@ -90,7 +100,31 @@ execute_action (action.rs:199)
                       │         └─ emit SetConditionState ← EFFECT
                       └─ eval_assign
                            └─ emit MutateField    ← EFFECT
-  └─ emit ActionCompleted                         ← EFFECT (always, regardless of outcome)
+  └─ emit ActionCompleted(invocation: Some(id))   ← EFFECT (always, regardless of outcome)
+
+dispatch_prompt (call/functions.rs:468)
+  └─ bind_args / fill_defaults                    ← eval_expr per default, may EFFECT
+  └─ eval_expr (suggest body)                     ← may EFFECT
+  └─ emit ResolvePrompt                           ← EFFECT
+  └─ [if UseDefault: eval_block (default body)]   ← may EFFECT
+
+spawn_entity (eval/dispatch.rs:433)
+  └─ fill entity field defaults                   ← eval_expr per default, may EFFECT
+  └─ emit SpawnEntity                             ← EFFECT
+  └─ fill group field defaults (×N)               ← eval_expr per default, may EFFECT
+  └─ emit GrantGroup (×N)                         ← EFFECT
+
+apply_condition (builtins.rs:600)
+  └─ eval_expr per state field default            ← may EFFECT
+  └─ emit ConditionApplyGate                      ← EFFECT
+  └─ eval on_apply blocks                         ← RECURSIVE, may EFFECT
+  └─ emit ApplyCondition                          ← EFFECT
+
+with_budget (eval/control.rs:411)
+  └─ eval_expr per budget field                   ← may EFFECT
+  └─ emit ProvisionBudget                         ← EFFECT
+  └─ eval_block (body)                            ← RECURSIVE, may EFFECT
+  └─ emit ClearBudget                             ← EFFECT
 ```
 
 ### Effect handler call sites
@@ -98,16 +132,38 @@ execute_action (action.rs:199)
 All 42 `env.handler.handle(effect)` calls, by file:
 
 | File | Count | Effect kinds |
-|------|-------|-------------|
-| `builtins.rs` | 17 | ConditionApplyGate, ApplyCondition, ConditionRemovalGate, RemoveCondition, SetConditionState, RequiresCheck, DeductCost, RemoveSuspensionSource, RevokeInvocation, TransferConditions |
+|------|-------|--------------|
+| `builtins.rs` | 17 | RollDice, ConditionApplyGate, ApplyCondition, ConditionRemovalGate, RemoveCondition, SetConditionState, RequiresCheck, DeductCost, AddSuspension, RemoveSuspensionSource, RevokeInvocation, TransferConditions, AdvanceTime, RemoveEntity |
 | `eval/control.rs` | 8 | GrantGroup, RevokeGroup, ProvisionBudget, ClearBudget |
 | `action.rs` | 6 | ActionStarted, ActionCompleted, RequiresCheck, ModifyApplied, DeductCost |
 | `eval/assign.rs` | 3 | MutateField, MutateTurnField |
 | `eval/dispatch.rs` | 3 | SpawnEntity, GrantGroup (entity construction) |
-| `pipeline.rs` | 2 | SetConditionState |
-| `eval/emit.rs` | 1 | (delegated — hooks dispatch through action.rs) |
-| `call/functions.rs` | 1 | AdvanceTime |
-| `call/methods.rs` | 1 | RemoveEntity |
+| `pipeline.rs` | 2 | ModifyApplied |
+| `eval/emit.rs` | 1 | SetConditionState |
+| `call/functions.rs` | 1 | ResolvePrompt |
+| `call/methods.rs` | 1 | RollDice |
+
+### Public entry point coverage
+
+Every public `Interpreter` method that can trigger effects, with v1 step-based coverage:
+
+| Entry point | Can yield? | Effectful paths | v1 step-based? |
+|-------------|-----------|-----------------|----------------|
+| `execute_action` | Yes | Full action lifecycle, builtins | Yes (Phase 3) |
+| `execute_reaction` | Yes | Same as action (different gate kind) | Yes (Phase 3) |
+| `execute_hook` | Yes | Same as action (hooks are mini-actions) | Yes (Phase 3) |
+| `fire_hooks` | Yes | Hook dispatch loop | Yes (Phase 5) |
+| `fire_condition_handlers` | Yes | Condition handler dispatch | Yes (Phase 5) |
+| `evaluate_derive` | Yes | Modify pipeline (hooks), RollDice | Yes (Phase 4) |
+| `evaluate_mechanic` | Yes | Modify pipeline, RollDice | Yes (Phase 4) |
+| `evaluate_function` | Yes | Builtins (roll, prompt, apply_condition, etc.) | Yes (Phase 4) |
+| `evaluate_expr` | Yes | Builtins, nested calls | Yes (Phase 4) |
+| `evaluate_expr_with_bindings` | Yes | Same as evaluate_expr | Yes (Phase 4) |
+| `what_triggers` | No | Pure query | Stays recursive |
+| `what_hooks` | No | Pure query | Stays recursive |
+| `enum_variants` | No | Pure query | Stays recursive |
+| `has_action` / `has_derive` / etc. | No | Pure query | Stays recursive |
+| `resolve_resource_bounds` | No | Pure query | Stays recursive |
 
 ### Existing building blocks
 
@@ -129,7 +185,7 @@ The design has three layers:
 
 2. **Frame stack** — an explicit `Vec<Frame>` replaces implicit Rust call frames. Each `Frame` variant captures the state needed to resume after a yielded effect. A driver loop pops/pushes frames and yields effects to the host.
 
-3. **Execution object** — an owning `Execution` struct that holds the frame stack, all `Env` state, an owned `StateAdapter<GameState>`, and `Arc<Program>` / `Arc<TypeEnv>`. Exposes `poll() -> Step` and `respond(Response)`.
+3. **Execution object** — an owning `Execution<S>` struct that holds the frame stack, all `Env` state, an owned `StateAdapter<S>`, and `Arc<RuntimeCore>`. Exposes `poll() -> Result<Step, RuntimeError>` and `respond(Response) -> Result<(), ProtocolError>`.
 
 ### Emission seam
 
@@ -155,8 +211,8 @@ enum Frame {
     // ── Action lifecycle ────────────────────────────────────
 
     /// Action has emitted ActionStarted, waiting for gate response.
-    /// On Acknowledged: push pipeline frames (requires → cost → body).
-    /// On Vetoed: transition to ActionEpilogue with Vetoed outcome.
+    /// On Acknowledged: push ActionBody (which allocates invocation ID).
+    /// On Vetoed: emit ActionCompleted(Vetoed, invocation: None), pop.
     ActionGate {
         name: Name,
         actor: EntityRef,
@@ -169,7 +225,20 @@ enum Frame {
         // Saved context (restored on pop)
         saved_turn_actor: Option<EntityRef>,
         saved_invocation: Option<InvocationId>,
+    },
+
+    /// Gate passed. Allocates invocation ID, sets up scoped context,
+    /// then drives the pipeline (requires → cost → body).
+    ActionBody {
+        name: Name,
+        actor: EntityRef,
+        call_span: Span,
+        has_return_type: bool,
         inv_id: InvocationId,
+        requires: Option<Spanned<ExprKind>>,
+        cost: Option<CostClause>,
+        resolve: Block,
+        phase: ActionBodyPhase,  // Requires | Cost | Resolve
     },
 
     /// Requires clause evaluated, RequiresCheck emitted, waiting for response.
@@ -200,7 +269,7 @@ enum Frame {
     ActionEpilogue {
         name: Name,
         actor: EntityRef,
-        inv_id: InvocationId,
+        inv_id: Option<InvocationId>,
         outcome: ActionOutcome,
         body_result: Result<Value, RuntimeError>,
         saved_turn_actor: Option<EntityRef>,
@@ -228,6 +297,35 @@ enum Frame {
         //   BudgetProvisionWaiting { ... }
         //   BudgetClearWaiting { ... }
         //   SpawnWaiting { entity_type, fields, span }
+    },
+
+    // ── Default / setup evaluation ──────────────────────────
+
+    /// Evaluating default argument expressions for an action,
+    /// function, or prompt call. Drives `fill_defaults` as a
+    /// frame so effectful defaults (e.g., `roll(1d6)`) can yield.
+    /// On completion, delivers the resolved argument list to the
+    /// parent frame.
+    FillDefaults {
+        params: Vec<ParamInfo>,
+        resolved: Vec<(Name, Value)>,
+        index: usize,
+    },
+
+    // ── Derive / mechanic evaluation ────────────────────────
+
+    /// Derive or mechanic evaluation with modify pipeline.
+    /// Evaluates base value, then runs matching modify hooks.
+    DeriveEval {
+        name: Name,
+        base_value: Option<Value>,
+        modify_hooks: Vec<HookInfo>,
+        hook_index: usize,
+    },
+
+    /// Function evaluation. Pushes scope, evaluates body.
+    FunctionEval {
+        name: Name,
     },
 
     // ── Emit / hook dispatch ────────────────────────────────
@@ -290,12 +388,23 @@ enum Frame {
         token: ConditionToken,
     },
 
+    /// Iterates condition instances for removal. Manages per-instance
+    /// gate → on_remove → emit RemoveCondition, accumulating the first
+    /// error and continuing through all instances before propagating.
+    ConditionRemovalLoop {
+        target: EntityRef,
+        condition_name: Name,
+        instances: Vec<ActiveCondition>,
+        index: usize,
+        first_error: Option<RuntimeError>,
+        removed_count: u32,
+    },
+
     /// remove_condition: per-instance removal gate emitted.
     ConditionRemovalGate {
         target: EntityRef,
         condition_name: Name,
         instance_id: u64,
-        remaining_instances: Vec<ActiveCondition>,
     },
 
     /// remove_condition: on_remove lifecycle block executing.
@@ -303,8 +412,32 @@ enum Frame {
         target: EntityRef,
         condition_name: Name,
         instance_id: u64,
-        remaining_instances: Vec<ActiveCondition>,
         state_fields: BTreeMap<Name, Value>,
+    },
+
+    // ── Effectful builtins ───────────────────────────────────
+
+    /// roll() builtin: RollDice emitted, waiting for result.
+    RollDiceWaiting {
+        span: Span,
+    },
+
+    /// prompt() builtin: ResolvePrompt emitted, waiting for value
+    /// or UseDefault (which pushes a Block frame for the default expr).
+    PromptWaiting {
+        default_block: Option<Block>,
+        span: Span,
+    },
+
+    // ── Entity construction ─────────────────────────────────
+
+    /// spawn: evaluating entity/group field defaults, then emitting
+    /// SpawnEntity and GrantGroup effects.
+    SpawnEntity {
+        entity_type: Name,
+        base_fields: Vec<(Name, Value)>,
+        groups: Vec<GroupInit>,
+        phase: SpawnPhase,  // Defaults | Spawned | GrantingGroups { index }
     },
 
     // ── Context / scope frames ──────────────────────────────
@@ -325,18 +458,38 @@ enum Frame {
 }
 ```
 
+### Shared runtime core
+
+The `Interpreter` today holds shared concerns (program, type_env, const cache, coverage, ID counters) alongside per-call state (Env). The step-based design separates these:
+
+```rust
+/// Shared across executions. Immutable program data + mutable caches.
+/// Single-threaded: not Send/Sync. One RuntimeCore per host thread.
+pub struct RuntimeCore {
+    program: Arc<Program>,
+    type_env: Arc<TypeEnv>,
+    consts: RefCell<FxHashMap<Name, Value>>,
+    coverage: Option<RefCell<CoverageData>>,
+    next_invocation_id: Cell<u64>,
+    next_condition_id: Cell<u64>,
+}
+```
+
+Multiple `Execution` instances can share a single `Rc<RuntimeCore>` (sequential, not concurrent). The `Interpreter` callback API can also be backed by `RuntimeCore` internally, ensuring const caching and ID allocation are consistent across both paths.
+
+ID counters use `Cell` since `RuntimeCore` is single-threaded. The const cache uses `RefCell` since const evaluation is rare after warmup. If concurrent executions become a goal later, these can be promoted to `AtomicU64` and `RwLock` respectively, and `Rc` to `Arc`.
+
 ### Execution struct
 
 ```rust
-pub struct Execution {
-    // ── Owned program data ──
-    program: Arc<Program>,
-    type_env: Arc<TypeEnv>,
+pub struct Execution<S: WritableState> {
+    // ── Shared runtime ──
+    core: Rc<RuntimeCore>,
 
     // ── Frame stack ──
     frames: Vec<Frame>,
 
-    // ── Execution state (was Env fields) ──
+    // ── Per-execution state (was Env fields) ──
     scopes: Vec<Scope>,
     turn_actor: Option<EntityRef>,
     cost_payer: Option<EntityRef>,
@@ -347,18 +500,51 @@ pub struct Execution {
     current_condition_token: Option<ConditionToken>,
     return_value: Option<Value>,
 
-    // ── ID counters (was Cell<u64> on Interpreter) ──
-    next_invocation_id: u64,
-    next_condition_id: u64,
-
     // ── Owned game state ──
-    state: StateAdapter<GameState>,
+    state: StateAdapter<S>,
 
-    // ── Result / pending ──
-    final_result: Option<Result<Value, RuntimeError>>,
-    pending_effect: bool,
+    // ── Protocol state ──
+    protocol: ProtocolState,
+}
+
+/// Tracks the poll/respond protocol to prevent misuse.
+enum ProtocolState {
+    /// Ready to call poll(). No pending effect.
+    Idle,
+    /// poll() yielded an effect. Host must call respond().
+    Pending,
+    /// Execution has completed (Done or Error). No further calls.
+    Completed,
+}
+
+/// Errors from protocol misuse (not runtime evaluation errors).
+pub enum ProtocolError {
+    /// respond() called when no effect is pending.
+    NoPendingEffect,
+    /// poll() called while an effect is pending (must respond first).
+    EffectPending,
+    /// poll() or respond() called after execution completed.
+    ExecutionCompleted,
 }
 ```
+
+The generic parameter `S: WritableState` allows hosts to supply their own state implementation. `GameState` is the reference implementation, but any `WritableState` works.
+
+### Dual API boundary
+
+The two APIs serve different host profiles:
+
+| | `Interpreter` (callback) | `Execution<S>` (step-based) |
+|---|---|---|
+| State requirement | `&dyn StateProvider` (read-only) | `S: WritableState` (owned) |
+| Host control flow | Synchronous callback | Pull-based polling |
+| Mutation application | Host applies via `EffectHandler` | `StateAdapter<S>` applies locally |
+| Async-friendly | No | Yes |
+| Use case | Existing integrations, simple hosts | Web servers, game UIs, FFI |
+
+The `Interpreter` API is not a compatibility shim — it is a first-class interface for hosts that only provide read access to state and handle mutations externally. The step-based API is for hosts that can supply owned mutable state and want pull-based control flow.
+
+Both APIs should eventually share `RuntimeCore` to ensure behavioral consistency (const caching, ID allocation, coverage tracking).
 
 ### Driver loop
 
@@ -376,26 +562,33 @@ enum Advance {
     Error(RuntimeError),
 }
 
-impl Execution {
-    pub fn poll(&mut self) -> Step {
+impl<S: WritableState> Execution<S> {
+    pub fn poll(&mut self) -> Result<Step, RuntimeError> {
+        match self.protocol {
+            ProtocolState::Pending => return Err(ProtocolError::EffectPending.into()),
+            ProtocolState::Completed => return Err(ProtocolError::ExecutionCompleted.into()),
+            ProtocolState::Idle => {}
+        }
+
         loop {
             let frame = match self.frames.last_mut() {
                 Some(f) => f,
                 None => {
+                    self.protocol = ProtocolState::Completed;
                     let result = self.final_result
                         .take()
                         .unwrap_or(Ok(Value::Void));
                     return match result {
-                        Ok(v) => Step::Done(v),
-                        Err(e) => Step::Error(e),
+                        Ok(v) => Ok(Step::Done(v)),
+                        Err(e) => Err(e),
                     };
                 }
             };
 
             match frame.advance(&mut self.exec_state) {
                 Advance::Yield(effect) => {
-                    self.pending_effect = true;
-                    return Step::Yielded(Box::new(effect));
+                    self.protocol = ProtocolState::Pending;
+                    return Ok(Step::Yielded(Box::new(effect)));
                 }
                 Advance::Push(child) => {
                     self.frames.push(child);
@@ -410,21 +603,27 @@ impl Execution {
                 }
                 Advance::Continue => {}
                 Advance::Error(e) => {
-                    // Unwind: pop all frames, run cleanup (scope pops, budget restores)
+                    self.protocol = ProtocolState::Completed;
+                    // Unwind: pop all frames, run cleanup
                     self.unwind(e.clone());
-                    return Step::Error(e);
+                    return Err(e);
                 }
             }
         }
     }
 
-    pub fn respond(&mut self, response: Response) {
-        assert!(self.pending_effect, "respond() called without pending effect");
-        self.pending_effect = false;
+    pub fn respond(&mut self, response: Response) -> Result<(), ProtocolError> {
+        match self.protocol {
+            ProtocolState::Idle => return Err(ProtocolError::NoPendingEffect),
+            ProtocolState::Completed => return Err(ProtocolError::ExecutionCompleted),
+            ProtocolState::Pending => {}
+        }
+        self.protocol = ProtocolState::Idle;
         // Deliver response to the top frame
         if let Some(frame) = self.frames.last_mut() {
             frame.receive_response(response);
         }
+        Ok(())
     }
 }
 ```
@@ -437,7 +636,11 @@ Today (`action.rs`):
 ```rust
 fn execute_action(env, name, actor, args) {
     emit ActionStarted           // ← handler.handle()
-    scoped_execute(env, || {
+    if vetoed {
+        emit ActionCompleted(Vetoed, invocation: None)
+        return abort_value
+    }
+    scoped_execute(env, || {     // ← allocates invocation ID here
         execute_pipeline(env, requires, cost, resolve)
     })                           // always emits ActionCompleted
 }
@@ -447,18 +650,23 @@ As frames:
 ```
 Initial:  push ActionGate { ... }
           → advance(): emit ActionStarted → Yield
-          → host responds Acknowledged
-          → receive_response(): transition to pipeline phase
-          → advance(): eval requires expr (sync), emit RequiresCheck → Yield
+
+          Case 1: host responds Vetoed
+          → receive_response(): emit ActionCompleted(Vetoed, invocation: None)
+          → Pop(abort_value)
+
+          Case 2: host responds Acknowledged
+          → receive_response(): alloc invocation ID, push ActionBody { inv_id }
+          ActionBody.advance(): eval requires expr (sync), emit RequiresCheck → Yield
           → host responds Acknowledged
           → advance(): deduct costs → push ActionCost
           ActionCost.advance(): emit DeductCost → Yield
           → host responds Acknowledged
           → advance(): all tokens done → Pop
-          ActionGate.receive_child_result(): push Block { resolve body }
+          ActionBody.receive_child_result(): push Block { resolve body }
           Block.advance(): run statements...
           Block.advance(): ... → Pop(result)
-          ActionGate.receive_child_result(): push ActionEpilogue
+          ActionBody.receive_child_result(): push ActionEpilogue { inv_id: Some(id) }
           ActionEpilogue.advance(): emit ActionCompleted → Yield
           → host responds Acknowledged
           → advance(): restore context → Pop(final_value)
@@ -496,34 +704,68 @@ Block { stmts, index: 0, result: Void }
 
 Pure expression evaluation (arithmetic, field access, comparisons, string operations, control flow like if/match) remains synchronous — called as helper functions within a frame's `advance()` method. This is the vast majority of expression evaluation.
 
-The exception is expressions that trigger effectful builtins. When `eval_expr` encounters `apply_condition(...)`, the builtin needs to emit effects. Two approaches:
+The exception is expressions that trigger effectful builtins. The current interpreter yields effects from these builtins:
 
-**Option A — Yield-from-expr:** `eval_expr` returns `Result<Value, EvalYield>` where `EvalYield` carries the effect and a continuation token. The frame catches this and yields. On resume, the frame re-invokes the continuation.
+| Builtin | Effects emitted |
+|---------|----------------|
+| `apply_condition()` | ConditionApplyGate, on_apply block, ApplyCondition |
+| `remove_condition()` | ConditionRemovalGate (×N), on_remove blocks (×N), RemoveCondition (×N) |
+| `revoke()` | Same as remove_condition, plus RevokeInvocation |
+| `roll()` | RollDice |
+| `prompt()` | ResolvePrompt (+ optional default block on UseDefault) |
+| `spawn()` | SpawnEntity, GrantGroup (×N) |
+| `despawn()` | RemoveEntity |
+| `advance_time()` | AdvanceTime |
+| `suspend()` / `suspend_with_source()` | AddSuspension |
+| `remove_suspension_source()` | RemoveSuspensionSource |
+| `transfer_conditions()` | TransferConditions |
 
-**Option B — Frame-from-expr:** Effectful builtins push their own frames (ConditionApplyGate, etc.) and return a sentinel. The parent frame knows to wait for a child result.
+When `eval_expr` encounters an effectful builtin, the builtin pushes its own frames onto the stack. The calling frame (typically `Block` or `StmtResume`) records that it's waiting for an expression result and will resume at the current statement when the child frames complete.
 
-Option B is cleaner because it reuses the frame mechanism uniformly. The calling frame's `advance()` calls `eval_expr()`, which detects an effectful builtin, pushes frames, and returns `Advance::Push(...)` through the frame's advance method. The frame notes that it's waiting for an expression result and will resume at the current statement when the child frames complete.
+For example, `roll()` pushes a `RollDiceWaiting` frame which yields `RollDice` and expects `Override(Value::RollResult(...))` back. `prompt()` pushes a `PromptWaiting` frame which yields `ResolvePrompt`; if the host responds `UseDefault`, the frame pushes a `Block` frame for the default expression rather than directly returning.
+
+#### Effectful setup and default evaluation
+
+Several code paths evaluate expressions that can yield *before* the main body executes:
+
+- **Default arguments** (`call/args.rs`): `fill_defaults()` calls `eval_expr()` for each parameter with a default expression. A default like `damage = roll(2d6)` will yield `RollDice`. The `FillDefaults` frame iterates parameters, yielding when a default triggers an effectful builtin. Scope management follows the existing pattern: a temporary scope is pushed so later defaults can reference earlier ones.
+
+- **Prompt suggest expressions** (`call/functions.rs`): The `suggest` body is evaluated with `eval_expr()` before `ResolvePrompt` is emitted. If the suggest expression triggers builtins (e.g., computing a suggestion via `roll()`), it yields via the standard expression frame mechanism.
+
+- **Entity/group field defaults** (`eval/dispatch.rs`, `eval/control.rs`): During `spawn` and `grant`, missing fields are filled from defaults via `eval_expr()`. The `SpawnEntity` frame handles this in its `Defaults` phase before emitting `SpawnEntity` / `GrantGroup` effects.
+
+- **Condition state field defaults** (`builtins.rs`): During `apply_condition`, state field defaults are evaluated with `eval_expr()` before the `ConditionApplyGate` is emitted. The `ConditionApplyGate` frame's setup phase handles this.
+
+- **Budget field expressions** (`eval/control.rs`): `with_budget` evaluates budget field expressions via `eval_expr()` before emitting `ProvisionBudget`. Handled by a setup phase in the budget frame.
+
+All of these paths use the same mechanism: when `eval_expr()` encounters an effectful builtin, the builtin pushes its own child frames. The parent frame (e.g., `FillDefaults`, `SpawnEntity`) waits for the child result and then continues to the next item.
 
 ### Owned program data
 
-`Interpreter<'p>` borrows `&'p Program` and `&'p TypeEnv`. The `Execution` object must own its program data so it can outlive any particular scope. Two options:
-
-1. **`Arc<Program>` + `Arc<TypeEnv>`** — The caller wraps their program/type_env in Arc before creating executions. Multiple executions can share the same program data. This is the recommended approach.
-
-2. **Owned copies** — Clone the program and type_env into each execution. Wasteful for large programs.
+`Interpreter<'p>` borrows `&'p Program` and `&'p TypeEnv`. The `Execution` object must own its program data so it can outlive any particular scope. This is handled by `Rc<RuntimeCore>`, which wraps `Arc<Program>` and `Arc<TypeEnv>`. The caller wraps their program/type_env in Arc when creating a `RuntimeCore`. Multiple sequential executions can share the same core via `Rc`.
 
 The `Interpreter` type continues to exist for the callback-based API (no Arc needed there). `Execution` is a separate entry point.
 
-### State ownership
+### State ownership and effect suspension contract
 
-`Execution` owns a `StateAdapter<GameState>`:
+`Execution<S>` owns a `StateAdapter<S>` where `S: WritableState`. Not all effects suspend execution — the adapter handles some effects locally, and only effects that require host input yield from `poll()`.
 
-- **Reads** (`StateProvider` queries) are direct method calls on the adapter — synchronous, no yielding.
-- **Mutation effects** are intercepted by the adapter and applied locally. They are also yielded to the host as effects, so the host can observe and optionally apply them to its own authoritative state.
-- **Gate effects** (ActionStarted, ConditionApplyGate, etc.) are always yielded — the host decides whether to veto.
-- **Value effects** (RollDice, ResolvePrompt) are always yielded — only the host can provide these.
+Effects fall into three categories:
 
-This matches the existing `StateAdapter` pattern exactly. The adapter's `pass_through` set controls which mutations the host sees.
+| Category | Behavior | Examples |
+|----------|----------|----------|
+| **Host-decided** | Always yielded. Execution suspends. Host must `respond()`. | `ActionStarted`, `ConditionApplyGate`, `ConditionRemovalGate`, `RequiresCheck`, `RollDice`, `ResolvePrompt` |
+| **Locally-applied** | Applied by `StateAdapter` immediately. Execution continues without suspending. Host does not see these. | `MutateField`, `MutateTurnField`, `GrantGroup`, `RevokeGroup`, `ApplyCondition`, `RemoveCondition`, `SetConditionState`, `ProvisionBudget`, `ClearBudget`, `SpawnEntity`, `RemoveEntity`, `AddSuspension`, `RemoveSuspensionSource`, `RevokeInvocation`, `AdvanceTime`, `TransferConditions`, `DeductCost`, `ModifyApplied` |
+| **Pass-through** | Configured per effect kind via `StateAdapter::pass_through()`. Promoted from locally-applied to host-decided: yielded, host responds, adapter syncs local state based on response (Acknowledged → apply, Vetoed → skip). | Any mutation kind the host opts into |
+
+This matches the existing `StateAdapter` contract exactly:
+- When an effect kind is **not** in the `pass_through` set, the adapter applies the mutation locally and returns `Response::Acknowledged` without forwarding to any inner handler.
+- When an effect kind **is** in the `pass_through` set, the adapter forwards the effect, and the host's response controls whether the mutation is applied locally (Acknowledged/Override → apply, Vetoed → skip).
+- Non-mutation effects (gates, value effects) are always forwarded.
+
+In the step-based API, "forwarded" becomes "yielded from `poll()`". The host configures which mutations it wants to see and potentially veto by calling `pass_through()` on the adapter at construction time. By default, all mutations are local and non-suspending.
+
+**Reads** (`StateProvider` queries) are always synchronous direct method calls on the adapter — no yielding, no effects.
 
 ### Error handling and unwinding
 
@@ -533,34 +775,52 @@ When a `RuntimeError` occurs:
 2. The driver loop calls `self.unwind(error)`, which pops all frames in reverse order.
 3. Guard frames (`ScopeGuard`, `BudgetGuard`, `CostPayerGuard`) perform cleanup during unwind (pop scope, restore budget, restore cost payer).
 4. `ActionEpilogue` frames emit `ActionCompleted(Failed)` during unwind if they haven't already — preserving the invariant that every `ActionStarted` is paired with an `ActionCompleted`.
-5. The error is returned as `Step::Error`.
+5. The error is returned from `poll()` as `Err(RuntimeError)`.
+
+#### Deferred error mode
+
+Not all errors trigger immediate unwinding. The current interpreter has paths where errors are accumulated and cleanup continues before propagation. The frame model must preserve this.
+
+**Condition removal and revoke:** Today, `remove_condition_instances` (builtins.rs:796-880) iterates all matching condition instances. For each instance:
+1. Emit `ConditionRemovalGate` — skip if vetoed
+2. Execute `on_remove` lifecycle block — if it errors, capture the error but continue
+3. Emit `RemoveCondition` — **always**, even if `on_remove` errored
+4. Clean up suspension records
+
+The first error is captured; all remaining instances still complete their full removal sequence; the error is propagated only after the loop finishes.
+
+The `ConditionRemovalLoop` frame handles this by carrying `first_error: Option<RuntimeError>`. When a child `ConditionOnRemove` frame completes with an error, the loop frame captures it but advances `index` and continues to the next instance. When all instances are processed, if `first_error` is `Some`, the loop frame returns `Advance::Error` — but only then.
+
+The same pattern applies to `revoke()`, which iterates conditions tagged with an invocation ID and removes them using the same per-instance loop.
+
+**Key invariant:** `ConditionRemovalLoop` and its child frames (`ConditionRemovalGate`, `ConditionOnRemove`) must never trigger the driver's global `unwind()`. Errors within these frames are routed to the loop's `first_error` field, not to `Advance::Error`, until the loop completes.
 
 ### Compatibility shim
 
-The existing callback API becomes:
+The step-based API can be driven synchronously:
 
 ```rust
-impl Execution {
+impl<S: WritableState> Execution<S> {
     /// Drive execution to completion using a callback handler.
     pub fn run_with_handler(
         mut self,
         handler: &mut dyn EffectHandler,
     ) -> Result<Value, RuntimeError> {
         loop {
-            match self.poll() {
+            match self.poll()? {
                 Step::Yielded(effect) => {
                     let response = handler.handle(*effect);
-                    self.respond(response);
+                    self.respond(response)
+                        .expect("protocol error in run_with_handler");
                 }
                 Step::Done(value) => return Ok(value),
-                Step::Error(e) => return Err(e),
             }
         }
     }
 }
 ```
 
-The existing `Interpreter` methods (`execute_action`, etc.) can optionally be rewritten to create an `Execution` internally and drive it with `run_with_handler`. Or they can coexist with the recursive implementation during a transition period.
+This is useful for hosts that want owned state management (via `StateAdapter<S>`) but don't need async control flow. It is **not** a replacement for the `Interpreter` callback API, which serves a different purpose: hosts that provide `&dyn StateProvider` and handle mutations externally.
 
 ## Implementation Phases
 
@@ -572,37 +832,87 @@ This is a prerequisite for everything else and delivers immediate value: a singl
 
 **Scope:** ~42 line changes across 9 files + 5-line method addition.
 
+**Parity bar:** All existing tests pass. No behavior change.
+
 ### Phase 2: Types and driver loop
 
-Define `Frame`, `Advance`, `Execution`, and the `poll`/`respond`/`run_with_handler` API. Add `Step::Error` to the existing `Step` enum. No frame `advance()` implementations yet — just the structural types.
+Define `Frame`, `Advance`, `RuntimeCore`, `Execution<S>`, `ProtocolState`, `ProtocolError`, and the `poll`/`respond`/`run_with_handler` API. No frame `advance()` implementations yet — just the structural types.
 
-**Scope:** New `execution.rs` module. Compiles but is not yet callable.
+**Scope:** New `execution.rs` and `runtime_core.rs` modules. Compiles but is not yet callable.
+
+**Parity bar:** Type-checks. No runtime behavior yet.
 
 ### Phase 3: Action lifecycle frames
 
-Convert `execute_action` / `scoped_execute` / `execute_pipeline` to frame-based execution. This is the outermost and most structurally regular code path.
+Convert `execute_action` / `execute_reaction` / `execute_hook` / `scoped_execute` / `execute_pipeline` to frame-based execution. This is the outermost and most structurally regular code path.
+
+Includes `FillDefaults` for action/function default argument evaluation — this is part of the action call path and must yield correctly when defaults contain effectful builtins like `roll()`.
 
 Test by constructing an `Execution` for simple actions and asserting the yielded effect sequence matches the recursive path (using `ScriptedHandler`-style response scripts).
 
-**Scope:** `frame/action.rs` (new), integration tests.
+**Entry points covered:** `execute_action`, `execute_reaction`, `execute_hook`.
 
-### Phase 4: Block and statement frames
+**Parity bar:** Differential test suite (see below) passes for all action-lifecycle scenarios. Effect sequences match the recursive path exactly.
+
+### Phase 4: Block, statement, and expression frames
 
 Convert `eval_block` / `eval_stmt` to `Block` and `StmtResume` frames. Synchronous statements execute inline; effectful statements (Grant, Revoke, Assign with mutation, Emit) push continuation frames.
 
-**Scope:** `frame/block.rs` (new). This is where expression evaluation integration happens.
+Add `DeriveEval`, `FunctionEval`, `RollDiceWaiting`, `PromptWaiting`, and `SpawnEntity` frames for the non-action entry points. Includes prompt suggest/default body evaluation paths and entity/group field default evaluation during spawn and grant.
+
+**Resume sites covered in this phase:**
+- `eval/control.rs`: Grant/Revoke with field defaults, `with_budget` field expression evaluation, budget rollback
+- `eval/dispatch.rs`: Entity field defaults, group field defaults during spawn
+- `call/functions.rs`: Prompt suggest expression, prompt default block on `UseDefault`
+- `builtins.rs`: Condition state field defaults during `apply_condition`
+
+**Entry points covered:** `evaluate_derive`, `evaluate_mechanic`, `evaluate_function`, `evaluate_expr`, `evaluate_expr_with_bindings`.
+
+**Parity bar:** All entry points produce identical effect sequences. Prompt `UseDefault` correctly pushes a block frame for the default expression. Default arguments with effectful builtins yield correctly.
 
 ### Phase 5: Emit dispatch and condition lifecycle frames
 
-Convert `eval_emit` (hook dispatch + condition handler dispatch) and `apply_condition` / `remove_condition` / `revoke` to frames. These are the most state-heavy conversions (emit_depth tracking, lifecycle block counters, condition token pre-allocation, per-instance removal loops).
+Convert `eval_emit` (hook dispatch + condition handler dispatch) and `apply_condition` / `remove_condition` / `revoke` to frames. These are the most state-heavy conversions (emit_depth tracking, lifecycle block counters, condition token pre-allocation, per-instance removal loops with deferred error propagation).
 
-**Scope:** `frame/emit.rs`, `frame/condition.rs` (new).
+**Entry points covered:** `fire_hooks`, `fire_condition_handlers`.
+
+**Parity bar:** Condition removal with `on_remove` errors still completes all instances. Nested emit dispatch preserves ordering. All differential test scenarios pass.
 
 ### Phase 6: Public API and migration
 
-Add `Interpreter::start_action`, `start_reaction`, `start_mechanic`, `start_derive`, etc. Optionally rewrite the callback-based methods as shims. Update the CLI runner and test harness to use the new API (or keep both paths).
+Add `Execution::start_action`, `start_reaction`, `start_derive`, `start_mechanic`, `start_function`, `start_expr`, etc. Update the CLI runner and test harness to support the new API (or keep both paths).
 
 **Scope:** `lib.rs` additions, `ttrpg_cli` integration.
+
+**Parity bar:** Full `.ttrpg-cli` test suite passes through both the recursive and step-based paths.
+
+### Differential test matrix
+
+Before implementation begins, define differential tests that run each scenario through both the recursive and step-based paths and assert identical effect sequences. Priority scenarios:
+
+| Category | Scenario | Key invariant |
+|----------|----------|---------------|
+| **Action lifecycle** | ActionStarted → Vetoed | ActionCompleted emitted with `invocation: None`, no ID allocated |
+| **Action lifecycle** | ActionStarted → invalid Response type | ActionCompleted(Failed) emitted, RuntimeError returned |
+| **Action lifecycle** | Nested action (hook triggers action) | Inner action gets its own invocation ID, outer resumes after |
+| **Defaults** | Action with effectful default (`roll()`) | RollDice yielded before ActionStarted, default value used in body |
+| **Defaults** | Prompt with effectful suggest expr | Effectful suggest evaluated before ResolvePrompt yielded |
+| **Defaults** | Entity spawn with field defaults | Defaults evaluated before SpawnEntity, GrantGroup effects |
+| **Requires** | RequiresCheck → Override(false) | Action aborts with abort_value, ActionCompleted(Failed) |
+| **Cost** | Budget insufficient (DeductCost → Vetoed) | Action aborts, budget not mutated |
+| **Condition** | apply_condition → gate Vetoed | No condition applied, no on_apply executed |
+| **Condition** | apply_condition with effectful state field default | State default yields before ConditionApplyGate |
+| **Condition** | remove_condition with on_remove error | All instances still removed, error propagated after loop |
+| **Condition** | revoke(invocation) with multiple conditions | All tagged conditions removed, first error deferred |
+| **Prompt** | ResolvePrompt → UseDefault | Default block evaluates, result used as prompt value |
+| **Prompt** | ResolvePrompt → Override(value) | Value used directly |
+| **Emit** | Nested emit (hook body emits event) | emit_depth incremented, inner hooks fire, outer resumes |
+| **Emit** | Condition handler modifies state fields | SetConditionState emitted with delta |
+| **Budget** | with_budget scope + error during body | Budget restored to saved state |
+| **Budget** | with_budget with effectful field expr | Budget field expression yields before ProvisionBudget |
+| **Scope** | Early return from nested block | All scope guards popped, return_value propagated |
+| **Spawn** | spawn in action body | SpawnEntity + GrantGroup(×N) emitted, entity ref returned |
+| **Roll** | roll() in expression | RollDice yielded, Override(RollResult) consumed |
 
 ## Alternatives Considered
 
@@ -614,14 +924,14 @@ One OS thread per `Execution`. The evaluator runs unchanged on the worker thread
 - `Interpreter` carries `Cell<u64>`, `Rc<RefCell<_>>`, and `RefCell<_>` — none are `Send`. The entire ownership model would need redesigning.
 - Fighting the goal of keeping synchronous state reads (reads would need to cross the thread boundary).
 - Worse for foreign embedding — the host must manage thread lifetime, and the execution state is opaque on the worker's stack.
-- Does not produce an inspectable/serializable execution state.
+- Does not produce an inspectable execution state.
 
 ### Stackful coroutines (corosensei, genawaiter)
 
 Library-provided stackful coroutines. The evaluator runs on a coroutine stack, yields at each `emit()` call.
 
 **Rejected because:**
-- The suspended state lives on an opaque platform-specific stack, not in inspectable Rust data structures. This blocks debugging, cancellation, state serialization, and foreign embedding.
+- The suspended state lives on an opaque platform-specific stack, not in inspectable Rust data structures. This blocks debugging, cancellation, and foreign embedding.
 - Adds a dependency with platform-specific unsafe code for stack switching.
 - Gains yielding but not a clean continuation model.
 
@@ -640,11 +950,11 @@ Make all eval functions `async`, use a custom single-threaded executor that extr
 
 ## Risks
 
-1. **Frame explosion.** The number of `Frame` variants may grow large as every effectful code path needs representation. Mitigation: keep synchronous code paths as helper functions, only frame-ify paths that cross effect boundaries.
+1. **Frame explosion.** The number of `Frame` variants may grow large as every effectful code path needs representation. Mitigation: keep synchronous code paths as helper functions, only frame-ify paths that cross effect boundaries. Consider extracting recurring patterns (ordered list evaluation, iterate-with-cleanup) into reusable generic frames if the variant count becomes unwieldy.
 
 2. **AST cloning cost.** Frames own AST node copies (blocks, expressions). For typical TTRPG rulesets (small blocks, few statements), this is negligible. If it becomes measurable, `Arc`-wrap frequently-cloned AST nodes.
 
-3. **Semantic divergence.** Two code paths (recursive and frame-based) executing the same logic risks subtle behavioral differences. Mitigation: run the full `.ttrpg-cli` test suite through both paths and diff the effect sequences.
+3. **Semantic divergence.** Two code paths (recursive and frame-based) executing the same logic risks subtle behavioral differences. Mitigation: run the full `.ttrpg-cli` test suite through both paths and diff the effect sequences. The differential test matrix (above) targets the highest-risk scenarios.
 
 4. **Incremental adoption friction.** During the transition, new effectful features must be added to both the recursive evaluator and the frame-based evaluator. Mitigation: complete the migration before adding new effectful features, or add them only to the frame-based path once it's the primary path.
 
