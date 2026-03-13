@@ -2394,13 +2394,12 @@ system "OSRIC Combat" {
     //  Natural healing: 1 HP/day rest, 4 weeks = full.
     // ========================================================
 
-    // Per-round HP loss for unconscious characters. The periodic
-    // block runs via process_periodic_conditions(combatants,
-    // "round_end_damage") in the combat loop.
+    // Per-round HP loss for unconscious characters. Fires via
+    // RoundEndDamage event emitted per-combatant in the combat loop.
     condition Bleeding on bearer: entity
         stacking first
     {
-        periodic #round_end_damage {
+        on RoundEndDamage(combatant: bearer) {
             // Only Characters bleed — monsters die at 0 HP.
             if bearer is Character {
                 bearer.hp = bearer.hp - 1

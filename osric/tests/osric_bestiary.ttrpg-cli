@@ -60,16 +60,16 @@ spawn Monster regen_troll { name: "Regen Troll", hit_dice: 6d8 + 6, max_hp: 33, 
 call apply_condition(regen_troll, Regeneration(hp_per_round: 3), Duration.Indefinite)
 set regen_troll.hp = 20
 assert_eq regen_troll.hp, 20
-call process_periodic_conditions([regen_troll], "round_start_healing")
+emit RoundStartHealing(combatant: regen_troll)
 assert_eq regen_troll.hp, 23
-call process_periodic_conditions([regen_troll], "round_start_healing")
+emit RoundStartHealing(combatant: regen_troll)
 assert_eq regen_troll.hp, 26
 // Healing caps at max_hp
 set regen_troll.hp = 32
-call process_periodic_conditions([regen_troll], "round_start_healing")
+emit RoundStartHealing(combatant: regen_troll)
 assert_eq regen_troll.hp, 33
 // At full HP, no change
-call process_periodic_conditions([regen_troll], "round_start_healing")
+emit RoundStartHealing(combatant: regen_troll)
 assert_eq regen_troll.hp, 33
 
 let basilisk = create_basilisk()

@@ -3,7 +3,7 @@ mod assign;
 mod compare;
 mod control;
 mod dispatch;
-mod emit;
+pub(crate) mod emit;
 mod helpers;
 mod ops;
 

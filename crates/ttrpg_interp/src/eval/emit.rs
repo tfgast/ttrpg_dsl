@@ -164,7 +164,7 @@ pub(crate) fn eval_emit(
 ///
 /// No ActionStarted/ActionCompleted — condition handlers are implicit effects
 /// of the condition's existence, not actions.
-fn execute_condition_event_handler(
+pub(crate) fn execute_condition_event_handler(
     env: &mut Env,
     handler_info: &ConditionHandlerInfo,
     trigger_payload: Value,

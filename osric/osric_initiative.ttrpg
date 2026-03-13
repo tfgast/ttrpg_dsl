@@ -947,7 +947,9 @@ system "OSRIC Initiative" {
         actions: list<RoundAction>
     ) {
         emit RoundStart(round: round)
-        process_periodic_conditions(combatants, "round_start_healing")
+        for c in combatants {
+            emit RoundStartHealing(combatant: c)
+        }
         let party_won = initiative.party_segment < initiative.monster_segment
 
         // Provision action budgets for all combatants up-front.
@@ -1014,7 +1016,9 @@ system "OSRIC Initiative" {
         // first so that a character who hits -10 HP this round dies
         // before conditions expire. Temp damage heals 1 HP/round
         // (§1.6.12) after periodic damage but before condition expiry.
-        process_periodic_conditions(combatants, "round_end_damage")
+        for c in combatants {
+            emit RoundEndDamage(combatant: c)
+        }
         process_temp_healing(combatants)
         expire_conditions(combatants)
         emit RoundEnd(round: round)

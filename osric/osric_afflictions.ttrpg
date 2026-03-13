@@ -68,7 +68,7 @@ system "OSRIC Afflictions" {
             turns_remaining: int = cleric_level
         }
 
-        periodic #turn_end {
+        on TurnEnded(combatant: bearer) {
             state.turns_remaining = state.turns_remaining - 1
             if state.turns_remaining <= 0 {
                 // Time's up — the slow poison wears off and death occurs.
@@ -185,7 +185,7 @@ system "OSRIC Afflictions" {
             attack_mod = attack_mod - state.current_roll_penalty
         }
 
-        periodic #day_end {
+        on DayEnded(combatant: bearer) {
             state.days_elapsed = state.days_elapsed + 1
             match state.phase {
                 DiseasePhase.Incubation => {

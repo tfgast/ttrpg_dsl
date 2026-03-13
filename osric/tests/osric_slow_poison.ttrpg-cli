@@ -1,7 +1,7 @@
 // OSRIC SlowPoisoned death countdown integration tests
 //
 // Tests that the SlowPoisoned condition counts down turns_remaining
-// via its periodic #turn_end block and triggers death when exhausted.
+// via its on TurnEnded handler and triggers death when exhausted.
 
 load osric/*.ttrpg
 
@@ -17,13 +17,13 @@ assert_no_condition sp_victim, Dead
 
 // Turns 1-2: still alive
 repeat 2 {
-    call process_periodic_conditions([sp_victim], "turn_end")
+    emit TurnEnded(combatant: sp_victim)
     assert_condition sp_victim, SlowPoisoned
     assert_no_condition sp_victim, Dead
 }
 
 // Turn 3: timer expires → character dies
-call process_periodic_conditions([sp_victim], "turn_end")
+emit TurnEnded(combatant: sp_victim)
 assert_no_condition sp_victim, SlowPoisoned
 assert_condition sp_victim, Dead
 
@@ -34,7 +34,7 @@ spawn Character sp_fast { name: "FastDeath", classes: [ClassLevel { class: Fight
 call apply_condition(sp_fast, SlowPoisoned(cleric_level: 1), Duration.Indefinite)
 assert_condition sp_fast, SlowPoisoned
 
-call process_periodic_conditions([sp_fast], "turn_end")
+emit TurnEnded(combatant: sp_fast)
 assert_no_condition sp_fast, SlowPoisoned
 assert_condition sp_fast, Dead
 
@@ -47,7 +47,7 @@ spawn Character sp_cured { name: "Cured", classes: [ClassLevel { class: Fighter,
 call apply_condition(sp_cured, SlowPoisoned(cleric_level: 3), Duration.Indefinite)
 
 // Tick once (2 turns remaining)
-call process_periodic_conditions([sp_cured], "turn_end")
+emit TurnEnded(combatant: sp_cured)
 assert_condition sp_cured, SlowPoisoned
 assert_no_condition sp_cured, Dead
 
@@ -57,5 +57,5 @@ assert_no_condition sp_cured, SlowPoisoned
 assert_no_condition sp_cured, Dead
 
 // Further ticks should have no effect — condition is gone
-call process_periodic_conditions([sp_cured], "turn_end")
+emit TurnEnded(combatant: sp_cured)
 assert_no_condition sp_cured, Dead

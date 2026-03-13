@@ -535,6 +535,44 @@ impl<'p> Interpreter<'p> {
 
         Ok(results)
     }
+
+    /// Fire all condition event handlers that match an event, executing each one.
+    ///
+    /// This is the condition-handler analogue of `fire_hooks`. It finds all
+    /// condition `on` clauses matching the event, then executes each handler
+    /// in entity → application → clause order. Returns the count of handlers fired.
+    pub fn fire_condition_handlers(
+        &self,
+        state: &dyn StateProvider,
+        handler: &mut dyn EffectHandler,
+        event_name: &str,
+        payload: Value,
+        candidates: &[EntityRef],
+    ) -> Result<usize, RuntimeError> {
+        let cond_result = event::find_matching_condition_handlers(
+            self,
+            state,
+            event_name,
+            &payload,
+            candidates,
+        )?;
+
+        let count = cond_result.handlers.len();
+        if count > 0 {
+            let mut env = Env::new(state, handler, self);
+            let span = Span::dummy();
+            for handler_info in &cond_result.handlers {
+                eval::emit::execute_condition_event_handler(
+                    &mut env,
+                    handler_info,
+                    payload.clone(),
+                    span,
+                )?;
+            }
+        }
+
+        Ok(count)
+    }
 }
 
 // ── Env (execution environment) ────────────────────────────────

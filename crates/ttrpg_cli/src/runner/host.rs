@@ -236,9 +236,45 @@ impl Runner {
             }
         }
 
+        // Fire condition event handlers
+        let cov_rc = self.coverage_rc();
+        let mut interp2 =
+            TrackedInterpreter::new(&self.program, &self.type_env, &self.game_state)
+                .map_err(|e| render_runtime_error(&e, &self.source_map))?;
+        if let Some(cov) = cov_rc {
+            interp2.interp.set_coverage(cov);
+        }
+        let mut handler2 = CliHandler::new(
+            &self.game_state,
+            self.handles.by_entity(),
+            &mut self.rng,
+            &mut self.roll_queue,
+            &mut self.prompt_queue,
+            &self.unit_suffixes,
+        )
+        .quiet(self.quiet)
+        .interactive(self.interactive);
+        let cond_count = interp2
+            .fire_condition_handlers(
+                &state,
+                &mut handler2,
+                event_name,
+                payload,
+                &candidates,
+            )
+            .map_err(|e| {
+                for line in handler2.log.drain(..) {
+                    self.output.push(line);
+                }
+                render_runtime_error(&e, &self.source_map)
+            })?;
+        for line in handler2.log.drain(..) {
+            self.output.push(line);
+        }
+
         let hook_count = results.len();
         let reaction_count = reaction_result.triggerable.len();
-        if hook_count > 0 || reaction_count > 0 {
+        if hook_count > 0 || reaction_count > 0 || cond_count > 0 {
             let mut parts = Vec::new();
             if hook_count > 0 {
                 parts.push(format!(
@@ -250,6 +286,12 @@ impl Runner {
                 parts.push(format!(
                     "{reaction_count} reaction{}",
                     if reaction_count == 1 { "" } else { "s" }
+                ));
+            }
+            if cond_count > 0 {
+                parts.push(format!(
+                    "{cond_count} condition handler{}",
+                    if cond_count == 1 { "" } else { "s" }
                 ));
             }
             self.output

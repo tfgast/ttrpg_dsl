@@ -1,7 +1,7 @@
 // OSRIC Diseased condition lifecycle integration tests
 //
 // Tests the multi-phase disease lifecycle: Incubation → Active → Recovery.
-// Verifies state field progression via periodic #day_end, penalty application
+// Verifies state field progression via on DayEnded handler, penalty application
 // during the active phase, and automatic condition removal after recovery.
 
 load osric/*.ttrpg
@@ -15,36 +15,36 @@ assert_condition dis_inc, Diseased
 
 // Days 1-2: still incubating
 repeat 2 {
-    call process_periodic_conditions([dis_inc], "day_end")
+    emit DayEnded(combatant: dis_inc)
     assert_condition dis_inc, Diseased
 }
 
 // ── Transition to Active phase at incubation end ────────────────
 
 // Day 3: incubation_days reached → transitions to Active
-call process_periodic_conditions([dis_inc], "day_end")
+emit DayEnded(combatant: dis_inc)
 assert_condition dis_inc, Diseased
 
 // Day 4: first day of active phase (days_elapsed resets; this is day 1 of active)
-call process_periodic_conditions([dis_inc], "day_end")
+emit DayEnded(combatant: dis_inc)
 assert_condition dis_inc, Diseased
 
 // ── Transition to Recovery after active duration ────────────────
 
 // Day 5: duration_days (2) reached → transitions to Recovery
-call process_periodic_conditions([dis_inc], "day_end")
+emit DayEnded(combatant: dis_inc)
 assert_condition dis_inc, Diseased
 
 // ── Recovery phase: penalties decrease 1/day ────────────────────
 
 // Recovery days 1-3: penalties decrease 1/day, condition persists
 repeat 3 {
-    call process_periodic_conditions([dis_inc], "day_end")
+    emit DayEnded(combatant: dis_inc)
     assert_condition dis_inc, Diseased
 }
 
 // Recovery day 4: penalty drops 1→0 / already 0 → condition removed
-call process_periodic_conditions([dis_inc], "day_end")
+emit DayEnded(combatant: dis_inc)
 assert_no_condition dis_inc, Diseased
 
 
@@ -58,17 +58,17 @@ assert_no_condition dis_fatal, Dead
 
 // Incubation: 2 days
 repeat 2 {
-    call process_periodic_conditions([dis_fatal], "day_end")
+    emit DayEnded(combatant: dis_fatal)
 }
 assert_condition dis_fatal, Diseased
 assert_no_condition dis_fatal, Dead
 
 // Active: 2 days → fatal death
-call process_periodic_conditions([dis_fatal], "day_end")
+emit DayEnded(combatant: dis_fatal)
 assert_condition dis_fatal, Diseased
 assert_no_condition dis_fatal, Dead
 
-call process_periodic_conditions([dis_fatal], "day_end")
+emit DayEnded(combatant: dis_fatal)
 assert_no_condition dis_fatal, Diseased
 assert_condition dis_fatal, Dead
 
@@ -81,12 +81,12 @@ call apply_condition(dis_cured, Diseased(stat_penalty: 4, roll_penalty: 3, is_fa
 assert_condition dis_cured, Diseased
 
 // Tick 1 day, then cure
-call process_periodic_conditions([dis_cured], "day_end")
+emit DayEnded(combatant: dis_cured)
 call remove_condition(dis_cured, "Diseased")
 assert_no_condition dis_cured, Diseased
 assert_no_condition dis_cured, Dead
 
 // Further ticks have no effect
-call process_periodic_conditions([dis_cured], "day_end")
+emit DayEnded(combatant: dis_cured)
 assert_no_condition dis_cured, Diseased
 assert_no_condition dis_cured, Dead

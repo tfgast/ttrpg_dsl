@@ -309,13 +309,12 @@ system "OSRIC Zone Spells" {
     }
 
     // Condition tracking for per-round Blade Barrier damage.
-    // Applied on ZoneEntered, removed on ZoneExited. Periodic
-    // block fires via process_periodic_conditions(combatants,
-    // "round_end_damage") in the combat loop.
+    // Applied on ZoneEntered, removed on ZoneExited. Fires via
+    // RoundEndDamage event emitted per-combatant in the combat loop.
     condition InsideBladeBarrier on bearer: entity
         stacking all
     {
-        periodic #round_end_damage {
+        on RoundEndDamage(combatant: bearer) {
             if let EffectSource.Spell(zone_name, cl) = self.source {
                 let damage = roll(8d8).total
                 bearer.TakeDamage(bearer, damage, DamageType.Slashing)
