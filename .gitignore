@@ -11,6 +11,10 @@
 *.db
 *.pid.lock
 
+# Beads backup/sync state (synced via Dolt remote)
+.beads/backup/
+.beads/push-state.json
+
 # Fuzz artifacts (crashes, corpus, coverage)
 fuzz/artifacts/
 fuzz/corpus/
