@@ -84,8 +84,8 @@ impl Runner {
                     return Err(CliError::Message(format!("invalid field entry: {entry}")));
                 }
 
-                let val = if let Some(ent) = self.handles.get(val_str) {
-                    Value::Entity(ent)
+                let val = if let Some(val) = self.variables.get(val_str) {
+                    val.clone()
                 } else {
                     let (parsed, diags) = ttrpg_parser::parse_expr(val_str);
                     if !diags.is_empty() {
@@ -165,9 +165,9 @@ impl Runner {
                 return Err(CliError::Message(format!("invalid field entry: {entry}")));
             }
 
-            // Try handle resolution first, then fall back to expression eval
-            let val = if let Some(ent) = self.handles.get(val_str) {
-                Value::Entity(ent)
+            // Try variable resolution first, then fall back to expression eval
+            let val = if let Some(val) = self.variables.get(val_str) {
+                val.clone()
             } else {
                 let (parsed, diags) = ttrpg_parser::parse_expr(val_str);
                 if !diags.is_empty() {

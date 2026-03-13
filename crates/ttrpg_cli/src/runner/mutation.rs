@@ -27,9 +27,9 @@ impl Runner {
             )));
         }
 
-        if self.handles.contains(handle) {
+        if self.variables.contains_key(handle) {
             return Err(CliError::Message(format!(
-                "handle '{handle}' already exists"
+                "name '{handle}' already in use"
             )));
         }
 
@@ -130,6 +130,8 @@ impl Runner {
             .collect();
         let entity = self.game_state.borrow_mut().add_entity(entity_type, fields);
         self.handles.insert(handle.to_string(), entity);
+        self.variables
+            .insert(handle.to_string(), Value::Entity(entity));
 
         for (group_name, struct_val) in prepared_groups {
             self.game_state.borrow_mut().write_field(
@@ -309,12 +311,7 @@ impl Runner {
             }
         };
 
-        // Parse and evaluate the RHS expression (try handle resolution first)
-        let val = if let Some(ent) = self.handles.get(rhs) {
-            Value::Entity(ent)
-        } else {
-            self.eval(rhs)?
-        };
+        let val = self.eval(rhs)?;
 
         // Validate type compatibility (only for plain assignment; compound ops
         // produce a new value from the existing field so the RHS is a delta)
@@ -411,6 +408,7 @@ impl Runner {
             )));
         }
         self.handles.remove_by_name(handle);
+        self.variables.remove(handle);
         self.output.push(format!("destroyed {handle}"));
         Ok(())
     }

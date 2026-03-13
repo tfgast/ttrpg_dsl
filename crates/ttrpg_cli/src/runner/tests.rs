@@ -416,7 +416,7 @@ fn spawn_duplicate_handle_rejected() {
     runner.exec("spawn Character fighter {}").unwrap();
     runner.take_output();
     let err = runner.exec("spawn Character fighter {}").unwrap_err();
-    assert!(err.to_string().contains("already exists"));
+    assert!(err.to_string().contains("already in use"));
 }
 
 #[test]
@@ -3845,7 +3845,7 @@ fn let_missing_equals() {
 
 #[test]
 fn let_handle_takes_priority() {
-    // Entity handles should shadow variables (handles are added after variables)
+    // Handles and variables share a single namespace — spawn rejects duplicate names
     let source = r#"
 system "test" {
     entity Creature {
@@ -3860,11 +3860,8 @@ system "test" {
 
     runner.exec("let hero = 42").unwrap();
     runner.take_output();
-    runner.exec("spawn Creature hero { HP: 10 }").unwrap();
-    runner.take_output();
-
-    // Handle should win — hero.HP should work
-    runner.exec("assert hero.HP == 10").unwrap();
+    let err = runner.exec("spawn Creature hero { HP: 10 }").unwrap_err();
+    assert!(err.to_string().contains("already in use"));
 }
 
 #[test]
@@ -3919,7 +3916,7 @@ system "test" {
     assert_eq!(out, vec!["destroyed alias"]);
 
     let err = runner.exec("inspect alias").unwrap_err();
-    assert!(err.to_string().contains("not found in state"));
+    assert!(err.to_string().contains("unknown handle"));
 }
 
 // ── let captures action return values (tdsl-85tc) ───────────

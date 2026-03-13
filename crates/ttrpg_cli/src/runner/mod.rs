@@ -246,7 +246,10 @@ impl Runner {
 
     /// Returns the entity type name for a given handle (for tab completion).
     pub fn handle_type(&self, handle: &str) -> Option<String> {
-        let entity = self.handles.get(handle)?;
+        let entity = match self.variables.get(handle)? {
+            Value::Entity(e) => *e,
+            _ => return None,
+        };
         let gs = self.game_state.borrow();
         gs.entity_type_name(&entity).map(|s| s.to_string())
     }
@@ -694,11 +697,6 @@ impl Runner {
             .variables
             .iter()
             .map(|(name, val)| (Name::from(name.as_str()), val.clone()))
-            .chain(
-                self.handles
-                    .iter()
-                    .map(|(name, entity)| (Name::from(name), Value::Entity(*entity))),
-            )
             .collect();
         let result = interp
             .evaluate_expr_with_bindings(&state, &mut handler, &parsed, bindings)
@@ -720,13 +718,13 @@ impl Runner {
 
     /// Resolve a handle name to an EntityRef.
     fn resolve_handle(&self, name: &str) -> Result<EntityRef, CliError> {
-        if let Some(entity) = self.handles.get(name) {
-            return Ok(entity);
+        match self.variables.get(name) {
+            Some(Value::Entity(entity)) => Ok(*entity),
+            Some(_) => Err(CliError::Message(format!(
+                "'{name}' is not an entity"
+            ))),
+            None => Err(CliError::Message(format!("unknown handle: {name}"))),
         }
-        if let Some(Value::Entity(entity)) = self.variables.get(name) {
-            return Ok(*entity);
-        }
-        Err(CliError::Message(format!("unknown handle: {name}")))
     }
 
     /// Enable quiet mode: suppress effect handler log output.
