@@ -1,4 +1,4 @@
-use std::collections::{BTreeMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet};
 
 use ttrpg_ast::ast::{
     ConditionClause, ModifyClause, ModifyStmt, ModifyTarget, SelectorPredicate,
@@ -10,7 +10,7 @@ use ttrpg_checker::env::FnInfo;
 use crate::RuntimeError;
 use crate::effect::{Effect, FieldChange, ModifySource, Phase, Response};
 use crate::eval::{eval_expr, value_eq};
-use crate::state::ActiveCondition;
+use crate::state::{ActiveCondition, EntityRef};
 use crate::value::Value;
 use crate::{Env, MAX_EMIT_DEPTH, action, event};
 
@@ -95,6 +95,76 @@ pub(crate) fn compute_stacking_winners(
     }
 
     winners
+}
+
+// ── Condition traversal helper ──────────────────────────────────
+
+/// Snapshotted conditions for a single entity with stacking winners computed.
+pub(crate) struct ConditionSnapshot {
+    pub conditions: Vec<ActiveCondition>,
+    pub winners: HashSet<u64>,
+}
+
+/// Entity extraction + deduplication + per-entity condition snapshots.
+///
+/// Shared infrastructure for suppress scanning, periodic processing, and
+/// condition event handler dispatch.
+pub(crate) struct ConditionTraversal {
+    /// Entity-typed values from the payload, deduplicated by entity ID,
+    /// in scan order (params first, then fields).
+    pub entities: Vec<(Name, EntityRef)>,
+    /// Per-entity snapshotted conditions with stacking winners.
+    pub snapshots: HashMap<EntityRef, ConditionSnapshot>,
+}
+
+impl ConditionTraversal {
+    /// Build a traversal from a list of `(name, entity)` pairs.
+    ///
+    /// Deduplicates by entity ID (keeping first occurrence), filters to
+    /// only those entities in `candidates`, snapshots conditions, and
+    /// computes stacking winners.
+    pub fn build(
+        named_entities: Vec<(Name, EntityRef)>,
+        candidates: &[EntityRef],
+        state: &dyn crate::state::StateProvider,
+        program: &Program,
+    ) -> Result<Self, RuntimeError> {
+        let candidate_set: HashSet<EntityRef> = candidates.iter().copied().collect();
+        let mut seen_ids: HashSet<u64> = HashSet::new();
+        let mut entities: Vec<(Name, EntityRef)> = Vec::new();
+
+        for (name, eref) in named_entities {
+            if !candidate_set.contains(&eref) {
+                continue;
+            }
+            if !seen_ids.insert(eref.0) {
+                continue; // deduplicate by entity ID
+            }
+            entities.push((name, eref));
+        }
+
+        let mut snapshots = HashMap::new();
+        for (_name, eref) in &entities {
+            if snapshots.contains_key(eref) {
+                continue;
+            }
+            let conditions = match state.read_conditions(eref) {
+                Some(c) => c,
+                None => {
+                    return Err(RuntimeError::new(format!(
+                        "read_conditions returned None for entity {eref:?} — host state out of sync",
+                    )));
+                }
+            };
+            let winners = compute_stacking_winners(&conditions, program);
+            snapshots.insert(*eref, ConditionSnapshot { conditions, winners });
+        }
+
+        Ok(ConditionTraversal {
+            entities,
+            snapshots,
+        })
+    }
 }
 
 /// Which lifecycle hook to execute.

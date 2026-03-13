@@ -583,6 +583,202 @@ fn check_suppress_bindings_inner(
     Ok(true)
 }
 
+// ── Condition event handler matching ────────────────────────────
+
+/// A matched condition event handler.
+#[derive(Debug, Clone)]
+pub struct ConditionHandlerInfo {
+    pub condition_name: Name,
+    pub instance_id: u64,
+    pub bearer: EntityRef,
+    /// Which `on` clause in the condition declaration matched.
+    pub clause_index: usize,
+}
+
+/// Result of querying which condition event handlers match an event.
+#[derive(Debug, Clone)]
+pub struct ConditionHandlerResult {
+    pub handlers: Vec<ConditionHandlerInfo>,
+}
+
+/// Find all condition event handlers that match an event.
+///
+/// Like `find_matching_hooks`, this is a **pure query** — no effects are emitted.
+/// Uses the `condition_trigger_index` for efficient lookup, then for each entity
+/// in the payload: snapshots conditions, computes stacking winners, and checks
+/// trigger bindings on matching `on` clauses.
+///
+/// Returns handlers in entity order -> application order -> clause order.
+pub fn find_matching_condition_handlers(
+    interp: &Interpreter,
+    state: &dyn StateProvider,
+    event_name: &str,
+    payload: &Value,
+    candidates: &[EntityRef],
+) -> Result<ConditionHandlerResult, RuntimeError> {
+    let event_info = match interp.type_env.events.get(event_name) {
+        Some(info) => info.clone(),
+        None => {
+            return Err(RuntimeError::new(format!("undefined event '{event_name}'")));
+        }
+    };
+
+    let payload_fields = match payload {
+        Value::Struct { fields, .. } => fields,
+        _ => {
+            return Err(RuntimeError::new("event payload must be a Struct value"));
+        }
+    };
+
+    // Look up which conditions have on-event handlers for this event
+    let empty_ct = Vec::new();
+    let condition_handlers = interp
+        .type_env
+        .condition_trigger_index
+        .get(event_name)
+        .unwrap_or(&empty_ct);
+
+    if condition_handlers.is_empty() {
+        return Ok(ConditionHandlerResult {
+            handlers: Vec::new(),
+        });
+    }
+
+    // Build a set of condition names that have handlers for this event
+    let handler_condition_names: HashSet<&Name> =
+        condition_handlers.iter().map(|(name, _)| name).collect();
+
+    // Extract entity-typed values from event payload (params first, then fields)
+    let mut named_entities: Vec<(Name, EntityRef)> = Vec::new();
+
+    for param_info in &event_info.params {
+        if param_info.ty.is_entity() {
+            match payload_fields.get(&param_info.name) {
+                Some(Value::Entity(e)) => {
+                    named_entities.push((param_info.name.clone(), *e));
+                }
+                Some(other) => {
+                    return Err(RuntimeError::new(format!(
+                        "event payload param '{}' should be Entity, got {:?}",
+                        param_info.name, other,
+                    )));
+                }
+                None => {
+                    return Err(RuntimeError::new(format!(
+                        "event payload missing expected entity param '{}'",
+                        param_info.name,
+                    )));
+                }
+            }
+        }
+    }
+
+    for (field_name, field_ty) in &event_info.fields {
+        if field_ty.is_entity() {
+            match payload_fields.get(field_name) {
+                Some(Value::Entity(e)) => {
+                    named_entities.push((field_name.clone(), *e));
+                }
+                Some(other) => {
+                    return Err(RuntimeError::new(format!(
+                        "event payload field '{field_name}' should be Entity, got {other:?}",
+                    )));
+                }
+                None => {
+                    return Err(RuntimeError::new(format!(
+                        "event payload missing expected entity field '{field_name}'",
+                    )));
+                }
+            }
+        }
+    }
+
+    // Build traversal: deduplicate entities, snapshot conditions, compute stacking winners
+    let traversal = crate::pipeline::ConditionTraversal::build(
+        named_entities,
+        candidates,
+        state,
+        interp.program,
+    )?;
+
+    let mut noop_handler = NoopHandler;
+    let mut env = Env::new(state, &mut noop_handler, interp);
+
+    let mut handlers = Vec::new();
+
+    // For each unique entity (in payload scan order)
+    for (_entity_name, entity_ref) in &traversal.entities {
+        let snapshot = match traversal.snapshots.get(entity_ref) {
+            Some(s) => s,
+            None => continue,
+        };
+
+        // Collect winning condition instances, sorted by application order
+        // (gained_at ascending, then id ascending)
+        let mut winning_instances: Vec<&crate::state::ActiveCondition> = snapshot
+            .conditions
+            .iter()
+            .filter(|c| snapshot.winners.contains(&c.id))
+            .filter(|c| handler_condition_names.contains(&c.name))
+            .collect();
+        winning_instances.sort_by_key(|c| (c.gained_at, c.id));
+
+        for condition_instance in winning_instances {
+            // Look up which clause indices match for this condition name
+            for &(ref cond_name, clause_index) in condition_handlers {
+                if *cond_name != condition_instance.name {
+                    continue;
+                }
+
+                // Look up the condition declaration to get the on-event clause
+                let cond_decl = match interp.program.conditions.get(cond_name.as_str()) {
+                    Some(d) => d,
+                    None => continue,
+                };
+
+                let clause = match cond_decl.clauses.get(clause_index) {
+                    Some(ttrpg_ast::ast::ConditionClause::OnEvent(oe)) => oe,
+                    _ => continue,
+                };
+
+                // Push scope with condition receiver + params bound,
+                // then call match_trigger_bindings which pushes its own inner scope
+                env.push_scope();
+                env.bind(
+                    cond_decl.receiver_name.clone(),
+                    Value::Entity(condition_instance.bearer),
+                );
+                for (pname, pval) in &condition_instance.params {
+                    env.bind(pname.clone(), pval.clone());
+                }
+
+                let matched = match_trigger_bindings(
+                    &mut env,
+                    &clause.trigger.bindings,
+                    &cond_decl.receiver_name,
+                    condition_instance.bearer,
+                    &event_info.params,
+                    &event_info.fields,
+                    payload_fields,
+                )?;
+
+                env.pop_scope();
+
+                if matched {
+                    handlers.push(ConditionHandlerInfo {
+                        condition_name: cond_name.clone(),
+                        instance_id: condition_instance.id,
+                        bearer: condition_instance.bearer,
+                        clause_index,
+                    });
+                }
+            }
+        }
+    }
+
+    Ok(ConditionHandlerResult { handlers })
+}
+
 // ── No-op handler ───────────────────────────────────────────────
 
 /// A no-op effect handler for pure query operations (what_triggers).
