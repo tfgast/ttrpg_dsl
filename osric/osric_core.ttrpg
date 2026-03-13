@@ -77,6 +77,17 @@ system "OSRIC" {
         ChaoticEvil
     }
 
+    // --- Alignment helpers ---
+
+    derive is_evil_alignment(alignment: Alignment) -> bool {
+        match alignment {
+            LawfulEvil   => true,
+            NeutralEvil  => true,
+            ChaoticEvil  => true,
+            _            => false
+        }
+    }
+
     // --- Character classes (10 total) ---
 
     enum Class {
@@ -476,6 +487,7 @@ system "OSRIC" {
         CauseLightWounds,
         Bless,
         Curse,
+        ProtectionFromEvilCleric,
         // Cleric level 2
         HoldPerson,
         Silence15Radius,
@@ -495,6 +507,7 @@ system "OSRIC" {
         FeatherFall,
         Jump,
         MagicMissile,
+        ProtectionFromEvilMU,
         ShieldSpell,
         ShockingGrasp,
         Sleep,

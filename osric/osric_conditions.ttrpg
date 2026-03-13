@@ -27,6 +27,7 @@ use "OSRIC Equipment"
 use "OSRIC Character"
 use "OSRIC Combat"
 use "OSRIC Saves"
+use "OSRIC Summons"
 
 system "OSRIC Conditions" {
 
@@ -746,6 +747,66 @@ system "OSRIC Conditions" {
         remove_condition(character, "EncumbranceState")
         let tier = character_encumbrance(character)
         apply_condition(character, EncumbranceState(tier: tier), Duration.Indefinite)
+    }
+
+
+    // ========================================================
+    //  PROTECTED FROM EVIL (§1.8.2, §1.8.5.1)
+    //
+    //  Shared condition used by both Protection from Evil (L1)
+    //  and Protection from Evil 10' Radius (L4).
+    //
+    //  Effects:
+    //    1. Evil attackers suffer -2 to hit the bearer.
+    //    2. Summoned/conjured creatures cannot make melee
+    //       attacks against the bearer (auto-miss).
+    //    3. Bearer gains +2 to all saves when the effect
+    //       originates from an evil creature.
+    // ========================================================
+
+    condition ProtectedFromEvil on bearer: entity
+        stacking first
+    {
+        // Evil attackers suffer -2 to hit.
+        modify [#attack_resolution](target: bearer) {
+            let evil = if attacker is Character {
+                is_evil_alignment(attacker.alignment)
+            } else if attacker is Monster {
+                is_evil_alignment(attacker.alignment)
+            } else { false }
+            if evil {
+                attack_mod = attack_mod - 2
+            }
+        }
+
+        // Summoned/conjured creatures cannot touch the bearer.
+        modify [#melee](target: bearer) {
+            if has_condition(attacker, Summoned) {
+                result.outcome = AttackOutcome.Miss
+                result.damage = 0
+            }
+        }
+
+        // +2 to all saves vs effects from evil creatures.
+        modify entity_best_saves(target: bearer) {
+            let evil = if source_entity.is_some() {
+                let src = source_entity.unwrap()
+                if src is Character {
+                    is_evil_alignment(src.alignment)
+                } else if src is Monster {
+                    is_evil_alignment(src.alignment)
+                } else { false }
+            } else { false }
+            if evil {
+                result = SavingThrows {
+                    aimed_magic: max(2, result.aimed_magic - 2),
+                    breath: max(2, result.breath - 2),
+                    death_paralysis_poison: max(2, result.death_paralysis_poison - 2),
+                    petrification_polymorph: max(2, result.petrification_polymorph - 2),
+                    spells: max(2, result.spells - 2)
+                }
+            }
+        }
     }
 
 }

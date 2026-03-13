@@ -245,20 +245,6 @@ system "OSRIC Turn Undead" {
 
 
     // ========================================================
-    //  ALIGNMENT HELPERS
-    // ========================================================
-
-    derive is_evil_alignment(alignment: Alignment) -> bool {
-        match alignment {
-            LawfulEvil   => true,
-            NeutralEvil  => true,
-            ChaoticEvil  => true,
-            _            => false
-        }
-    }
-
-
-    // ========================================================
     //  EFFECTIVE TURNING LEVEL
     //
     //  Clerics use their class level directly. Paladins turn

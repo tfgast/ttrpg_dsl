@@ -32,7 +32,10 @@ import "osric_class.ttrpg"
 use "OSRIC"
 use "OSRIC Classes"
 use "OSRIC Combat"
+use "OSRIC Conditions"
+use "OSRIC Saves"
 use "OSRIC Spells"
+use "OSRIC Summons"
 
 system "OSRIC Zone Spells" {
 
@@ -154,37 +157,76 @@ system "OSRIC Zone Spells" {
         description: "Creates a 10' radius mobile barrier against evil. Attackers suffer -2 to hit protected creatures."
     }
 
-    // Condition applied to occupants of a Protection from Evil zone.
-    // Attackers suffer -2 to hit the bearer.
-    condition ProtectedFromEvil10 on bearer: entity
+    // Zone-specific condition for Protection from Evil 10' Radius.
+    // Uses stacking all so overlapping zones each have their own instance
+    // (zone-keyed removal removes only the exited zone's instance).
+    // Effects mirror ProtectedFromEvil in osric_conditions.ttrpg — keep in sync.
+    condition ProtectedFromEvil10Zone on bearer: entity
         stacking all
     {
+        // Evil attackers suffer -2 to hit.
         modify [#attack_resolution](target: bearer) {
-            attack_mod = attack_mod - 2
+            let evil = if attacker is Character {
+                is_evil_alignment(attacker.alignment)
+            } else if attacker is Monster {
+                is_evil_alignment(attacker.alignment)
+            } else { false }
+            if evil {
+                attack_mod = attack_mod - 2
+            }
+        }
+
+        // Summoned/conjured creatures cannot touch the bearer.
+        modify [#melee](target: bearer) {
+            if has_condition(attacker, Summoned) {
+                result.outcome = AttackOutcome.Miss
+                result.damage = 0
+            }
+        }
+
+        // +2 to all saves vs effects from evil creatures.
+        modify entity_best_saves(target: bearer) {
+            let evil = if source_entity.is_some() {
+                let src = source_entity.unwrap()
+                if src is Character {
+                    is_evil_alignment(src.alignment)
+                } else if src is Monster {
+                    is_evil_alignment(src.alignment)
+                } else { false }
+            } else { false }
+            if evil {
+                result = SavingThrows {
+                    aimed_magic: max(2, result.aimed_magic - 2),
+                    breath: max(2, result.breath - 2),
+                    death_paralysis_poison: max(2, result.death_paralysis_poison - 2),
+                    petrification_polymorph: max(2, result.petrification_polymorph - 2),
+                    spells: max(2, result.spells - 2)
+                }
+            }
         }
     }
 
-    // Apply ProtectedFromEvil10 when a target enters the zone.
+    // Apply ProtectedFromEvil10Zone when a target enters the zone.
     hook ProtFromEvil10ZoneApply on target: entity (
         trigger: ZoneEntered(target: target)
     ) {
         let zone = trigger.zone
         if let EffectSource.Spell(spell_name, cl) = zone.source {
             if spell_name == "Protection from Evil 10' Radius" {
-                apply_condition(target, ProtectedFromEvil10, Duration.Indefinite,
+                apply_condition(target, ProtectedFromEvil10Zone, Duration.Indefinite,
                     EffectSource.Spell(name: zone.name, caster_level: cl))
             }
         }
     }
 
-    // Remove ProtectedFromEvil10 when a target exits the zone.
+    // Remove ProtectedFromEvil10Zone when a target exits the zone.
     hook ProtFromEvil10ZoneRemove on target: entity (
         trigger: ZoneExited(target: target)
     ) {
         let zone = trigger.zone
         if let EffectSource.Spell(spell_name, cl) = zone.source {
             if spell_name == "Protection from Evil 10' Radius" {
-                remove_zone_keyed_condition(target, zone.name, "ProtectedFromEvil10")
+                remove_zone_keyed_condition(target, zone.name, "ProtectedFromEvil10Zone")
             }
         }
     }

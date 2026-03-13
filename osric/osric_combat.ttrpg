@@ -107,6 +107,7 @@ system "OSRIC Combat" {
     // ========================================================
 
     tag attack_resolution
+    tag melee
     tag unarmed_attack
     tag ac_defense
     tag damage_dealt
@@ -494,7 +495,7 @@ system "OSRIC Combat" {
         damage_mod: int = 0,
         roll_mode: RollMode = RollMode.Normal,
         max_damage: bool = false
-    ) -> AttackResult #attack_resolution {
+    ) -> AttackResult #attack_resolution #melee {
         let bthb_val = if attacker is Character {
             character_bthb(attacker)
         } else if attacker is Monster {
@@ -542,7 +543,7 @@ system "OSRIC Combat" {
         damage_mult: int = 1,
         weapon_bonus: int = 0,
         weapon_material: WeaponMaterial = WeaponMaterial.Normal
-    ) -> AttackResult #attack_resolution {
+    ) -> AttackResult #attack_resolution #melee {
         let bthb_val = character_bthb(attacker)
         let str_hit = effective_str_to_hit(attacker)
         let spec_hit = melee_spec_hit_mod(attacker, weapon)
@@ -642,7 +643,7 @@ system "OSRIC Combat" {
         damage_mod: int = 0,
         roll_mode: RollMode = RollMode.Normal,
         max_damage: bool = false
-    ) -> AttackResult #attack_resolution {
+    ) -> AttackResult #attack_resolution #melee {
         let bthb_val = monster_bthb(attacker.hit_dice)
         let target_ac = effective_target_ac(target)
         let total_mod = bthb_val + attack_mod
@@ -1843,7 +1844,7 @@ system "OSRIC Combat" {
         max_damage: bool = false,
         weapon_bonus: int = 0,
         weapon_material: WeaponMaterial = WeaponMaterial.Normal
-    ) -> AttackResult #attack_resolution {
+    ) -> AttackResult #attack_resolution #melee {
         let bthb_val = monster_bthb(attacker.hit_dice)
         let target_ac = effective_target_ac(target)
         let total_mod = bthb_val + attack_mod + weapon_bonus

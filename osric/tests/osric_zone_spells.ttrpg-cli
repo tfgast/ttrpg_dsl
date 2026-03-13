@@ -92,15 +92,15 @@ spawn Zone pfe_zone { name: "pfe-zone-1", source: Spell(name: "Protection from E
 place pfe_zone 5 5
 
 // Before entering: no condition
-assert_no_condition pfe_target, ProtectedFromEvil10
+assert_no_condition pfe_target, ProtectedFromEvil10Zone
 
 // Enter zone
 emit ZoneEntered(target: pfe_target, zone: pfe_zone)
-assert_condition pfe_target, ProtectedFromEvil10
+assert_condition pfe_target, ProtectedFromEvil10Zone
 
 // Exit zone
 emit ZoneExited(target: pfe_target, zone: pfe_zone)
-assert_no_condition pfe_target, ProtectedFromEvil10
+assert_no_condition pfe_target, ProtectedFromEvil10Zone
 
 
 // ── Overlapping PFE zones ────────────────────────────────────────
@@ -116,15 +116,15 @@ place pfe_zone_2b 6 5
 // Enter both
 emit ZoneEntered(target: pfe_target_2, zone: pfe_zone_2a)
 emit ZoneEntered(target: pfe_target_2, zone: pfe_zone_2b)
-assert_condition pfe_target_2, ProtectedFromEvil10
+assert_condition pfe_target_2, ProtectedFromEvil10Zone
 
 // Exit one — still protected by the other
 emit ZoneExited(target: pfe_target_2, zone: pfe_zone_2a)
-assert_condition pfe_target_2, ProtectedFromEvil10
+assert_condition pfe_target_2, ProtectedFromEvil10Zone
 
 // Exit the other — fully unprotected
 emit ZoneExited(target: pfe_target_2, zone: pfe_zone_2b)
-assert_no_condition pfe_target_2, ProtectedFromEvil10
+assert_no_condition pfe_target_2, ProtectedFromEvil10Zone
 
 
 // ══════════════════════════════════════════════════════════════════
@@ -140,7 +140,7 @@ place nm_zone 0 0
 
 emit ZoneEntered(target: nm_target, zone: nm_zone)
 assert_no_condition nm_target, Silenced
-assert_no_condition nm_target, ProtectedFromEvil10
+assert_no_condition nm_target, ProtectedFromEvil10Zone
 
 
 // ══════════════════════════════════════════════════════════════════

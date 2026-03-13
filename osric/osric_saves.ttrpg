@@ -233,7 +233,7 @@ system "OSRIC Saves" {
     //  across entity types should target this derive.
     // ========================================================
 
-    derive entity_best_saves(target: entity) -> SavingThrows {
+    derive entity_best_saves(target: entity, source_entity: option<entity> = none) -> SavingThrows {
         if target is Character {
             character_best_saves(target)
         } else {
@@ -316,11 +316,12 @@ system "OSRIC Saves" {
     action ResistSpell on saver: Character (
         category: option<SaveCategory>,
         bonus: int = 0,
-        is_mental: bool = false
+        is_mental: bool = false,
+        source_entity: option<entity> = none
     ) -> option<bool> {
         resolve {
             if let some(cat) = category {
-                let saves = entity_best_saves(saver)
+                let saves = entity_best_saves(saver, source_entity: source_entity)
 
                 // Stalwart bonus: dwarves/gnomes/halflings vs aimed magic, poison, spells
                 let stalwart = if has_stalwart(saver.ancestry) && is_stalwart_category(cat) {
@@ -347,11 +348,12 @@ system "OSRIC Saves" {
     action ResistSpell on saver: Monster (
         category: option<SaveCategory>,
         bonus: int = 0,
-        is_mental: bool = false
+        is_mental: bool = false,
+        source_entity: option<entity> = none
     ) -> option<bool> {
         resolve {
             if let some(cat) = category {
-                let saves = entity_best_saves(saver)
+                let saves = entity_best_saves(saver, source_entity: source_entity)
                 some(roll_saving_throw(saves, cat, bonus))
             } else {
                 some(false)

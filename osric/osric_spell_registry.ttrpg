@@ -66,6 +66,10 @@ system "OSRIC Spell Registry" {
             def: CURSE_DEF,
             resolve: SpellResolve.Targeted(resolve: resolve_curse)
         },
+        SpellId.ProtectionFromEvilCleric => SpellEntry {
+            def: PROTECTION_FROM_EVIL_CLERIC_DEF,
+            resolve: SpellResolve.Touch(resolve: resolve_protection_from_evil_cleric)
+        },
         // --- Cleric level 2 ---
         SpellId.HoldPerson => SpellEntry {
             def: HOLD_PERSON_DEF,
@@ -122,6 +126,10 @@ system "OSRIC Spell Registry" {
         SpellId.MagicMissile => SpellEntry {
             def: MAGIC_MISSILE_DEF,
             resolve: SpellResolve.Targeted(resolve: resolve_magic_missile)
+        },
+        SpellId.ProtectionFromEvilMU => SpellEntry {
+            def: PROTECTION_FROM_EVIL_MU_DEF,
+            resolve: SpellResolve.Touch(resolve: resolve_protection_from_evil_mu)
         },
         SpellId.ShieldSpell => SpellEntry {
             def: SHIELD_DEF,

@@ -166,6 +166,42 @@ system "OSRIC Cleric Spells" {
 
 
     // ========================================================
+    //  PROTECTION FROM EVIL (§1.8.2.1)
+    //
+    //  Divine abjuration, level 1. Touch, 3 rounds/level.
+    //  Wards one creature: evil attackers -2 to hit,
+    //  summoned creatures cannot touch, +2 saves vs evil.
+    //  Casting time: 4 segments. No saving throw.
+    //  Reversible as Protection from Good.
+    //  Condition defined in osric_conditions.ttrpg (shared
+    //  with Protection from Evil 10' Radius).
+    // ========================================================
+
+    const PROTECTION_FROM_EVIL_CLERIC_DEF: SpellDef = SpellDef {
+        name: "Protection from Evil",
+        class_type: Divine,
+        school: Abjuration,
+        level: 1,
+        range: SpellRange.Touch,
+        duration: SpellDuration.Rounds(count: 0),
+        components: SpellComponents { material: true },
+        casting_time: CastingTime.Segments(count: 4),
+        saving_throw: SpellSave.NoSave,
+        reversible: true,
+        description: "Wards one creature against evil. Evil attackers suffer -2 to hit; summoned creatures cannot touch; +2 to saves vs evil effects. Duration: 3 rounds/level."
+    }
+
+    function resolve_protection_from_evil_cleric(caster: entity, targets: list<entity>) {
+        let target = targets.first().unwrap()
+        let cl = caster_level(caster, Divine)
+        let duration_rounds = 3 * cl
+        let source = EffectSource.Spell(name: "Protection from Evil", caster_level: cl)
+        apply_condition(target, ProtectedFromEvil, Duration.Rounds(duration_rounds), source)
+        emit SpellApplied(caster: caster, target: target, spell_name: "Protection from Evil")
+    }
+
+
+    // ========================================================
     //  HOLD PERSON (§1.8.2.2)
     //
     //  Divine enchantment, level 2. Range 60ft.
