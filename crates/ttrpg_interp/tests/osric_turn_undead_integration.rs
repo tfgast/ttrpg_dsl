@@ -83,10 +83,7 @@ fn has_expected_derives() {
             _ => None,
         })
         .collect();
-    for expected in [
-        "effective_turning_level",
-        "character_can_turn",
-    ] {
+    for expected in ["effective_turning_level", "character_can_turn"] {
         assert!(
             derives.contains(&expected.to_string()),
             "missing derive: {expected}, got: {derives:?}"

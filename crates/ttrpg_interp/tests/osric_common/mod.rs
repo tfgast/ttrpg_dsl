@@ -1319,7 +1319,7 @@ pub struct SpellTestContext {
 
 impl SpellTestContext {
     /// Build a caster with full customisation.
-        pub fn new(
+    pub fn new(
         name: &str,
         class: &str,
         level: i64,

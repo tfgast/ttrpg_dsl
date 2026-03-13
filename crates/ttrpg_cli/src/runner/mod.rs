@@ -369,13 +369,14 @@ impl Runner {
         // Check for loop start before continuation — `repeat N {` and
         // `for VAR in RANGE {` have an intentionally unbalanced `{`.
         if (trimmed.starts_with("repeat ") || trimmed.starts_with("for "))
-            && let Some(cmd) = commands::parse_command(trimmed) {
-                match cmd {
-                    commands::Command::Repeat(tail) => return self.cmd_repeat(&tail),
-                    commands::Command::For(tail) => return self.cmd_for(&tail),
-                    _ => {}
-                }
+            && let Some(cmd) = commands::parse_command(trimmed)
+        {
+            match cmd {
+                commands::Command::Repeat(tail) => return self.cmd_repeat(&tail),
+                commands::Command::For(tail) => return self.cmd_for(&tail),
+                _ => {}
             }
+        }
 
         // Check for explicit backslash continuation
         if let Some(stripped) = trimmed.strip_suffix('\\') {
@@ -719,9 +720,7 @@ impl Runner {
     fn resolve_handle(&self, name: &str) -> Result<EntityRef, CliError> {
         match self.variables.get(name) {
             Some(Value::Entity(entity)) => Ok(*entity),
-            Some(_) => Err(CliError::Message(format!(
-                "'{name}' is not an entity"
-            ))),
+            Some(_) => Err(CliError::Message(format!("'{name}' is not an entity"))),
             None => Err(CliError::Message(format!("unknown handle: {name}"))),
         }
     }

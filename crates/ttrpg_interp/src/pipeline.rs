@@ -233,9 +233,9 @@ pub(crate) fn execute_lifecycle_blocks(
                 if current_state.is_some()
                     && let Some(Value::Struct { fields, .. }) =
                         env.lookup(&Name::from("state")).cloned()
-                    {
-                        current_state = Some(fields);
-                    }
+                {
+                    current_state = Some(fields);
+                }
                 env.pop_scope();
                 env.return_value = None; // clear early-return flag at call boundary
                 r?;

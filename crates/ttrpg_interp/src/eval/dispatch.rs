@@ -82,7 +82,14 @@ pub(crate) fn eval_expr(env: &mut Env, expr: &Spanned<ExprKind>) -> Result<Value
             );
 
             if is_entity {
-                return eval_entity_construction(env, name, fields, groups, with_conditions, expr.span);
+                return eval_entity_construction(
+                    env,
+                    name,
+                    fields,
+                    groups,
+                    with_conditions,
+                    expr.span,
+                );
             }
             // Start from base fields if ..base spread was provided.
             let mut field_map = if let Some(base_expr) = base {

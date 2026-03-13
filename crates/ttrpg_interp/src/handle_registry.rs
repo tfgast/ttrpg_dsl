@@ -33,15 +33,17 @@ impl HandleRegistry {
         // Remove any prior reverse mapping for the *new* entity (it might have
         // a different name already).
         if let Some(old_name) = self.by_entity.insert(entity, name.clone())
-            && old_name != name {
-                self.by_name.remove(&old_name);
-            }
+            && old_name != name
+        {
+            self.by_name.remove(&old_name);
+        }
         // Insert forward mapping and clean up stale reverse entry.
         let prev = self.by_name.insert(name, entity);
         if let Some(prev_entity) = prev
-            && prev_entity != entity {
-                self.by_entity.remove(&prev_entity);
-            }
+            && prev_entity != entity
+        {
+            self.by_entity.remove(&prev_entity);
+        }
         prev
     }
 

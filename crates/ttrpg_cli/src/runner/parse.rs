@@ -55,19 +55,17 @@ impl Runner {
         let enum_name = enum_name?;
         let head = expr_head_ident(&parsed.node)?;
         // Check if the enum actually has this variant
-        let has_variant = self
-            .type_env
-            .types
-            .get(enum_name.as_str())
-            .is_some_and(|decl| match decl {
-                DeclInfo::Enum(info) => info.variants.iter().any(|v| v.name == head),
-                _ => false,
-            });
+        let has_variant =
+            self.type_env
+                .types
+                .get(enum_name.as_str())
+                .is_some_and(|decl| match decl {
+                    DeclInfo::Enum(info) => info.variants.iter().any(|v| v.name == head),
+                    _ => false,
+                });
         if has_variant {
             let span = expr_head_span(parsed);
-            self.type_env
-                .resolved_variants
-                .insert(span, enum_name);
+            self.type_env.resolved_variants.insert(span, enum_name);
             Some(span)
         } else {
             None
@@ -146,8 +144,7 @@ impl Runner {
                     .type_env
                     .lookup_optional_group(entity_type, group_name)
                     .map(|g| g.fields.clone());
-                let group_fields =
-                    self.parse_field_block(inner_block, group_schema.as_deref())?;
+                let group_fields = self.parse_field_block(inner_block, group_schema.as_deref())?;
                 groups.push((group_name.to_string(), group_fields));
             } else {
                 // Field: key: value
@@ -180,9 +177,7 @@ impl Runner {
 
                     // Inject enum type hint so the interpreter can disambiguate
                     // bare variant names that appear in multiple enums.
-                    let hint_span = if let Some(fields) =
-                        self.type_env.lookup_fields(entity_type)
-                    {
+                    let hint_span = if let Some(fields) = self.type_env.lookup_fields(entity_type) {
                         let fields = fields.to_vec();
                         self.inject_enum_hint(key, &parsed, &fields)
                     } else {
@@ -248,8 +243,7 @@ impl Runner {
         schema_fields: Option<&[ttrpg_checker::env::FieldInfo]>,
     ) -> Result<HashMap<String, Value>, CliError> {
         // Clone schema fields to avoid holding a borrow on self.type_env.
-        let schema: Option<Vec<ttrpg_checker::env::FieldInfo>> =
-            schema_fields.map(|f| f.to_vec());
+        let schema: Option<Vec<ttrpg_checker::env::FieldInfo>> = schema_fields.map(|f| f.to_vec());
 
         let mut fields = HashMap::new();
         let entries = split_top_level_commas(block);

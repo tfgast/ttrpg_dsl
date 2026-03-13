@@ -68,7 +68,8 @@ fn osric_combined_coverage() {
         }
     }
 
-    assert!(errors.is_empty(), 
+    assert!(
+        errors.is_empty(),
         "{} error(s) running CLI test scripts:\n{}",
         errors.len(),
         errors.join("\n")

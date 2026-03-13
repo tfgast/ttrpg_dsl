@@ -51,9 +51,15 @@ impl Checker<'_> {
                 self.check_fields(name, fields, declared_fields, base, &result_ty, span);
                 result_ty
             }
-            DeclInfo::Entity(info) => {
-                self.check_entity_construction(name, info, fields, groups, base, with_conditions, span)
-            }
+            DeclInfo::Entity(info) => self.check_entity_construction(
+                name,
+                info,
+                fields,
+                groups,
+                base,
+                with_conditions,
+                span,
+            ),
             DeclInfo::Enum(_) => {
                 if !with_conditions.is_empty() {
                     self.error(
@@ -139,9 +145,7 @@ impl Checker<'_> {
             let cond_ty = self.check_expr(cond_expr);
             if !cond_ty.is_error() && !self.types_compatible(&cond_ty, &Ty::Condition) {
                 self.error(
-                    format!(
-                        "`with` clause expects Condition values, got {cond_ty}"
-                    ),
+                    format!("`with` clause expects Condition values, got {cond_ty}"),
                     cond_expr.span,
                 );
             }

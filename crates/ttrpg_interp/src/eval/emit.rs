@@ -238,23 +238,25 @@ pub(crate) fn execute_condition_event_handler(
 
     // 5. Read back mutated state before popping scope
     if current_state.is_some()
-        && let Some(Value::Struct { fields, .. }) = env.lookup(&Name::from("state")).cloned() {
-            current_state = Some(fields);
-        }
+        && let Some(Value::Struct { fields, .. }) = env.lookup(&Name::from("state")).cloned()
+    {
+        current_state = Some(fields);
+    }
     env.pop_scope();
     env.return_value = None;
     result?;
 
     // 6. Write back state via Effect::SetConditionState
     if let Some(final_state) = current_state
-        && !final_state.is_empty() {
-            let effect = Effect::SetConditionState {
-                target: bearer,
-                condition_id: cond_instance.id,
-                fields: final_state,
-            };
-            env.handler.handle(effect);
-        }
+        && !final_state.is_empty()
+    {
+        let effect = Effect::SetConditionState {
+            target: bearer,
+            condition_id: cond_instance.id,
+            fields: final_state,
+        };
+        env.handler.handle(effect);
+    }
 
     Ok(())
 }

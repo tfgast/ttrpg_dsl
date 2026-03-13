@@ -432,21 +432,22 @@ impl Checker<'_> {
                     };
                     if let Some((field_name, group_owner, entity_owner)) =
                         self.lookup_restricted_field_owners(&current, &resolved_name)
-                        && !self.restricted_field_mutation_allowed(&group_owner, &entity_owner) {
-                            let declaring_sys = group_owner.as_ref().or(entity_owner.as_ref());
-                            if let (Some(current_sys), Some(declaring_sys)) =
-                                (&self.current_system, declaring_sys)
-                            {
-                                self.error(
+                        && !self.restricted_field_mutation_allowed(&group_owner, &entity_owner)
+                    {
+                        let declaring_sys = group_owner.as_ref().or(entity_owner.as_ref());
+                        if let (Some(current_sys), Some(declaring_sys)) =
+                            (&self.current_system, declaring_sys)
+                        {
+                            self.error(
                                     format!(
                                         "cannot mutate restricted field `{field_name}` from system \"{current_sys}\"; \
                                          it is declared in system \"{declaring_sys}\""
                                     ),
                                     span,
                                 );
-                                return;
-                            }
+                            return;
                         }
+                    }
                     current = self.resolve_field(&current, &resolved_name, lvalue.span);
                     path_key = format!("{path_key}.{name}");
                 }

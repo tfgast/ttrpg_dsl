@@ -28,9 +28,7 @@ impl Runner {
         }
 
         if self.variables.contains_key(handle) {
-            return Err(CliError::Message(format!(
-                "name '{handle}' already in use"
-            )));
+            return Err(CliError::Message(format!("name '{handle}' already in use")));
         }
 
         // Validate entity type against loaded declarations

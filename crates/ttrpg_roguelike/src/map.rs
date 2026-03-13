@@ -11,7 +11,6 @@ impl Tile {
     pub fn walkable(self) -> bool {
         self == Tile::Floor
     }
-
 }
 
 // ── Map ─────────────────────────────────────────────────────────

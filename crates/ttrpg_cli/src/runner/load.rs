@@ -10,8 +10,7 @@ impl Runner {
         self.game_state = RefCell::new(GameState::new());
         self.last_paths = paths;
         self.handles.clear();
-        self.variables
-            .retain(|_, v| !matches!(v, Value::Entity(_)));
+        self.variables.retain(|_, v| !matches!(v, Value::Entity(_)));
         self.source_map = None;
         self.unit_suffixes = crate::format::UnitSuffixes::new();
     }
@@ -214,8 +213,7 @@ impl Runner {
             self.source_map = Some(MultiSourceMap::new(sources));
             self.last_paths = resolved_paths;
             self.handles.clear();
-            self.variables
-                .retain(|_, v| !matches!(v, Value::Entity(_)));
+            self.variables.retain(|_, v| !matches!(v, Value::Entity(_)));
             self.output.push(loaded_label);
             Ok(())
         } else {
@@ -285,8 +283,7 @@ impl Runner {
             self.diagnostics = all_diags;
             self.last_paths = Vec::new();
             self.handles.clear();
-            self.variables
-                .retain(|_, v| !matches!(v, Value::Entity(_)));
+            self.variables.retain(|_, v| !matches!(v, Value::Entity(_)));
             self.output.push("loaded <source>".into());
             self.source_map = Some(MultiSourceMap::new(sources));
             Ok(())

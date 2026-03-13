@@ -94,9 +94,10 @@ pub(super) fn bind_args(
 
     // Debug-only: validate entity-typed arguments match declared parameter types
     if cfg!(debug_assertions)
-        && let Ok(ref bound) = outcome {
-            debug_assert_entity_args(params, bound, env.state);
-        }
+        && let Ok(ref bound) = outcome
+    {
+        debug_assert_entity_args(params, bound, env.state);
+    }
 
     outcome
 }
@@ -173,12 +174,13 @@ fn debug_assert_entity_args(
     for (name, val) in bound {
         if let Some(param) = params.iter().find(|p| &p.name == name)
             && let (Value::Entity(eref), Ty::Entity(expected)) = (val, &param.ty)
-                && let Some(actual) = state.entity_type_name(eref) {
-                    debug_assert!(
-                        &actual == expected,
-                        "entity type mismatch for parameter '{name}': expected '{expected}', got '{actual}'"
-                    );
-                }
+            && let Some(actual) = state.entity_type_name(eref)
+        {
+            debug_assert!(
+                &actual == expected,
+                "entity type mismatch for parameter '{name}': expected '{expected}', got '{actual}'"
+            );
+        }
     }
 }
 
