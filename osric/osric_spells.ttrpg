@@ -1090,6 +1090,12 @@ system "OSRIC Spells" {
             result.outcome = AttackOutcome.Miss
             result.damage = 0
         }
+
+        // If a casting character takes damage, the spell is lost.
+        on Damaged(target: bearer) {
+            remove_condition(bearer, CastingSpell)
+            emit SpellInterrupted(caster: bearer)
+        }
     }
 
 
@@ -1098,24 +1104,6 @@ system "OSRIC Spells" {
     // ========================================================
 
     event SpellInterrupted(caster: Character) {}
-
-
-    // ========================================================
-    //  SPELL INTERRUPTION HOOK
-    //
-    //  If a casting character takes damage, the spell is lost.
-    //  The CastingSpell condition is removed and the
-    //  SpellInterrupted event is emitted.
-    // ========================================================
-
-    hook SpellInterruption on caster: Character with Spellcasting (
-        trigger: Damaged(target: caster)
-    ) {
-        if has_condition(caster, CastingSpell) {
-            remove_condition(caster, CastingSpell)
-            emit SpellInterrupted(caster: caster)
-        }
-    }
 
 
     // ========================================================
@@ -1154,7 +1142,7 @@ system "OSRIC Spells" {
     //  BEGIN CASTING ACTION
     //
     //  Applies CastingSpell condition, making the caster
-    //  interruptible by damage (see SpellInterruption hook).
+    //  interruptible by damage (see CastingSpell on Damaged).
     //  Requires Spellcasting optional group.
     // ========================================================
 
@@ -1203,6 +1191,14 @@ system "OSRIC Spells" {
             result.outcome = AttackOutcome.Miss
             result.damage = 0
         }
+
+        // Auto-break concentration on death or knockout.
+        on CharacterDead(target: bearer) {
+            bearer.BreakConcentration()
+        }
+        on CharacterUnconscious(target: bearer) {
+            bearer.BreakConcentration()
+        }
     }
 
 
@@ -1230,32 +1226,6 @@ system "OSRIC Spells" {
             caster.sc.concentrating_on = none
             remove_condition(caster, Concentrating)
             emit ConcentrationBroken(caster: caster)
-        }
-    }
-
-
-    // ── Auto-break concentration on death ──
-
-    hook ConcentrationBreakOnDeath on caster: Character (
-        trigger: CharacterDead(target: caster)
-    ) {
-        if caster has Spellcasting as sc {
-            if caster.sc.concentrating_on != none {
-                caster.BreakConcentration()
-            }
-        }
-    }
-
-
-    // ── Auto-break concentration on knockout ──
-
-    hook ConcentrationBreakOnKO on caster: Character (
-        trigger: CharacterUnconscious(target: caster)
-    ) {
-        if caster has Spellcasting as sc {
-            if caster.sc.concentrating_on != none {
-                caster.BreakConcentration()
-            }
         }
     }
 }

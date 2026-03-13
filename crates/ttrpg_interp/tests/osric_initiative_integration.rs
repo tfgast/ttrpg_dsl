@@ -192,7 +192,8 @@ fn initiative_has_conditions() {
 #[test]
 fn initiative_has_hooks() {
     let (program, _) = compile_osric_initiative();
-    // SpellInterruption moved to OSRIC Spells module
+    // SpellInterruption migrated to CastingSpell on-event handler;
+    // OnConcentrationStarted remains as a hook.
     let decls = get_spells_decls(&program);
     let hooks: Vec<_> = decls
         .iter()
@@ -202,8 +203,8 @@ fn initiative_has_hooks() {
         })
         .collect();
     assert!(
-        hooks.contains(&"SpellInterruption"),
-        "missing SpellInterruption hook"
+        hooks.contains(&"OnConcentrationStarted"),
+        "missing OnConcentrationStarted hook"
     );
 }
 
