@@ -785,6 +785,13 @@ fn exec_modify_stmts_phase1(
                 else_body,
                 ..
             } => {
+                // Skip if blocks that contain only Phase 2 stmts (result overrides).
+                // Their conditions may reference `result` which isn't bound yet in Phase 1.
+                if !has_phase1_stmts(then_body)
+                    && !else_body.as_ref().is_some_and(|e| has_phase1_stmts(e))
+                {
+                    continue;
+                }
                 let cond = eval_expr(env, condition)?;
                 match cond {
                     Value::Bool(true) => {
@@ -950,6 +957,20 @@ fn exec_modify_stmts_phase2(
         }
     }
     Ok(())
+}
+
+/// Check if any modify stmts contain Phase 1 operations (non-result param overrides, lets).
+fn has_phase1_stmts(stmts: &[ModifyStmt]) -> bool {
+    stmts.iter().any(|s| match s {
+        ModifyStmt::ParamOverride { name, .. } => name != "result",
+        ModifyStmt::Let { .. } => true,
+        ModifyStmt::If {
+            then_body,
+            else_body,
+            ..
+        } => has_phase1_stmts(then_body) || else_body.as_ref().is_some_and(|e| has_phase1_stmts(e)),
+        _ => false,
+    })
 }
 
 /// Check if any modify stmts contain Phase 2 operations.

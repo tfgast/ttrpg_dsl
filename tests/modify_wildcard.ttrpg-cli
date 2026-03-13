@@ -1,0 +1,64 @@
+// Test wildcard modify bindings and result-referencing if blocks in Phase 1/2
+source -s <<END
+    unit Feet suffix ft { value: int }
+    enum MovementMode { Walk, Climb, Fly }
+
+    struct CheckResult {
+        outcome: int
+        chance: int
+    }
+
+    entity Character {}
+
+    derive get_movement_speed(target: entity, mode: MovementMode) -> Feet {
+        if mode == Walk { 30ft } else { 0ft }
+    }
+
+    derive check_something(target: entity) -> CheckResult {
+        CheckResult { outcome: 0, chance: 4 }
+    }
+
+    // Condition with wildcard binding and result-referencing if block
+    condition SpiderClimbing on bearer: entity
+        stacking first
+    {
+        modify get_movement_speed(target: bearer, mode: _) {
+            if result.value < 30 {
+                result = 30ft
+            }
+        }
+    }
+
+    // Condition with both Phase 1 and Phase 2 modifiers
+    condition Enchanted on bearer: entity
+        stacking first
+    {
+        modify check_something(target: bearer) {
+            result = CheckResult { outcome: result.outcome + 1, chance: result.chance }
+        }
+        modify get_movement_speed(target: bearer, mode: _) {
+            result = 60ft
+        }
+    }
+END
+
+// ── Wildcard binding with result-referencing if block ──────────
+
+spawn Character fighter
+eval apply_condition(fighter, SpiderClimbing, Duration.Indefinite)
+
+// Wildcard matches all modes
+assert_eq get_movement_speed(fighter, Climb), 30ft
+assert_eq get_movement_speed(fighter, Fly), 30ft
+
+// Walk already returns 30ft, so the if condition (result.value < 30) is false
+assert_eq get_movement_speed(fighter, Walk), 30ft
+
+// ── Multiple modify clauses on different functions ─────────────
+
+spawn Character wizard
+eval apply_condition(wizard, Enchanted, Duration.Indefinite)
+
+assert_eq check_something(wizard).outcome, 1
+assert_eq get_movement_speed(wizard, Climb), 60ft
+assert_eq get_movement_speed(wizard, Walk), 60ft
