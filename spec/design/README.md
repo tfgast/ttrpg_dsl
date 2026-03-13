@@ -2,7 +2,7 @@
 
 Design rationale for implemented language features. These documents capture the motivation, alternatives considered, and decisions made during design — they are not the primary reference for how to use these features (see `doc/language_reference.md` and `doc/ai_authoring.md` for that).
 
-All features below are **implemented** and in active use.
+Documents marked **Proposed** are under design; all others are **implemented** and in active use.
 
 | Document | Feature |
 |----------|---------|
@@ -12,3 +12,4 @@ All features below are **implemented** and in active use.
 | [transfer_conditions.md](transfer_conditions.md) | Atomic condition transfer between entities (polymorph) |
 | [condition_event_handlers.md](condition_event_handlers.md) | Event-reactive logic co-located with condition declarations |
 | [with_budget.md](with_budget.md) | Function-provisioned turn budgets for calling costed actions |
+| [step_based_execution.md](step_based_execution.md) | **(Proposed)** Resumable poll/respond execution API with explicit frame stack |
