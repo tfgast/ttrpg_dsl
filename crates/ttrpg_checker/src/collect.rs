@@ -1502,6 +1502,35 @@ fn collect_condition(
     );
 
     // Register on-event clauses in the condition trigger index.
+    let has_on_event = c
+        .clauses
+        .iter()
+        .any(|cl| matches!(cl, ConditionClause::OnEvent(_)));
+
+    // `trigger` is reserved in conditions that declare on-event handlers.
+    if has_on_event {
+        if c.receiver_name == "trigger" {
+            diagnostics.push(Diagnostic::error(
+                format!(
+                    "condition `{}` receiver `trigger` shadows the implicit trigger binding",
+                    c.name
+                ),
+                span,
+            ));
+        }
+        for p in &c.params {
+            if p.name == "trigger" {
+                diagnostics.push(Diagnostic::error(
+                    format!(
+                        "condition `{}` parameter `trigger` shadows the implicit trigger binding",
+                        c.name
+                    ),
+                    span,
+                ));
+            }
+        }
+    }
+
     for (i, clause) in c.clauses.iter().enumerate() {
         if let ConditionClause::OnEvent(oe) = clause {
             env.condition_trigger_index
