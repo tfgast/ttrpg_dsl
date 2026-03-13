@@ -543,7 +543,7 @@ impl Runner {
                 .strip_prefix('{')
                 .and_then(|s| s.strip_suffix('}'))
                 .ok_or_else(|| CliError::Message("unmatched '{' in grant".into()))?;
-            self.parse_field_block(block)?
+            self.parse_field_block(block, None)?
         } else if rest.is_empty() {
             HashMap::new()
         } else {

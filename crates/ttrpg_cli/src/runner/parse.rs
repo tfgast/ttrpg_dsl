@@ -1,6 +1,79 @@
+use ttrpg_ast::ast::ExprKind;
+use ttrpg_checker::env::DeclInfo;
+use ttrpg_checker::ty::Ty;
+
 use super::*;
 
+/// Extract the head identifier name from an expression.
+///
+/// For `Radius` → `"Radius"`, for `Radius(radius: 15ft)` → `"Radius"`.
+fn expr_head_ident(expr: &ExprKind) -> Option<&str> {
+    match expr {
+        ExprKind::Ident(name) => Some(name.as_str()),
+        ExprKind::Call { callee, .. } => {
+            if let ExprKind::Ident(name) = &callee.node {
+                Some(name.as_str())
+            } else {
+                None
+            }
+        }
+        _ => None,
+    }
+}
+
+/// Extract the span of the head identifier from an expression.
+///
+/// For a bare ident, returns its span. For a call, returns the callee span.
+fn expr_head_span(expr: &ttrpg_ast::Spanned<ExprKind>) -> ttrpg_ast::Span {
+    match &expr.node {
+        ExprKind::Call { callee, .. } => callee.span,
+        _ => expr.span,
+    }
+}
+
 impl Runner {
+    /// If a field's declared type is an enum and the parsed expression's head
+    /// ident matches a variant of that enum, inject the resolution into
+    /// `self.type_env.resolved_variants` so the interpreter can disambiguate
+    /// overlapping variant names.
+    ///
+    /// Returns the injected span (if any) so the caller can remove it after
+    /// evaluation — SYNTH spans overlap across parse_expr calls.
+    fn inject_enum_hint(
+        &mut self,
+        field_name: &str,
+        parsed: &ttrpg_ast::Spanned<ExprKind>,
+        schema_fields: &[ttrpg_checker::env::FieldInfo],
+    ) -> Option<ttrpg_ast::Span> {
+        let enum_name = schema_fields
+            .iter()
+            .find(|f| f.name == field_name)
+            .and_then(|fi| match &fi.ty {
+                Ty::Enum(n) => Some(n.clone()),
+                _ => None,
+            });
+        let enum_name = enum_name?;
+        let head = expr_head_ident(&parsed.node)?;
+        // Check if the enum actually has this variant
+        let has_variant = self
+            .type_env
+            .types
+            .get(enum_name.as_str())
+            .is_some_and(|decl| match decl {
+                DeclInfo::Enum(info) => info.variants.iter().any(|v| v.name == head),
+                _ => false,
+            });
+        if has_variant {
+            let span = expr_head_span(parsed);
+            self.type_env
+                .resolved_variants
+                .insert(span, enum_name);
+            Some(span)
+        } else {
+            None
+        }
+    }
+
     /// Parse a spawn block that may contain both fields and inline groups.
     ///
     /// Entries are split by top-level commas. Each entry is classified as:
@@ -69,7 +142,12 @@ impl Runner {
                     )));
                 }
 
-                let group_fields = self.parse_field_block(inner_block)?;
+                let group_schema: Option<Vec<_>> = self
+                    .type_env
+                    .lookup_optional_group(entity_type, group_name)
+                    .map(|g| g.fields.clone());
+                let group_fields =
+                    self.parse_field_block(inner_block, group_schema.as_deref())?;
                 groups.push((group_name.to_string(), group_fields));
             } else {
                 // Field: key: value
@@ -100,6 +178,17 @@ impl Runner {
                         CliError::Message(format!("failed to parse value for field '{key}'"))
                     })?;
 
+                    // Inject enum type hint so the interpreter can disambiguate
+                    // bare variant names that appear in multiple enums.
+                    let hint_span = if let Some(fields) =
+                        self.type_env.lookup_fields(entity_type)
+                    {
+                        let fields = fields.to_vec();
+                        self.inject_enum_hint(key, &parsed, &fields)
+                    } else {
+                        None
+                    };
+
                     let cov_rc = self.coverage_rc();
                     let mut interp = Interpreter::new(&self.program, &self.type_env)
                         .map_err(|e| render_runtime_error(&e, &self.source_map))?;
@@ -128,6 +217,13 @@ impl Runner {
                     for line in handler.log.drain(..) {
                         self.output.push(line);
                     }
+
+                    // Clean up injected hint — SYNTH spans overlap across
+                    // parse_expr calls and could poison later evaluations.
+                    if let Some(span) = hint_span {
+                        self.type_env.resolved_variants.remove(&span);
+                    }
+
                     result
                 };
                 if fields.contains_key(key) {
@@ -143,10 +239,18 @@ impl Runner {
     }
 
     /// Parse a field block like `key: expr, key: expr` into a HashMap.
+    ///
+    /// If `schema_fields` is provided, enum type hints are injected to
+    /// disambiguate bare variant names that appear in multiple enums.
     pub(super) fn parse_field_block(
         &mut self,
         block: &str,
+        schema_fields: Option<&[ttrpg_checker::env::FieldInfo]>,
     ) -> Result<HashMap<String, Value>, CliError> {
+        // Clone schema fields to avoid holding a borrow on self.type_env.
+        let schema: Option<Vec<ttrpg_checker::env::FieldInfo>> =
+            schema_fields.map(|f| f.to_vec());
+
         let mut fields = HashMap::new();
         let entries = split_top_level_commas(block);
         for entry in entries {
@@ -182,6 +286,11 @@ impl Runner {
                     CliError::Message(format!("failed to parse value for field '{key}'"))
                 })?;
 
+                // Inject enum type hint for disambiguation.
+                let hint_span = schema
+                    .as_ref()
+                    .and_then(|sf| self.inject_enum_hint(key, &parsed, sf));
+
                 let interp = Interpreter::new(&self.program, &self.type_env)
                     .map_err(|e| render_runtime_error(&e, &self.source_map))?;
                 let state = RefCellState(&self.game_state);
@@ -206,6 +315,12 @@ impl Runner {
                 for line in handler.log.drain(..) {
                     self.output.push(line);
                 }
+
+                // Clean up injected hint — SYNTH spans overlap.
+                if let Some(span) = hint_span {
+                    self.type_env.resolved_variants.remove(&span);
+                }
+
                 result
             };
             if fields.contains_key(key) {

@@ -1,0 +1,57 @@
+// Test that bare enum variant names are disambiguated in spawn blocks
+// when the field type provides a unique hint.
+//
+// Regression test for tdsl-shkw: "CLI spawn block fails to disambiguate
+// bare enum variants with overlapping names"
+
+source <<END
+system TestDisambiguation {
+    enum ShapeA {
+        Circle(radius: int),
+        Square(side: int),
+        OnlyA
+    }
+
+    enum ShapeB {
+        Circle(radius: int),
+        Triangle(base: int, height: int),
+        OnlyB
+    }
+
+    entity Widget {
+        name: string
+        shape: ShapeA
+    }
+
+    entity Gadget {
+        name: string
+        shape: ShapeB
+    }
+}
+END
+
+// ── Bare variant with fields: field type disambiguates ──────────
+
+// ShapeA.Circle via bare Circle — field type is ShapeA
+spawn Widget w1 { name: "w1", shape: Circle(radius: 10) }
+assert_match w1.shape, ShapeA.Circle
+
+// ShapeB.Circle via bare Circle — field type is ShapeB
+spawn Gadget g1 { name: "g1", shape: Circle(radius: 20) }
+assert_match g1.shape, ShapeB.Circle
+
+// ── Unique variants still resolve without hints ─────────────────
+
+spawn Widget w2 { name: "w2", shape: Square(side: 5) }
+assert_match w2.shape, ShapeA.Square
+
+spawn Gadget g2 { name: "g2", shape: Triangle(base: 3, height: 4) }
+assert_match g2.shape, ShapeB.Triangle
+
+// ── Qualified names still work ──────────────────────────────────
+
+spawn Widget w3 { name: "w3", shape: ShapeA.Circle(radius: 15) }
+assert_match w3.shape, ShapeA.Circle
+
+spawn Gadget g3 { name: "g3", shape: ShapeB.Circle(radius: 25) }
+assert_match g3.shape, ShapeB.Circle
