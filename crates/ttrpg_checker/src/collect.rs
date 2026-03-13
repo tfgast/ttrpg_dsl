@@ -1500,6 +1500,16 @@ fn collect_condition(
             state_fields,
         },
     );
+
+    // Register on-event clauses in the condition trigger index.
+    for (i, clause) in c.clauses.iter().enumerate() {
+        if let ConditionClause::OnEvent(oe) = clause {
+            env.condition_trigger_index
+                .entry(oe.trigger.event_name.clone())
+                .or_default()
+                .push((name.clone(), i));
+        }
+    }
 }
 
 fn collect_prompt(

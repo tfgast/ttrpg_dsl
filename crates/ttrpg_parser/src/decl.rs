@@ -1155,9 +1155,15 @@ impl Parser {
                 clauses.push(ConditionClause::Periodic(pc));
             } else if self.at_ident("include") {
                 clauses.push(ConditionClause::Include(self.parse_include_clause()?));
+            } else if self.at_ident("on")
+                && matches!(self.peek_at(1), TokenKind::Ident(_))
+                && matches!(self.peek_at(2), TokenKind::LParen)
+            {
+                seen_executable = true;
+                clauses.push(ConditionClause::OnEvent(self.parse_on_event_clause()?));
             } else {
                 self.error(format!(
-                    "expected `tags`, `state`, `modify`, `suppress`, `include`, `on_apply`, `on_remove`, or `periodic` in condition body, found {}",
+                    "expected `tags`, `state`, `modify`, `suppress`, `include`, `on`, `on_apply`, `on_remove`, or `periodic` in condition body, found {}",
                     self.peek()
                 ));
                 return Err(());
@@ -1283,6 +1289,31 @@ impl Parser {
         self.advance();
         let body = self.parse_block()?;
         Ok(LifecycleBlock {
+            body,
+            span: self.end_span(start),
+        })
+    }
+
+    /// Parse `on EventName(bindings...) { ... }` clause inside a condition body.
+    fn parse_on_event_clause(&mut self) -> Result<OnEventClause, ()> {
+        let start = self.start_span();
+        self.expect_soft_keyword("on")?;
+        let (event_name, _) = self.expect_ident()?;
+        self.expect(&TokenKind::LParen)?;
+        let bindings = if matches!(self.peek(), TokenKind::RParen) {
+            Vec::new()
+        } else {
+            self.parse_trigger_bindings()?
+        };
+        self.expect(&TokenKind::RParen)?;
+        let trigger = TriggerExpr {
+            event_name,
+            bindings,
+            span: self.end_span(start),
+        };
+        let body = self.parse_block()?;
+        Ok(OnEventClause {
+            trigger,
             body,
             span: self.end_span(start),
         })

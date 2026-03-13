@@ -181,6 +181,10 @@ pub struct TypeEnv {
     /// Event name → reaction/hook function names that trigger on it (declaration order).
     pub trigger_index: FxHashMap<Name, Vec<Name>>,
 
+    /// Event name → condition on-event handlers: (condition_name, clause_index).
+    /// Populated during condition collection for `ConditionClause::OnEvent` clauses.
+    pub condition_trigger_index: FxHashMap<Name, Vec<(Name, usize)>>,
+
     // ── Tag / selector data ─────────────────────────────────────────
     // ── Const data ────────────────────────────────────────────────
     /// Const name → resolved type.
@@ -242,6 +246,7 @@ impl TypeEnv {
             system_aliases: FxHashMap::default(),
             action_overloads: FxHashMap::default(),
             trigger_index: FxHashMap::default(),
+            condition_trigger_index: FxHashMap::default(),
             consts: FxHashMap::default(),
             const_owner: FxHashMap::default(),
             tags: FxHashSet::default(),
