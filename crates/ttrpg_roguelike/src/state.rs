@@ -18,15 +18,11 @@ use ttrpg_interp::value::{DiceExpr, RollResult, Value};
 /// non-mutation effects here (RollDice, ActionStarted, etc.).
 pub struct RoguelikeHandler {
     pub rng: StdRng,
-    pub log: Vec<String>,
 }
 
 impl RoguelikeHandler {
     pub fn new(rng: StdRng) -> Self {
-        RoguelikeHandler {
-            rng,
-            log: Vec::new(),
-        }
+        RoguelikeHandler { rng }
     }
 }
 
@@ -130,19 +126,6 @@ pub fn spawn_creature(
     fields.insert(Name::from("speed"), Value::Int(30));
 
     state.add_entity("Creature", fields)
-}
-
-/// Update a creature's position in the game state.
-pub fn set_position(state: &mut GameState, entity: &EntityRef, x: i64, y: i64) {
-    use ttrpg_interp::effect::FieldPathSegment;
-    use ttrpg_interp::state::WritableState;
-
-    let pos_val = state.register_position(GridPosition(x, y));
-    state.write_field(
-        entity,
-        &[FieldPathSegment::Field(Name::from("position"))],
-        pos_val,
-    );
 }
 
 /// Read a creature's current position as (x, y).

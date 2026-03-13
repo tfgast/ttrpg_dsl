@@ -1,6 +1,4 @@
 use pathfinding::prelude::astar;
-use ttrpg_interp::state::EntityRef;
-
 // ── Tile ────────────────────────────────────────────────────────
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -14,12 +12,6 @@ impl Tile {
         self == Tile::Floor
     }
 
-    pub fn glyph(self) -> char {
-        match self {
-            Tile::Floor => '.',
-            Tile::Wall => '#',
-        }
-    }
 }
 
 // ── Map ─────────────────────────────────────────────────────────
@@ -177,7 +169,6 @@ impl Map {
 // ── Entity display info ─────────────────────────────────────────
 
 pub struct EntityDisplay {
-    pub entity: EntityRef,
     pub x: i64,
     pub y: i64,
     pub glyph: char,

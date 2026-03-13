@@ -45,7 +45,6 @@ impl Game {
 
         if let Some((x, y)) = read_position(state, &self.player) {
             displays.push(EntityDisplay {
-                entity: self.player,
                 x,
                 y,
                 glyph: '@',
@@ -61,7 +60,6 @@ impl Game {
                 let name = read_name(state, &monster);
                 let glyph = name.chars().next().unwrap_or('?');
                 displays.push(EntityDisplay {
-                    entity: monster,
                     x,
                     y,
                     glyph,
@@ -94,15 +92,6 @@ impl Game {
         None
     }
 
-    /// Check if a tile is occupied by a living monster.
-    fn occupied_by_monster(
-        &self,
-        state: &dyn ttrpg_interp::state::StateProvider,
-        x: i64,
-        y: i64,
-    ) -> bool {
-        self.monster_at(state, x, y).is_some()
-    }
 }
 
 // ── DSL loading ─────────────────────────────────────────────────
