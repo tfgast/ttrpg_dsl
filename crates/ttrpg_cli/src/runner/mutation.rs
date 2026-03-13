@@ -48,21 +48,25 @@ impl Runner {
             }
         }
 
-        // Parse optional field block (may contain inline groups)
+        // Parse optional field block (may contain inline groups) and `with [...]` clause
         let rest = rest.trim();
-        let (fields, inline_groups) = if rest.starts_with('{') {
-            let block = rest
-                .strip_prefix('{')
-                .and_then(|s| s.strip_suffix('}'))
+        let (fields, inline_groups, with_conditions_str) = if rest.starts_with('{') {
+            let close = find_matching_brace(rest)
                 .ok_or_else(|| CliError::Message("unmatched '{' in spawn".into()))?;
-            self.parse_spawn_block(block, entity_type)?
-        } else if rest.is_empty() {
-            (HashMap::new(), Vec::new())
+            let block = &rest[1..close]; // contents between { }
+            let after_brace = rest[close + 1..].trim();
+            let (flds, grps) = self.parse_spawn_block(block, entity_type)?;
+            (flds, grps, after_brace)
+        } else if rest.is_empty() || rest.starts_with("with") {
+            (HashMap::new(), Vec::new(), rest)
         } else {
             return Err(CliError::Message(format!(
                 "unexpected text after handle: {rest}"
             )));
         };
+
+        // Parse optional `with [Cond1, Cond2(...)]` clause
+        let condition_strs = parse_with_clause(with_conditions_str)?;
 
         // Validate field names and types against entity schema
         if let Some(schema_fields) = self.type_env.lookup_fields(entity_type) {
@@ -133,6 +137,12 @@ impl Runner {
                 &[FieldPathSegment::Field(Name::from(group_name))],
                 struct_val,
             );
+        }
+
+        // Apply `with [...]` conditions as Indefinite
+        for cond_str in &condition_strs {
+            let expr = format!("apply_condition({handle}, {cond_str}, Duration.Indefinite)");
+            self.eval(&expr)?;
         }
 
         self.output
@@ -564,6 +574,84 @@ impl Runner {
 ///
 /// Recognises `+=`, `-=`, and plain `=`. The scan is quote-aware so that
 /// `=` inside a string literal on the RHS doesn't confuse the split.
+/// Find the index of the `}` that matches the opening `{` at position 0.
+/// Returns `None` if braces are unmatched.
+fn find_matching_brace(s: &str) -> Option<usize> {
+    let mut depth = 0i32;
+    let mut in_string = false;
+    for (i, c) in s.char_indices() {
+        if c == '"' {
+            in_string = !in_string;
+            continue;
+        }
+        if in_string {
+            if c == '\\' {
+                // skip next char (handled by char_indices advancing)
+            }
+            continue;
+        }
+        match c {
+            '{' => depth += 1,
+            '}' => {
+                depth -= 1;
+                if depth == 0 {
+                    return Some(i);
+                }
+            }
+            _ => {}
+        }
+    }
+    None
+}
+
+/// Parse a `with [Cond1, Cond2(...)]` clause from the remaining text after
+/// a spawn block. Returns the individual condition expression strings.
+fn parse_with_clause(s: &str) -> Result<Vec<String>, CliError> {
+    let s = s.trim();
+    if s.is_empty() {
+        return Ok(Vec::new());
+    }
+    if !s.starts_with("with") {
+        return Err(CliError::Message(format!(
+            "unexpected text after spawn block: {s}"
+        )));
+    }
+    let rest = s[4..].trim();
+    let inner = rest
+        .strip_prefix('[')
+        .and_then(|s| s.strip_suffix(']'))
+        .ok_or_else(|| {
+            CliError::Message("expected `[...]` after `with` in spawn command".into())
+        })?;
+    let inner = inner.trim();
+    if inner.is_empty() {
+        return Ok(Vec::new());
+    }
+    // Split on top-level commas (respecting parentheses)
+    let mut conds = Vec::new();
+    let mut depth = 0i32;
+    let mut start = 0;
+    for (i, c) in inner.char_indices() {
+        match c {
+            '(' | '[' | '{' => depth += 1,
+            ')' | ']' | '}' => depth -= 1,
+            ',' if depth == 0 => {
+                let part = inner[start..i].trim();
+                if !part.is_empty() {
+                    conds.push(part.to_string());
+                }
+                start = i + 1;
+            }
+            _ => {}
+        }
+    }
+    let last = inner[start..].trim();
+    if !last.is_empty() {
+        conds.push(last.to_string());
+    }
+    Ok(conds)
+}
+
 fn parse_set_operator(input: &str) -> Result<(AssignOp, &str, &str), CliError> {
     let bytes = input.as_bytes();
     let mut in_string = false;

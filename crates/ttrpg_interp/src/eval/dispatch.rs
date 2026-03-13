@@ -73,6 +73,7 @@ pub(crate) fn eval_expr(env: &mut Env, expr: &Spanned<ExprKind>) -> Result<Value
             fields,
             groups,
             base,
+            with_conditions,
         } => {
             // Check if this is an entity type
             let is_entity = matches!(
@@ -81,7 +82,7 @@ pub(crate) fn eval_expr(env: &mut Env, expr: &Spanned<ExprKind>) -> Result<Value
             );
 
             if is_entity {
-                return eval_entity_construction(env, name, fields, groups, expr.span);
+                return eval_entity_construction(env, name, fields, groups, with_conditions, expr.span);
             }
             // Start from base fields if ..base spread was provided.
             let mut field_map = if let Some(base_expr) = base {
@@ -428,6 +429,7 @@ fn eval_entity_construction(
     name: &Name,
     fields: &[StructFieldInit],
     groups: &[GroupInit],
+    with_conditions: &[Spanned<ExprKind>],
     span: Span,
 ) -> Result<Value, RuntimeError> {
     // 1. Evaluate base fields with type hints
@@ -546,6 +548,15 @@ fn eval_entity_construction(
             fields: struct_val,
         };
         env.handler.handle(grant_effect);
+    }
+
+    // 6. Apply `with [...]` conditions as Indefinite
+    for cond_expr in with_conditions {
+        let cond_val = eval_expr(env, cond_expr)?;
+        let duration = crate::value::duration_variant("Indefinite");
+        let args = vec![Value::Entity(entity_ref), cond_val, duration];
+        // Ignore the return value (Option<int>) — fire-and-forget
+        crate::builtins::call_builtin(env, "apply_condition", args, cond_expr.span)?;
     }
 
     Ok(Value::Entity(entity_ref))

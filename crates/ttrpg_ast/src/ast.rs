@@ -1083,6 +1083,9 @@ pub enum ExprKind {
         fields: Vec<StructFieldInit>,
         groups: Vec<GroupInit>,
         base: Option<Box<Spanned<ExprKind>>>,
+        /// Optional `with [Cond1, Cond2(...)]` clause — legal only on entity construction.
+        /// Each expression must resolve to a Condition value.
+        with_conditions: Vec<Spanned<ExprKind>>,
     },
     ListLit(Vec<Spanned<ExprKind>>),
     MapLit(Vec<(Spanned<ExprKind>, Spanned<ExprKind>)>),

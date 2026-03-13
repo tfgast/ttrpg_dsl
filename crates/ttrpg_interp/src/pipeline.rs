@@ -1570,6 +1570,7 @@ mod tests {
                         }],
                         groups: Vec::new(),
                         base: None,
+                        with_conditions: Vec::new(),
                     },
                 )))]),
             )),

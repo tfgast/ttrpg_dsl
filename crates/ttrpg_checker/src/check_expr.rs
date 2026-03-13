@@ -81,7 +81,8 @@ impl Checker<'_> {
                 fields,
                 groups,
                 base,
-            } => self.check_struct_lit(name, fields, groups, base.as_deref(), expr.span),
+                with_conditions,
+            } => self.check_struct_lit(name, fields, groups, base.as_deref(), with_conditions, expr.span),
 
             ExprKind::ListLit(elems) => {
                 let elem_hint = match hint {

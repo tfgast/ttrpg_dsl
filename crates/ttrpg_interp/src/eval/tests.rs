@@ -1086,6 +1086,7 @@ fn eval_struct_lit() {
         ],
         groups: vec![],
         base: None,
+        with_conditions: vec![],
     });
     let result = eval_expr(&mut env, &expr).unwrap();
     match &result {
@@ -1140,6 +1141,7 @@ fn eval_struct_lit_fills_defaults() {
         ],
         groups: vec![],
         base: None,
+        with_conditions: vec![],
     });
     let result = eval_expr(&mut env, &expr).unwrap();
     match &result {
@@ -1192,6 +1194,7 @@ fn eval_struct_spread_override_one_field() {
         }],
         groups: vec![],
         base: Some(Box::new(spanned(ExprKind::Ident("base".into())))),
+        with_conditions: vec![],
     });
     let result = eval_expr(&mut env, &expr).unwrap();
     match &result {
@@ -1241,6 +1244,7 @@ fn eval_struct_spread_base_only() {
         fields: vec![],
         groups: vec![],
         base: Some(Box::new(spanned(ExprKind::Ident("p".into())))),
+        with_conditions: vec![],
     });
     let result = eval_expr(&mut env, &expr).unwrap();
     match &result {

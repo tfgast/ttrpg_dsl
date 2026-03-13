@@ -1,0 +1,137 @@
+// Test `with [conditions]` clause on entity construction
+//
+// Validates that entities can be constructed with initial conditions
+// applied as Indefinite duration via the `with [...]` syntax.
+
+source -s <<DONE
+    entity Creature {
+        name: string
+        hp: int
+    }
+
+    condition Poisoned on target: Creature {}
+    condition Blessed on target: Creature {}
+    condition Weakened(amount: int) on target: Creature {}
+
+    // Single condition
+    function make_poisoned() -> Creature {
+        Creature { name: "Rat", hp: 5 } with [Poisoned]
+    }
+
+    // Multiple conditions
+    function make_multi() -> Creature {
+        Creature { name: "Guardian", hp: 20 } with [Poisoned, Blessed]
+    }
+
+    // Parameterized condition
+    function make_weakened() -> Creature {
+        Creature { name: "Zombie", hp: 10 } with [Weakened(amount: 3)]
+    }
+
+    // No conditions (baseline)
+    function make_plain() -> Creature {
+        Creature { name: "Wolf", hp: 8 }
+    }
+
+    function test_single() -> bool {
+        let c = make_poisoned()
+        has_condition(c, Poisoned)
+    }
+
+    function test_single_no_blessed() -> bool {
+        let c = make_poisoned()
+        has_condition(c, Blessed)
+    }
+
+    function test_multi_poisoned() -> bool {
+        let c = make_multi()
+        has_condition(c, Poisoned)
+    }
+
+    function test_multi_blessed() -> bool {
+        let c = make_multi()
+        has_condition(c, Blessed)
+    }
+
+    function test_parameterized() -> bool {
+        let c = make_weakened()
+        has_condition(c, Weakened)
+    }
+
+    function test_plain_no_poisoned() -> bool {
+        let c = make_plain()
+        has_condition(c, Poisoned)
+    }
+
+    function test_plain_no_blessed() -> bool {
+        let c = make_plain()
+        has_condition(c, Blessed)
+    }
+
+    function test_plain_no_weakened() -> bool {
+        let c = make_plain()
+        has_condition(c, Weakened)
+    }
+
+    // Verify trailing comma works
+    function make_trailing_comma() -> Creature {
+        Creature { name: "Bat", hp: 3 } with [Poisoned,]
+    }
+
+    function test_trailing_comma() -> bool {
+        let c = make_trailing_comma()
+        has_condition(c, Poisoned)
+    }
+
+    // Verify empty with clause works
+    function make_empty_with() -> Creature {
+        Creature { name: "Cat", hp: 2 } with []
+    }
+
+    function test_empty_with() -> bool {
+        let c = make_empty_with()
+        has_condition(c, Poisoned)
+    }
+DONE
+
+// -- single condition -------------------------------------------
+assert_eq test_single(), true
+assert_eq test_single_no_blessed(), false
+
+// -- multiple conditions ----------------------------------------
+assert_eq test_multi_poisoned(), true
+assert_eq test_multi_blessed(), true
+
+// -- parameterized condition ------------------------------------
+assert_eq test_parameterized(), true
+
+// -- no conditions (baseline) -----------------------------------
+assert_eq test_plain_no_poisoned(), false
+assert_eq test_plain_no_blessed(), false
+assert_eq test_plain_no_weakened(), false
+
+// -- trailing comma ---------------------------------------------
+assert_eq test_trailing_comma(), true
+
+// -- empty with clause ------------------------------------------
+assert_eq test_empty_with(), false
+
+// -- CLI spawn with conditions ----------------------------------
+spawn Creature rat { name: "Rat", hp: 5 } with [Poisoned]
+assert_condition rat, Poisoned
+assert_no_condition rat, Blessed
+
+spawn Creature guard { name: "Guard", hp: 20 } with [Poisoned, Blessed]
+assert_condition guard, Poisoned
+assert_condition guard, Blessed
+
+spawn Creature plain { name: "Plain", hp: 10 }
+assert_no_condition plain, Poisoned
+
+// CLI spawn with [] (empty)
+spawn Creature cat { name: "Cat", hp: 2 } with []
+assert_no_condition cat, Poisoned
+
+// CLI spawn with no block, just with
+spawn Creature frog { name: "Frog", hp: 1 } with [Blessed]
+assert_condition frog, Blessed

@@ -555,6 +555,7 @@ impl VisitSpansMut for ExprKind {
                 fields,
                 groups,
                 base,
+                with_conditions,
                 ..
             } => {
                 fields.visit_spans_mut(f);
@@ -562,6 +563,7 @@ impl VisitSpansMut for ExprKind {
                     g.fields.visit_spans_mut(f);
                 }
                 base.visit_spans_mut(f);
+                with_conditions.visit_spans_mut(f);
             }
             ExprKind::ListLit(items) => {
                 items.visit_spans_mut(f);

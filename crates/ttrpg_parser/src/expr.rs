@@ -620,12 +620,38 @@ impl Parser {
         }
         self.skip_newlines();
         self.expect(&TokenKind::RBrace)?;
+
+        // Optional `with [Cond1, Cond2(...)]` clause
+        let with_conditions = if self.at_ident("with") {
+            self.advance(); // consume 'with'
+            self.expect(&TokenKind::LBracket)?;
+            self.skip_newlines();
+            let mut conds = Vec::new();
+            if !matches!(self.peek(), TokenKind::RBracket) {
+                conds.push(self.parse_expr()?);
+                while matches!(self.peek(), TokenKind::Comma) {
+                    self.advance();
+                    self.skip_newlines();
+                    if matches!(self.peek(), TokenKind::RBracket) {
+                        break; // trailing comma
+                    }
+                    conds.push(self.parse_expr()?);
+                }
+            }
+            self.skip_newlines();
+            self.expect(&TokenKind::RBracket)?;
+            conds
+        } else {
+            Vec::new()
+        };
+
         Ok(Spanned::new(
             ExprKind::StructLit {
                 name,
                 fields,
                 groups,
                 base,
+                with_conditions,
             },
             self.end_span(start),
         ))

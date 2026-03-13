@@ -16,6 +16,7 @@ impl Checker<'_> {
         fields: &[StructFieldInit],
         groups: &[GroupInit],
         base: Option<&Spanned<ExprKind>>,
+        with_conditions: &[Spanned<ExprKind>],
         span: ttrpg_ast::Span,
     ) -> Ty {
         let decl = match self.env.types.get(name) {
@@ -36,6 +37,12 @@ impl Checker<'_> {
                         groups[0].span,
                     );
                 }
+                if !with_conditions.is_empty() {
+                    self.error(
+                        format!("`with [...]` clause is only valid on entity construction, not struct `{name}`"),
+                        with_conditions[0].span,
+                    );
+                }
                 let (declared_fields, result_ty) = match &decl {
                     DeclInfo::Struct(info) => (&info.fields, Ty::Struct(Name::from(name))),
                     DeclInfo::Unit(info) => (&info.fields, Ty::UnitType(Name::from(name))),
@@ -45,9 +52,15 @@ impl Checker<'_> {
                 result_ty
             }
             DeclInfo::Entity(info) => {
-                self.check_entity_construction(name, info, fields, groups, base, span)
+                self.check_entity_construction(name, info, fields, groups, base, with_conditions, span)
             }
             DeclInfo::Enum(_) => {
+                if !with_conditions.is_empty() {
+                    self.error(
+                        format!("`with [...]` clause is only valid on entity construction, not enum `{name}`"),
+                        with_conditions[0].span,
+                    );
+                }
                 self.error(
                     format!("cannot construct enum `{name}` with struct literal syntax"),
                     span,
@@ -64,6 +77,7 @@ impl Checker<'_> {
         fields: &[StructFieldInit],
         groups: &[GroupInit],
         base: Option<&Spanned<ExprKind>>,
+        with_conditions: &[Spanned<ExprKind>],
         span: ttrpg_ast::Span,
     ) -> Ty {
         // Entity construction only allowed in mutating contexts
@@ -116,6 +130,20 @@ impl Checker<'_> {
                 self.error(
                     format!("entity `{name}` has no optional group `{}`", group.name),
                     group.span,
+                );
+            }
+        }
+
+        // Check `with [...]` conditions
+        for cond_expr in with_conditions {
+            let cond_ty = self.check_expr(cond_expr);
+            if !cond_ty.is_error() && !self.types_compatible(&cond_ty, &Ty::Condition) {
+                self.error(
+                    format!(
+                        "`with` clause expects Condition values, got {}",
+                        cond_ty
+                    ),
+                    cond_expr.span,
                 );
             }
         }

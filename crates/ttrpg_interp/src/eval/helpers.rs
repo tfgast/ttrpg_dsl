@@ -333,12 +333,20 @@ fn collect_idents(expr: &Spanned<ExprKind>, out: &mut Vec<Name>) {
                 collect_idents_arm_body(&arm.body, out);
             }
         }
-        ExprKind::StructLit { fields, base, .. } => {
+        ExprKind::StructLit {
+            fields,
+            base,
+            with_conditions,
+            ..
+        } => {
             for field in fields {
                 collect_idents(&field.value, out);
             }
             if let Some(base) = base {
                 collect_idents(base, out);
+            }
+            for cond in with_conditions {
+                collect_idents(cond, out);
             }
         }
         ExprKind::For { iterable, body, .. } => {
