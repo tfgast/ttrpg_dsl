@@ -79,7 +79,8 @@ eval [1, 2, 3]
 eval fighter.HP
 ```
 
-Spawned entity handles are bound as variables in expressions.
+Spawned entities and `let`-bound variables are available by name in expressions.
+Handles and variables share a single namespace — a name can only refer to one thing.
 
 ### Entity Management
 
@@ -327,7 +328,7 @@ ttrpg query entity Character combat.ttrpg --xref
 
 ## REPL Features
 
-- **Tab completion**: commands, handles, types, actions, fields, builtins, methods
+- **Tab completion**: commands, entity names, types, actions, fields, builtins, methods
 - **History**: persistent in `~/.local/share/ttrpg/history.txt`; Up/Down arrows, Ctrl+R search
 - **Comments**: lines starting with `//` are ignored; trailing `//` comments stripped
 - **Exit**: Ctrl+D; Ctrl+C clears current line

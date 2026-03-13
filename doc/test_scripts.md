@@ -185,7 +185,8 @@ spawn Character fighter {
 }
 ```
 
-The handle (`fighter`) is how you refer to this entity in later commands.
+The name (`fighter`) is how you refer to this entity in later commands.
+Spawned names and `let`-bound variables share a single namespace.
 Spawn blocks support:
 - Base fields: `name: "Fighter"`
 - Struct literals: `ClassLevel { class: Fighter, level: 5 }`
@@ -246,7 +247,7 @@ do MeleeAttack(attacker, target)
 do MissileAttack(archer, target, Feet { value: 60 })
 ```
 
-The first argument is the actor handle, remaining arguments are action
+The first argument is the actor, remaining arguments are action
 parameters. After execution, assert on entity state:
 
 ```

@@ -34,7 +34,7 @@ const COMMANDS: &[CommandInfo] = &[
         name: "eval",
         syntax: "eval <expr>",
         description: "Evaluate a DSL expression",
-        detail: "Evaluate an expression in the current program context.\n  Spawned entity handles are available as variables.",
+        detail: "Evaluate an expression in the current program context.\n  Spawned entities and let-bound variables are available by name.",
         examples: &["eval 2 + 3", "eval floor((16 - 10) / 2)", "eval fighter.HP"],
         category: "Pipeline",
     },
@@ -129,7 +129,7 @@ const COMMANDS: &[CommandInfo] = &[
         name: "call",
         syntax: "call <func>(args...)",
         description: "Call a derive, mechanic, or function",
-        detail: "Call a derive, mechanic, or function block.\n  Derives are pure computations, mechanics can roll dice,\n  and functions can roll dice and mutate state.\n  Arguments are evaluated as expressions or handle names.",
+        detail: "Call a derive, mechanic, or function block.\n  Derives are pure computations, mechanics can roll dice,\n  and functions can roll dice and mutate state.\n  Arguments are evaluated as expressions.",
         examples: &[
             "call modifier(16)",
             "call attack_roll(5)",
@@ -386,7 +386,7 @@ const COMMANDS: &[CommandInfo] = &[
         name: "emit",
         syntax: "emit <Event>(param: expr, ...)",
         description: "Fire a DSL event from the host side",
-        detail: "Emit an event, executing all matching hooks and reactions.\n  Arguments are evaluated as DSL expressions with handle resolution.\n  Useful for testing zone events and host-driven interactions.",
+        detail: "Emit an event, executing all matching hooks and reactions.\n  Arguments are evaluated as DSL expressions.\n  Useful for testing zone events and host-driven interactions.",
         examples: &[
             "emit ZoneEntered(target: orc, zone: silence_zone)",
             "emit ZoneExited(target: fighter, zone: wall)",

@@ -2,7 +2,7 @@ use super::*;
 use ttrpg_parser::manifest;
 
 impl Runner {
-    /// Reset all loaded state (program, types, game state, handles, etc.)
+    /// Reset all loaded state (program, types, game state, entities, etc.)
     fn clear_state(&mut self, paths: Vec<PathBuf>) {
         *self.program = Program::default();
         *self.type_env = TypeEnv::new();
