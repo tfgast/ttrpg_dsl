@@ -8,6 +8,9 @@ Quick-reference for finding rules in the two OSRIC 3.0 PDFs.
 > page 1, so printed page N is at **PDF page N+1** when using the Read tool.
 > Example: to read printed page 83 (Monster Statistics), request `pages: "84"`.
 
+For detailed, fully hierarchical outlines (every section, subsection, and table),
+see [`osric_pdf_outlines.md`](osric_pdf_outlines.md).
+
 ---
 
 ## Player Guide — Table of Contents

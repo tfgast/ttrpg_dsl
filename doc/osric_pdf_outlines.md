@@ -1,0 +1,1413 @@
+# OSRIC 3.0 Player Guide — Outline
+
+**PDF page offset: +1** (printed page N = PDF page N+1)
+
+- Introduction ... p5
+  - What Is This Game? ... p5
+    - What are the Defining Features of OSRIC 3.0? ... p5
+    - How Do I Play? ... p6
+      - Gathering Information ... p6
+      - Exploring ... p7
+      - Getting attacked by lizard men ... p7
+      - Getting the Jewelled eye out of the statue ... p8
+      - Returning to Town ... p9
+  - 1.0.1. Definitions ... p10
+- Part One: Characters ... p11
+  - Creating a Character ... p11
+  - Chapter One: Ability Scores ... p14
+    - 1.1.1. Generating Ability Scores ... p14
+      - 1.1.2. Strength ... p15
+        - Table 1.1.2a: Strength ... p15
+      - 1.1.3. Dexterity ... p16
+        - Table 1.1.3a: Dexterity ... p16
+      - 1.1.4. Constitution ... p17
+        - Table 1.1.4a: Constitution ... p17
+      - 1.1.5. Intelligence ... p18
+        - Table 1.1.5a: Intelligence ... p18
+      - 1.1.6. Wisdom ... p18
+        - Table 1.1.6a: Wisdom ... p18
+      - 1.1.7. Charisma ... p19
+        - Table 1.1.7a: Charisma ... p19
+  - Chapter Two: Ancestry ... p20
+    - Table 1.2.0a: Required Ability Scores (after Ancestral Bonuses) ... p20
+    - 1.2.1. Dwarf ... p21
+      - 1.2.1.1. Dwarf Ability Scores ... p21
+      - 1.2.1.2. Dwarven Ancestral Features ... p21
+        - Table 1.2.1.2a: Dwarf Stalwart Bonuses ... p21
+      - 1.2.1.3. Dwarf Character Classes ... p22
+    - 1.2.2. Elf ... p22
+      - 1.2.2.1. Elf Ability Scores ... p22
+      - 1.2.2.2. Elven Ancestral Features ... p22
+      - 1.2.2.3. Elven Character Classes ... p23
+    - 1.2.3. Gnome ... p24
+      - 1.2.3.1. Gnome Ability Scores ... p24
+      - 1.2.3.2. Gnomish Ancestral Features ... p24
+        - Table 1.2.3.2a: Gnome Stalwart Bonuses ... p24
+      - 1.2.3.3. Gnomish Character Classes ... p25
+    - 1.2.4. Half-Elf ... p25
+      - 1.2.4.1. Half-Elf Ability Scores ... p25
+      - 1.2.4.2. Half-Elven Ancestral Features ... p25
+      - 1.2.4.3. Half-Elven Character Classes ... p26
+    - 1.2.5. Halfling ... p27
+      - 1.2.5.1. Halfling Ability Scores ... p27
+      - 1.2.5.2. Halfling Ancestral Features ... p27
+        - Table 1.2.5.2a: Halfling Stalwart Bonuses ... p27
+      - 1.2.5.3. Halfling Character Classes ... p28
+    - 1.2.6. Half-Orc ... p28
+      - 1.2.6.1. Half-Orc Ability Scores ... p28
+      - 1.2.6.2. Half-Orc Ancestral Features ... p28
+      - 1.2.6.3. Half-Orcish Character Classes ... p29
+    - 1.2.7. Human ... p29
+      - 1.2.7.1. Human Ability Scores ... p29
+      - 1.2.7.2. Human Ancestral Features ... p29
+      - 1.2.7.3. Human Character Classes ... p29
+  - Chapter Three: Character Classes ... p30
+    - 1.3.1. Assassin ... p30
+      - 1.3.1.1. The Assassin Character ... p30
+      - 1.3.1.2. Assassin Class Abilities ... p31
+      - 1.3.1.3. Higher-Level Abilities ... p31
+      - 1.3.1.4. Assassin Level Advancement ... p32
+        - Table 1.3.1.4a: Assassin Level Advancement ... p32
+          - Table 1.3.1.4b: Assassin Thief Abilities ... p33
+    - 1.3.2. Cleric ... p34
+      - 1.3.2.1. The Cleric Character ... p34
+      - 1.3.2.2. Cleric Class Abilities ... p34
+      - 1.3.2.3. Higher-Level Abilities ... p35
+      - 1.3.2.4. Cleric Level Advancement ... p36
+        - Table 1.3.2.4a: Cleric Level Advancement ... p36
+          - Table 1.3.2.4b: Cleric Saving Throws ... p37
+          - Table 1.3.2.4c: Cleric To-Hit Table ... p37
+    - 1.3.3. Druid ... p38
+      - 1.3.3.1. The Druid Character ... p38
+      - 1.3.3.2. Druid Class Abilities ... p39
+      - 1.3.3.4. Druid Level Advancement ... p41
+        - Table 1.3.3.4a: Druid Level Advancement ... p41
+    - 1.3.4. Fighter ... p42
+      - 1.3.4.1. The Fighter Character ... p42
+      - 1.3.4.2. Fighter Class Abilities ... p43
+      - 1.3.4.3. Higher-Level Abilities ... p43
+      - 1.3.4.4. Fighter Level Advancement ... p43
+        - Table 1.3.4.4a: Fighter Level Advancement ... p43
+          - Table 1.3.4.4b: Fighter Saving Throws ... p44
+    - 1.3.5. Illusionist ... p45
+      - 1.3.5.1. The Illusionist Character ... p45
+      - 1.3.5.2. Illusionist Class Abilities ... p45
+        - Table 1.3.5.2a: Phantasmal Spell Acquisition ... p46
+      - 1.3.5.3. Higher-Level Abilities ... p46
+      - 1.3.5.4. Illusionist Level Advancement ... p47
+        - Table 1.3.5.4a: Illusionist Level Advancement ... p47
+    - 1.3.6. Magic-User ... p48
+      - 1.3.6.1. The Magic-user Character ... p48
+      - 1.3.6.2. Magic-user Class Abilities ... p48
+        - Table 1.3.6.2a: Arcane Spell Acquisition ... p49
+      - 1.3.6.4. Magic-user Level Advancement ... p50
+        - Table 1.3.6.4a: Magic-user Level Advancement ... p50
+          - Table 1.3.6.4b: Magic-user Saving Throws ... p51
+          - Table 1.3.6.4c: Magic-user To-Hit Table ... p51
+    - 1.3.7. Monk ... p52
+      - 1.3.7.1. The Monk Character ... p52
+      - 1.3.7.2. Monk Class Abilities ... p53
+      - 1.3.7.3. Higher-Level Abilities ... p53
+      - 1.3.7.4. Monk Level Advancement ... p55
+        - Table 1.3.7.4a: Monk Level Advancement ... p55
+          - Table 1.3.7.4c: Monk Saving Throws ... p56
+          - Table 1.3.7.4d: Monk To-Hit Table ... p56
+    - 1.3.8. Paladin ... p57
+      - 1.3.8.1. The Paladin Character ... p57
+      - 1.3.8.2. Paladin Class Abilities ... p58
+      - 1.3.8.3. Higher-Level Abilities ... p58
+      - 1.3.8.4. Paladin Level Advancement ... p59
+        - Table 1.3.8.4a: Paladin Level Advancement ... p59
+          - Table 1.3.8.4b: Paladin Saving Throws ... p60
+    - 1.3.9. Ranger ... p61
+      - 1.3.9.1. The Ranger Character ... p61
+      - 1.3.9.2. Ranger Class Abilities ... p62
+      - 1.3.9.3. Higher-Level Abilities ... p62
+      - 1.3.9.4. Ranger Level Advancement ... p63
+        - Table 1.3.9.4a: Ranger Level Advancement ... p63
+          - Table 1.3.9.4b: Ranger Saving Throws ... p64
+    - 1.3.10. Thief ... p65
+      - 1.3.10.1. The Thief Character ... p65
+      - 1.3.10.2. Thief Class Abilities ... p65
+      - 1.3.10.4. Thief Level Advancement ... p67
+        - Table 1.3.10.4a: Thief Level Advancement ... p67
+          - Table 1.3.10.4b: Thief Skills ... p68
+          - Table 1.3.10.4d: Thief Skills—Ancestry Adjustments ... p69
+          - Table 1.3.10.4e: Thief Saving Throw Table ... p69
+          - Table 1.3.10.4f: Thief To-Hit Table ... p69
+    - 1.3.11. Multi-Classing ... p70
+    - 1.3.12. Dual-Classing ... p70
+    - 1.3.13. Weapon Specialisation ... p71
+      - Table 1.3.13a: Attack Rate with Specialised Weapon ... p71
+  - Chapter Four: Completing the Character ... p72
+    - 1.4.1. Alignment ... p72
+      - 1.4.1.1. The Battle between Law and Chaos ... p72
+      - 1.4.1.2. The Battle between Good and Evil ... p72
+      - 1.4.1.3. Lawful Good ... p72
+      - 1.4.1.4. Chaotic Good ... p72
+      - 1.4.1.5. Neutral Good ... p73
+      - 1.4.1.6. Lawful Neutral ... p73
+      - 1.4.1.7. Chaotic Neutral ... p73
+      - 1.4.1.8. True Neutral ... p73
+      - 1.4.1.9. Lawful Evil ... p73
+      - 1.4.1.10. Chaotic Evil ... p73
+      - 1.4.1.11. Neutral Evil ... p73
+      - 1.4.1.12. Alignment Language ... p73
+    - 1.4.2. Money, Equipment and Encumbrance ... p74
+      - 1.4.2.1. Starting Money ... p74
+      - 1.4.2.2. Encumbrance ... p74
+      - 1.4.2.3. Starting Equipment ... p75
+        - Table 1.4.2.3a: General Equipment ... p75
+          - Table 1.4.2.3a.1: Containers ... p76
+          - Table 1.4.2.3a.2: Mounts and Pack Animals ... p76
+          - Table 1.4.2.3b: Melee Weapons Table 1 ... p77
+          - Table 1.4.2.3c: Melee Weapons Table 2 ... p78
+          - Table 1.4.2.3d: Missile Weapons ... p79
+          - Table 1.4.2.3e: Ammunition ... p79
+      - 1.4.2.3f. Grenade-Like Missiles ... p79
+        - Table 1.4.2.g: Armour ... p80
+    - 1.4.2.4. Armour Class ... p81
+      - BTHB Levels 1-10 ... p82
+        - BTHB Levels 11-20 ... p82
+          - Monster BTHB ... p83
+- Part Two: How to Play ... p84
+  - Chapter Five: The Basics ... p84
+    - 1.5.1. Time Measurement ... p85
+    - 1.5.2. Distance Measurement ... p86
+      - 1.5.2.1. Measuring Distance ... p86
+    - 1.5.3. Movement Rate ... p87
+      - 1.5.3.1. Indoor, City Street, and Underground Movement ... p88
+        - 1.5.3.2. Outdoor Movement ... p88
+      - Forced Marches ... p88
+      - Escapes ... p88
+      - 1.5.3.3. Encumbrance and Base Movement Rate ... p89
+        - Table 1.5.3.3a: Encumbrance ... p89
+    - 1.5.4. Light and Vision ... p90
+      - 1.5.4.1. Light Sources ... p90
+      - 1.5.4.2. Infravision ... p90
+    - 1.5.5. Falling ... p90
+    - 1.5.6. Gaining Levels ... p90
+  - Chapter Six: Combat ... p91
+    - 1.6.1. Order of Events ... p91
+      - 1.6.1.1 Determining Surprise ... p91
+        - Checking for Surprise ... p91
+        - Special Rules for Determining Surprise ... p91
+        - What Happens with Surprise ... p92
+      - 1.6.1.2. Declaring Actions ... p92
+      - 1.6.1.3. Roll for Initiative ... p93
+        - Bonuses ... p93
+        - Tie Rolls: Simultaneous Results ... p93
+        - Resolving the Round ... p94
+    - 1.6.2. Combat Actions ... p94
+      - 1.6.2.1. Charging into Combat ... p94
+      - 1.6.2.2. Closing into Combat ... p94
+      - 1.6.2.3. Fleeing from Combat ... p95
+      - 1.6.2.4. Hold Initiative ... p95
+      - 1.6.2.5. Melee Attack ... p95
+      - 1.6.2.6. Missile Attacks ... p95
+      - 1.6.2.7. Move ... p96
+      - 1.6.2.8. Negotiation and Diplomacy ... p96
+        - Table 1.6.2.8a: NPC and Monster Reaction ... p96
+      - 1.6.2.9. Parrying ... p96
+      - 1.6.2.10. Set Weapon Against Charge ... p96
+      - 1.6.2.11. Spells ... p97
+    - 1.6.3. Combat Modifiers ... p97
+      - 1.6.3.1 Concealment ... p97
+      - 1.6.3.2. Cover ... p97
+      - 1.6.3.3. Rear Attack ... p97
+      - 1.6.3.4. Two-Weapon Fighting ... p97
+      - 1.6.3.5. Unhelmed Opponent ... p97
+      - 1.6.3.6. Other Conditions ... p97
+    - 1.6.4. Item Saving Throws ... p98
+      - Table 1.6.4a: Item Saving Throws ... p98
+    - 1.6.5. Turning the Undead ... p98
+      - Table 1.6.5a: Turning the Undead ... p99
+    - 1.6.6. Damage and Death ... p100
+      - 1.6.6.1. Natural Healing ... p100
+      - 1.6.6.2. Subdual Damage ... p100
+      - 1.6.6.3 Temporary Damage ... p100
+      - 1.6.6.4. Damage Types ... p100
+        - Normal Damage Types ... p100
+        - Other Damage Types ... p100
+    - 1.6.7. Life Energy Levels and Level Drain ... p101
+    - 1.6.8. Morale ... p101
+      - Table 1.6.8a: Morale Check Modifiers (all cumulative) ... p101
+    - 1.6.9. Poison, Disease and Insanity ... p101
+      - 1.6.9.1. Poison ... p101
+      - 1.6.9.2. Disease ... p102
+      - 1.6.9.3. Insanity ... p102
+    - 1.6.10. Conditions ... p103
+      - 1.6.10.1. Blinded ... p103
+      - 1.6.10.2. Confused ... p103
+      - 1.6.10.3. Dead ... p103
+      - 1.6.10.4. Deafened ... p103
+      - 1.6.10.5. Engaged in Melee Combat (“in melee range”) ... p103
+      - 1.6.10.6. Ethereal ... p104
+      - 1.6.10.7. Grappling ... p104
+      - 1.6.10.8. Invisible ... p104
+      - 1.6.10.9. Overborne ... p104
+      - 1.6.10.10. Paralyzed (Held) ... p104
+      - 1.6.10.11. Prone ... p104
+      - 1.6.10.12. Sleeping (magical sleep) ... p104
+      - 1.6.10.13. Sleeping (normal sleep) ... p104
+      - 1.6.10.14. Staggered ... p105
+      - 1.6.10.15. Stunned ... p105
+      - 1.6.10.16. Unconscious ... p105
+    - 1.6.11. Spacing ... p105
+      - 1.6.11.1. Basic Spacing Rules ... p105
+      - 1.6.11.2. Advanced Spacing: Forming a Battle Line ... p106
+      - 1.6.11.3 More Detail ... p106
+    - 1.6.12. Unarmed Combat ... p106
+      - First Step: Fending Off the Attack ... p107
+      - Second Step: Unarmed To-Hit Roll ... p107
+        - Using the Table ... p108
+          - Table 1.6.12a: Unarmed To-Hit Roll ... p108
+        - Attacker Modifiers ... p108
+        - Defender Modifiers: ... p108
+      - Third Step: Calculate Results ... p108
+        - Grappling and Overbearing Results ... p109
+          - Table 1.6.12b: Overbearing Attack Results ... p109
+        - Overbearing Result Modifiers ... p109
+        - Grappling Results ... p110
+          - Table 1.6.12c: Grappling Attack Results ... p111
+        - Grappling Result Modifiers ... p112
+      - An Example of Grappling ... p112
+      - An Example of Overbearing ... p114
+  - Chapter Seven: Adventuring ... p117
+    - 1.7.1. Dungeon Adventures ... p117
+      - 1.7.1.1. Order of Operations ... p117
+        - 1.7.1.2. Wandering Monsters ... p118
+        - 1.7.1.3. Optional Party “Caller” ... p119
+        - 1.7.1.4. Movement During Dungeon Exploration ... p119
+        - 1.7.1.5. Listening ... p119
+        - 1.7.1.6. Opening Doors ... p120
+        - 1.7.1.7. Mapping ... p120
+        - 1.7.1.8. Searching ... p121
+          - 1.7.1.8.1. Secret Doors ... p121
+          - 1.7.1.8.2. Traps ... p121
+        - 1.7.1.9. Resting ... p122
+        - 1.7.1.10. Other Actions ... p122
+        - 1.7.1.11. Book-Keeping ... p123
+    - 1.7.2. Outdoor Adventures ... p123
+      - 1.7.2.1. Order of Play ... p123
+  - Chapter Eight: Spells ... p124
+    - 1.8.1. General Rules for Spellcasting ... p124
+      - 1.8.1.1. Interruption of a Spell ... p124
+      - 1.8.1.2. Spell Memorisation ... p124
+      - 1.8.1.3. Other General Rules ... p124
+      - 1.8.1.4. Schools of Magic ... p124
+      - 1.8.1.5. How to Read the Spell Descriptions ... p125
+        - SPELL NAME ... p125
+          - RANGE ... p125
+            - DURATION ... p125
+            - AREA OF EFFECT ... p126
+            - COMPONENTS ... p126
+            - CASTING TIME ... p126
+            - REVERSE ... p126
+    - 1.8.2. Cleric Spells by Level ... p127
+      - 1.8.2.1. First Level Cleric Spells ... p127
+        - Bless ... p127
+        - Curse ... p128
+        - Command ... p128
+        - Create Water ... p128
+        - Destroy Water ... p128
+        - Cure Light Wounds ... p129
+        - Cause Light Wounds ... p129
+        - Detect Evil ... p129
+        - Detect Good ... p129
+        - Detect Magic ... p130
+        - Light ... p130
+        - Darkness ... p130
+        - Protection from Evil ... p130
+        - Protection from Good ... p131
+        - Purify Food and Drink ... p131
+        - Spoil Food and Drink ... p131
+        - Remove Fear ... p132
+        - Cause Fear ... p132
+        - Resist Cold ... p132
+        - Sanctuary ... p132
+      - 1.8.2.2. Second Level Cleric Spells ... p133
+        - Augury ... p133
+        - Chant ... p133
+        - Detect Charm ... p133
+        - Conceal Charm ... p134
+        - Find Traps ... p134
+        - Hold Person ... p134
+        - Know Alignment ... p135
+        - Conceal Alignment ... p135
+        - Resist Fire ... p135
+        - Silence 15 Ft Radius ... p135
+        - Slow Poison ... p136
+        - Snake Charm ... p136
+        - Speak with Animals ... p136
+        - Spiritual Weapon ... p137
+      - 1.8.2.3. Third Level Cleric Spells ... p137
+        - Animate Dead ... p137
+        - Continual Light ... p138
+        - Continual Darkness ... p138
+        - Create Food and Water ... p138
+        - Cure Blindness ... p138
+        - Cause Blindness ... p139
+        - Cure Disease ... p139
+        - Cause Disease ... p139
+        - Dispel Magic ... p140
+        - Feign Death ... p140
+        - Glyph of Warding ... p140
+          - Glyphs of Warding ... p141
+        - Locate Object ... p141
+        - Prayer ... p142
+        - Remove Curse ... p142
+        - Bestow Curse ... p142
+        - Speak with Dead ... p143
+          - Limitations on Speak with Dead ... p143
+      - 1.8.2.4. Fourth Level Cleric Spells ... p143
+        - Cure Serious Wounds ... p143
+        - Cause Serious Wounds ... p143
+        - Detect Lie ... p144
+        - Glibness ... p144
+          - Saving Throw Targets for Glibness ... p144
+        - Divination ... p144
+        - Exorcise ... p145
+          - Saving Throws versus Exorcism ... p145
+        - Lower Water ... p146
+        - Raise Water ... p146
+        - Neutralise Poison ... p146
+        - Poison ... p146
+        - Protection from Evil 10 Ft Radius ... p147
+        - Protection from Good 10 Ft Radius ... p147
+        - Speak with Plants ... p148
+        - Sticks to Snakes ... p148
+        - Snakes to Sticks ... p149
+        - Tongues ... p149
+        - Blither ... p149
+      - 1.8.2.5. Fifth Level Cleric Spells ... p149
+        - Atonement ... p149
+        - Commune ... p150
+        - Cure Critical Wounds ... p150
+        - Cause Critical Wounds ... p150
+        - Dispel Evil ... p150
+        - Dispel Good ... p151
+        - Flame Strike ... p151
+        - Insect Plague ... p151
+        - Plane Shift ... p152
+        - Quest ... p152
+        - Raise Dead ... p152
+        - Slay Living ... p153
+        - True Seeing ... p153
+        - False Seeing ... p153
+      - 1.8.2.6. Sixth Level Cleric Spells ... p153
+        - Aerial Servant ... p153
+        - Animate Object ... p154
+        - Blade Barrier ... p154
+        - Conjure Animals ... p154
+          - Weak ... p154
+          - Medium ... p154
+          - Strong ... p155
+          - Mighty ... p155
+        - Find the Path ... p155
+        - Hide the Path ... p155
+        - Heal ... p155
+        - Harm ... p155
+        - Part Water ... p156
+        - Speak with Monsters ... p156
+        - Stone Tell ... p156
+        - Word of Recall ... p156
+      - 1.8.2.7. Seventh Level Cleric Spells ... p157
+        - Astral Spell ... p157
+        - Control Weather ... p157
+        - Earthquake ... p157
+        - Gate ... p158
+        - Holy Word ... p158
+          - Holy Word Effects ... p158
+        - Unholy Word ... p158
+          - Unholy Word Effects ... p159
+        - Regenerate ... p159
+        - Wither ... p159
+        - Restoration ... p159
+        - Energy Drain ... p159
+        - Resurrection ... p160
+        - Surcease ... p160
+        - Symbol ... p160
+        - Wind Walk ... p161
+    - 1.8.3. Druid Spells by Level ... p161
+      - 1.8.3.1. First Level Druid Spells ... p162
+        - Animal Friendship ... p162
+        - Detect Magic ... p162
+        - Detect Pits/Snares ... p162
+        - Entangle ... p162
+        - Faerie Fire ... p163
+        - Invisibility to Animals ... p163
+        - Locate Animals ... p163
+        - Pass Without Trace ... p163
+        - Predict Weather ... p163
+        - Purify Water ... p163
+        - Contaminate Water ... p164
+        - Shillelagh ... p164
+        - Speak with Animals ... p164
+      - 1.8.3.2. Second Level Druid Spells ... p164
+        - Barkskin ... p164
+        - Charm Person/Mammal ... p164
+        - Heat Metal ... p166
+        - Chill Metal ... p166
+        - Locate Plants ... p166
+        - Obscurement ... p166
+        - Produce Flame ... p167
+        - Trip ... p167
+        - Warp Wood ... p167
+      - 1.8.3.3. Third Level Druid Spells ... p167
+        - Call Lightning ... p167
+        - Cure Disease ... p167
+        - Cause Disease ... p168
+        - Hold Animal ... p168
+        - Neutralise Poison ... p168
+        - Poison ... p169
+        - Plant Growth ... p169
+        - Protection from Fire ... p169
+        - Pyrotechnics ... p169
+        - Snare ... p169
+        - Stone Shape ... p170
+        - Summon Insects ... p170
+        - Tree ... p170
+        - Water Breathing ... p170
+        - Air Breathing ... p170
+      - 1.8.3.4. Fourth Level Druid Spells ... p170
+        - Animal Summoning I ... p170
+        - Call Woodland Beings ... p171
+        - Control Temperature, 10ft radius ... p171
+        - Cure Serious Wounds ... p171
+        - Cause Serious Wounds ... p171
+        - Dispel Magic ... p171
+        - Hallucinatory Forest ... p172
+        - Hold Plant ... p172
+        - Plant Door ... p173
+        - Produce Fire ... p173
+        - Quench Fire ... p173
+        - Protection from Lightning ... p173
+        - Repel Insects ... p173
+        - Speak with Plants ... p174
+      - 1.8.3.5. Fifth Level Druid Spells ... p174
+        - Animal Growth ... p174
+        - Reduce Animal ... p174
+        - Animal Summoning II ... p174
+        - Anti-Plant Shell ... p174
+        - Commune with Nature ... p174
+        - Control Winds ... p175
+        - Insect Plague ... p175
+        - Pass Plant ... p175
+        - Sticks to Snakes ... p175
+        - Snakes to Sticks ... p176
+        - Transmute Rock to Mud ... p176
+        - Transmute Mud to Rock ... p176
+        - Wall of Fire ... p176
+      - 1.8.3.6. Sixth Level Druid Spells ... p177
+        - Animal Summoning III ... p177
+        - Anti-Animal Shell ... p177
+        - Conjure Fire Elemental ... p177
+        - Dismiss Fire Elemental ... p177
+        - Cure Critical Wounds ... p177
+        - Cause Critical Wounds ... p177
+        - Feeblemind ... p178
+        - Fire Seeds ... p178
+        - Transport via Plants ... p178
+        - Turn Wood ... p178
+        - Wall of Thorns ... p179
+        - Weather Summoning ... p179
+      - 1.8.3.7. Seventh Level Druid Spells ... p179
+        - Animate Rock ... p179
+        - Chariot of Fire ... p180
+        - Confusion ... p180
+        - Conjure Earth Elemental ... p180
+        - Dismiss Earth Elemental ... p180
+        - Control Weather ... p180
+        - Creeping Doom ... p181
+        - Finger of Death ... p181
+        - Fire Storm ... p181
+        - Fire Quench ... p181
+        - Reincarnate ... p182
+          - Humanoid Table ... p182
+    - 1.8.4. Illusionist Spells by Level ... p183
+      - 1.8.4.1. First Level illusionist Spells ... p183
+        - Audible Glamour ... p183
+        - Change Self ... p184
+        - Colour Spray ... p184
+        - Dancing Lights ... p184
+        - Darkness ... p184
+        - Detect Illusion ... p184
+        - Detect Invisibility ... p185
+        - Gaze Reflection ... p185
+        - Hypnotism ... p185
+        - Light ... p185
+        - Phantasmal Force ... p185
+        - Wall of Fog ... p186
+      - 1.8.4.2. Second Level illusionist Spells ... p186
+        - Blindness ... p186
+        - Blur ... p186
+        - Deafness ... p186
+        - Detect Magic ... p186
+        - Fog Cloud ... p187
+        - Hypnotic Pattern ... p187
+        - Improved Phantasmal Force ... p187
+        - Invisibility ... p187
+        - Magic Mouth ... p187
+        - Mirror Image ... p188
+        - Misdirection ... p188
+        - Ventriloquism ... p188
+      - 1.8.4.3. Third Level illusionist Spells ... p188
+        - Continual Darkness ... p188
+        - Continual Light ... p189
+        - Dispel Illusion ... p189
+        - Fear ... p189
+        - Hallucinatory Terrain ... p189
+        - Illusory Script ... p189
+        - Invisibility, 10ft radius ... p190
+        - Non-Detection ... p190
+        - Paralysation ... p190
+        - Rope Trick ... p190
+        - Spectral Force ... p190
+        - Suggestion ... p191
+      - 1.8.4.4. Fourth Level illusionist Spells ... p191
+        - Confusion ... p191
+        - Dispel Exhaustion ... p191
+        - Emotion ... p191
+        - Improved Invisibility ... p192
+        - Massmorph ... p192
+        - Minor Creation ... p192
+        - Phantasmal Killer ... p192
+        - Shadow Monsters ... p193
+      - 1.8.4.5. Fifth Level illusionist Spells ... p193
+        - Chaos ... p193
+        - Demi-Shadow Monsters ... p193
+        - Major Creation ... p194
+        - Maze ... p194
+        - Project Image ... p194
+        - Shadow Door ... p194
+        - Shadow Magic ... p194
+        - Summon Shadow ... p195
+      - 1.8.4.6. Sixth Level illusionist Spells ... p195
+        - Conjure Animals ... p195
+          - Weak ... p195
+          - Medium ... p195
+          - Strong ... p195
+          - Mighty ... p195
+        - Demi-Shadow Magic ... p196
+        - Mass Suggestion ... p196
+        - Permanent Illusion ... p196
+        - Programmed Illusion ... p196
+        - Shades ... p197
+        - True Sight ... p197
+        - Veil ... p197
+      - 1.8.4.7. Seventh Level illusionist Spells ... p198
+        - Alter Reality ... p198
+        - Astral Spell ... p198
+        - Prismatic Spray ... p198
+        - Prismatic Wall ... p199
+          - Prismatic Wall Effects (magic user level 9) ... p199
+        - Vision ... p199
+    - 1.8.5. Magic-User Spells by Level ... p200
+      - 1.8.5.1. First Level Magic-User Spells ... p202
+        - Affect Normal Fires ... p202
+        - Burning Hands ... p202
+        - Charm Person ... p202
+        - Comprehend Languages ... p202
+        - Confuse Languages ... p202
+        - Dancing Lights ... p203
+        - Detect Magic ... p203
+        - Enlarge ... p203
+        - Reduce ... p203
+        - Erase ... p203
+        - Feather Fall ... p204
+        - Find Familiar ... p204
+        - Friends ... p204
+        - Hold Portal ... p205
+        - Identify ... p205
+        - Jump ... p205
+        - Light ... p205
+        - Magic Missile ... p205
+        - Mending ... p206
+        - Message ... p206
+        - Niam’s Magic Aura ... p206
+        - Protection from Evil ... p206
+        - Protection from Good ... p207
+        - Push ... p207
+        - Read Magic ... p207
+        - Encrypt Magic ... p207
+        - Shield ... p207
+        - Shocking Grasp ... p208
+        - Sleep ... p208
+        - Spider Climb ... p208
+        - Tanzur’s Floating Disk ... p209
+        - Unseen Servant ... p209
+        - Ventriloquism ... p209
+        - Write ... p209
+      - 1.8.5.2. Second Level Magic-User Spells ... p209
+        - Audible Glamour ... p209
+        - Continual Light ... p210
+        - Darkness, 15ft Radius ... p210
+        - Detect Evil ... p210
+        - Detect Good ... p210
+        - Detect Invisibility ... p211
+        - ESP ... p211
+        - Fool’s Gold ... p211
+        - Forget ... p211
+        - Invisibility ... p211
+        - False Trap ... p211
+        - Knock ... p212
+        - Levitate ... p212
+        - Locate Object ... p212
+        - Magic Mouth ... p212
+        - Mirror Image ... p213
+        - Pyrotechnics ... p213
+        - Ray of Enfeeblement ... p213
+        - Rope Trick ... p213
+        - Scare ... p213
+        - Shatter ... p214
+        - Stinking Cloud ... p214
+        - Strength ... p214
+        - Web ... p214
+        - Wizard Lock ... p215
+      - 1.8.5.3. Third Level Magic-User Spells ... p215
+        - Blink ... p215
+        - Clairaudience ... p215
+        - Clairvoyance ... p215
+        - Dispel Magic ... p216
+        - Explosive Runes ... p216
+        - Feign Death ... p216
+        - Fireball ... p217
+        - Flame Arrow ... p217
+        - Fly ... p217
+        - Gust of Wind ... p217
+        - Haste ... p217
+        - Hold Person ... p218
+        - Infravision ... p218
+        - Invisibility, 10ft radius ... p218
+        - Leomondo’s Tiny Hut ... p218
+        - Lightning Bolt ... p219
+        - Monster Summoning I ... p219
+          - Monster Summoning I Results (magic user level 3) ... p219
+        - Protection from Evil, 10ft radius ... p220
+        - Protection from Good, 10ft radius ... p220
+        - Protection from Normal Missiles ... p220
+        - Slow ... p221
+        - Suggestion ... p221
+        - Tongues ... p221
+        - Babble ... p221
+        - Water Breathing ... p221
+        - Air Breathing ... p221
+      - 1.8.5.4. Fourth Level Magic-User Spells ... p222
+        - Charm Monster ... p222
+        - Confusion ... p222
+        - Dig ... p222
+        - Dimension Door ... p223
+        - Enchanted Weapon ... p223
+        - Extension I ... p223
+        - Fear ... p223
+        - Fire Charm ... p223
+        - Fire Shield ... p224
+        - Fire Trap ... p224
+        - Fumble ... p224
+        - Hallucinatory Terrain ... p224
+        - Ice Storm ... p225
+        - Massmorph ... p225
+        - Minor Globe of Invulnerability ... p225
+        - Monster Summoning II ... p225
+          - Monster Summoning II Results (magic user level 4) ... p225
+        - Polymorph Other ... p226
+        - Polymorph Self ... p226
+        - Rarit’s Mnemonic Enhancement ... p226
+        - Remove Curse ... p226
+        - Bestow Curse ... p227
+        - Wall of Fire ... p227
+        - Wall of Ice ... p227
+        - Wizard Eye ... p227
+      - 1.8.5.5. Fifth Level Magic-User Spells ... p228
+        - Airy Water ... p228
+        - Animal Growth ... p228
+        - Reduce Animal ... p228
+        - Animate Dead ... p228
+        - Biccby’s Interposing Hand ... p229
+        - Cloudkill ... p229
+        - Cone of Cold ... p229
+        - Conjure Elemental ... p229
+        - Contact Other Plane ... p230
+        - Distance Distortion ... p230
+        - Extension II ... p231
+        - Feeblemind ... p231
+        - Hold Monster ... p231
+        - Leomondo’s Secret Chest ... p231
+        - Magic Jar ... p232
+        - Monster Summoning III ... p232
+          - Monster Summoning III Results (magic user level 5) ... p233
+        - Teleport ... p234
+        - Transmute Rock to Mud ... p234
+        - Transmute Mud to Rock ... p234
+        - Wall of Force ... p235
+        - Wall of Iron ... p235
+        - Wall of Stone ... p235
+      - 1.8.5.6. Sixth Level Magic-User Spells ... p235
+        - Anti-Magic Shell ... p235
+        - Biccby’s Forceful Hand ... p235
+        - Control Weather ... p236
+        - Death Spell ... p236
+        - Disintegrate ... p236
+        - Enchant an Item ... p237
+        - Extension III ... p237
+        - Geas ... p237
+        - Glasseye ... p237
+        - Globe of Invulnerability ... p237
+        - Guards and Wards ... p238
+        - Invisible Stalker ... p238
+        - Legend Lore ... p238
+        - Lower Water ... p238
+        - Raise Water ... p239
+        - Monster Summoning IV ... p239
+          - Monster Summoning IV Results (magic user level 6) ... p239
+        - Move Earth ... p239
+        - Othalak’s Freezing Sphere ... p239
+        - Part Water ... p240
+        - Project Image ... p240
+        - Reincarnation ... p240
+          - Arcane Reincarnation Table ... p240
+        - Repulsion ... p241
+        - Spirit-Rack ... p241
+        - Stone to Flesh ... p241
+        - Flesh to Stone ... p241
+        - Tanzur’s Transformation ... p241
+      - 1.8.5.7. Seventh Level Magic-User Spells ... p242
+        - Biccby’s Grasping Hand ... p242
+        - Cacodemon ... p242
+        - Charm Plants ... p242
+        - Delayed Blast Fireball ... p242
+        - Dramijar’s Instant Summons ... p243
+        - Duo-Dimension ... p243
+        - Limited Wish ... p243
+        - Mass Invisibility ... p243
+        - Monster Summoning V ... p244
+          - Monster Summoning V Results (magic user level 7) ... p244
+        - Murkenvain’s Sword ... p244
+        - Phase Door ... p244
+        - Power Word Stun ... p244
+        - Reverse Gravity ... p245
+        - Simulacrum ... p245
+        - Statue ... p245
+        - Vanish ... p245
+      - 1.8.5.8. Eighth Level Magic-User Spells ... p245
+        - Antipathy/Sympathy ... p245
+        - Biccby’s Clenched Fist ... p246
+        - Clone ... p246
+        - Glass-steel ... p246
+        - Incendiary Cloud ... p247
+        - Otho’s Irresistible Dance ... p247
+        - Mass Charm ... p247
+        - Maze ... p248
+        - Mind Blank ... p248
+        - Monster Summoning VI ... p248
+          - Monster Summoning VI Results (magic user level 8) ... p248
+        - Polymorph Object ... p249
+          - Polymorph Object—Table 1 (magic user level 8) ... p249
+        - Power Word, Blind ... p249
+        - Siartan’s Spell Immunity ... p249
+        - Symbol ... p250
+        - Trap the Soul ... p250
+      - 1.8.5.9. Ninth Level Magic-User Spells ... p250
+        - Astral Spell ... p250
+        - Biccby’s Crushing Hand ... p251
+        - Gate ... p251
+        - Imprisonment ... p251
+        - Meteor Swarm ... p251
+        - Monster Summoning VII ... p252
+          - Monster Summoning VII Results (magic user level 9) ... p252
+        - Power Word Kill ... p252
+        - Prismatic Sphere ... p252
+          - Prismatic Sphere Effects (magic user level 9) ... p253
+        - Shape Change ... p253
+        - Temporal Stasis ... p253
+        - Time Stop ... p253
+        - Wish ... p254
+  - Chapter Nine: Sample Play Session ... p255
+  - Afterword ... p260
+  - Index ... p261
+
+# OSRIC 3.0 Gamemaster Guide — Outline
+
+**PDF page offset: +1** (printed page N = PDF page N+1)
+
+- Introduction ... p5
+- Part One: Running the Game ... p6
+  - Chapter One: Combat and XP ... p6
+    - 2.1.1. Combat Rules ... p6
+    - 2.1.2. Attack Matrix for Monsters ... p6
+      - Table 2.1.2a: Monster To-Hit Table ... p6
+    - 2.1.3. Monster Saving Throws ... p7
+      - Table 2.1.3a: Normal Monster Saving Throws (Except INT 0) ... p7
+      - Table 2.1.3b: Non-Intelligent (Int 0) Monster Saving Throws ... p7
+    - 2.1.4. Awarding Experience ... p8
+      - Table 2.1.4a: Experience Point Awards for Monsters ... p8
+      - How to Use this Table ... p8
+  - Chapter Two: Non-Player Characters (NPCs) ... p9
+    - “Relationship Categories” with Characters ... p9
+      - Henchmen and Hirelings ... p9
+    - 2.2.1. Standard Hirelings ... p10
+      - Table 2.2.1a: Standard Hirelings ... p10
+    - 2.2.2. Expert Hirelings ... p11
+      - Table 2.2.2a: Expert Hirelings ... p11
+      - Table 2.2.2b: Soldiers ... p11
+      - Table 2.2.2c: Ship Crews ... p12
+      - Alchemist ... p12
+      - Armourer ... p13
+        - Table 2.2.2d: Armour Production ... p13
+      - Blacksmith ... p0
+        - Table 2.2.2e: Weapon Production ... p13
+      - Engineer (Miner and Sapper) ... p14
+      - Jeweller and Gemcutter ... p14
+        - Table 2.2.2f: Jewellers ... p14
+        - Table 2.2.2g: Gemcutters ... p14
+      - Mercenaries ... p15
+        - Table 2.2.2h: Mercenary Units ... p15
+      - Sage ... p17
+        - Table 2.2.2i: Sage Ability Table ... p17
+        - Table 2.2.2j: Sage Fields of Study (d100) ... p17
+        - Table 2.2.2k: Sage’s Chance to Know Answer ... p18
+        - Table 2.2.2l: Sage Alignments ... p18
+        - Table 2.2.2m: Information Discovery Time and Cost ... p19
+      - Scribe ... p19
+      - Ship Crew ... p19
+      - Spy ... p20
+      - Steward ... p20
+      - Weaponer ... p20
+        - Table 2.2.2n: Complex Weapon Production ... p20
+    - 2.2.3. Henchmen ... p21
+      - Table 2.2.3a: Classes of Available Henchmen ... p21
+    - 2.2.4. Loyalty of Hirelings and Henchmen ... p22
+      - Alignment of Player Character ... p22
+      - Alignment of Hireling or Henchmen ... p22
+      - Status of Hireling or Henchmen ... p23
+      - Length of Service ... p23
+      - Training of Hireling or Henchmen ... p23
+      - Payment of Hirelings or Henchmen ... p23
+      - Treatment ... p23
+      - Discipline ... p23
+      - Table 2.2.4a: Result of Tested Loyalty ... p23
+    - 2.2.5. Followers ... p24
+      - 2.2.5.1. Followers for Assassins ... p24
+        - Table 2.2.5.1a: Determining Level of Assassin Guild Members ... p24
+      - 2.2.5.2. Followers for Rangers ... p24
+      - 2.2.5.3. Followers for Thieves ... p24
+        - Table 2.2.5.3a: Determining Level of Thief Followers ... p24
+    - 2.2.6. NPC “Builds” ... p25
+      - 2.2.6.1. 0-Level NPC ... p25
+      - 2.2.6.2. 0-level NPC with Professional Skills ... p25
+      - 2.2.6.3. NPC with a Character Class or Class Levels ... p25
+      - 2.2.6.4. An NPC-Only Class ... p25
+      - 2.2.6.5. NPCs with Extra Hit Dice and Unusual Powers ... p25
+    - 2.2.7. NPC Classes: Witch-Priests and Witch-Crafters ... p25
+      - 2.2.7.1. Witch-Priests ... p26
+        - Table 2.2.7.1a: Witch-Priest Advancement ... p26
+        - Table 2.2.7.1b: Witch-Priest Maximum Level by Ancestry ... p26
+        - Spells ... p26
+        - Table 2.2.7.1c: Witch-Priest Spell List ... p26
+      - 2.2.7.2. Witch-Crafters ... p26
+        - Table 2.2.7.2a: Witch-Crafter Advancement ... p27
+        - Table 2.2.7.2b: Witch-Crafter Maximum Level by Ancestry ... p27
+        - Spells ... p27
+        - Table 2.2.7.2c: Witch-Crafter Divine Spells ... p27
+  - Chapter Three: Running a Dungeon Adventure ... p28
+  - Chapter Four: Running Wilderness-Exploration Adventures ... p28
+    - 2.4.1.1. Weather ... p28
+    - 2.4.1.2. Navigation ... p28
+    - 2.4.1.3. Wandering Monsters ... p29
+    - 2.4.1.4. Camping ... p29
+    - 2.4.1.5. Aerial Agility ... p29
+    - 2.4.1.6. Waterborne and Underwater Adventures ... p29
+  - Chapter Five: Running Other Types of Adventures ... p30
+    - 2.5.1. Adventures in Towns and Cities ... p30
+    - 2.5.2. Exploring the Planes ... p31
+      - The Planes of Existence ... p31
+  - Chapter Six: An Example Dungeon ... p32
+    - Example Dungeon Key ... p32
+      - Background ... p32
+      - Start ... p32
+      - Map Key ... p32
+  - Chapter Seven: Designing a Dungeon Adventure ... p34
+    - 2.7.1. Random Dungeon Generation ... p34
+      - Starting Location ... p34
+        - Table D-1: Starting Area Shape ... p34
+        - Rooms and Chambers ... p35
+        - Table D-2a: Room Size ... p35
+        - Table D-2b: Chamber Size ... p35
+        - Table D-3: Special Rooms or Chambers ... p36
+        - Table D-4: Approximate Size Table for Unusual Rooms ... p36
+        - Table D-5: Number of Exits ... p36
+        - Table D-6: Exit Location* ... p36
+        - Table D-7: Exit Direction, Chamber Passage ... p37
+        - Table D-8: Chamber or Room Contents ... p37
+        - Table D-9: Treasure Container ... p37
+        - Table D-10: Treasure Guards & Wards ... p37
+        - Table D-11: Treasure Hidden By or In ... p37
+        - Table D-12: Treasure Amount ... p38
+        - Table D-13: Stairs ... p38
+        - Table D-14: Caves ... p38
+        - Table D-15: Pools ... p38
+        - Table D-16: Lakes ... p38
+        - Table D-17: Magic Pools ... p39
+        - Table D-18: General ... p39
+        - Table D-19: Door Location ... p39
+        - Table D-20: Behind the Door ... p39
+        - Table D-21: Side Passages ... p39
+        - Table D-22: Passage Width ... p40
+        - Table D-23: Special Passages ... p40
+        - Table D-24: Turns ... p40
+      - Using the Random Dungeon Generator for Solo Play ... p40
+    - 2.7.2. Traps and Tricks ... p41
+      - 2.7.2.1. Traps ... p41
+        - Trap Placement ... p41
+        - 2.7.2.1a: Random Trap Generation ... p42
+      - 2.7.2.2. Tricks ... p43
+        - Table 2.7.2.2a: Main Feature of Trick ... p43
+        - Table 2.7.2.2b: Main Effect of Trick ... p44
+    - 2.7.3. Random Encounters ... p45
+      - 2.7.3.1. Random Dungeon Encounters ... p45
+        - Table 2.7.3.1a: Monster Sub-Table Matrix ... p45
+      - 2.7.3.2. Encounter Tables ... p46
+        - Table 2.7.3.2A: Monster Level One ... p46
+        - Table 2.7.3.2B: Monster Level Two ... p46
+        - Table 2.7.3.2C: Monster Level Three ... p46
+          - Monster Level Three—Dragon Sub–table ... p47
+        - Table 2.7.3.2D: Monster Level Four ... p47
+          - Monster Level Four—Dragon Sub–table ... p47
+        - Table 2.7.3.2E: Monster Level Five ... p47
+          - Monster Level Five—Dragon Sub-table ... p48
+        - Table 2.7.3.2F: Monster Level Six ... p48
+          - Monster Level Six-Dragon Sub-table ... p48
+        - Table 2.7.3.2G: Monster Level Seven ... p49
+          - Monster Level Seven-Dragon Sub-table ... p49
+        - Table 2.7.3.2H: Monster Level Eight ... p49
+          - Monster Level Eight-Dragon Sub-table ... p49
+        - Table 2.7.3.2I: Monster Level Nine ... p50
+          - Monster Level Nine-Dragon Sub-table ... p50
+        - Table 2.7.3.2J: Monster Level Ten ... p50
+          - Monster Level Ten-Dragon Sub-table ... p50
+      - 2.7.3.3. NPC Parties (all Dungeon Levels) ... p51
+        - Table 2.7.3.3a: NPC Classes ... p51
+        - Table 2.7.3.3b: Ancestry and Multi-Classing ... p51
+        - Table 2.7.3.3c: NPC Magic Items ... p52
+  - Chapter Eight: Designing City Adventures ... p54
+    - Random Urban Encounters ... p54
+      - Table 2.8.1a: Daytime Encounters ... p54
+      - Table 2.8.1b: Nighttime Encounters ... p55
+    - Urban Encounter Sub–tables ... p57
+      - Table 2.8.1c: Ancestry Sub–table ... p57
+      - Table 2.8.1d: Urban Professions Sub-table ... p57
+      - Table 2.8.1e: Noble Professions Sub-table ... p57
+  - Chapter Nine: Wilderness Encounter Tables ... p58
+    - Random Wilderness Encounters ... p58
+      - Regarding the Lost World Encounter Tables ... p58
+      - Explanation of NPC Types ... p58
+      - The Main Table ... p59
+        - Table 2.9.1: Wilderness Encounters Main Table (Part 1) ... p59
+        - Table 2.9.1: Wilderness Encounters Main Table (Part 2) ... p60
+        - Table 2.9.1: Wilderness Encounters Main Table (Part 3) ... p60
+        - Table 2.9.1a: Aquatic Encounters (Part 1) ... p61
+        - Table 2.9.1a: Aquatic Encounters (Part 2) ... p61
+        - Table 2.9.1b: Arctic Encounters (Part 1) ... p62
+        - Table 2.9.1b: Arctic Encounters (Part 2) ... p63
+        - Table 2.9.1c: Desert Encounters (Part 1) ... p64
+        - Table 2.9.1c: Desert Encounters (Part 2) ... p65
+        - Table 2.9.1d: Forest Encounters (Part 1) ... p65
+        - Table 2.9.1d: Forest Encounters (Part 2) ... p66
+        - Table 2.9.1e: Graveyard Encounters (Part 1) ... p67
+        - Table 2.9.1e: Graveyard Encounters (Part 2) ... p67
+        - Table 2.9.1f: Hills Encounters (Part 1) ... p68
+        - Table 2.9.1f: Hills Encounters (Part 2) ... p69
+        - Table 2.9.1g: Jungle Encounters (Part 1) ... p70
+        - Table 2.9.1g: Jungle Encounters (Part 2) ... p70
+        - Table 2.9.1h: Lost World Encounters (Part 1) ... p71
+        - Table 2.9.1h: Lost World Encounters (Part 2) ... p72
+        - Table 2.9.1i: Marine Encounters (Waterborne) (Part 1) ... p73
+        - Table 2.9.1i: Marine Encounters (Waterborne) (Part 2) ... p74
+        - Table 2.9.1j: Mountains Encounters (Part 1) ... p75
+        - Table 2.9.1j: Mountains Encounters (Part 2) ... p75
+        - Table 2.9.1k: Plains Encounters (Part 1) ... p76
+        - Table 2.9.1k: Plains Encounters (Part 2) ... p77
+        - Table 2.9.1l: Rural Encounters (Part 1) ... p78
+        - Table 2.9.1l: Rural Encounters (Part 2) ... p78
+        - Table 2.9.1m: Tundra Encounters (Part 1) ... p79
+        - Table 2.9.1m: Tundra Encounters (Part 2) ... p80
+        - Table 2.9.1n: Wetlands Encounters (Part 2) ... p81
+        - Table 2.9.1o: Dinosaur Encounters ... p82
+        - Other Dinosaurs I ... p83
+        - Other Dinosaurs II ... p83
+        - Marine Dinosaurs ... p83
+        - Flying Dinosaurs ... p83
+- Part Two: Monsters ... p84
+  - Chapter Ten: Monster Statistics ... p84
+    - 2.10.1. Quick-Reference Information ... p84
+      - Table 2.10.1a: Detecting Presence of Invisible Creatures ... p86
+      - 2.10.2. Monster Description ... p86
+    - Monsters ... p89
+      - Achaiyerai ... p89
+      - Aerial Servant ... p89
+      - Al-Mi’raj ... p90
+      - Animated Object ... p90
+      - Ankheg ... p91
+      - Annis Hag ... p92
+      - Ant, Giant ... p93
+      - Ape ... p94
+      - Aurumvorax ... p95
+      - Axe Beak (Phorusrhacid) ... p96
+      - Azer ... p96
+      - Babbler ... p97
+      - Baboon ... p97
+      - Badger ... p98
+      - Banshee (Groaning Spirit) ... p98
+      - Barracuda ... p99
+      - Basilisk ... p99
+      - Bat ... p99
+      - Bat, Mobat ... p100
+      - Batrachian ... p101
+      - Bear, Lesser ... p102
+      - Bear, Greater ... p102
+      - Bee, Giant (Honeybee) ... p103
+      - Bee, Giant (Bumblebee) ... p103
+      - Beetles, Giant ... p104
+        - Small to Medium ... p104
+        - Large ... p104
+      - Behir ... p105
+      - Bird of Prey ... p106
+      - Blindheim ... p106
+      - Blink Dog ... p107
+      - Boar ... p107
+      - Boar, Warthog ... p108
+      - Brownie ... p108
+      - Bugbear ... p109
+      - Bulette ... p109
+      - Camel ... p110
+      - Carbuncle ... p110
+      - Carcass Creeper ... p110
+      - Caryatid Column ... p111
+      - Cat ... p111
+      - Caterwaul ... p112
+      - Cattle ... p113
+      - Centaur ... p113
+      - Centipede, Giant ... p114
+      - Chimera ... p115
+      - Cockatrice ... p115
+      - Coffer Corpse ... p116
+      - Couatl ... p116
+      - Crabman ... p117
+      - Crocodile ... p117
+      - Crustacean, Giant ... p118
+      - Crypt Thing ... p118
+      - Cyclops ... p119
+      - Dakon ... p119
+      - Dark Creeper ... p120
+      - Dark Stalker ... p120
+      - Class A Demon (Vrock) ... p122
+      - Class B Demon (Hezrou) ... p122
+      - Class C Demon (Glabrezu) ... p123
+      - Class D Demon (Nalfeshnee and others) ... p123
+      - Class E Demon (Marilith and others) ... p124
+      - Class F Demon (Balor and others) ... p124
+      - Aluu-Demon (Half-Demon) ... p125
+      - Babau ... p126
+      - Caumbion ... p127
+      - Dretch ... p127
+      - Ekivu (Fly Demon) (Khasme) ... p128
+      - Manis ... p128
+      - Quasit ... p129
+      - Shub (Rutterkith) ... p130
+      - Succubus/Incubus ... p130
+      - Uduk (Bar-Igura) ... p131
+      - Assagim (Nipheribu, Nuperibbo) ... p132
+      - Barbed Devil ... p133
+      - Bearded Devil ... p133
+      - Bone Devil ... p134
+      - Erinyes ... p134
+      - Hellcat (Devilcat) ... p135
+      - Horned Devil ... p136
+      - Ice Devil (Greater Devil) ... p136
+      - Imp (Lesser Devil) ... p137
+      - Lemure (Least Devil) ... p138
+      - Manalishi (Lesser Devil; Scaly Devil, Abyssai) ... p138
+      - Shaitan (Greater Devil; Styx Fiend) ... p139
+      - Spiked Devil (Least Devil; Spined Fiend) ... p139
+      - Pit Fiend (Greater Devil) ... p140
+      - Tyrannosaurids and Allosaurids ... p141
+      - Hadrosaurids ... p142
+      - Sauropods ... p142
+      - Ceratopsians ... p143
+      - Other Dinosaurs I ... p144
+      - Other Dinosaurs II ... p144
+      - Marine Dinosaurs ... p145
+      - Flying Dinosaurs ... p146
+      - Disenchanter ... p147
+      - Djinn (Genie) ... p147
+      - Dog ... p148
+      - Doppelgänger ... p149
+      - Dracolisk ... p149
+      - Dragon, Black ... p151
+      - Dragon, Blue ... p151
+      - Dragon, Brass ... p152
+      - Dragon, Bronze ... p152
+      - Dragon, Copper ... p153
+      - Dragon, Gold ... p153
+      - Dragon, Green ... p154
+      - Dragon, Red ... p154
+      - Dragon, Silver ... p155
+      - Dragon, White ... p155
+      - Dragon Turtle ... p156
+      - Dryad ... p156
+      - Dwarf ... p157
+      - Eel, Giant ... p157
+      - Efreet ... p158
+      - Elemental ... p159
+      - Elephant ... p161
+      - Elf ... p161
+      - Ettercap ... p162
+      - Ettin ... p162
+      - Executioner’s Hood ... p163
+      - Eye of the Deep ... p163
+      - Fish, Giant ... p164
+      - Fly, Giant ... p164
+      - Frog, Giant ... p165
+      - Fungi, Violet ... p165
+      - Gargoyle ... p166
+      - Gelatinous Cube ... p166
+      - Ghast ... p167
+      - Ghost ... p167
+      - Ghoul ... p168
+      - Giant, Cloud ... p169
+      - Giant, Fire ... p170
+      - Giant, Frost ... p170
+      - Giant, Hill ... p171
+      - Giant, Stone ... p171
+      - Giant, Storm ... p171
+      - Flind ... p172
+      - Gnoll ... p172
+      - Gnome ... p173
+      - Goblin ... p173
+      - Gorgon ... p176
+      - Grey Ooze ... p176
+      - Griffon ... p177
+      - Grimlock ... p177
+      - Halfling ... p178
+      - Harpy ... p178
+      - Hell Hound ... p179
+      - Hippogriff ... p179
+      - Hobgoblin ... p179
+      - Homunculus ... p180
+      - Horse ... p181
+      - Hippocampus ... p181
+      - Hippopotamus ... p181
+      - Bandit (Brigand) ... p182
+      - Berserker ... p183
+      - Buccaneer (Pirate) ... p183
+      - Caveman ... p184
+      - Tribal Warriors ... p184
+      - Mystic Nomad ... p185
+      - Mounted Nomads ... p185
+      - Pilgrim ... p186
+      - Merchant ... p186
+      - Hydra ... p187
+      - Hyena ... p188
+      - Invisible Stalker ... p188
+      - Jackal ... p189
+      - Jackalwere ... p189
+      - Kobold ... p190
+      - Kraken ... p190
+      - Lamia ... p191
+      - Lammasu ... p192
+      - Larval Fiend ... p192
+      - Leech, Giant ... p192
+      - Leprechaun ... p193
+      - Lich ... p193
+      - Lion ... p194
+      - Lycanthrope ... p195
+      - Lizard, Giant ... p197
+      - Lizard Man ... p198
+      - Locathah ... p199
+      - Lurker Above ... p199
+      - Lynx, Giant ... p200
+      - Manticore ... p200
+      - Medusa ... p201
+      - Mephit ... p201
+      - Merman ... p203
+      - Minotaur ... p204
+      - Mould ... p204
+      - Mule ... p205
+      - Mummy ... p205
+      - Naga ... p206
+      - Necrophidius ... p207
+      - Nereid ... p208
+      - Night Hag ... p208
+      - Nightmare ... p209
+      - Nixie ... p209
+      - Nymph ... p210
+      - Octopus, Giant ... p211
+      - Ogre ... p211
+      - Orc ... p212
+      - Owlbear ... p213
+      - Otyugh ... p214
+      - Pegasus ... p214
+      - Phase Cat (Coeurl) ... p215
+      - Piercer ... p215
+      - Pixie ... p216
+      - Poltergeist ... p216
+      - Portuguese Man O’ War, Giant ... p217
+      - Pseudo-Dragon ... p217
+      - Purple Worm ... p218
+      - Rakshasa ... p218
+      - Rat, Giant ... p219
+      - Remorhaz ... p219
+      - Rhinoceros ... p220
+      - Roc ... p220
+      - Roper ... p220
+      - Rot Grub ... p222
+      - Rust Monster ... p222
+      - Sahuagin ... p223
+      - Satyr (Faun) ... p224
+      - Scorpion, Giant ... p225
+      - Sea Hag ... p225
+      - Sea Lion ... p226
+      - Sea Serpent ... p226
+      - Seahorse, Giant ... p227
+      - Shadow ... p227
+      - Shambling Mound ... p227
+      - Shark ... p228
+      - Shedu ... p228
+      - Shrieker ... p229
+      - Skeleton ... p229
+      - Skeleton Warrior ... p230
+      - Slithering Tracker ... p230
+      - Slime, Green ... p231
+      - Slug, Giant ... p231
+      - Snake, Giant ... p232
+      - Spectre ... p233
+      - Sphinx, Andro- ... p233
+      - Sphinx, Crio– ... p234
+      - Sphinx, Gyno– ... p234
+      - Sphinx, Hieraco– ... p234
+      - Spider, Giant ... p235
+      - Spider, Giant Water ... p236
+      - Spider, Phase ... p236
+      - Sprite ... p236
+      - Squid, Giant ... p237
+      - Stirge ... p237
+      - Stunjelly ... p238
+      - Sylph ... p238
+      - Tick, Giant ... p239
+      - Tiger ... p239
+      - Titan ... p240
+      - Titanothere ... p240
+      - Toad, Giant ... p241
+      - Trapper ... p241
+      - Treant ... p241
+      - Tree, Animated ... p242
+      - Triton ... p242
+      - Troglodyte ... p243
+      - Troll ... p243
+      - Troll, Giant ... p244
+      - Troll, Giant Two–Headed ... p244
+      - Troll, Ice ... p245
+      - Troll, Spectral ... p245
+      - Turtle, Giant ... p246
+      - Unicorn ... p246
+      - Vampire ... p247
+      - Vilstraak ... p248
+      - Volt ... p248
+      - Vulchling ... p249
+      - Walrus ... p249
+      - Wasp, Giant ... p249
+      - Weasel, Giant ... p250
+      - Whale ... p250
+      - Wight ... p250
+      - Will–o–the–Wisp ... p251
+      - Wolf ... p251
+      - Wolf, Winter ... p252
+      - Wolverine ... p252
+      - Worg ... p253
+      - Wraith ... p253
+      - Wyvern ... p253
+      - Xorn ... p254
+      - Yellowmusk Vine ... p254
+      - Yellowmusk Vine Zombie ... p255
+      - Yeti ... p256
+      - Zombie ... p256
+      - Zombie, Juju ... p257
+  - Chapter Eleven: Creating Your Own Monsters ... p261
+    - Table 2.11a: Calculating a Monster’s “Level” ... p261
+- Part Three: Treasure ... p262
+  - Chapter Twelve: Treasure and Loot Classes ... p262
+    - Table 2.12a: Unowned Treasure ... p262
+    - 2.12.1. Loot Classes ... p262
+    - 2.12.2. Maps ... p264
+    - 2.12.3. Coin ... p264
+    - 2.12.4. Gemstones ... p265
+      - 2.12.4.1. Value of a Gem ... p265
+        - Table 2.12.4a: Gemstone Value ... p265
+      - 2.12.4.2. Gem Types, by Value ... p265
+    - 2.12.5. Jewellery ... p265
+      - Table 2.12.5a: Jewellery Type and Value ... p265
+  - Chapter Thirteen: Magic Items ... p267
+    - 2.13.1. Magic Items ... p267
+      - Table 2.13.1a: Determining Type of Magic Item ... p267
+      - Table 2.13.1b: Armour and Shield Type ... p267
+      - Table 2.13.1c: Armour and Shield Properties ... p267
+      - Table 2.13.1d: Miscellaneous Weapons Type ... p268
+      - Table 2.13.1e: Miscellaneous Weapons Properties ... p268
+      - Table 2.13.1f: Potion Properties ... p268
+      - Table 2.13.1g: Ring Properties ... p269
+      - Table 2.13.1h: Rods, Staves & Wands Properties ... p269
+      - Table 2.13.1i: Scroll Type ... p269
+      - Table 2.13.1j: Spell Scrolls ... p269
+        - Table 2.13.1j.1: Spell Levels on a Scroll ... p270
+      - Table 2.13.1k: Scrolls of Warding ... p270
+      - Table 2.13.1l: Sword Type ... p270
+      - Table 2.13.1m: Sword Properties* ... p270
+      - Table 2.13.1n: Special Magic Swords ... p270
+      - Table 2.13.1o: Special Magic Miscellaneous Weapons ... p65
+      - Table 2.13.1p: Miscellaneous Magic Items—Rarity ... p271
+      - Table 2.13.1q: Common Miscellaneous Magic Items ... p271
+      - Table 2.13.1r: Less-Common Miscellaneous Magic Items ... p271
+      - Table 2.13.1s: Uncommon Miscellaneous Magic Items ... p272
+      - Table 2.13.1t: Rare Miscellaneous Magic Items ... p273
+      - Table 2.13.1u: Ioun Stones Subtable ... p274
+    - 2.13.2. Potions ... p275
+      - Admixture of Potions ... p275
+        - Table 2.13.2a: Potion Admixture Results ... p275
+    - 2.13.3. Scrolls ... p279
+      - 2.13.3.1. Spell Scrolls ... p279
+        - Table 2.13.3.1a: Type of Spell Scroll ... p279
+    - 2.13.4. Rods, Staves and Wands ... p281
+      - Table 2.13.4a: Charges in a Rod, Staff, or Wand ... p281
+        - Device Type ... p281
+        - Charges ... p281
+      - 2.13.4.1. Rods ... p281
+      - 2.13.4.2. Staves ... p283
+      - 2.13.4.3. Wands ... p284
+    - 2.13.5. Magic Armour and Shields ... p286
+    - 2.13.6. Magic Swords ... p286
+      - 2.13.6.1. Unusual Magic Swords ... p288
+        - Table 2.13.6.1a: Sword Intelligence and Capabilities ... p288
+        - Table 2.13.6.1b: Sword Alignment ... p288
+        - Table 2.13.6.1c: Sword Minor Powers ... p289
+        - Table 2.13.6.1d: Sword Major Powers ... p289
+        - Table 2.13.6.1e: Special Purpose ... p289
+        - Table 2.13.6.1f: Special Power ... p289
+    - 2.13.7. Miscellaneous Weapons ... p291
+    - 2.13.8. Miscellaneous Magic ... p292
+      - Bag of Tricks ... p294
+    - 2.13.9. Rings ... p311
+    - 2.13.10. Cursed Items ... p313
+      - Table 2.13.10a: Common Item Curses ... p313
+    - 2.13.11. Artifacts ... p320
+      - 2.13.11.1. Minor Artifact Descriptions ... p320
+      - 2.13.11.2. Major Artifacts ... p324
+  - Chapter Fourteen: High Level Play ... p325
+    - 2.14.1. Strongholds ... p325
+      - Stronghold Construction ... p325
+        - Table 2.14.1a: Stronghold Building Cost ... p325
+      - War Machines ... p325
+        - Table 2.14.1b: War Machines ... p326
+      - Freeholds ... p326
+    - 2.14.2. Spell Research ... p326
+  - Index ... p327
