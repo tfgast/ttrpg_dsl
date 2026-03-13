@@ -1,0 +1,202 @@
+// Table lookup integration tests
+//
+// Runtime coverage migrated from
+// crates/ttrpg_interp/tests/table_lookup.rs.
+// Checker error tests (type mismatch, wildcard warnings, range on
+// non-int) remain in Rust.
+
+// ── 1D table: enum → enum mapping ──────────────────────────────
+
+source -s <<END
+    enum Ability { STR, DEX, CON, INT, WIS, CHA }
+    enum Skill { athletics, acrobatics, stealth, arcana, perception }
+
+    table skill_ability(skill: Skill) -> Ability {
+        athletics  => STR,
+        acrobatics => DEX,
+        stealth    => DEX,
+        arcana     => INT,
+        perception => WIS
+    }
+
+    derive test_athletics() -> Ability {
+        skill_ability(athletics)
+    }
+
+    derive test_arcana() -> Ability {
+        skill_ability(arcana)
+    }
+
+    derive test_stealth() -> Ability {
+        skill_ability(stealth)
+    }
+END
+
+assert_eq test_athletics(), Ability.STR
+assert_eq test_arcana(), Ability.INT
+assert_eq test_stealth(), Ability.DEX
+
+// ── 1D table: enum → int mapping ───────────────────────────────
+
+source -s <<END
+    enum CoverType { no_cover, half_cover, three_quarters_cover, full_cover }
+
+    table cover_AC_bonus(cover: CoverType) -> int {
+        no_cover             => 0,
+        half_cover           => 2,
+        three_quarters_cover => 5,
+        full_cover           => 0
+    }
+
+    derive test_half() -> int {
+        cover_AC_bonus(half_cover)
+    }
+
+    derive test_none() -> int {
+        cover_AC_bonus(no_cover)
+    }
+
+    derive test_three_quarters() -> int {
+        cover_AC_bonus(three_quarters_cover)
+    }
+END
+
+assert_eq test_half(), 2
+assert_eq test_none(), 0
+assert_eq test_three_quarters(), 5
+
+// ── 2D table with int ranges ───────────────────────────────────
+
+source -s <<END
+    enum Class { Fighter, Cleric, Thief, MagicUser }
+
+    table thac0(class: Class, level: int) -> int {
+        [Fighter,   1..=3]  => 19,
+        [Fighter,   4..=6]  => 17,
+        [Fighter,   7..=9]  => 14,
+        [Cleric,    1..=4]  => 19,
+        [Cleric,    5..=8]  => 17,
+        [Thief,     1..=4]  => 19,
+        [Thief,     5..=8]  => 17,
+        [MagicUser, 1..=5]  => 19,
+        [MagicUser, 6..=10] => 17
+    }
+
+    derive test_fighter_1() -> int { thac0(Fighter, 1) }
+    derive test_fighter_3() -> int { thac0(Fighter, 3) }
+    derive test_fighter_5() -> int { thac0(Fighter, 5) }
+    derive test_fighter_7() -> int { thac0(Fighter, 7) }
+    derive test_cleric_3() -> int { thac0(Cleric, 3) }
+    derive test_cleric_6() -> int { thac0(Cleric, 6) }
+    derive test_mu_1() -> int { thac0(MagicUser, 1) }
+    derive test_mu_10() -> int { thac0(MagicUser, 10) }
+END
+
+// Fighter levels 1-3 → 19
+assert_eq test_fighter_1(), 19
+assert_eq test_fighter_3(), 19
+// Fighter levels 4-6 → 17
+assert_eq test_fighter_5(), 17
+// Fighter levels 7-9 → 14
+assert_eq test_fighter_7(), 14
+// Cleric levels 1-4 → 19
+assert_eq test_cleric_3(), 19
+// Cleric levels 5-8 → 17
+assert_eq test_cleric_6(), 17
+// MagicUser levels 1-5 → 19, 6-10 → 17
+assert_eq test_mu_1(), 19
+assert_eq test_mu_10(), 17
+
+// ── Table with wildcard (default) entry ────────────────────────
+
+source -s <<END
+    table proficiency_bonus(level: int) -> int {
+        1..=4   => 2,
+        5..=8   => 3,
+        9..=12  => 4,
+        13..=16 => 5,
+        17..=20 => 6,
+        _       => 0
+    }
+
+    derive test_level_1() -> int { proficiency_bonus(1) }
+    derive test_level_10() -> int { proficiency_bonus(10) }
+    derive test_level_20() -> int { proficiency_bonus(20) }
+    derive test_level_99() -> int { proficiency_bonus(99) }
+END
+
+assert_eq test_level_1(), 2
+assert_eq test_level_10(), 4
+assert_eq test_level_20(), 6
+// Out-of-range → wildcard default
+assert_eq test_level_99(), 0
+
+// ── Table with struct values ───────────────────────────────────
+
+source -s <<END
+    enum Class { Fighter, Thief }
+    struct SavingThrows {
+        death: int
+        wand: int
+        paralysis: int
+        breath: int
+        spell: int
+    }
+
+    table saving_throws(class: Class, level: int) -> SavingThrows {
+        [Fighter, 1..=3] => SavingThrows { death: 12, wand: 13, paralysis: 14, breath: 15, spell: 16 },
+        [Fighter, 4..=6] => SavingThrows { death: 10, wand: 11, paralysis: 12, breath: 13, spell: 14 },
+        [Thief, 1..=4]   => SavingThrows { death: 13, wand: 14, paralysis: 13, breath: 16, spell: 15 },
+        [Thief, 5..=8]   => SavingThrows { death: 12, wand: 13, paralysis: 11, breath: 14, spell: 13 }
+    }
+
+    derive fighter_death_save(level: int) -> int {
+        saving_throws(Fighter, level).death
+    }
+
+    derive thief_wand_save(level: int) -> int {
+        saving_throws(Thief, level).wand
+    }
+END
+
+assert_eq fighter_death_save(2), 12
+assert_eq fighter_death_save(5), 10
+assert_eq thief_wand_save(3), 14
+assert_eq thief_wand_save(7), 13
+
+// ── Table no-match runtime error ───────────────────────────────
+
+source -s <<END
+    table lookup(x: int) -> int {
+        1 => 10,
+        2 => 20,
+        3 => 30
+    }
+
+    derive test_missing() -> int { lookup(99) }
+END
+
+assert_err call test_missing()
+
+// ── Table with dynamic entity keys ─────────────────────────────
+
+source -s <<END
+    entity Character {
+        level: int = 1
+    }
+
+    table proficiency(level: int) -> int {
+        1..=4   => 2,
+        5..=8   => 3,
+        9..=12  => 4,
+        13..=16 => 5,
+        17..=20 => 6
+    }
+
+    derive get_proficiency(actor: Character) -> int {
+        proficiency(actor.level)
+    }
+END
+
+spawn Character hero { level: 7 }
+assert_eq get_proficiency(hero), 3

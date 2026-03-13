@@ -1,0 +1,51 @@
+// Enum variant field defaults
+// Runtime coverage migrated from crates/ttrpg_interp/tests/enum_variant_defaults.rs
+
+// ── Omitting a field with a default uses the default ─────────────────
+
+source -s <<END
+    enum Weapon {
+        Sword(name: string, magic_bonus: int = 0)
+    }
+    derive make_mundane() -> Weapon {
+        Sword(name: "Longsword")
+    }
+    derive make_magic() -> Weapon {
+        Sword(name: "Longsword", magic_bonus: 3)
+    }
+    derive get_bonus(w: Weapon) -> int {
+        match w {
+            Sword(name, magic_bonus) => magic_bonus
+        }
+    }
+END
+
+assert_eq get_bonus(make_mundane()), 0
+
+// ── Providing a value overrides the default ──────────────────────────
+
+assert_eq get_bonus(make_magic()), 3
+
+// ── Multiple defaults ────────────────────────────────────────────────
+
+source -s <<END
+    enum Effect {
+        Damage(amount: int, element: string = "physical", is_magical: bool = false)
+    }
+    derive make_fire() -> Effect {
+        Damage(amount: 10, element: "fire")
+    }
+    derive get_element(e: Effect) -> string {
+        match e {
+            Damage(amount, element, is_magical) => element
+        }
+    }
+    derive is_magical(e: Effect) -> bool {
+        match e {
+            Damage(amount, element, is_magical) => is_magical
+        }
+    }
+END
+
+assert_eq get_element(make_fire()), "fire"
+assert_eq is_magical(make_fire()), false

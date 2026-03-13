@@ -1,0 +1,166 @@
+// Any type integration tests
+//
+// Equivalent of the runtime portions of
+// crates/ttrpg_interp/tests/any_type.rs.
+// Checker-error cases (is_on_non_any_non_entity_is_error, is_any_is_error)
+// remain in Rust.
+
+// ── to_any and is with primitives ──────────────────────────────────
+
+source -s <<END
+    derive check_int() -> bool {
+        let x: any = to_any(42)
+        x is int
+    }
+
+    derive check_int_false_for_string() -> bool {
+        let x: any = to_any("hello")
+        x is int
+    }
+
+    derive check_string() -> bool {
+        let x: any = to_any("hello")
+        x is string
+    }
+
+    derive check_bool() -> bool {
+        let x: any = to_any(true)
+        x is bool
+    }
+END
+
+assert_eq check_int(), true
+assert_eq check_int_false_for_string(), false
+assert_eq check_string(), true
+assert_eq check_bool(), true
+
+// ── narrowing and field access ─────────────────────────────────────
+
+source -s <<END
+    derive check() -> int {
+        let x: any = to_any(42)
+        if x is int {
+            x + 1
+        } else {
+            0
+        }
+    }
+END
+
+assert_eq check(), 43
+
+// ── structs ────────────────────────────────────────────────────────
+
+source -s <<END
+    struct Pos {
+        x: int
+        y: int
+    }
+
+    derive check() -> int {
+        let p = Pos { x: 10, y: 20 }
+        let a: any = to_any(p)
+        if a is Pos {
+            a.x + a.y
+        } else {
+            0
+        }
+    }
+END
+
+assert_eq check(), 30
+
+// ── enums ──────────────────────────────────────────────────────────
+
+source -s <<END
+    enum Color {
+        Red
+        Blue
+    }
+
+    derive check() -> bool {
+        let c = Color.Red
+        let a: any = to_any(c)
+        a is Color
+    }
+END
+
+assert_eq check(), true
+
+// ── containers ─────────────────────────────────────────────────────
+
+source -s <<END
+    derive check_list_int() -> bool {
+        let xs: any = to_any([1, 2, 3])
+        xs is list<int>
+    }
+
+    derive check_list_int_false() -> bool {
+        let xs: any = to_any(["a", "b"])
+        xs is list<int>
+    }
+
+    derive check_option_some() -> bool {
+        let x: any = to_any(some("hello"))
+        x is option<string>
+    }
+
+    derive check_option_none() -> bool {
+        let x: any = to_any(none)
+        x is option<string>
+    }
+END
+
+assert_eq check_list_int(), true
+assert_eq check_list_int_false(), false
+assert_eq check_option_some(), true
+assert_eq check_option_none(), true
+
+// ── entity types ───────────────────────────────────────────────────
+
+source -s <<END
+    entity Character {
+        name: string
+    }
+
+    entity Monster {
+        cr: int
+    }
+
+    derive check(target: entity) -> bool {
+        let a: any = to_any(target)
+        a is Character
+    }
+END
+
+spawn Character alice { name: "Alice" }
+spawn Monster goblin { cr: 5 }
+assert_eq check(alice), true
+assert_eq check(goblin), false
+
+// ── existing entity is still works ─────────────────────────────────
+
+source -s <<END
+    entity Character {
+        level: int
+    }
+
+    entity Monster {
+        hit_dice: int
+    }
+
+    derive get_power(target: entity) -> int {
+        if target is Character {
+            target.level
+        } else if target is Monster {
+            target.hit_dice
+        } else {
+            0
+        }
+    }
+END
+
+spawn Character hero { level: 5 }
+spawn Monster beast { hit_dice: 8 }
+assert_eq get_power(hero), 5
+assert_eq get_power(beast), 8

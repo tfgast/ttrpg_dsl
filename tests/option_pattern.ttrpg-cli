@@ -1,0 +1,174 @@
+// Tests for some(x) / none pattern matching on option<T> values.
+// Runtime coverage moved from crates/ttrpg_interp/tests/option_pattern.rs
+
+// ── some/none match patterns ─────────────────────────────────────
+
+source -s <<END
+    derive f(x: option<int>) -> int {
+        match x {
+            some(n) => n + 1,
+            none => 0
+        }
+    }
+END
+
+// some(42) -> 42 + 1 = 43
+assert_eq f(some(42)), 43
+
+// none -> 0
+assert_eq f(none), 0
+
+// ── some wildcard pattern ────────────────────────────────────────
+
+source -s <<END
+    derive f(x: option<int>) -> int {
+        match x {
+            some(_) => 1,
+            none => 0
+        }
+    }
+END
+
+assert_eq f(some(99)), 1
+
+// ── nested some pattern ──────────────────────────────────────────
+
+source -s <<END
+    derive f(x: option<option<int>>) -> int {
+        match x {
+            some(some(n)) => n,
+            some(none) => -1,
+            none => -2
+        }
+    }
+END
+
+assert_eq f(some(some(5))), 5
+assert_eq f(some(none)), -1
+assert_eq f(none), -2
+
+// ── unwrap / unwrap_or ───────────────────────────────────────────
+
+source -s <<END
+    derive f(x: option<int>) -> int {
+        x.unwrap()
+    }
+END
+
+assert_eq f(some(42)), 42
+assert_err call f(none)
+
+source -s <<END
+    derive f(x: option<int>) -> int {
+        x.unwrap_or(99)
+    }
+END
+
+assert_eq f(some(42)), 42
+assert_eq f(none), 99
+
+// ── unwrap chained with arithmetic ──────────────────────────────
+
+source -s <<END
+    derive f(x: option<int>) -> int {
+        x.unwrap() + 10
+    }
+END
+
+assert_eq f(some(32)), 42
+
+// ── if let some ──────────────────────────────────────────────────
+
+source -s <<END
+    derive f(x: option<int>) -> int {
+        if let some(n) = x { n + 1 } else { 0 }
+    }
+END
+
+assert_eq f(some(42)), 43
+assert_eq f(none), 0
+
+source -s <<END
+    derive f(x: option<int>) -> int {
+        if let some(n) = x { n + 1 } else { -1 }
+    }
+END
+
+assert_eq f(some(5)), 6
+assert_eq f(none), -1
+
+// ── if let else-if-let chain ─────────────────────────────────────
+
+source -s <<END
+    derive f(x: option<int>, y: option<int>) -> int {
+        if let some(n) = x { n } else if let some(m) = y { m } else { -1 }
+    }
+END
+
+// First matches
+assert_eq f(some(10), some(20)), 10
+// First none, second matches
+assert_eq f(none, some(20)), 20
+// Both none
+assert_eq f(none, none), -1
+
+// ── if let nested some ──────────────────────────────────────────
+
+source -s <<END
+    derive f(x: option<option<int>>) -> int {
+        if let some(some(n)) = x { n } else { -1 }
+    }
+END
+
+assert_eq f(some(some(5))), 5
+assert_eq f(some(none)), -1
+assert_eq f(none), -1
+
+// ── some() constructor ──────────────────────────────────────────
+
+source -s <<END
+    derive f() -> option<int> {
+        some(42)
+    }
+END
+
+assert_eq f(), some(42)
+
+source -s <<END
+    derive f() -> option<string> {
+        some("hello")
+    }
+END
+
+assert_eq f(), some("hello")
+
+source -s <<END
+    derive make() -> option<int> {
+        some(10)
+    }
+    derive consume(x: option<int>) -> int {
+        match x {
+            some(n) => n,
+            none => -1
+        }
+    }
+END
+
+assert_eq consume(make()), 10
+
+source -s <<END
+    enum Color { Red, Green, Blue }
+    derive f() -> option<Color> {
+        some(Red)
+    }
+END
+
+assert_eq f(), some(Red)
+
+source -s <<END
+    derive f(x: int) -> option<int> {
+        some(x + 1)
+    }
+END
+
+assert_eq f(5), some(6)

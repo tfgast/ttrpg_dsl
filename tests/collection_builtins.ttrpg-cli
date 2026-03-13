@@ -1,0 +1,306 @@
+// Collection builtin functions: list equality, len, keys, values,
+// first, last, append, concat, reverse, sum, any, all, sort, take,
+// list comprehensions, map literals, and compositions thereof.
+//
+// Migrated from crates/ttrpg_interp/tests/collection_builtins.rs.
+
+// ── list equality ──────────────────────────────────────────────
+
+source -s <<END
+    enum Color { Red, Green, Blue }
+
+    derive list_eq_same_ints() -> bool { [1, 2, 3] == [1, 2, 3] }
+    derive list_neq_different_ints() -> bool { [1, 2, 3] == [1, 2, 4] }
+    derive list_neq_different_lengths() -> bool { [1, 2] != [1, 2, 3] }
+    derive list_eq_empty() -> bool {
+        let a: list<int> = []
+        let b: list<int> = []
+        a == b
+    }
+    derive list_eq_enums() -> bool {
+        let a = [Color.Red, Color.Green]
+        let b = [Color.Red, Color.Green]
+        a == b
+    }
+    derive list_neq_enums() -> bool {
+        [Color.Red, Color.Green] != [Color.Red, Color.Blue]
+    }
+    derive list_eq_strings() -> bool { ["a", "b"] == ["a", "b"] }
+    derive list_eq_nested() -> bool { [[1, 2], [3, 4]] == [[1, 2], [3, 4]] }
+END
+
+assert_eq list_eq_same_ints(), true
+assert_eq list_neq_different_ints(), false
+assert_eq list_neq_different_lengths(), true
+assert_eq list_eq_empty(), true
+assert_eq list_eq_enums(), true
+assert_eq list_neq_enums(), true
+assert_eq list_eq_strings(), true
+assert_eq list_eq_nested(), true
+
+// ── len ────────────────────────────────────────────────────────
+
+source -s <<END
+    derive len_list() -> int { len([1, 2, 3]) }
+    derive len_empty() -> int {
+        let xs: list<int> = []
+        len(xs)
+    }
+    derive len_map() -> int {
+        len({"a": 1, "b": 2})
+    }
+END
+
+assert_eq len_list(), 3
+assert_eq len_empty(), 0
+assert_eq len_map(), 2
+
+// ── keys / values ──────────────────────────────────────────────
+
+source -s <<END
+    derive keys_map() -> list<string> { keys({"a": 1, "b": 2}) }
+    derive values_map() -> list<int> { values({"a": 1, "b": 2}) }
+    derive keys_empty() -> list<string> {
+        let m: map<string, int> = {}
+        keys(m)
+    }
+END
+
+// BTreeMap keys come out sorted
+assert_eq keys_map(), ["a", "b"]
+assert_eq values_map(), [1, 2]
+assert_eq keys_empty(), []
+
+// ── first / last ───────────────────────────────────────────────
+
+source -s <<END
+    derive first_nonempty() -> option<int> { first([10, 20]) }
+    derive first_empty() -> option<int> {
+        let xs: list<int> = []
+        first(xs)
+    }
+    derive last_nonempty() -> option<int> { last([10, 20]) }
+    derive last_empty() -> option<int> {
+        let xs: list<int> = []
+        last(xs)
+    }
+END
+
+assert_eq first_nonempty(), some(10)
+assert_ne first_empty(), some(0)
+assert_eq last_nonempty(), some(20)
+assert_ne last_empty(), some(0)
+
+// ── append ─────────────────────────────────────────────────────
+
+source -s <<END
+    derive append_list() -> list<int> { append([1, 2], 3) }
+    derive append_empty() -> list<int> {
+        let xs: list<int> = []
+        append(xs, 42)
+    }
+END
+
+assert_eq append_list(), [1, 2, 3]
+assert_eq append_empty(), [42]
+
+// ── concat ─────────────────────────────────────────────────────
+
+source -s <<END
+    derive concat_two() -> list<int> { concat([1, 2], [3, 4]) }
+    derive concat_with_empty() -> list<int> {
+        let empty: list<int> = []
+        concat([1, 2], empty)
+    }
+END
+
+assert_eq concat_two(), [1, 2, 3, 4]
+assert_eq concat_with_empty(), [1, 2]
+
+// ── reverse ────────────────────────────────────────────────────
+
+source -s <<END
+    derive reverse_list() -> list<int> { reverse([1, 2, 3]) }
+    derive reverse_empty() -> list<int> {
+        let xs: list<int> = []
+        reverse(xs)
+    }
+    derive reverse_single() -> list<int> { reverse([42]) }
+END
+
+assert_eq reverse_list(), [3, 2, 1]
+assert_eq reverse_empty(), []
+assert_eq reverse_single(), [42]
+
+// ── composition ────────────────────────────────────────────────
+
+source -s <<END
+    derive len_of_keys() -> int { len(keys({"x": 1, "y": 2, "z": 3})) }
+    derive first_of_reverse() -> option<int> { first(reverse([1, 2, 3])) }
+END
+
+assert_eq len_of_keys(), 3
+assert_eq first_of_reverse(), some(3)
+
+// ── sum ────────────────────────────────────────────────────────
+
+source -s <<END
+    derive sum_ints() -> int { sum([1, 2, 3]) }
+    derive sum_empty() -> int {
+        let xs: list<int> = []
+        sum(xs)
+    }
+    derive sum_method() -> int { [1, 2, 3].sum() }
+END
+
+assert_eq sum_ints(), 6
+assert_eq sum_empty(), 0
+assert_eq sum_method(), 6
+
+// ── any / all ──────────────────────────────────────────────────
+
+source -s <<END
+    derive any_with_true() -> bool { any([false, true]) }
+    derive any_all_false() -> bool { any([false, false]) }
+    derive any_empty() -> bool {
+        let xs: list<bool> = []
+        any(xs)
+    }
+    derive all_true() -> bool { all([true, true]) }
+    derive all_with_false() -> bool { all([true, false]) }
+    derive all_empty() -> bool {
+        let xs: list<bool> = []
+        all(xs)
+    }
+    derive any_method() -> bool { [false, true].any() }
+    derive all_method() -> bool { [true, true].all() }
+END
+
+assert_eq any_with_true(), true
+assert_eq any_all_false(), false
+assert_eq any_empty(), false
+assert_eq all_true(), true
+assert_eq all_with_false(), false
+assert_eq all_empty(), true
+assert_eq any_method(), true
+assert_eq all_method(), true
+
+// ── sort ───────────────────────────────────────────────────────
+
+source -s <<END
+    derive sort_ints() -> list<int> { sort([3, 1, 2]) }
+    derive sort_method() -> list<int> { [3, 1, 2].sort() }
+END
+
+assert_eq sort_ints(), [1, 2, 3]
+assert_eq sort_method(), [1, 2, 3]
+
+// ── list comprehension ─────────────────────────────────────────
+
+source -s <<END
+    derive comp_transform() -> list<int> { [x + 1 for x in [1, 2, 3]] }
+    derive comp_filter() -> list<int> { [x for x in [-1, 0, 2, 3] if x > 0] }
+    derive comp_range() -> list<int> { [i * 2 for i in 0..5] }
+    derive comp_inclusive_range() -> list<int> { [i for i in 1..=3] }
+    derive comp_pattern_filter(opts: list<option<int>>) -> list<int> {
+        [x for some(x) in opts]
+    }
+    derive comp_empty_result() -> list<int> { [x for x in [1, 2, 3] if x > 100] }
+END
+
+assert_eq comp_transform(), [2, 3, 4]
+assert_eq comp_filter(), [2, 3]
+assert_eq comp_range(), [0, 2, 4, 6, 8]
+assert_eq comp_inclusive_range(), [1, 2, 3]
+assert_eq comp_pattern_filter([some(1), none, some(3)]), [1, 3]
+assert_eq comp_empty_result(), []
+
+// ── composition: comprehension + aggregation ────────────────────
+
+source -s <<END
+    derive sum_of_comp() -> int { sum([x * x for x in [1, 2, 3]]) }
+    derive sort_of_comp() -> list<int> { sort([x * 2 for x in [3, 1, 2]]) }
+    derive comp_range_filter() -> list<int> { [i for i in 0..10 if i > 5] }
+END
+
+assert_eq sum_of_comp(), 14
+assert_eq sort_of_comp(), [2, 4, 6]
+assert_eq comp_range_filter(), [6, 7, 8, 9]
+
+// ── list comprehension scope cleanup on error ──────────────────
+
+source -s <<END
+    derive boom(xs: list<int>) -> list<int> {
+        [if x == 0 { error("elem boom") } else { x + 1 } for x in xs]
+    }
+    derive filter_boom(xs: list<int>) -> list<int> {
+        [x for x in xs if error("filter boom")]
+    }
+    derive ok(xs: list<int>) -> list<int> {
+        [x + 1 for x in xs]
+    }
+END
+
+assert_err call boom([1, 0])
+assert_eq ok([1, 2]), [2, 3]
+
+assert_err call filter_boom([1])
+assert_eq ok([1, 2]), [2, 3]
+
+// ── map literals ───────────────────────────────────────────────
+
+source -s <<END
+    enum Ability { strength, dexterity, wisdom }
+
+    derive map_basic() -> map<string, int> { {"a": 1, "b": 2} }
+    derive map_empty_annotated() -> int {
+        let m: map<string, int> = {}
+        len(m)
+    }
+    derive map_empty_inferred() -> map<string, int> { {} }
+    derive map_index() -> int {
+        let m = {"x": 10, "y": 20}
+        m["x"]
+    }
+    derive map_len() -> int { len({"a": 1, "b": 2, "c": 3}) }
+    derive map_keys() -> list<string> { keys({"b": 2, "a": 1}) }
+    derive map_enum_keys() -> int {
+        let m = {strength: 10, dexterity: 14, wisdom: 12}
+        len(m)
+    }
+    derive map_trailing_comma() -> map<string, int> {
+        {
+            "x": 1,
+            "y": 2,
+        }
+    }
+END
+
+assert_eq map_basic(), {"a": 1, "b": 2}
+assert_eq map_empty_annotated(), 0
+assert_eq map_empty_inferred(), {}
+assert_eq map_index(), 10
+assert_eq map_len(), 3
+// BTreeMap orders keys: "a" < "b"
+assert_eq map_keys(), ["a", "b"]
+assert_eq map_enum_keys(), 3
+assert_eq map_trailing_comma(), {"x": 1, "y": 2}
+
+// ── take ───────────────────────────────────────────────────────
+
+source -s <<END
+    derive take_first_n() -> list<int> { take([10, 20, 30, 40, 50], 3) }
+    derive take_over_length() -> list<int> { take([1, 2], 10) }
+    derive take_zero() -> list<int> { take([1, 2, 3], 0) }
+    derive take_from_empty() -> list<int> {
+        let empty: list<int> = []
+        take(empty, 5)
+    }
+    derive take_method() -> list<string> { ["a", "b", "c", "d"].take(2) }
+END
+
+assert_eq take_first_n(), [10, 20, 30]
+assert_eq take_over_length(), [1, 2]
+assert_eq take_zero(), []
+assert_eq take_from_empty(), []
+assert_eq take_method(), ["a", "b"]
