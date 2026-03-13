@@ -27,7 +27,7 @@ system "OSRIC Bestiary" {
     // ========================================================
 
     function create_kobold() -> Monster {
-        let m = Monster {
+        Monster {
             name: "Kobold",
             hit_dice: 1d4,
             max_hp: 2,
@@ -41,13 +41,11 @@ system "OSRIC Bestiary" {
             attacks: [MonsterAttack { name: "Short sword", damage: 1d4 }],
             size: Size.Small,
             special: ["Infravision"]
-        }
-        apply_condition(m, Infravision(range: 60ft), Duration.Indefinite)
-        m
+        } with [Infravision(range: 60ft)]
     }
 
     function create_goblin() -> Monster {
-        let m = Monster {
+        Monster {
             name: "Goblin",
             hit_dice: 1d8 - 1,
             max_hp: 3,
@@ -61,13 +59,11 @@ system "OSRIC Bestiary" {
             attacks: [MonsterAttack { name: "Short sword", damage: 1d6 }],
             size: Size.Small,
             special: ["Infravision"]
-        }
-        apply_condition(m, Infravision(range: 60ft), Duration.Indefinite)
-        m
+        } with [Infravision(range: 60ft)]
     }
 
     function create_orc() -> Monster {
-        let m = Monster {
+        Monster {
             name: "Orc",
             hit_dice: 1d8,
             max_hp: 4,
@@ -81,13 +77,11 @@ system "OSRIC Bestiary" {
             attacks: [MonsterAttack { name: "Scimitar", damage: 1d8 }],
             size: Size.Medium,
             special: ["Infravision"]
-        }
-        apply_condition(m, Infravision(range: 60ft), Duration.Indefinite)
-        m
+        } with [Infravision(range: 60ft)]
     }
 
     function create_gnoll() -> Monster {
-        let m = Monster {
+        Monster {
             name: "Gnoll",
             hit_dice: 2d8,
             max_hp: 9,
@@ -101,13 +95,11 @@ system "OSRIC Bestiary" {
             attacks: [MonsterAttack { name: "Battle axe", damage: 2d4 }],
             size: Size.Large,
             special: ["Infravision"]
-        }
-        apply_condition(m, Infravision(range: 60ft), Duration.Indefinite)
-        m
+        } with [Infravision(range: 60ft)]
     }
 
     function create_bugbear() -> Monster {
-        let m = Monster {
+        Monster {
             name: "Bugbear",
             hit_dice: 3d8 + 1,
             max_hp: 14,
@@ -121,13 +113,11 @@ system "OSRIC Bestiary" {
             attacks: [MonsterAttack { name: "Morning star", damage: 2d4 }],
             size: Size.Large,
             special: ["Infravision", "Surprise"]
-        }
-        apply_condition(m, Infravision(range: 60ft), Duration.Indefinite)
-        m
+        } with [Infravision(range: 60ft)]
     }
 
     function create_ogre() -> Monster {
-        let m = Monster {
+        Monster {
             name: "Ogre",
             hit_dice: 4d8 + 1,
             max_hp: 19,
@@ -142,7 +132,6 @@ system "OSRIC Bestiary" {
             size: Size.Large,
             special: []
         }
-        m
     }
 
 
@@ -151,7 +140,7 @@ system "OSRIC Bestiary" {
     // ========================================================
 
     function create_skeleton() -> Monster {
-        let m = Monster {
+        Monster {
             name: "Skeleton",
             hit_dice: 1d8,
             max_hp: 4,
@@ -165,17 +154,17 @@ system "OSRIC Bestiary" {
             attacks: [MonsterAttack { name: "Strike", damage: 1d6 }],
             size: Size.Medium,
             special: ["Undead", "ResistantToSlashingAndPiercing"]
-        }
-        apply_condition(m, Undead, Duration.Indefinite)
-        apply_condition(m, TurnedAsUndead(effective_hd: 1), Duration.Indefinite)
-        apply_condition(m, ImmuneToCold, Duration.Indefinite)
-        apply_condition(m, ImmuneToMindControl, Duration.Indefinite)
-        apply_condition(m, ResistantToSlashingAndPiercing, Duration.Indefinite)
-        m
+        } with [
+            Undead,
+            TurnedAsUndead(effective_hd: 1),
+            ImmuneToCold,
+            ImmuneToMindControl,
+            ResistantToSlashingAndPiercing,
+        ]
     }
 
     function create_zombie() -> Monster {
-        let m = Monster {
+        Monster {
             name: "Zombie",
             hit_dice: 2d8,
             max_hp: 9,
@@ -189,16 +178,16 @@ system "OSRIC Bestiary" {
             attacks: [MonsterAttack { name: "Strike", damage: 1d8 }],
             size: Size.Medium,
             special: ["Undead", "AlwaysLastInitiative"]
-        }
-        apply_condition(m, Undead, Duration.Indefinite)
-        apply_condition(m, TurnedAsUndead(effective_hd: 2), Duration.Indefinite)
-        apply_condition(m, ImmuneToCold, Duration.Indefinite)
-        apply_condition(m, ImmuneToMindControl, Duration.Indefinite)
-        m
+        } with [
+            Undead,
+            TurnedAsUndead(effective_hd: 2),
+            ImmuneToCold,
+            ImmuneToMindControl,
+        ]
     }
 
     function create_ghoul() -> Monster {
-        let m = Monster {
+        Monster {
             name: "Ghoul",
             hit_dice: 2d8,
             max_hp: 9,
@@ -216,15 +205,15 @@ system "OSRIC Bestiary" {
             ],
             size: Size.Medium,
             special: ["Undead", "Paralysation"]
-        }
-        apply_condition(m, Undead, Duration.Indefinite)
-        apply_condition(m, TurnedAsUndead(effective_hd: 3), Duration.Indefinite)
-        apply_condition(m, ImmuneToMindControl, Duration.Indefinite)
-        m
+        } with [
+            Undead,
+            TurnedAsUndead(effective_hd: 3),
+            ImmuneToMindControl,
+        ]
     }
 
     function create_wight() -> Monster {
-        let m = Monster {
+        Monster {
             name: "Wight",
             hit_dice: 4d8 + 3,
             max_hp: 21,
@@ -238,17 +227,17 @@ system "OSRIC Bestiary" {
             attacks: [MonsterAttack { name: "Claw", damage: 1d4 }],
             size: Size.Medium,
             special: ["Undead", "LevelDrain1"]
-        }
-        apply_condition(m, Undead, Duration.Indefinite)
-        apply_condition(m, TurnedAsUndead(effective_hd: 5), Duration.Indefinite)
-        apply_condition(m, ImmuneToCold, Duration.Indefinite)
-        apply_condition(m, ImmuneToMindControl, Duration.Indefinite)
-        apply_condition(m, ImmuneToNormalWeaponsExceptSilver, Duration.Indefinite)
-        m
+        } with [
+            Undead,
+            TurnedAsUndead(effective_hd: 5),
+            ImmuneToCold,
+            ImmuneToMindControl,
+            ImmuneToNormalWeaponsExceptSilver,
+        ]
     }
 
     function create_wraith() -> Monster {
-        let m = Monster {
+        Monster {
             name: "Wraith",
             hit_dice: 5d8 + 3,
             max_hp: 25,
@@ -262,17 +251,17 @@ system "OSRIC Bestiary" {
             attacks: [MonsterAttack { name: "Touch", damage: 1d6 }],
             size: Size.Medium,
             special: ["Undead", "LevelDrain1", "Incorporeal"]
-        }
-        apply_condition(m, Undead, Duration.Indefinite)
-        apply_condition(m, TurnedAsUndead(effective_hd: 7), Duration.Indefinite)
-        apply_condition(m, ImmuneToCold, Duration.Indefinite)
-        apply_condition(m, ImmuneToMindControl, Duration.Indefinite)
-        apply_condition(m, ImmuneToNormalWeaponsExceptSilver, Duration.Indefinite)
-        m
+        } with [
+            Undead,
+            TurnedAsUndead(effective_hd: 7),
+            ImmuneToCold,
+            ImmuneToMindControl,
+            ImmuneToNormalWeaponsExceptSilver,
+        ]
     }
 
     function create_vampire() -> Monster {
-        let m = Monster {
+        Monster {
             name: "Vampire",
             hit_dice: 8d8 + 3,
             max_hp: 39,
@@ -286,14 +275,14 @@ system "OSRIC Bestiary" {
             attacks: [MonsterAttack { name: "Strike", damage: 1d6 + 4 }],
             size: Size.Medium,
             special: ["Undead", "LevelDrain2", "CharmGaze", "Regeneration", "ShapeChange"]
-        }
-        apply_condition(m, Undead, Duration.Indefinite)
-        apply_condition(m, TurnedAsUndead(effective_hd: 10), Duration.Indefinite)
-        apply_condition(m, ImmuneToMindControl, Duration.Indefinite)
-        apply_condition(m, ImmuneToNormalWeapons, Duration.Indefinite)
-        apply_condition(m, Regeneration(hp_per_round: 3), Duration.Indefinite)
-        apply_condition(m, ShapeChanger, Duration.Indefinite)
-        m
+        } with [
+            Undead,
+            TurnedAsUndead(effective_hd: 10),
+            ImmuneToMindControl,
+            ImmuneToNormalWeapons,
+            Regeneration(hp_per_round: 3),
+            ShapeChanger,
+        ]
     }
 
 
@@ -302,7 +291,7 @@ system "OSRIC Bestiary" {
     // ========================================================
 
     function create_giant_rat() -> Monster {
-        let m = Monster {
+        Monster {
             name: "Giant Rat",
             hit_dice: 1d4,
             max_hp: 2,
@@ -317,12 +306,11 @@ system "OSRIC Bestiary" {
             size: Size.Tiny,
             special: ["Disease"]
         }
-        m
     }
 
     function create_giant_spider() -> Monster {
         // Large hunting spider variant (HD 4+4)
-        let m = Monster {
+        Monster {
             name: "Giant Spider",
             hit_dice: 4d8 + 4,
             max_hp: 22,
@@ -336,13 +324,11 @@ system "OSRIC Bestiary" {
             attacks: [MonsterAttack { name: "Bite", damage: 1d8 }],
             size: Size.Large,
             special: ["VenomousBite", "Webs"]
-        }
-        apply_condition(m, ImmuneToPoison, Duration.Indefinite)
-        m
+        } with [ImmuneToPoison]
     }
 
     function create_dire_wolf() -> Monster {
-        let m = Monster {
+        Monster {
             name: "Dire Wolf",
             hit_dice: 3d8 + 3,
             max_hp: 16,
@@ -357,11 +343,10 @@ system "OSRIC Bestiary" {
             size: Size.Medium,
             special: []
         }
-        m
     }
 
     function create_owlbear() -> Monster {
-        let m = Monster {
+        Monster {
             name: "Owlbear",
             hit_dice: 5d8 + 2,
             max_hp: 24,
@@ -380,7 +365,6 @@ system "OSRIC Bestiary" {
             size: Size.Large,
             special: ["HugAttack"]
         }
-        m
     }
 
 
@@ -389,7 +373,7 @@ system "OSRIC Bestiary" {
     // ========================================================
 
     function create_basilisk() -> Monster {
-        let m = Monster {
+        Monster {
             name: "Basilisk",
             hit_dice: 6d8,
             max_hp: 27,
@@ -403,13 +387,11 @@ system "OSRIC Bestiary" {
             attacks: [MonsterAttack { name: "Bite", damage: 1d10 }],
             size: Size.Medium,
             special: ["PetrifyingGaze"]
-        }
-        apply_condition(m, PetrifyingGaze, Duration.Indefinite)
-        m
+        } with [PetrifyingGaze]
     }
 
     function create_troll() -> Monster {
-        let m = Monster {
+        Monster {
             name: "Troll",
             hit_dice: 6d8 + 6,
             max_hp: 33,
@@ -427,15 +409,15 @@ system "OSRIC Bestiary" {
             ],
             size: Size.Large,
             special: ["Regeneration", "VulnerableToFire", "VulnerableToAcid"]
-        }
-        apply_condition(m, Regeneration(hp_per_round: 3), Duration.Indefinite)
-        apply_condition(m, VulnerableToFire(extra_damage: 0), Duration.Indefinite)
-        apply_condition(m, VulnerableToAcid(extra_damage: 0), Duration.Indefinite)
-        m
+        } with [
+            Regeneration(hp_per_round: 3),
+            VulnerableToFire(extra_damage: 0),
+            VulnerableToAcid(extra_damage: 0),
+        ]
     }
 
     function create_medusa() -> Monster {
-        let m = Monster {
+        Monster {
             name: "Medusa",
             hit_dice: 6d8 + 1,
             max_hp: 28,
@@ -449,13 +431,11 @@ system "OSRIC Bestiary" {
             attacks: [MonsterAttack { name: "Snakebite", damage: 1d6 }],
             size: Size.Medium,
             special: ["PetrifyingGaze", "PoisonSnakebite"]
-        }
-        apply_condition(m, PetrifyingGaze, Duration.Indefinite)
-        m
+        } with [PetrifyingGaze]
     }
 
     function create_gelatinous_cube() -> Monster {
-        let m = Monster {
+        Monster {
             name: "Gelatinous Cube",
             hit_dice: 4d8,
             max_hp: 18,
@@ -469,15 +449,15 @@ system "OSRIC Bestiary" {
             attacks: [MonsterAttack { name: "Engulf", damage: 2d4 }],
             size: Size.Large,
             special: ["ParalysingTouch", "Surprise", "Ooze"]
-        }
-        apply_condition(m, Construct, Duration.Indefinite)
-        apply_condition(m, ImmuneToLightning, Duration.Indefinite)
-        apply_condition(m, ImmuneToMindControl, Duration.Indefinite)
-        m
+        } with [
+            Construct,
+            ImmuneToLightning,
+            ImmuneToMindControl,
+        ]
     }
 
     function create_rust_monster() -> Monster {
-        let m = Monster {
+        Monster {
             name: "Rust Monster",
             hit_dice: 5d8,
             max_hp: 22,
@@ -495,7 +475,6 @@ system "OSRIC Bestiary" {
             size: Size.Medium,
             special: ["RustTouch"]
         }
-        m
     }
 
 
@@ -504,7 +483,7 @@ system "OSRIC Bestiary" {
     // ========================================================
 
     function create_hill_giant() -> Monster {
-        let m = Monster {
+        Monster {
             name: "Hill Giant",
             hit_dice: 8d8 + 2,
             max_hp: 38,
@@ -519,11 +498,10 @@ system "OSRIC Bestiary" {
             size: Size.Large,
             special: ["RockThrowing"]
         }
-        m
     }
 
     function create_fire_giant() -> Monster {
-        let m = Monster {
+        Monster {
             name: "Fire Giant",
             hit_dice: 11d8 + 4,
             max_hp: 53,
@@ -537,9 +515,7 @@ system "OSRIC Bestiary" {
             attacks: [MonsterAttack { name: "Sword", damage: 5d6 }],
             size: Size.Large,
             special: ["RockThrowing", "ImmuneToFire"]
-        }
-        apply_condition(m, ImmuneToFire, Duration.Indefinite)
-        m
+        } with [ImmuneToFire]
     }
 
 
@@ -555,7 +531,7 @@ system "OSRIC Bestiary" {
         // HD 5-7 depending on sub-type; using 6 as middle value
         let hd = 6
         let hp = hd * age
-        let m = Monster {
+        Monster {
             name: "White Dragon",
             hit_dice: 6d8,
             max_hp: hp,
@@ -580,19 +556,19 @@ system "OSRIC Bestiary" {
                 breath_charges_max: 3,
                 breath_charges: 3
             }
-        }
-        apply_condition(m, Infravision(range: 60ft), Duration.Indefinite)
-        apply_condition(m, FearAura(range: 30ft), Duration.Indefinite)
-        apply_condition(m, ImmuneToCold, Duration.Indefinite)
-        apply_condition(m, VulnerableToFire(extra_damage: 1), Duration.Indefinite)
-        m
+        } with [
+            Infravision(range: 60ft),
+            FearAura(range: 30ft),
+            ImmuneToCold,
+            VulnerableToFire(extra_damage: 1),
+        ]
     }
 
     function create_black_dragon(age: int) -> Monster {
         // HD 6-8; using 7 as middle value
         let hd = 7
         let hp = hd * age
-        let m = Monster {
+        Monster {
             name: "Black Dragon",
             hit_dice: 7d8,
             max_hp: hp,
@@ -617,18 +593,18 @@ system "OSRIC Bestiary" {
                 breath_charges_max: 3,
                 breath_charges: 3
             }
-        }
-        apply_condition(m, Infravision(range: 60ft), Duration.Indefinite)
-        apply_condition(m, FearAura(range: 30ft), Duration.Indefinite)
-        apply_condition(m, ImmuneToAcid, Duration.Indefinite)
-        m
+        } with [
+            Infravision(range: 60ft),
+            FearAura(range: 30ft),
+            ImmuneToAcid,
+        ]
     }
 
     function create_red_dragon(age: int) -> Monster {
         // HD 9-11; using 10 as middle value
         let hd = 10
         let hp = hd * age
-        let m = Monster {
+        Monster {
             name: "Red Dragon",
             hit_dice: 10d8,
             max_hp: hp,
@@ -653,11 +629,11 @@ system "OSRIC Bestiary" {
                 breath_charges_max: 3,
                 breath_charges: 3
             }
-        }
-        apply_condition(m, Infravision(range: 60ft), Duration.Indefinite)
-        apply_condition(m, FearAura(range: 60ft), Duration.Indefinite)
-        apply_condition(m, ImmuneToFire, Duration.Indefinite)
-        m
+        } with [
+            Infravision(range: 60ft),
+            FearAura(range: 60ft),
+            ImmuneToFire,
+        ]
     }
 
 
@@ -666,7 +642,7 @@ system "OSRIC Bestiary" {
     // ========================================================
 
     function create_efreet() -> Monster {
-        let m = Monster {
+        Monster {
             name: "Efreet",
             hit_dice: 10d8,
             max_hp: 45,
@@ -686,9 +662,9 @@ system "OSRIC Bestiary" {
                     SpellLikeEntry { spell: SpellId.WallOfFire, uses: SpellUseLimit.AtWill }
                 ]
             }
-        }
-        apply_condition(m, ImmuneToFire, Duration.Indefinite)
-        apply_condition(m, Infravision(range: 60ft), Duration.Indefinite)
-        m
+        } with [
+            ImmuneToFire,
+            Infravision(range: 60ft),
+        ]
     }
 }
