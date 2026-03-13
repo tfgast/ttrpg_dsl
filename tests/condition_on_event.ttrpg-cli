@@ -1,0 +1,400 @@
+// Condition on-event handler integration tests.
+//
+// Covers the test matrix from spec/design/condition_event_handlers.md:
+// basic fire, no match, stacking (first/best-by/all), self-removal,
+// cross-removal, same-bearer apply, state mutation, state threading,
+// hooks-first ordering, emit depth, condition params, trigger bindings,
+// with periodic, entity dedup, multiple same-event handlers.
+
+source -s <<END
+tag round_end
+
+entity Character {
+    hp: int = 20
+    counter: int = 0
+    order: int = 0
+}
+
+event Damaged(target: Character, amount: int, source: Character) {}
+
+event MeleeHit(attacker: Character, target: Character) {}
+event Ping(target: Character) {}
+
+// ── Basic fire ─────────────────────────────────────────────────
+// A condition with an on-event handler that accesses trigger payload.
+
+condition Thorns on bearer: Character stacking first {
+    on MeleeHit(target: bearer) {
+        trigger.attacker.hp -= 5
+    }
+}
+
+// ── Stacking first — only oldest fires ─────────────────────────
+
+condition StackFirst on bearer: Character stacking first {
+    on Damaged(target: bearer) {
+        bearer.counter += 1
+    }
+}
+
+// ── Stacking best by — only winner fires ───────────────────────
+
+condition StackBest(level: int) on bearer: Character
+    stacking best by highest(level) ties oldest
+{
+    on Damaged(target: bearer) {
+        bearer.counter += level
+    }
+}
+
+// ── Stacking all — every instance fires ────────────────────────
+
+condition StackAll on bearer: Character {
+    on Damaged(target: bearer) {
+        bearer.counter += 1
+    }
+}
+
+// ── Self-removal ───────────────────────────────────────────────
+
+condition Fragile on bearer: Character stacking first {
+    state { charges: int = 2 }
+
+    on MeleeHit(target: bearer) {
+        state.charges -= 1
+        bearer.counter += 1
+        if state.charges <= 0 {
+            remove_condition(bearer, "Fragile")
+        }
+    }
+}
+
+// ── Cross-removal (handler A removes condition B) ──────────────
+
+condition Warden on bearer: Character stacking first {
+    on Damaged(target: bearer) {
+        remove_condition(bearer, "Vulnerable")
+        bearer.order = bearer.order * 10 + 1
+    }
+}
+
+condition Vulnerable on bearer: Character stacking first {
+    on Damaged(target: bearer) {
+        bearer.order = bearer.order * 10 + 2
+    }
+}
+
+// ── Same-bearer apply (new condition does not fire this emit) ──
+
+condition Reactive on bearer: Character stacking first {
+    on MeleeHit(target: bearer) {
+        apply_condition(bearer, Thorns, Duration.Indefinite)
+        bearer.counter += 1
+    }
+}
+
+// ── State mutation ─────────────────────────────────────────────
+
+condition Counter on bearer: Character stacking first {
+    state { hits: int = 0 }
+
+    on Damaged(target: bearer) {
+        state.hits += 1
+        bearer.counter = state.hits
+    }
+}
+
+// ── State threading (two on-event handlers, same instance) ─────
+
+condition DualReact on bearer: Character stacking first {
+    state { tally: int = 0 }
+
+    on Damaged(target: bearer) {
+        state.tally += 1
+    }
+
+    on Damaged(target: bearer) {
+        // second handler should see tally incremented by first
+        bearer.counter = state.tally
+    }
+}
+
+// ── Hooks fire before condition handlers ───────────────────────
+
+hook OnDamagedHook on c: Character (trigger: Damaged(target: c)) {
+    c.order = c.order * 10 + 1
+}
+
+condition OrderedCond on bearer: Character stacking first {
+    on Damaged(target: bearer) {
+        bearer.order = bearer.order * 10 + 2
+    }
+}
+
+// ── Condition params accessible in handler ─────────────────────
+
+condition Retaliate(damage: int) on bearer: Character stacking first {
+    on MeleeHit(target: bearer) {
+        trigger.attacker.hp -= damage
+    }
+}
+
+// ── Trigger bindings using condition param ──────────────────────
+// Condition params are in scope for trigger binding expressions.
+// VengefulStrike only fires when the attacker matches the nemesis param.
+
+condition VengefulStrike(nemesis: Character) on bearer: Character stacking first {
+    on MeleeHit(target: bearer, attacker: nemesis) {
+        bearer.counter += 1
+    }
+}
+
+// ── With periodic — both work independently ────────────────────
+
+condition PoisonAura on bearer: Character stacking first {
+    state { event_count: int = 0 }
+
+    periodic #round_end {
+        bearer.hp -= 1
+    }
+
+    on MeleeHit(attacker: bearer) {
+        state.event_count += 1
+        bearer.counter = state.event_count
+    }
+}
+
+// ── Entity dedup — same entity in multiple slots ───────────────
+
+condition SelfAware on bearer: Character stacking first {
+    on Damaged(target: bearer) {
+        bearer.counter += 1
+    }
+}
+
+// ── Multiple same-event handlers, both fire in clause order ────
+
+condition MultiHandler on bearer: Character stacking first {
+    on MeleeHit(target: bearer) {
+        bearer.order = bearer.order * 10 + 1
+    }
+
+    on MeleeHit(target: bearer) {
+        bearer.order = bearer.order * 10 + 2
+    }
+}
+
+// ── Emit depth — handler emits event that triggers handler ─────
+
+condition PingReact on bearer: Character stacking first {
+    on Ping(target: bearer) {
+        bearer.counter += 1
+        emit Ping(target: bearer)
+    }
+}
+
+// ── Actions for triggering events ──────────────────────────────
+
+action Strike on actor: Character (target: Character) {
+    resolve {
+        emit MeleeHit(attacker: actor, target: target)
+    }
+}
+
+action Harm on actor: Character (target: Character, amount: int) {
+    resolve {
+        emit Damaged(target: target, amount: amount, source: actor)
+    }
+}
+
+action DoPing on actor: Character (target: Character) {
+    resolve {
+        emit Ping(target: target)
+    }
+}
+END
+
+// ── Basic fire: handler triggers and accesses trigger payload ──
+
+spawn Character basic_atk { hp: 20 }
+spawn Character basic_tgt { hp: 20 }
+call apply_condition(basic_tgt, Thorns, Duration.Indefinite)
+do Strike(basic_atk, basic_tgt)
+assert_eq basic_atk.hp, 15
+
+// ── No match: emit event that doesn't match any handler ────────
+
+spawn Character nomatch_actor { hp: 20 }
+spawn Character nomatch_tgt { hp: 20 }
+call apply_condition(nomatch_tgt, Thorns, Duration.Indefinite)
+do Harm(nomatch_actor, nomatch_tgt, 3)
+// Thorns only listens to MeleeHit, not Damaged
+assert_eq nomatch_actor.hp, 20
+assert_eq nomatch_tgt.hp, 20
+
+// ── Stacking first: two instances, only oldest fires ───────────
+
+spawn Character sf_actor { hp: 20 }
+spawn Character sf_tgt { hp: 20, counter: 0 }
+call apply_condition(sf_tgt, StackFirst, Duration.Indefinite)
+call apply_condition(sf_tgt, StackFirst, Duration.Indefinite)
+do Harm(sf_actor, sf_tgt, 1)
+assert_eq sf_tgt.counter, 1
+
+// ── Stacking best by: only winner fires ────────────────────────
+
+spawn Character sb_actor { hp: 20 }
+spawn Character sb_tgt { hp: 20, counter: 0 }
+call apply_condition(sb_tgt, StackBest(level: 3), Duration.Indefinite)
+call apply_condition(sb_tgt, StackBest(level: 7), Duration.Indefinite)
+call apply_condition(sb_tgt, StackBest(level: 5), Duration.Indefinite)
+do Harm(sb_actor, sb_tgt, 1)
+// best by highest(level) → level=7 wins, counter += 7
+assert_eq sb_tgt.counter, 7
+
+// ── Stacking all: every instance fires separately ──────────────
+
+spawn Character sa_actor { hp: 20 }
+spawn Character sa_tgt { hp: 20, counter: 0 }
+call apply_condition(sa_tgt, StackAll, Duration.Indefinite)
+call apply_condition(sa_tgt, StackAll, Duration.Indefinite)
+call apply_condition(sa_tgt, StackAll, Duration.Indefinite)
+do Harm(sa_actor, sa_tgt, 1)
+assert_eq sa_tgt.counter, 3
+
+// ── Self-removal: handler removes own condition ────────────────
+
+spawn Character sr_actor { hp: 20 }
+spawn Character sr_tgt { hp: 20, counter: 0 }
+call apply_condition(sr_tgt, Fragile, Duration.Indefinite)
+do Strike(sr_actor, sr_tgt)
+assert_eq sr_tgt.counter, 1
+assert_condition sr_tgt, Fragile
+// Second hit — charges go to 0, condition is removed
+do Strike(sr_actor, sr_tgt)
+assert_eq sr_tgt.counter, 2
+assert_no_condition sr_tgt, Fragile
+// Third hit — no handler fires (condition gone)
+do Strike(sr_actor, sr_tgt)
+assert_eq sr_tgt.counter, 2
+
+// ── Cross-removal: Warden removes Vulnerable ───────────────────
+// Note: OnDamagedHook also fires for all Damaged events, appending 1.
+// So the total order is: hook(1), Warden(1), Vulnerable skipped.
+
+spawn Character cr_actor { hp: 20 }
+spawn Character cr_tgt { hp: 20, order: 0 }
+// Apply Warden first (earlier gained_at), then Vulnerable
+call apply_condition(cr_tgt, Warden, Duration.Indefinite)
+call apply_condition(cr_tgt, Vulnerable, Duration.Indefinite)
+do Harm(cr_actor, cr_tgt, 1)
+// Hook appends 1, then Warden appends 1 → order = 11.
+// Vulnerable is skipped (snapshot safety — Warden removed it).
+assert_eq cr_tgt.order, 11
+assert_no_condition cr_tgt, Vulnerable
+
+// ── Same-bearer apply: new condition doesn't fire this emit ────
+
+spawn Character sba_actor { hp: 20 }
+spawn Character sba_tgt { hp: 20, counter: 0 }
+call apply_condition(sba_tgt, Reactive, Duration.Indefinite)
+assert_no_condition sba_tgt, Thorns
+do Strike(sba_actor, sba_tgt)
+// Reactive fires, applies Thorns, but Thorns shouldn't fire in this emit
+assert_eq sba_tgt.counter, 1
+assert_condition sba_tgt, Thorns
+assert_eq sba_actor.hp, 20
+// Second strike — now Thorns IS active and fires
+do Strike(sba_actor, sba_tgt)
+assert_eq sba_actor.hp, 15
+
+// ── State mutation: handler modifies state, persisted via SetConditionState ──
+
+spawn Character sm_actor { hp: 20 }
+spawn Character sm_tgt { hp: 20, counter: 0 }
+call apply_condition(sm_tgt, Counter, Duration.Indefinite)
+do Harm(sm_actor, sm_tgt, 1)
+assert_eq sm_tgt.counter, 1
+do Harm(sm_actor, sm_tgt, 1)
+assert_eq sm_tgt.counter, 2
+do Harm(sm_actor, sm_tgt, 1)
+assert_eq sm_tgt.counter, 3
+
+// ── State threading: two handlers on same instance ─────────────
+
+spawn Character st_actor { hp: 20 }
+spawn Character st_tgt { hp: 20, counter: 0 }
+call apply_condition(st_tgt, DualReact, Duration.Indefinite)
+do Harm(st_actor, st_tgt, 1)
+// First handler increments tally to 1, second reads tally=1 into counter
+assert_eq st_tgt.counter, 1
+do Harm(st_actor, st_tgt, 1)
+// tally now 2
+assert_eq st_tgt.counter, 2
+
+// ── Hooks fire before condition handlers ───────────────────────
+
+spawn Character hf_actor { hp: 20 }
+spawn Character hf_tgt { hp: 20, order: 0 }
+call apply_condition(hf_tgt, OrderedCond, Duration.Indefinite)
+do Harm(hf_actor, hf_tgt, 1)
+// Hook appends 1, then condition handler appends 2 → order = 12
+assert_eq hf_tgt.order, 12
+
+// ── Condition params accessible in handler body ────────────────
+
+spawn Character cp_actor { hp: 20 }
+spawn Character cp_tgt { hp: 20 }
+call apply_condition(cp_tgt, Retaliate(damage: 8), Duration.Indefinite)
+do Strike(cp_actor, cp_tgt)
+assert_eq cp_actor.hp, 12
+
+// ── Trigger bindings: condition param used in binding expression ──
+
+spawn Character tb_bearer { hp: 20, counter: 0 }
+spawn Character tb_nemesis { hp: 20 }
+spawn Character tb_other { hp: 20 }
+call apply_condition(tb_bearer, VengefulStrike(nemesis: tb_nemesis), Duration.Indefinite)
+// Hit by nemesis — handler fires (attacker: nemesis binding matches)
+do Strike(tb_nemesis, tb_bearer)
+assert_eq tb_bearer.counter, 1
+// Hit by someone else — handler does NOT fire (attacker != nemesis)
+do Strike(tb_other, tb_bearer)
+assert_eq tb_bearer.counter, 1
+
+// ── With periodic: both periodic and on-event work independently ──
+
+spawn Character wp_actor { hp: 20 }
+spawn Character wp_tgt { hp: 20, counter: 0 }
+call apply_condition(wp_tgt, PoisonAura, Duration.Indefinite)
+// on-event fires on MeleeHit(attacker: bearer)
+do Strike(wp_tgt, wp_actor)
+assert_eq wp_tgt.counter, 1
+// periodic fires separately via process_periodic_conditions
+call process_periodic_conditions([wp_tgt], "round_end")
+assert_eq wp_tgt.hp, 19
+
+// ── Entity dedup: same entity in source and target ─────────────
+// Damaged event has target: Character and source: Character field.
+// When source == target, entity should be processed only once.
+
+spawn Character ed_actor { hp: 20, counter: 0 }
+call apply_condition(ed_actor, SelfAware, Duration.Indefinite)
+// Actor damages self: source and target are the same entity
+do Harm(ed_actor, ed_actor, 1)
+assert_eq ed_actor.counter, 1
+
+// ── Multiple same-event handlers: both fire in clause order ────
+
+spawn Character mh_actor { hp: 20 }
+spawn Character mh_tgt { hp: 20, order: 0 }
+call apply_condition(mh_tgt, MultiHandler, Duration.Indefinite)
+do Strike(mh_actor, mh_tgt)
+// First handler appends 1, second appends 2 → order = 12
+assert_eq mh_tgt.order, 12
+
+// ── Emit depth: handler triggers chain that hits depth limit ───
+
+spawn Character ed_actor2 { hp: 20, counter: 0 }
+call apply_condition(ed_actor2, PingReact, Duration.Indefinite)
+assert_err do DoPing(ed_actor2, ed_actor2)
