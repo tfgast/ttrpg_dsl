@@ -49,17 +49,7 @@ system "OSRIC" {
     tag fear
     tag insanity
 
-    // Periodic condition phase tags. Used by process_periodic_conditions()
-    // to control when periodic blocks fire within the combat loop.
-    // DEPRECATED: prefer the matching per-combatant events below.
-    tag round_start_healing
-    tag round_end_damage
-    tag turn_end
-    tag day_end
-
-    // Per-combatant phase events. These replace the periodic tags above:
-    // conditions should use `on EventName(combatant: bearer)` handlers
-    // instead of `periodic #tag` blocks.
+    // Per-combatant phase events used by condition on-event handlers.
     event RoundStartHealing(combatant: entity) {}
     event RoundEndDamage(combatant: entity) {}
     event TurnEnded(combatant: entity) {}

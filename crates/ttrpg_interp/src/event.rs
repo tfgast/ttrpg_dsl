@@ -481,7 +481,6 @@ fn is_suppressed(
                     | ConditionClause::SuppressModify(_)
                     | ConditionClause::OnApply(_)
                     | ConditionClause::OnRemove(_)
-                    | ConditionClause::Periodic(_)
                     | ConditionClause::OnEvent(_)
                     | ConditionClause::Include(_) => continue,
                 };

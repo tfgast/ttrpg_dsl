@@ -107,7 +107,7 @@ pub(crate) struct ConditionSnapshot {
 
 /// Entity extraction + deduplication + per-entity condition snapshots.
 ///
-/// Shared infrastructure for suppress scanning, periodic processing, and
+/// Shared infrastructure for suppress scanning and
 /// condition event handler dispatch.
 pub(crate) struct ConditionTraversal {
     /// Entity-typed values from the payload, deduplicated by entity ID,
@@ -157,7 +157,13 @@ impl ConditionTraversal {
                 }
             };
             let winners = compute_stacking_winners(&conditions, program);
-            snapshots.insert(*eref, ConditionSnapshot { conditions, winners });
+            snapshots.insert(
+                *eref,
+                ConditionSnapshot {
+                    conditions,
+                    winners,
+                },
+            );
         }
 
         Ok(ConditionTraversal {
@@ -316,7 +322,6 @@ pub(crate) fn collect_modifiers_owned(
                     | ConditionClause::SuppressModify(_)
                     | ConditionClause::OnApply(_)
                     | ConditionClause::OnRemove(_)
-                    | ConditionClause::Periodic(_)
                     | ConditionClause::OnEvent(_)
                     | ConditionClause::Include(_) => continue,
                 };

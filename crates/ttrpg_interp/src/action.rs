@@ -437,7 +437,6 @@ fn collect_and_apply_cost_modifiers(
                 | ConditionClause::SuppressModify(_)
                 | ConditionClause::OnApply(_)
                 | ConditionClause::OnRemove(_)
-                | ConditionClause::Periodic(_)
                 | ConditionClause::OnEvent(_)
                 | ConditionClause::Include(_) => continue,
             };

@@ -33,7 +33,7 @@
 // reaction/hook resolve: no return type; any block value is discarded.
 //
 // The `return` keyword is allowed in function, action, reaction, hook,
-// lifecycle, and periodic blocks for early exit. `return expr` in functions with return types;
+// lifecycle, and event handler blocks for early exit. `return expr` in functions with return types;
 // bare `return` in void/unit blocks. NOT allowed in derive/mechanic (use
 // if/else or match for conditional values instead).
 // See 05_grammar.ttrpg "Block value semantics" for details.
@@ -50,9 +50,7 @@
 // condition does NOT mutate via modify/suppress — those are declarative overlays
 //   that alter computed results, not imperative assignments.
 //   However, conditions MAY include on_apply/on_remove lifecycle hooks that
-//   have hook-like mutation semantics (see 03_conditions.ttrpg),
-//   `periodic #tag { ... }` blocks that have full function-body semantics
-//   (see 03_conditions.ttrpg "Condition periodic blocks"), and
+//   have hook-like mutation semantics (see 03_conditions.ttrpg) and
 //   `on EventName(...) { ... }` event handler blocks that fire during emit
 //   dispatch (see 03_conditions.ttrpg "Condition event handlers").
 //
@@ -90,11 +88,8 @@
 //   condition modify -> can call derives, mechanics, builtins (no actions, functions, prompts)
 //   condition on_apply/on_remove -> can call derives, mechanics, functions, builtins, emit
 //       (NO apply_condition, remove_condition, revoke(invocation), invocation())
-//   condition periodic -> can call derives, mechanics, functions, actions, builtins, emit
-//       CAN call apply_condition, remove_condition (full function-body permissions)
-//       (NO invocation())
 //   condition on (event handler) -> can call derives, mechanics, functions, actions, builtins, emit
-//       CAN call apply_condition, remove_condition (same as periodic — full permissions)
+//       CAN call apply_condition, remove_condition (full function-body permissions)
 //       (NO invocation())
 //   trigger binding  -> side-effect-free builtins only
 

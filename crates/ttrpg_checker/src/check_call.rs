@@ -80,7 +80,6 @@ impl Checker<'_> {
                                 | BlockKind::ReactionResolve
                                 | BlockKind::HookResolve
                                 | BlockKind::WithBudget
-                                | BlockKind::PeriodicBlock
                                 | BlockKind::OnEventBlock
                         )
                     ) {
@@ -257,19 +256,9 @@ impl Checker<'_> {
             self.check_builtin_permissions(&callee_name, span);
         }
 
-        // Special-case: validate tag string literal for transfer_conditions/process_periodic_conditions
-        if fn_info.kind == FnKind::Builtin
-            && matches!(
-                callee_name.as_str(),
-                "transfer_conditions" | "process_periodic_conditions"
-            )
-        {
-            // Tag is the last argument (index 2 for transfer_conditions, index 1 for process_periodic_conditions)
-            let tag_idx = if callee_name == "transfer_conditions" {
-                2
-            } else {
-                1
-            };
+        // Special-case: validate tag string literal for transfer_conditions
+        if fn_info.kind == FnKind::Builtin && callee_name.as_str() == "transfer_conditions" {
+            let tag_idx = 2;
             if let Some(tag_arg) = args.get(tag_idx)
                 && let ExprKind::StringLit(ref tag_str) = tag_arg.value.node
             {
@@ -314,7 +303,6 @@ impl Checker<'_> {
                         | BlockKind::HookResolve
                         | BlockKind::WithBudget
                         | BlockKind::LifecycleBlock
-                        | BlockKind::PeriodicBlock
                         | BlockKind::OnEventBlock
                 )
             ) {
@@ -339,7 +327,6 @@ impl Checker<'_> {
                         | BlockKind::HookResolve
                         | BlockKind::WithBudget
                         | BlockKind::LifecycleBlock
-                        | BlockKind::PeriodicBlock
                         | BlockKind::OnEventBlock
                 )
             ) {

@@ -627,10 +627,10 @@ system "test" {
 }
 
 #[test]
-fn state_mutated_in_periodic() {
+fn state_mutated_in_event_handler() {
     let source = r#"
 system "test" {
-    tag round_end
+    event RoundEnd(combatant: entity) {}
     entity Character { HP: int }
     condition Ticking on bearer: Character {
         state {
@@ -639,7 +639,7 @@ system "test" {
         on_apply {
             state.count = 1
         }
-        periodic #round_end {
+        on RoundEnd(combatant: bearer) {
             state.count = state.count + 1
         }
     }
@@ -647,7 +647,7 @@ system "test" {
         apply_condition(target, Ticking, Duration.Indefinite)
     }
     function do_tick(target: Character) {
-        process_periodic_conditions([target], "round_end")
+        emit RoundEnd(combatant: target)
     }
 }
 "#;
@@ -662,7 +662,7 @@ system "test" {
         Some(&Value::Int(1))
     );
 
-    // After periodic: count = 2
+    // After event handler: count = 2
     let (state, _log) = run_function(source, "do_tick", state, entity);
 
     let conds = state.read_conditions(&entity).unwrap();
@@ -754,10 +754,10 @@ fn no_state_fields_no_effect() {
     // Conditions without state fields should not emit SetConditionState
     let source = r#"
 system "test" {
-    tag round_end
+    event RoundEnd(combatant: entity) {}
     entity Character { HP: int }
     condition Simple on bearer: Character {
-        periodic #round_end {
+        on RoundEnd(combatant: bearer) {
             bearer.HP = bearer.HP - 1
         }
     }
@@ -765,7 +765,7 @@ system "test" {
         apply_condition(target, Simple, Duration.Indefinite)
     }
     function do_tick(target: Character) {
-        process_periodic_conditions([target], "round_end")
+        emit RoundEnd(combatant: target)
     }
 }
 "#;

@@ -4,10 +4,10 @@
 // basic fire, no match, stacking (first/best-by/all), self-removal,
 // cross-removal, same-bearer apply, state mutation, state threading,
 // hooks-first ordering, emit depth, condition params, trigger bindings,
-// with periodic, entity dedup, multiple same-event handlers.
+// entity dedup, multiple same-event handlers.
 
 source -s <<END
-tag round_end
+event RoundEnd(combatant: entity) {}
 
 entity Character {
     hp: int = 20
@@ -149,12 +149,12 @@ condition VengefulStrike(nemesis: Character) on bearer: Character stacking first
     }
 }
 
-// ── With periodic — both work independently ────────────────────
+// ── Multiple handlers — work independently ────────────────────
 
 condition PoisonAura on bearer: Character stacking first {
     state { event_count: int = 0 }
 
-    periodic #round_end {
+    on RoundEnd(combatant: bearer) {
         bearer.hp -= 1
     }
 
@@ -362,16 +362,16 @@ assert_eq tb_bearer.counter, 1
 do Strike(tb_other, tb_bearer)
 assert_eq tb_bearer.counter, 1
 
-// ── With periodic: both periodic and on-event work independently ──
+// ── Multiple handlers: both on-event handlers work independently ──
 
 spawn Character wp_actor { hp: 20 }
 spawn Character wp_tgt { hp: 20, counter: 0 }
 call apply_condition(wp_tgt, PoisonAura, Duration.Indefinite)
-// on-event fires on MeleeHit(attacker: bearer)
+// on MeleeHit fires when wp_tgt attacks
 do Strike(wp_tgt, wp_actor)
 assert_eq wp_tgt.counter, 1
-// periodic fires separately via process_periodic_conditions
-call process_periodic_conditions([wp_tgt], "round_end")
+// on RoundEnd fires when RoundEnd emitted
+emit RoundEnd(combatant: wp_tgt)
 assert_eq wp_tgt.hp, 19
 
 // ── Entity dedup: same entity in source and target ─────────────

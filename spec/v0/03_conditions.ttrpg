@@ -2,7 +2,7 @@
 // v0 Spec — Part 3: Condition System
 //
 // Modify pipeline, stacking, lifecycle hooks, state fields,
-// periodic blocks, event handlers, suspension, cost modification.
+// event handlers, suspension, cost modification.
 //
 // Self-contained — all declarations check cleanly.
 // ============================================================
@@ -92,6 +92,8 @@ event CharacterDead(target: entity) {}
 event SpellDamaged(caster: entity, target: entity, spell_name: string, amount: int) {}
 
 condition Dead on bearer: entity {}
+
+event RoundEndDamage(combatant: entity) {}
 
 tag round_end_damage
 
@@ -387,7 +389,7 @@ condition Prone on bearer: Character {
 // CLAUSE COPYING (include):
 //   Use `include modify/suppress/suppress-modify CondName` to copy
 //   declarative clauses from another condition at compile time.
-//   Lifecycle hooks, periodic blocks, state, stacking, and tags are
+//   Lifecycle hooks, event handlers, state, stacking, and tags are
 //   NOT copied — only the specified clause type.
 //
 // DESIGN PRINCIPLE:
@@ -439,11 +441,11 @@ condition Poisoned(potency: int) on bearer: Character {
 //   - Each field requires a type annotation and a default expression.
 //   - Default expressions may reference condition parameters.
 //   - At most one state block per condition declaration.
-//   - Must appear before executable blocks (on_apply, on_remove, periodic, modify).
+//   - Must appear before executable blocks (on_apply, on_remove, on (event handler), modify).
 //
 // SCOPING:
 //   State fields are accessed via the `state` prefix: `state.field_name`.
-//   - Mutable in on_apply, on_remove, periodic blocks
+//   - Mutable in on_apply, on_remove, on (event handler) blocks
 //   - Read-only in modify blocks (all phases)
 //   - NOT accessible outside condition-owned blocks
 //
@@ -453,15 +455,15 @@ condition Poisoned(potency: int) on bearer: Character {
 //
 // PERSISTENCE (snapshot-in / snapshot-out):
 //   One mutable state map is threaded through the FULL inherited dispatch
-//   (all ancestor blocks in a single on_apply/on_remove/periodic chain
+//   (all ancestor blocks in a single on_apply/on_remove/on-event chain
 //   share the same mutable state map). Parent mutations are visible to
 //   child blocks within the same dispatch.
 //   - on_apply: defaults evaluated in ancestor order, state mutated across
 //     the full on_apply chain, final map included in ApplyCondition effect.
-//   - periodic/on_remove: state cloned from instance, mutated across
+//   - on (event handler)/on_remove: state cloned from instance, mutated across
 //     ancestor chain, written back via SetConditionState effect at exit.
 //   - modify: state bound as immutable snapshot, no write-back.
-//   - If the condition is removed mid-block (e.g., self-removal in periodic),
+//   - If the condition is removed mid-block (e.g., self-removal in event handler),
 //     SetConditionState is a no-op (condition no longer exists).
 //
 // INHERITANCE:
@@ -493,7 +495,7 @@ condition PoisonTracked(potency: int) on bearer: Character {
         emit Damaged(target: bearer, amount: state.cumulative_damage)
     }
 
-    periodic #round_end_damage {
+    on RoundEndDamage(combatant: bearer) {
         state.ticks_elapsed += 1
         let tick_dmg = roll(1d4).total
         state.cumulative_damage += tick_dmg
@@ -515,7 +517,7 @@ condition IntensePoison(potency: int) on bearer: Character {
         ticks_elapsed: int = 0
     }
 
-    periodic #round_end_damage {
+    on RoundEndDamage(combatant: bearer) {
         state.ticks_elapsed += 1
         if state.ticks_elapsed >= 3 {
             state.spread_count += 1
@@ -525,70 +527,11 @@ condition IntensePoison(potency: int) on bearer: Character {
 }
 
 
-// --- Condition periodic blocks (periodic #tag { ... }) ---
-//
-// Conditions can include periodic blocks that execute during the combat
-// loop via `process_periodic_conditions(combatants, tag)`. Unlike lifecycle
-// blocks, periodic blocks are NOT restricted from calling apply_condition()
-// or remove_condition() — they have full function-body semantics.
-//
-// Periodic blocks replace standalone processing functions (e.g.,
-// process_bleeding(), process_blade_barrier_damage()) by co-locating the
-// per-round effect logic with the condition that causes it.
-//
-// SYNTAX: periodic #tag { statements }
-//   The tag must be declared with `tag` at system level.
-//   A condition may have multiple periodic blocks with different tags.
-//   Duplicate tags within a single condition declaration are a parser error.
-//
-// SCOPING:
-//   `bearer`  — the entity carrying the condition (receiver)
-//   condition parameters — bound from the active-condition parameter map
-//   `self`    — the full ActiveCondition instance being processed
-//              (.name, .duration, .source, .id, .applied_at, .tags)
-//   `state`   — mutable condition state fields (if declared). Accessed
-//              via `state.field_name`.
-//
-//   Note: lifecycle blocks bind `bearer` + params + state. Periodic blocks
-//   additionally bind `self` because they replace standalone functions
-//   that had full access to condition instance data via `conditions()`.
-//
-// CAPABILITIES (checker-enforced):
-//   - Can mutate entity state, emit events, roll dice
-//   - Can call derives, mechanics, functions, actions
-//   - CAN call apply_condition(), remove_condition()
-//   - `invocation()` is NOT available
-//
-// EXECUTION (process_periodic_conditions):
-//   1. For each combatant, snapshot active conditions and compute stacking winners
-//   2. For each winning instance whose declaration (including ancestors)
-//      has a periodic block matching the requested tag:
-//      - Execute the block with bearer, self, and params bound
-//   3. Conditions removed during the pass are skipped (snapshot-based)
-//   4. Conditions applied to the same bearer during the pass don't tick
-//      until the next call (cross-bearer applies may tick if the recipient
-//      hasn't been processed yet)
-//
-// STACKING:
-//   Only stacking winners execute periodic blocks:
-//   - `all`: every instance ticks separately (e.g., overlapping Blade Barriers)
-//   - `first`: only the oldest instance ticks
-//   - `best by`: only the winning instance ticks
-//
-// INHERITANCE:
-//   Parent periodic blocks execute before child blocks (DFS post-order),
-//   same ordering as lifecycle blocks.
-//
-// TAG VALIDATION:
-//   Periodic tags are validated against the tag namespace by the checker
-//   at declaration sites. Call-site strings in process_periodic_conditions()
-//   are validated at runtime — unknown tags produce a runtime error.
-
-// EXAMPLE: bleeding damage as a periodic block
+// EXAMPLE: bleeding damage as an event handler
 condition Bleeding on bearer: entity
     stacking first
 {
-    periodic #round_end_damage {
+    on RoundEndDamage(combatant: bearer) {
         if bearer is Character {
             bearer.HP -= 1
             if bearer.HP <= 0 {
@@ -604,7 +547,7 @@ condition Bleeding on bearer: entity
 condition InsideBladeBarrier on bearer: entity
     stacking all
 {
-    periodic #round_end_damage {
+    on RoundEndDamage(combatant: bearer) {
         if let EffectSource.Spell(zone_name, cl) = self.source {
             let damage = roll(8d8).total
             if bearer is Character {
@@ -617,8 +560,8 @@ condition InsideBladeBarrier on bearer: entity
 }
 
 // EXAMPLE: combat loop integration
-// process_periodic_conditions(combatants, "round_end_damage")
-// process_temp_healing(combatants)    // not condition-based
+// emit RoundEndDamage(combatant: target)  // for each combatant
+// process_temp_healing(combatants)         // not condition-based
 // expire_conditions(combatants)
 
 
@@ -642,7 +585,7 @@ condition InsideBladeBarrier on bearer: entity
 //   `state`   — mutable condition state fields (if declared)
 //   `trigger` — the event payload as a struct (same as hooks)
 //
-//   This is the union of periodic block scope (bearer, self, state, params)
+//   This is the union of lifecycle block scope (bearer, self, state, params)
 //   and hook scope (trigger).
 //
 // CAPABILITIES (checker-enforced):
@@ -689,7 +632,7 @@ condition InsideBladeBarrier on bearer: entity
 //   - `all`: every instance fires separately with its own `self`
 //   - `first`: only the oldest instance fires
 //   - `best by`: only the winning instance fires
-//   Same computation as periodic blocks and modifier collection.
+//   Same computation as modifier collection.
 //
 // STATE THREADING:
 //   If multiple `on` handlers on the same condition instance fire in the
@@ -712,13 +655,6 @@ condition InsideBladeBarrier on bearer: entity
 //   A condition may declare multiple `on` handlers for different events
 //   or for the same event. All matching handlers fire in clause order.
 //
-// RELATIONSHIP TO PERIODIC BLOCKS:
-//   Both event handlers and periodic blocks can coexist on the same
-//   condition. They fire through different dispatch paths:
-//   - periodic: via process_periodic_conditions(combatants, tag)
-//   - event handlers: via emit EventName(...)
-//   Both share the same stacking winner computation and state threading.
-
 // EXAMPLE: retaliation damage on melee hit (replaces hook + has_condition guard)
 condition Thorns on bearer: Character stacking first {
     state { charges: int = 3 }
@@ -754,11 +690,11 @@ condition DualReact on bearer: Character stacking first {
     }
 }
 
-// EXAMPLE: periodic + event handler on the same condition
+// EXAMPLE: multiple event handlers on the same condition
 condition PoisonAura on bearer: Character stacking first {
     state { event_count: int = 0 }
 
-    periodic #round_end_damage {
+    on RoundEndDamage(combatant: bearer) {
         bearer.HP -= 1
     }
 
@@ -866,7 +802,7 @@ condition PoisonAura on bearer: Character stacking first {
 // `actor` is Dash's receiver name, bound to the condition's `bearer`.
 // Condition-owned names visible while checking and evaluating the cost
 // modifier come from the same effective inherited parameter map used by
-// lifecycle/periodic/modify scopes, so descendant parameter names shadow
+// lifecycle/event-handler/modify scopes, so descendant parameter names shadow
 // matching ancestor names.
 //
 // Cost modify bodies support:

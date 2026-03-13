@@ -380,9 +380,8 @@ system "OSRIC Conditions" {
     //  StabilizeBleeding action or when healed.
     //
     //  Declared in osric_combat.ttrpg (needs access to restricted
-    //  `hp` field). The periodic block runs via
-    //  process_periodic_conditions(combatants, "round_end_damage")
-    //  in the combat loop.
+    //  `hp` field). The on-event handler fires when
+    //  RoundEndDamage is emitted in the combat loop.
     // ========================================================
     // (condition Bleeding is defined in osric_combat.ttrpg)
 

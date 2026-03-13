@@ -160,7 +160,7 @@ pub enum Effect {
         source_id: u64,
     },
     /// Update per-instance state fields on an existing condition.
-    /// Emitted at the end of periodic/on_remove dispatch. No-op if the
+    /// Emitted at the end of on-event/on_remove dispatch. No-op if the
     /// condition id no longer exists on the bearer.
     SetConditionState {
         target: EntityRef,

@@ -543,7 +543,7 @@ entity Character {
     max_HP: int = 20
 }
 
-tag round_end_damage
+event RoundEndDamage(combatant: entity) {}
 event Damaged(target: Character, amount: int)
 event PoisonSummary(target: Character, total_damage: int, rounds: int)
 
@@ -561,7 +561,7 @@ condition Poisoned(potency: int) on bearer: Character
         emit Damaged(target: bearer, amount: state.cumulative_damage)
     }
 
-    periodic #round_end_damage {
+    on RoundEndDamage(combatant: bearer) {
         state.ticks_elapsed += 1
         let tick_dmg = roll(1d4).total
         state.cumulative_damage += tick_dmg
@@ -579,48 +579,12 @@ condition Poisoned(potency: int) on bearer: Character
 
 - Declared in a `state { ... }` block inside the condition body, before executable blocks
 - Each field: `name: Type = default_expr` — defaults are required
-- Access via `state.field_name` prefix — **mutable** in on_apply, on_remove, periodic; **read-only** in modify
+- Access via `state.field_name` prefix — **mutable** in on_apply, on_remove, on-event handlers; **read-only** in modify
 - `state` is a reserved identifier inside conditions — cannot be used as a param or receiver name
 - Allowed types: all value types including entity refs, enums, lists, structs. Disallowed: Condition, ActiveCondition, Module, FnRef
 - Default expressions may reference condition parameters
 - **Inheritance:** child sees parent state fields, can add its own, cannot redeclare parent field names. Sibling parents with the same field name is a checker error.
-- **Persistence:** one mutable state map threaded through the full inherited dispatch chain. on_apply: final map travels with ApplyCondition effect. periodic/on_remove: written back via SetConditionState at dispatch exit. If condition removed mid-block, write-back is a no-op.
-
-### Condition with Periodic Blocks
-
-Periodic blocks run during the combat loop via `process_periodic_conditions()`, not at condition apply/remove time. They replace standalone processing functions like `process_bleeding()`.
-
-```ttrpg
-tag round_end_damage
-
-entity Creature { hp: int }
-
-event Ticked(target: entity, amount: int)
-
-condition Bleeding on bearer: Creature
-    stacking first
-{
-    periodic #round_end_damage {
-        bearer.hp = bearer.hp - 1
-        emit Ticked(target: bearer, amount: 1)
-        if bearer.hp <= 0 {
-            remove_condition(bearer, "Bleeding")
-        }
-    }
-}
-
-condition OnFire on bearer: Creature
-    stacking all
-{
-    periodic #round_end_damage {
-        let damage = roll(1d6).total
-        bearer.hp = bearer.hp - damage
-        emit Ticked(target: bearer, amount: damage)
-    }
-}
-```
-
-See [`language_reference.md`](language_reference.md) for periodic block rules (scope, stacking, snapshot semantics).
+- **Persistence:** one mutable state map threaded through the full inherited dispatch chain. on_apply: final map travels with ApplyCondition effect. on-event/on_remove: written back via SetConditionState at dispatch exit. If condition removed mid-block, write-back is a no-op.
 
 ### Condition with Event Handlers
 
@@ -651,7 +615,7 @@ condition Vendetta(nemesis: Character) on bearer: Character
 }
 ```
 
-**Handler scope:** `bearer`, `self` (ActiveCondition), `trigger` (event payload), `state` fields, condition params — the union of periodic block scope and hook scope.
+**Handler scope:** `bearer`, `self` (ActiveCondition), `trigger` (event payload), `state` fields, condition params.
 
 **State + self-removal:**
 

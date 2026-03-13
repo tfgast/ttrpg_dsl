@@ -239,8 +239,8 @@ fn test_collect_counts() {
             .count(),
         2
     );
-    // Events: entity_leaves_reach, turn_start, turn_end, Damaged, ConcentrationStarted + built-in modify_applied
-    assert_eq!(result.env.events.len(), 6);
+    // Events: entity_leaves_reach, turn_start, turn_end, Damaged, RoundEndDamage, ConcentrationStarted + built-in modify_applied
+    assert_eq!(result.env.events.len(), 7);
     // Conditions: Prone, Dodging, Disengaging, Hidden, Stunned, Petrified, Burning, CunningAction, Blessed, Raging, Bleeding, OnFire
     assert_eq!(result.env.conditions.len(), 12);
 }

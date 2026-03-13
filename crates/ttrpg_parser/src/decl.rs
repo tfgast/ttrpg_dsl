@@ -1081,8 +1081,7 @@ impl Parser {
         let mut seen_on_remove = false;
         let mut seen_tags = false;
         let mut seen_state = false;
-        let mut seen_executable = false; // tracks whether we've seen on_apply/on_remove/periodic/modify
-        let mut seen_periodic_tags: Vec<ttrpg_ast::Name> = Vec::new();
+        let mut seen_executable = false; // tracks whether we've seen on_apply/on_remove/modify
         while !matches!(self.peek(), TokenKind::RBrace | TokenKind::Eof) {
             if self.at_ident("tags") {
                 if seen_tags {
@@ -1108,7 +1107,7 @@ impl Parser {
                     return Err(());
                 }
                 if seen_executable {
-                    self.error("`state` block must appear before `on_apply`, `on_remove`, `periodic`, and `modify` blocks");
+                    self.error("`state` block must appear before `on_apply`, `on_remove`, and `modify` blocks");
                     return Err(());
                 }
                 seen_state = true;
@@ -1141,18 +1140,6 @@ impl Parser {
                 seen_on_remove = true;
                 seen_executable = true;
                 clauses.push(ConditionClause::OnRemove(self.parse_lifecycle_block()?));
-            } else if self.at_ident("periodic") {
-                seen_executable = true;
-                let pc = self.parse_periodic_clause()?;
-                if seen_periodic_tags.contains(&pc.tag) {
-                    self.error(format!(
-                        "duplicate periodic tag `{}` in condition `{}`",
-                        pc.tag, name
-                    ));
-                    return Err(());
-                }
-                seen_periodic_tags.push(pc.tag.clone());
-                clauses.push(ConditionClause::Periodic(pc));
             } else if self.at_ident("include") {
                 clauses.push(ConditionClause::Include(self.parse_include_clause()?));
             } else if self.at_ident("on")
@@ -1163,7 +1150,7 @@ impl Parser {
                 clauses.push(ConditionClause::OnEvent(self.parse_on_event_clause()?));
             } else {
                 self.error(format!(
-                    "expected `tags`, `state`, `modify`, `suppress`, `include`, `on`, `on_apply`, `on_remove`, or `periodic` in condition body, found {}",
+                    "expected `tags`, `state`, `modify`, `suppress`, `include`, `on`, `on_apply`, or `on_remove` in condition body, found {}",
                     self.peek()
                 ));
                 return Err(());
@@ -1314,20 +1301,6 @@ impl Parser {
         let body = self.parse_block()?;
         Ok(OnEventClause {
             trigger,
-            body,
-            span: self.end_span(start),
-        })
-    }
-
-    /// Parse `periodic #tag { ... }` clause inside a condition body.
-    fn parse_periodic_clause(&mut self) -> Result<PeriodicClause, ()> {
-        let start = self.start_span();
-        self.expect_soft_keyword("periodic")?;
-        self.expect(&TokenKind::Hash)?;
-        let (tag, _) = self.expect_ident()?;
-        let body = self.parse_block()?;
-        Ok(PeriodicClause {
-            tag,
             body,
             span: self.end_span(start),
         })

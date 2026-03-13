@@ -160,8 +160,8 @@ hook Regenerate on creature: Character (
 // to offer to the player.
 //
 // Emit is allowed in action, reaction, hook resolve blocks, condition
-// lifecycle blocks (on_apply / on_remove), condition periodic blocks,
-// and condition event handler blocks.
+// lifecycle blocks (on_apply / on_remove), and condition event handler
+// blocks.
 // It is a statement (fire-and-forget), not an expression — it always
 // returns unit.
 //
@@ -297,11 +297,6 @@ hook Regenerate on creature: Character (
 //       // returns the abstract game time counter (starts at 0)
 //       // each TTRPG system defines what a "tick" means
 //       // (e.g., OSRIC: 1 tick = 1 segment, 10 segments per round)
-//   process_periodic_conditions(combatants: list<entity>, tag: string) -> void
-//       // executes periodic blocks on all combatants' conditions matching the tag
-//       // only stacking winners execute; ancestor blocks run before child blocks
-//       // runtime error if tag is not a declared tag name
-//
 // Collection builtins (available everywhere, also as methods):
 //   len(xs: list<T> | set<T> | map<K, V>) -> int
 //   keys(m: map<K, V>) -> list<K>

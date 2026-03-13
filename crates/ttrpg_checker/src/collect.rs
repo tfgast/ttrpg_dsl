@@ -1443,7 +1443,7 @@ fn collect_condition(
     if c.receiver_name == "self" {
         diagnostics.push(Diagnostic::error(
             format!(
-                "condition `{name}` receiver `self` shadows the implicit self binding in periodic blocks"
+                "condition `{name}` receiver `self` shadows the implicit self binding in event handler blocks"
             ),
             span,
         ));
@@ -1460,7 +1460,7 @@ fn collect_condition(
         if p.name == "self" {
             diagnostics.push(Diagnostic::error(
                 format!(
-                    "condition `{name}` parameter `self` shadows the implicit self binding in periodic blocks"
+                    "condition `{name}` parameter `self` shadows the implicit self binding in event handler blocks"
                 ),
                 p.span,
             ));

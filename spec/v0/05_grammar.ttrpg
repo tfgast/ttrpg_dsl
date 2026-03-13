@@ -385,7 +385,7 @@
 //
 // Include directives copy declarative clauses from a source condition at
 // compile time. Only the specified clause type is copied (modify, suppress,
-// or suppress-modify). Lifecycle hooks, periodic blocks, state, stacking,
+// or suppress-modify). Lifecycle hooks, event handlers, state, stacking,
 // and tags are NOT copied.
 //
 //   include modify SourceCondition
@@ -407,7 +407,7 @@
 //                 | "best" "by" stacking_dir "(" IDENT ")" "ties" "oldest"
 // stacking_dir    = "highest" | "lowest"
 
-// condition_clause = modify_clause | suppress_clause | suppress_modify_clause | lifecycle_clause | periodic_clause | on_event_clause | include_clause
+// condition_clause = modify_clause | suppress_clause | suppress_modify_clause | lifecycle_clause | on_event_clause | include_clause
 // include_clause   = "include" include_kind IDENT ("(" include_args ")")? term
 // include_kind     = "modify" | "suppress" | "suppress" "-" "modify"
 // include_args     = include_arg ("," include_arg)*
@@ -415,7 +415,6 @@
 // state_block      = "state" "{" state_field_decl* "}"
 // state_field_decl = IDENT ":" type_expr "=" expr term
 // lifecycle_clause = ("on_apply" | "on_remove") block
-// periodic_clause  = "periodic" "#" IDENT block
 // on_event_clause  = "on" IDENT "(" trigger_bindings? ")" block
 //
 // --- Condition body ordering ---
@@ -423,7 +422,7 @@
 // Inside the condition body `{ ... }`, clauses must appear in this order:
 //   1. `tags:` and `suppress` declarations (any order, metadata)
 //   2. `state { ... }` block (optional, at most one)
-//   3. Executable blocks: on_apply, on_remove, periodic, on (event handler), modify (any order)
+//   3. Executable blocks: on_apply, on_remove, on (event handler), modify (any order)
 //
 // A `state` block appearing after any executable block is a parser error.
 // Duplicate `state` blocks are a parser error.
@@ -440,14 +439,6 @@
 // condition body position. At most one of each per condition (parser
 // error on duplicates). See 03_conditions.ttrpg for full semantic
 // details (trigger points, restrictions, clause copying).
-//
-// --- Periodic clause ---
-//
-// `periodic` is a soft keyword, recognized only in condition body position.
-// The tag after `#` must reference a tag declared with `tag` at system level.
-// No duplicate periodic tags per condition declaration (parser error).
-// See 03_conditions.ttrpg for full semantic details (scoping, capabilities,
-// execution model, stacking, inheritance).
 //
 // --- On-event clause ---
 //

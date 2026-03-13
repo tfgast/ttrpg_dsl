@@ -238,9 +238,8 @@ impl Runner {
 
         // Fire condition event handlers
         let cov_rc = self.coverage_rc();
-        let mut interp2 =
-            TrackedInterpreter::new(&self.program, &self.type_env, &self.game_state)
-                .map_err(|e| render_runtime_error(&e, &self.source_map))?;
+        let mut interp2 = TrackedInterpreter::new(&self.program, &self.type_env, &self.game_state)
+            .map_err(|e| render_runtime_error(&e, &self.source_map))?;
         if let Some(cov) = cov_rc {
             interp2.interp.set_coverage(cov);
         }
@@ -255,13 +254,7 @@ impl Runner {
         .quiet(self.quiet)
         .interactive(self.interactive);
         let cond_count = interp2
-            .fire_condition_handlers(
-                &state,
-                &mut handler2,
-                event_name,
-                payload,
-                &candidates,
-            )
+            .fire_condition_handlers(&state, &mut handler2, event_name, payload, &candidates)
             .map_err(|e| {
                 for line in handler2.log.drain(..) {
                     self.output.push(line);

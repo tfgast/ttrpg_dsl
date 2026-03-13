@@ -171,14 +171,5 @@ pub fn register_builtins() -> Vec<FnInfo> {
             ],
             Ty::Unit,
         ),
-        // Periodic condition processing
-        builtin(
-            "process_periodic_conditions",
-            vec![
-                param("combatants", Ty::List(Box::new(Ty::AnyEntity))),
-                param("tag", Ty::String),
-            ],
-            Ty::Unit,
-        ),
     ]
 }

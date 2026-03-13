@@ -556,19 +556,19 @@ system "D&D 5e Combat" {
     }
 
 
-    // --- Condition periodic blocks (periodic #tag { ... }) ---
+    // --- Condition event handlers (on EventName(...) { ... }) ---
     //
-    // Periodic blocks co-locate per-round effects with the condition.
-    // Executed by process_periodic_conditions(combatants, tag), which
-    // filters by tag. Unlike lifecycle blocks, periodic blocks CAN call
-    // apply_condition(), remove_condition(), and actions.
-    // Scope: bearer + condition params + self (ActiveCondition instance).
+    // Event handlers co-locate event-reactive logic with the condition.
+    // Fired automatically during `emit` dispatch when bindings match.
+    // Unlike lifecycle blocks, event handlers CAN call apply_condition(),
+    // remove_condition(), and actions.
+    // Scope: bearer + condition params + self + trigger.
 
-    tag round_end_damage
+    event RoundEndDamage(combatant: entity) {}
 
     // Bleeding: per-round HP loss, co-located with the condition
     condition Bleeding on bearer: Character {
-        periodic #round_end_damage {
+        on RoundEndDamage(combatant: bearer) {
             bearer.HP -= 1
             if bearer.HP <= 0 {
                 remove_condition(bearer, "Bleeding")
@@ -581,7 +581,7 @@ system "D&D 5e Combat" {
     condition OnFire on bearer: Character
         stacking all
     {
-        periodic #round_end_damage {
+        on RoundEndDamage(combatant: bearer) {
             let damage: RollResult = roll(1d6)
             bearer.HP -= damage.total
             emit Damaged(target: bearer, attacker: bearer, amount: damage.total)

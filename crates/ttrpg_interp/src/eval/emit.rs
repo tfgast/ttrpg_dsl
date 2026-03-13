@@ -154,7 +154,7 @@ pub(crate) fn eval_emit(
 
 /// Execute a single condition event handler.
 ///
-/// Follows the periodic block execution pattern:
+/// Follows the condition handler execution pattern:
 /// 1. Look up condition declaration
 /// 2. Verify condition still exists on bearer (snapshot safety)
 /// 3. Push scope, bind bearer/self/params/state/trigger

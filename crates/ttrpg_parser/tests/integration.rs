@@ -72,7 +72,7 @@ fn test_parse_full_example() {
     assert_eq!(reactions, 2, "reaction count");
     assert_eq!(conditions, 12, "condition count"); // +Stunned, Petrified, Burning, Raging, Bleeding, OnFire
     assert_eq!(prompts, 3, "prompt count"); // +choose_target (typed prompt)
-    assert_eq!(events, 5, "event count");
+    assert_eq!(events, 6, "event count"); // +RoundEndDamage
 }
 
 #[test]
@@ -3739,7 +3739,6 @@ fn test_condition_state_block_before_all_executable_blocks() {
         }
         on_apply { bearer.HP += 1 }
         on_remove { bearer.HP -= 1 }
-        periodic #tick { bearer.HP += 1 }
         modify calc_hp(target: bearer) { result = result + state.stacks }
     }
 }"#;
@@ -3751,7 +3750,7 @@ fn test_condition_state_block_before_all_executable_blocks() {
     );
     let cond = find_condition(&program, "Buffed");
     assert_eq!(cond.state_fields.len(), 1);
-    assert_eq!(cond.clauses.len(), 4); // on_apply, on_remove, periodic, modify
+    assert_eq!(cond.clauses.len(), 3); // on_apply, on_remove, modify
 }
 
 #[test]
@@ -3831,11 +3830,11 @@ fn test_condition_state_after_on_apply_error() {
 }
 
 #[test]
-fn test_condition_state_after_periodic_error() {
+fn test_condition_state_after_on_remove_error() {
     let source = r#"system "test" {
     entity Character { HP: int }
     condition Bad on bearer: Character {
-        periodic #tick { bearer.HP -= 1 }
+        on_remove { bearer.HP -= 1 }
         state { x: int = 0 }
     }
 }"#;
