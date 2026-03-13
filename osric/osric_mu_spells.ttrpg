@@ -191,10 +191,8 @@ system "OSRIC MU Spells" {
         stacking first
     {
         tags: #movement
-        modify get_movement_speed(target: bearer, mode: _) {
-            if result.value < 30 {
-                result = 30ft
-            }
+        modify get_movement_speed(target: bearer, mode: Climb) {
+            result = 30ft
         }
     }
 
