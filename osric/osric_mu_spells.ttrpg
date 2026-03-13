@@ -17,6 +17,7 @@ import "osric_core.ttrpg"
 import "osric_falling.ttrpg"
 import "osric_saves.ttrpg"
 import "osric_spells.ttrpg"
+import "osric_world_objects.ttrpg"
 
 use "OSRIC"
 use "OSRIC Ability"
@@ -27,6 +28,7 @@ use "OSRIC Conditions"
 use "OSRIC Falling"
 use "OSRIC Saves"
 use "OSRIC Spells"
+use "OSRIC World Objects"
 
 system "OSRIC MU Spells" {
 
@@ -999,6 +1001,160 @@ system "OSRIC MU Spells" {
                 let bonus = roll(1d6).total + fighter_bonus
                 apply_condition(target, Strengthened(bonus: bonus), Duration.Turns(duration_turns), source)
                 emit SpellApplied(caster: caster, target: target, spell_name: "Strength")
+            }
+        }
+    }
+
+
+    // ========================================================
+    //  ENLARGE (§1.8.5.1)
+    //
+    //  Arcane transmutation, level 1. Range: 5ft/MU level.
+    //  Duration: 1 turn/MU level.
+    //  Increases creature size/weight by 20% per caster level
+    //  (max 300%). Object size/weight increases 10% per level
+    //  (max 100%). Unwilling targets save to negate; willing
+    //  targets may forgo the save.
+    //  STR override: 200% → 18, 250% → 19, 300% → 20.
+    //  Never reduces STR below current value.
+    //
+    //  Reversible as REDUCE.
+    // ========================================================
+
+    // Compute creature size percentage: 100 + 20 per level, max 300.
+    derive enlarge_creature_pct(caster_level: int) -> int {
+        min(100 + caster_level * 20, 300)
+    }
+
+    // Compute object size percentage: 100 + 10 per level, max 200.
+    derive enlarge_object_pct(caster_level: int) -> int {
+        min(100 + caster_level * 10, 200)
+    }
+
+    // STR override for enlarged creatures. Below 200% → 0 (no override).
+    derive enlarge_str_override(size_pct: int) -> int {
+        if size_pct >= 300 { 20 }
+        else if size_pct >= 250 { 19 }
+        else if size_pct >= 200 { 18 }
+        else { 0 }
+    }
+
+    condition Enlarged(size_pct: int, str_override: int) on bearer: Character
+        stacking first
+    {
+        tags: #physical
+        modify effective_ability(character: bearer, ability: STR) {
+            if str_override > 0 {
+                result = max(result, str_override)
+            }
+        }
+    }
+
+    const ENLARGE_DEF: SpellDef = SpellDef {
+        name: "Enlarge",
+        class_type: Arcane,
+        school: Transmutation,
+        level: 1,
+        range: SpellRange.Special(description: "5ft/MU level"),
+        duration: SpellDuration.Special(description: "1 turn/MU level"),
+        components: SpellComponents { material: true },
+        casting_time: CastingTime.Fast,
+        saving_throw: SpellSave.Special(description: "Negates (unwilling only)"),
+        description: "Increases creature size by 20%/level (max 300%) or object by 10%/level (max 200%). Doubled creatures gain STR 18, tripled STR 20."
+    }
+
+    // Resolve Enlarge. Targets one creature or object. Unwilling
+    // creatures get a saving throw (negates); willing targets
+    // forgo the save (host returns none for ResistSpell).
+    function resolve_enlarge(caster: entity, targets: list<entity>) {
+        let cl = caster_level(caster, Arcane)
+        let duration_turns = cl
+        let source = EffectSource.Spell(name: "Enlarge", caster_level: cl)
+        for target in targets {
+            if target is Character {
+                let size_pct = enlarge_creature_pct(cl)
+                let str_ov = enlarge_str_override(size_pct)
+                let result = target.ResistSpell(category: some(SpellsUnlisted))
+                if let some(saved) = result {
+                    if !saved {
+                        apply_condition(target, Enlarged(size_pct: size_pct, str_override: str_ov), Duration.Turns(duration_turns), source)
+                        emit SpellApplied(caster: caster, target: target, spell_name: "Enlarge")
+                    }
+                } else {
+                    // Willing target — no save
+                    apply_condition(target, Enlarged(size_pct: size_pct, str_override: str_ov), Duration.Turns(duration_turns), source)
+                    emit SpellApplied(caster: caster, target: target, spell_name: "Enlarge")
+                }
+            } else if target is WorldObject {
+                let size_pct = enlarge_object_pct(cl)
+                emit SpellApplied(caster: caster, target: target, spell_name: "Enlarge")
+            }
+        }
+    }
+
+
+    // ========================================================
+    //  REDUCE (reverse of Enlarge, §1.8.5.1)
+    //
+    //  Arcane transmutation, level 1. Range: 5ft/MU level.
+    //  Duration: 1 turn/MU level.
+    //  Decreases creature size/weight by 20% per caster level
+    //  (minimum 20% of original). Object decreases 10% per
+    //  level (minimum 50% of original).
+    //  No STR modification yet.
+    // ========================================================
+
+    // Compute reduced creature size percentage: 100 - 20 per level, min 20.
+    derive reduce_creature_pct(caster_level: int) -> int {
+        max(100 - caster_level * 20, 20)
+    }
+
+    // Compute reduced object size percentage: 100 - 10 per level, min 50.
+    derive reduce_object_pct(caster_level: int) -> int {
+        max(100 - caster_level * 10, 50)
+    }
+
+    condition Reduced(size_pct: int) on bearer: Character
+        stacking first
+    {
+        tags: #physical
+    }
+
+    const REDUCE_DEF: SpellDef = SpellDef {
+        name: "Reduce",
+        class_type: Arcane,
+        school: Transmutation,
+        level: 1,
+        range: SpellRange.Special(description: "5ft/MU level"),
+        duration: SpellDuration.Special(description: "1 turn/MU level"),
+        components: SpellComponents { material: true },
+        casting_time: CastingTime.Fast,
+        saving_throw: SpellSave.Special(description: "Negates (unwilling only)"),
+        description: "Decreases creature size by 20%/level (min 20%) or object by 10%/level (min 50%). Reverse of Enlarge."
+    }
+
+    // Resolve Reduce. Same willing/unwilling save pattern as Enlarge.
+    function resolve_reduce(caster: entity, targets: list<entity>) {
+        let cl = caster_level(caster, Arcane)
+        let duration_turns = cl
+        let source = EffectSource.Spell(name: "Reduce", caster_level: cl)
+        for target in targets {
+            if target is Character {
+                let size_pct = reduce_creature_pct(cl)
+                let result = target.ResistSpell(category: some(SpellsUnlisted))
+                if let some(saved) = result {
+                    if !saved {
+                        apply_condition(target, Reduced(size_pct: size_pct), Duration.Turns(duration_turns), source)
+                        emit SpellApplied(caster: caster, target: target, spell_name: "Reduce")
+                    }
+                } else {
+                    // Willing target — no save
+                    apply_condition(target, Reduced(size_pct: size_pct), Duration.Turns(duration_turns), source)
+                    emit SpellApplied(caster: caster, target: target, spell_name: "Reduce")
+                }
+            } else if target is WorldObject {
+                let size_pct = reduce_object_pct(cl)
+                emit SpellApplied(caster: caster, target: target, spell_name: "Reduce")
             }
         }
     }

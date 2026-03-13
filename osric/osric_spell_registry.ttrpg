@@ -151,6 +151,14 @@ system "OSRIC Spell Registry" {
             def: SPIDER_CLIMB_DEF,
             resolve: SpellResolve.Touch(resolve: resolve_spider_climb)
         },
+        SpellId.Enlarge => SpellEntry {
+            def: ENLARGE_DEF,
+            resolve: SpellResolve.Targeted(resolve: resolve_enlarge)
+        },
+        SpellId.Reduce => SpellEntry {
+            def: REDUCE_DEF,
+            resolve: SpellResolve.Targeted(resolve: resolve_reduce)
+        },
         // --- Magic-User level 2 ---
         SpellId.Invisibility => SpellEntry {
             def: INVISIBILITY_DEF,

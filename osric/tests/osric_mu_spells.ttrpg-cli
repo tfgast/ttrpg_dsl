@@ -872,3 +872,153 @@ assert_no_condition mi_caster, MirrorImageActive
 rolls clear
 do mi_caster.TakeDamage(mi_attacker, 3, DamageType.Slashing, DamageSource.Attack)
 assert_eq mi_caster.hp, 2
+
+
+// ══════════════════════════════════════════════════════════════
+//  ENLARGE (§1.8.5.1)
+// ══════════════════════════════════════════════════════════════
+
+// ── Enlarge SpellDef ──────────────────────────────────────────
+
+assert_eq ENLARGE_DEF.level, 1
+assert_eq ENLARGE_DEF.school, SpellSchool.Transmutation
+
+// ── Helper derives ────────────────────────────────────────────
+
+assert_eq enlarge_creature_pct(1), 120
+assert_eq enlarge_creature_pct(5), 200
+assert_eq enlarge_creature_pct(10), 300
+assert_eq enlarge_creature_pct(15), 300
+
+assert_eq enlarge_object_pct(1), 110
+assert_eq enlarge_object_pct(5), 150
+assert_eq enlarge_object_pct(10), 200
+assert_eq enlarge_object_pct(15), 200
+
+assert_eq enlarge_str_override(120), 0
+assert_eq enlarge_str_override(180), 0
+assert_eq enlarge_str_override(200), 18
+assert_eq enlarge_str_override(250), 19
+assert_eq enlarge_str_override(300), 20
+
+// ── Enlarge resolve: CL5 (200%), failed save → STR 10 → 18 ───
+
+spawn Character enl_caster { name: "Enl Caster L5", classes: [ClassLevel { class: MagicUser, level: 5 }], abilities: { STR: 10, INT: 16, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 12, hp: 12 } }
+spawn Character enl_willing { name: "Willing Target", classes: [ClassLevel { class: Fighter, level: 3 }], abilities: { STR: 10, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 20, hp: 20 } }
+
+rolls clear
+rolls 1
+call resolve_enlarge(enl_caster, [enl_willing])
+assert_condition enl_willing, Enlarged
+assert_eq effective_ability(enl_willing, STR), 18
+
+// ── Enlarge resolve: CL10 (300%), failed save → STR override 20 ──
+
+spawn Character enl_caster10 { name: "Enl Caster L10", classes: [ClassLevel { class: MagicUser, level: 10 }], abilities: { STR: 10, INT: 16, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 20, hp: 20 } }
+spawn Character enl_target10 { name: "Big Target", classes: [ClassLevel { class: Fighter, level: 5 }], abilities: { STR: 14, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 40, hp: 40 } }
+
+rolls clear
+rolls 1
+call resolve_enlarge(enl_caster10, [enl_target10])
+assert_condition enl_target10, Enlarged
+assert_eq effective_ability(enl_target10, STR), 20
+
+// ── Enlarge never reduces STR: target already has STR 19 ──────
+
+spawn Character enl_caster5b { name: "Enl Caster L5b", classes: [ClassLevel { class: MagicUser, level: 5 }], abilities: { STR: 10, INT: 16, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 12, hp: 12 } }
+spawn Character enl_strong { name: "Strong Target", classes: [ClassLevel { class: Fighter, level: 8 }], abilities: { STR: 19, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 50, hp: 50 } }
+
+rolls clear
+rolls 1
+call resolve_enlarge(enl_caster5b, [enl_strong])
+assert_condition enl_strong, Enlarged
+// STR 19 > override 18, so stays at 19
+assert_eq effective_ability(enl_strong, STR), 19
+
+// ── Enlarge: CL1 (120%), failed save → no STR change ─────────
+
+spawn Character enl_caster1 { name: "Enl Caster L1", classes: [ClassLevel { class: MagicUser, level: 1 }], abilities: { STR: 10, INT: 16, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 4, hp: 4 } }
+spawn Character enl_small { name: "Small Target", classes: [ClassLevel { class: Fighter, level: 1 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 10, hp: 10 } }
+
+rolls clear
+rolls 1
+call resolve_enlarge(enl_caster1, [enl_small])
+assert_condition enl_small, Enlarged
+// 120% → no STR override, stays at 12
+assert_eq effective_ability(enl_small, STR), 12
+
+// ── Enlarge: unwilling target, failed save → applies ──────────
+
+spawn Character enl_unwill_caster { name: "Enl Unwill Caster", classes: [ClassLevel { class: MagicUser, level: 5 }], abilities: { STR: 10, INT: 16, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 12, hp: 12 } }
+spawn Character enl_unwilling { name: "Unwilling Target", classes: [ClassLevel { class: Fighter, level: 1 }], abilities: { STR: 10, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 10, hp: 10 } }
+
+rolls clear
+rolls 1
+call resolve_enlarge(enl_unwill_caster, [enl_unwilling])
+assert_condition enl_unwilling, Enlarged
+assert_eq effective_ability(enl_unwilling, STR), 18
+
+// ── Enlarge: unwilling target, save succeeds → no effect ──────
+
+spawn Character enl_save_caster { name: "Enl Save Caster", classes: [ClassLevel { class: MagicUser, level: 5 }], abilities: { STR: 10, INT: 16, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 12, hp: 12 } }
+spawn Character enl_saved { name: "Saved Target", classes: [ClassLevel { class: Fighter, level: 1 }], abilities: { STR: 10, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 10, hp: 10 } }
+
+rolls clear
+rolls 20
+call resolve_enlarge(enl_save_caster, [enl_saved])
+assert_no_condition enl_saved, Enlarged
+assert_eq effective_ability(enl_saved, STR), 10
+
+
+// ══════════════════════════════════════════════════════════════
+//  REDUCE (reverse of Enlarge, §1.8.5.1)
+// ══════════════════════════════════════════════════════════════
+
+// ── Reduce SpellDef ───────────────────────────────────────────
+
+assert_eq REDUCE_DEF.level, 1
+assert_eq REDUCE_DEF.school, SpellSchool.Transmutation
+
+// ── Helper derives ────────────────────────────────────────────
+
+assert_eq reduce_creature_pct(1), 80
+assert_eq reduce_creature_pct(3), 40
+assert_eq reduce_creature_pct(4), 20
+assert_eq reduce_creature_pct(10), 20
+
+assert_eq reduce_object_pct(1), 90
+assert_eq reduce_object_pct(3), 70
+assert_eq reduce_object_pct(5), 50
+assert_eq reduce_object_pct(10), 50
+
+// ── Reduce resolve: failed save, condition applied ────────────
+
+spawn Character red_caster { name: "Red Caster L3", classes: [ClassLevel { class: MagicUser, level: 3 }], abilities: { STR: 10, INT: 16, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 8, hp: 8 } }
+spawn Character red_willing { name: "Red Willing", classes: [ClassLevel { class: Fighter, level: 3 }], abilities: { STR: 14, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 20, hp: 20 } }
+
+rolls clear
+rolls 1
+call resolve_reduce(red_caster, [red_willing])
+assert_condition red_willing, Reduced
+// No STR modification for Reduce (yet)
+assert_eq effective_ability(red_willing, STR), 14
+
+// ── Reduce: unwilling target, failed save → applies ───────────
+
+spawn Character red_unwill_caster { name: "Red Unwill Caster", classes: [ClassLevel { class: MagicUser, level: 3 }], abilities: { STR: 10, INT: 16, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 8, hp: 8 } }
+spawn Character red_unwilling { name: "Red Unwilling", classes: [ClassLevel { class: Fighter, level: 1 }], abilities: { STR: 14, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 10, hp: 10 } }
+
+rolls clear
+rolls 1
+call resolve_reduce(red_unwill_caster, [red_unwilling])
+assert_condition red_unwilling, Reduced
+
+// ── Reduce: unwilling target, save succeeds → no effect ───────
+
+spawn Character red_save_caster { name: "Red Save Caster", classes: [ClassLevel { class: MagicUser, level: 3 }], abilities: { STR: 10, INT: 16, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 8, hp: 8 } }
+spawn Character red_saved { name: "Red Saved", classes: [ClassLevel { class: Fighter, level: 1 }], abilities: { STR: 14, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 10, hp: 10 } }
+
+rolls clear
+rolls 20
+call resolve_reduce(red_save_caster, [red_saved])
+assert_no_condition red_saved, Reduced

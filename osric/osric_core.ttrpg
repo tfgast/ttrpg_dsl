@@ -512,6 +512,8 @@ system "OSRIC" {
         ShockingGrasp,
         Sleep,
         SpiderClimb,
+        Enlarge,
+        Reduce,
         // Magic-User level 2
         Forget,
         Invisibility,
