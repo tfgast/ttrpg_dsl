@@ -219,6 +219,72 @@ system "OSRIC MU Spells" {
 
 
     // ========================================================
+    //  JUMP (§1.8.5.1)
+    //
+    //  Arcane transmutation, level 1. Range: Touch.
+    //  Duration: charge-based (see below).
+    //  Allows huge leaps: 30ft forward, or 10ft backward/up.
+    //  1 leap + 1 per 3 caster levels above 1st.
+    //  (2 at L4, 3 at L7, 4 at L10, etc.)
+    //  One creature. Casting time: Fast. No save.
+    // ========================================================
+
+    event JumpUsed(jumper: entity) {}
+
+    condition Jumping(leaps: int) on bearer: entity
+        stacking first
+    {
+        state { leaps_remaining: int = leaps }
+        tags: #movement
+
+        on JumpUsed(jumper: bearer) {
+            state.leaps_remaining -= 1
+            if state.leaps_remaining <= 0 {
+                remove_condition(bearer, "Jumping")
+            }
+        }
+    }
+
+    action UseJump on actor: entity () {
+        cost free
+
+        requires {
+            has_condition(actor, Jumping)
+        }
+
+        resolve {
+            emit JumpUsed(jumper: actor)
+        }
+    }
+
+    const JUMP_DEF: SpellDef = SpellDef {
+        name: "Jump",
+        class_type: Arcane,
+        school: Transmutation,
+        level: 1,
+        range: SpellRange.Touch,
+        duration: SpellDuration.Special(description: "1 leap + 1 per 3 caster levels above 1st"),
+        components: SpellComponents { material: true },
+        casting_time: CastingTime.Fast,
+        saving_throw: SpellSave.NoSave,
+        description: "Target can make huge leaps: 30ft forward, or 10ft backward/up. Charges consumed per leap."
+    }
+
+    // Resolve Jump. Touch, no save, willing target.
+    // Leaps = 1 + (caster_level - 1) / 3 (integer division).
+    // Duration is Indefinite — condition removed when charges exhausted.
+    function resolve_jump(caster: entity, targets: list<entity>) {
+        let cl = caster_level(caster, Arcane)
+        let leaps = 1 + floor((cl - 1) / 3)
+        let source = EffectSource.Spell(name: "Jump", caster_level: cl)
+        for target in targets {
+            apply_condition(target, Jumping(leaps: leaps), Duration.Indefinite, source)
+            emit SpellApplied(caster: caster, target: target, spell_name: "Jump")
+        }
+    }
+
+
+    // ========================================================
     //  CHARM PERSON (§1.8.5.1)
     //
     //  Arcane enchantment, level 1. Range: 120ft.

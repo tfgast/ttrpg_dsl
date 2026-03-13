@@ -131,6 +131,10 @@ system "OSRIC Spell Registry" {
             def: SLEEP_DEF,
             resolve: SpellResolve.Area(resolve: resolve_sleep)
         },
+        SpellId.Jump => SpellEntry {
+            def: JUMP_DEF,
+            resolve: SpellResolve.Touch(resolve: resolve_jump)
+        },
         SpellId.SpiderClimb => SpellEntry {
             def: SPIDER_CLIMB_DEF,
             resolve: SpellResolve.Touch(resolve: resolve_spider_climb)

@@ -493,6 +493,7 @@ system "OSRIC" {
         BurningHands,
         CharmPerson,
         FeatherFall,
+        Jump,
         MagicMissile,
         ShockingGrasp,
         Sleep,

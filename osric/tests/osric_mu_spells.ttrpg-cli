@@ -603,3 +603,54 @@ rolls 20
 call resolve_levitate(lev_save_caster, [lev_save_target])
 assert_no_condition lev_save_target, Levitating
 assert_eq get_movement_speed(lev_save_target, Levitate).value, 0
+
+// ── Jump SpellDef ─────────────────────────────────────────────
+
+assert_eq JUMP_DEF.level, 1
+assert_eq JUMP_DEF.school, SpellSchool.Transmutation
+
+// ── Jump resolve: caster level 1 → 1 leap ───────────────────
+
+spawn Character jmp_caster_1 { name: "Jump Caster L1", classes: [ClassLevel { class: MagicUser, level: 1 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 4, hp: 4 } }
+spawn Character jmp_target_1 { name: "Jump Target 1", classes: [ClassLevel { class: Fighter, level: 1 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 10, hp: 10 } }
+
+rolls clear
+call resolve_jump(jmp_caster_1, [jmp_target_1])
+assert_condition jmp_target_1, Jumping
+
+// Use the leap — condition should be removed after 1 use
+do UseJump(jmp_target_1)
+assert_no_condition jmp_target_1, Jumping
+
+// ── Jump resolve: caster level 4 → 2 leaps ──────────────────
+
+spawn Character jmp_caster_4 { name: "Jump Caster L4", classes: [ClassLevel { class: MagicUser, level: 4 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 10, hp: 10 } }
+spawn Character jmp_target_4 { name: "Jump Target 4", classes: [ClassLevel { class: Fighter, level: 1 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 10, hp: 10 } }
+
+rolls clear
+call resolve_jump(jmp_caster_4, [jmp_target_4])
+assert_condition jmp_target_4, Jumping
+
+// First leap — still has condition
+do UseJump(jmp_target_4)
+assert_condition jmp_target_4, Jumping
+
+// Second leap — condition removed
+do UseJump(jmp_target_4)
+assert_no_condition jmp_target_4, Jumping
+
+// ── Jump resolve: caster level 7 → 3 leaps ──────────────────
+
+spawn Character jmp_caster_7 { name: "Jump Caster L7", classes: [ClassLevel { class: MagicUser, level: 7 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 16, hp: 16 } }
+spawn Character jmp_target_7 { name: "Jump Target 7", classes: [ClassLevel { class: Fighter, level: 1 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 10, hp: 10 } }
+
+rolls clear
+call resolve_jump(jmp_caster_7, [jmp_target_7])
+assert_condition jmp_target_7, Jumping
+
+do UseJump(jmp_target_7)
+assert_condition jmp_target_7, Jumping
+do UseJump(jmp_target_7)
+assert_condition jmp_target_7, Jumping
+do UseJump(jmp_target_7)
+assert_no_condition jmp_target_7, Jumping
