@@ -29,7 +29,7 @@ load osric/*.ttrpg
 
 spawn Character sil_target { name: "Cleric", classes: [ClassLevel { class: Cleric, level: 5 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 20, hp: 20 }, Spellcasting { spell_slots: [3, 2], slots_used: [0, 0], memorised_spells: [] } }
 
-spawn Zone sil_zone_1 { name: "silence-zone-1", source: Spell(name: "Silence 15' Radius", caster_level: 5), shape: ZoneShape.Radius(radius: 15ft) }
+spawn Zone sil_zone_1 { name: "silence-zone-1", source: EffectSource.Spell(name: "Silence 15' Radius", caster_level: 5), shape: ZoneShape.Radius(radius: 15ft) }
 place sil_zone_1 5 5
 
 // Before entering: no condition
@@ -56,10 +56,10 @@ assert_eq can_begin_casting(sil_target), true
 
 spawn Character sil_overlap_target { name: "Wizard", classes: [ClassLevel { class: MagicUser, level: 7 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 12, hp: 12 }, Spellcasting { spell_slots: [4, 3, 2, 1], slots_used: [0, 0, 0, 0], memorised_spells: [] } }
 
-spawn Zone sil_zone_2a { name: "silence-zone-2a", source: Spell(name: "Silence 15' Radius", caster_level: 5), shape: ZoneShape.Radius(radius: 15ft) }
+spawn Zone sil_zone_2a { name: "silence-zone-2a", source: EffectSource.Spell(name: "Silence 15' Radius", caster_level: 5), shape: ZoneShape.Radius(radius: 15ft) }
 place sil_zone_2a 10 10
 
-spawn Zone sil_zone_2b { name: "silence-zone-2b", source: Spell(name: "Silence 15' Radius", caster_level: 3), shape: ZoneShape.Radius(radius: 15ft) }
+spawn Zone sil_zone_2b { name: "silence-zone-2b", source: EffectSource.Spell(name: "Silence 15' Radius", caster_level: 3), shape: ZoneShape.Radius(radius: 15ft) }
 place sil_zone_2b 12 10
 
 // Enter both zones
@@ -88,7 +88,7 @@ assert_eq can_begin_casting(sil_overlap_target), true
 
 spawn Character pfe_target { name: "Fighter PFE", classes: [ClassLevel { class: Fighter, level: 5 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 40, hp: 40 } }
 
-spawn Zone pfe_zone { name: "pfe-zone-1", source: Spell(name: "Protection from Evil 10' Radius", caster_level: 7), moves_with_anchor: true, shape: ZoneShape.Radius(radius: 10ft) }
+spawn Zone pfe_zone { name: "pfe-zone-1", source: EffectSource.Spell(name: "Protection from Evil 10' Radius", caster_level: 7), moves_with_anchor: true, shape: ZoneShape.Radius(radius: 10ft) }
 place pfe_zone 5 5
 
 // Before entering: no condition
@@ -107,10 +107,10 @@ assert_no_condition pfe_target, ProtectedFromEvil10Zone
 
 spawn Character pfe_target_2 { name: "Ranger PFE", classes: [ClassLevel { class: Ranger, level: 5 }], abilities: { STR: 15, INT: 12, WIS: 14, DEX: 15, CON: 12, CHA: 12 }, HitPoints { max_hp: 35, hp: 35 } }
 
-spawn Zone pfe_zone_2a { name: "pfe-zone-2a", source: Spell(name: "Protection from Evil 10' Radius", caster_level: 7), shape: ZoneShape.Radius(radius: 10ft), moves_with_anchor: true }
+spawn Zone pfe_zone_2a { name: "pfe-zone-2a", source: EffectSource.Spell(name: "Protection from Evil 10' Radius", caster_level: 7), shape: ZoneShape.Radius(radius: 10ft), moves_with_anchor: true }
 place pfe_zone_2a 5 5
 
-spawn Zone pfe_zone_2b { name: "pfe-zone-2b", source: Spell(name: "Protection from Evil 10' Radius", caster_level: 5), shape: ZoneShape.Radius(radius: 10ft), moves_with_anchor: true }
+spawn Zone pfe_zone_2b { name: "pfe-zone-2b", source: EffectSource.Spell(name: "Protection from Evil 10' Radius", caster_level: 5), shape: ZoneShape.Radius(radius: 10ft), moves_with_anchor: true }
 place pfe_zone_2b 6 5
 
 // Enter both
@@ -135,7 +135,7 @@ assert_no_condition pfe_target_2, ProtectedFromEvil10Zone
 
 spawn Character nm_target { name: "Bystander", classes: [ClassLevel { class: Fighter, level: 1 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 10, hp: 10 } }
 
-spawn Zone nm_zone { name: "fire-zone-1", source: Spell(name: "Wall of Fire", caster_level: 9), shape: ZoneShape.Wall(length: 60ft, thickness: 5ft), contact_mode: Crossed }
+spawn Zone nm_zone { name: "fire-zone-1", source: EffectSource.Spell(name: "Wall of Fire", caster_level: 9), shape: ZoneShape.Wall(length: 60ft, thickness: 5ft), contact_mode: Crossed }
 place nm_zone 0 0
 
 emit ZoneEntered(target: nm_target, zone: nm_zone)
@@ -154,7 +154,7 @@ assert_no_condition nm_target, ProtectedFromEvil10Zone
 
 spawn Character wof_target { name: "Wall Runner", classes: [ClassLevel { class: Fighter, level: 5 }], abilities: { STR: 16, INT: 12, WIS: 12, DEX: 14, CON: 14, CHA: 12 }, HitPoints { max_hp: 40, hp: 40 } }
 
-spawn Zone wof_zone { name: "wall-of-fire-1", source: Spell(name: "Wall of Fire", caster_level: 9), shape: ZoneShape.Wall(length: 60ft, thickness: 5ft), contact_mode: Crossed, tracks_occupancy: true }
+spawn Zone wof_zone { name: "wall-of-fire-1", source: EffectSource.Spell(name: "Wall of Fire", caster_level: 9), shape: ZoneShape.Wall(length: 60ft, thickness: 5ft), contact_mode: Crossed, tracks_occupancy: true }
 place wof_zone 10 10
 
 // Before crossing: full HP
@@ -174,7 +174,7 @@ assert_eq wof_target.hp >= 19, true
 
 spawn Character wof_bystander { name: "Wall Bystander", classes: [ClassLevel { class: Fighter, level: 3 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 20, hp: 20 } }
 
-spawn Zone wof_wrong_zone { name: "silence-zone-crossed", source: Spell(name: "Silence 15' Radius", caster_level: 5), shape: ZoneShape.Radius(radius: 15ft), contact_mode: Crossed }
+spawn Zone wof_wrong_zone { name: "silence-zone-crossed", source: EffectSource.Spell(name: "Silence 15' Radius", caster_level: 5), shape: ZoneShape.Radius(radius: 15ft), contact_mode: Crossed }
 place wof_wrong_zone 20 20
 
 emit ZoneCrossed(target: wof_bystander, zone: wof_wrong_zone)
@@ -192,7 +192,7 @@ assert_eq wof_bystander.hp, 20
 
 spawn Character bb_target { name: "Blade Runner", classes: [ClassLevel { class: Fighter, level: 10 }], abilities: { STR: 18, INT: 12, WIS: 12, DEX: 16, CON: 16, CHA: 12 }, HitPoints { max_hp: 100, hp: 100 } }
 
-spawn Zone bb_zone { name: "blade-barrier-1", source: Spell(name: "Blade Barrier", caster_level: 12), shape: ZoneShape.Sphere(radius: 15ft), contact_mode: Crossed, tracks_occupancy: true }
+spawn Zone bb_zone { name: "blade-barrier-1", source: EffectSource.Spell(name: "Blade Barrier", caster_level: 12), shape: ZoneShape.Sphere(radius: 15ft), contact_mode: Crossed, tracks_occupancy: true }
 place bb_zone 30 30
 
 // Before crossing: full HP
@@ -238,7 +238,7 @@ assert_no_condition bb_target, InsideBladeBarrier
 
 spawn Character bb_bystander { name: "Tick Bystander", classes: [ClassLevel { class: Fighter, level: 3 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 20, hp: 20 } }
 
-spawn Zone bb_wrong_zone { name: "wrong-zone-tick", source: Spell(name: "Wall of Fire", caster_level: 9), shape: ZoneShape.Wall(length: 60ft, thickness: 5ft), contact_mode: Crossed }
+spawn Zone bb_wrong_zone { name: "wrong-zone-tick", source: EffectSource.Spell(name: "Wall of Fire", caster_level: 9), shape: ZoneShape.Wall(length: 60ft, thickness: 5ft), contact_mode: Crossed }
 place bb_wrong_zone 40 40
 
 emit ZoneEntered(target: bb_bystander, zone: bb_wrong_zone)
@@ -261,7 +261,7 @@ assert_eq bb_bystander.hp, 20
 
 spawn Character zs_target { name: "Sync Target", classes: [ClassLevel { class: Cleric, level: 5 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 20, hp: 20 }, Spellcasting { spell_slots: [3, 2], slots_used: [0, 0], memorised_spells: [] } }
 
-spawn Zone zs_zone { name: "zs-silence-1", source: Spell(name: "Silence 15' Radius", caster_level: 5), shape: ZoneShape.Radius(radius: 15ft) }
+spawn Zone zs_zone { name: "zs-silence-1", source: EffectSource.Spell(name: "Silence 15' Radius", caster_level: 5), shape: ZoneShape.Radius(radius: 15ft) }
 place zs_zone 200 200
 
 // Target outside the zone (distance = 100 > 3 squares)
@@ -287,10 +287,10 @@ assert_eq can_begin_casting(zs_target), true
 
 spawn Character zs_overlap { name: "Sync Overlap", classes: [ClassLevel { class: MagicUser, level: 7 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 12, hp: 12 }, Spellcasting { spell_slots: [4, 3, 2, 1], slots_used: [0, 0, 0, 0], memorised_spells: [] } }
 
-spawn Zone zs_zone_a { name: "zs-silence-a", source: Spell(name: "Silence 15' Radius", caster_level: 5), shape: ZoneShape.Radius(radius: 15ft) }
+spawn Zone zs_zone_a { name: "zs-silence-a", source: EffectSource.Spell(name: "Silence 15' Radius", caster_level: 5), shape: ZoneShape.Radius(radius: 15ft) }
 place zs_zone_a 210 200
 
-spawn Zone zs_zone_b { name: "zs-silence-b", source: Spell(name: "Silence 15' Radius", caster_level: 3), shape: ZoneShape.Radius(radius: 15ft) }
+spawn Zone zs_zone_b { name: "zs-silence-b", source: EffectSource.Spell(name: "Silence 15' Radius", caster_level: 3), shape: ZoneShape.Radius(radius: 15ft) }
 place zs_zone_b 212 200
 
 // Move into both zones (distance to 210,200 = 1, to 212,200 = 1)
@@ -317,7 +317,7 @@ assert_no_condition zs_overlap, Silenced
 
 spawn Character zt_target { name: "Tick Target", classes: [ClassLevel { class: Fighter, level: 10 }], abilities: { STR: 18, INT: 12, WIS: 12, DEX: 16, CON: 16, CHA: 12 }, HitPoints { max_hp: 100, hp: 100 } }
 
-spawn Zone zt_bb_zone { name: "zt-blade-barrier", source: Spell(name: "Blade Barrier", caster_level: 12), shape: ZoneShape.Sphere(radius: 15ft), contact_mode: Crossed, tracks_occupancy: true }
+spawn Zone zt_bb_zone { name: "zt-blade-barrier", source: EffectSource.Spell(name: "Blade Barrier", caster_level: 12), shape: ZoneShape.Sphere(radius: 15ft), contact_mode: Crossed, tracks_occupancy: true }
 place zt_bb_zone 220 200
 
 // Place target inside and sync to register membership + apply condition

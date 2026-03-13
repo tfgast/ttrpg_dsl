@@ -95,6 +95,9 @@ path = "osric_spell_registry.ttrpg"
 [entries.spells]
 path = "osric_spells.ttrpg"
 
+[entries.summons]
+path = "osric_summons.ttrpg"
+
 [entries.thief_skills]
 path = "osric_thief_skills.ttrpg"
 
@@ -103,6 +106,9 @@ path = "osric_turn_undead.ttrpg"
 
 [entries.weapon_spec]
 path = "osric_weapon_spec.ttrpg"
+
+[entries.world_objects]
+path = "osric_world_objects.ttrpg"
 
 [entries.xp]
 path = "osric_xp.ttrpg"
@@ -142,9 +148,11 @@ entries = [
     "scrolls",
     "spell_registry",
     "spells",
+    "summons",
     "thief_skills",
     "turn_undead",
     "weapon_spec",
+    "world_objects",
     "xp",
     "zone_spells",
 ]

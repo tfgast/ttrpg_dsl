@@ -84,7 +84,6 @@ fn has_expected_derives() {
         })
         .collect();
     for expected in [
-        "is_evil_alignment",
         "effective_turning_level",
         "character_can_turn",
     ] {

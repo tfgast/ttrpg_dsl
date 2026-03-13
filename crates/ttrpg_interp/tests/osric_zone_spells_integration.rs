@@ -54,8 +54,8 @@ fn osric_zone_spells_has_conditions() {
         "missing Silenced condition"
     );
     assert!(
-        conditions.contains(&"ProtectedFromEvil10"),
-        "missing ProtectedFromEvil10 condition"
+        conditions.contains(&"ProtectedFromEvil10Zone"),
+        "missing ProtectedFromEvil10Zone condition"
     );
     assert!(
         conditions.contains(&"InsideBladeBarrier"),
