@@ -32,18 +32,16 @@ impl HandleRegistry {
     pub fn insert(&mut self, name: String, entity: EntityRef) -> Option<EntityRef> {
         // Remove any prior reverse mapping for the *new* entity (it might have
         // a different name already).
-        if let Some(old_name) = self.by_entity.insert(entity, name.clone()) {
-            if old_name != name {
+        if let Some(old_name) = self.by_entity.insert(entity, name.clone())
+            && old_name != name {
                 self.by_name.remove(&old_name);
             }
-        }
         // Insert forward mapping and clean up stale reverse entry.
         let prev = self.by_name.insert(name, entity);
-        if let Some(prev_entity) = prev {
-            if prev_entity != entity {
+        if let Some(prev_entity) = prev
+            && prev_entity != entity {
                 self.by_entity.remove(&prev_entity);
             }
-        }
         prev
     }
 
@@ -222,7 +220,7 @@ mod tests {
         reg.insert("a".into(), EntityRef(1));
 
         let mut names: Vec<_> = reg.names().collect();
-        names.sort();
+        names.sort_unstable();
         assert_eq!(names, vec!["a", "b"]);
 
         let mut pairs: Vec<_> = reg.iter().map(|(n, e)| (n.to_string(), *e)).collect();

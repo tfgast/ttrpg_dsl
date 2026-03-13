@@ -514,7 +514,6 @@ fn is_suppressed(
 /// Suppress bindings reference event params or fields (same lookup as trigger
 /// bindings — params first, then fields). The binding expression is evaluated
 /// in a scope with the condition's receiver bound.
-#[allow(clippy::too_many_arguments)]
 fn check_suppress_bindings(
     env: &mut Env,
     bindings: &[ttrpg_ast::ast::ModifyBinding],

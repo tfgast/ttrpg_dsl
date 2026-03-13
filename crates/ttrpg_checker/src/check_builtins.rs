@@ -806,7 +806,7 @@ impl Checker<'_> {
                 self.check_expr(&args[1].value);
                 return Ty::Error;
             }
-        };
+        }
 
         Ty::Bool
     }

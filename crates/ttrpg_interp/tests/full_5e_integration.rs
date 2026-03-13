@@ -156,7 +156,6 @@ fn add_weapon(
     state.add_entity("Weapon", fields)
 }
 
-#[allow(clippy::too_many_arguments)]
 fn add_character(
     state: &mut GameState,
     name: &str,
@@ -202,7 +201,6 @@ fn standard_turn_budget() -> BTreeMap<ttrpg_ast::Name, Value> {
     b
 }
 
-#[allow(clippy::too_many_arguments)]
 fn scripted_roll(
     count: u32,
     sides: u32,

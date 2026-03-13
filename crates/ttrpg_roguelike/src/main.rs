@@ -25,7 +25,7 @@ struct Game {
     player: EntityRef,
     monsters: Vec<EntityRef>,
     messages: Vec<String>,
-    game_over: bool,
+    over: bool,
 }
 
 impl Game {
@@ -186,7 +186,7 @@ fn main() -> io::Result<()> {
         player,
         monsters: vec![goblin1, goblin2, rat],
         messages: vec!["Welcome to the dungeon! Arrow keys to move, q to quit.".into()],
-        game_over: false,
+        over: false,
     };
 
     // Terminal setup
@@ -212,7 +212,7 @@ fn run_game_loop(
             ui::draw(frame, &game.map, &displays, &game.messages);
         })?;
 
-        if game.game_over {
+        if game.over {
             // Wait for q to quit
             if let Event::Key(key) = event::read()?
                 && key.code == KeyCode::Char('q')
@@ -251,7 +251,7 @@ fn run_game_loop(
         let player_hp = read_hp(adapter, &game.player);
         if player_hp <= 0 {
             game.messages.push("You died! Press q to quit.".into());
-            game.game_over = true;
+            game.over = true;
             continue;
         }
 
@@ -262,7 +262,7 @@ fn run_game_loop(
         let player_hp = read_hp(adapter, &game.player);
         if player_hp <= 0 {
             game.messages.push("You died! Press q to quit.".into());
-            game.game_over = true;
+            game.over = true;
         }
     }
 }

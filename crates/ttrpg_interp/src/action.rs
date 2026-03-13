@@ -119,7 +119,6 @@ fn scoped_execute(
 
 /// Inner pipeline shared by actions and reactions: optional requires → optional
 /// cost → resolve block.
-#[allow(clippy::too_many_arguments)]
 fn execute_pipeline(
     env: &mut Env,
     actor: &EntityRef,

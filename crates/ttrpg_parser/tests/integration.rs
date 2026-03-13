@@ -3629,11 +3629,10 @@ fn find_condition<'a>(program: &'a Program, name: &str) -> &'a ConditionDecl {
     for item in &program.items {
         if let TopLevel::System(sys) = &item.node {
             for decl in &sys.decls {
-                if let DeclKind::Condition(c) = &decl.node {
-                    if c.name == name {
+                if let DeclKind::Condition(c) = &decl.node
+                    && c.name == name {
                         return c;
                     }
-                }
             }
         }
     }

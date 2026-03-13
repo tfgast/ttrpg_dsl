@@ -432,8 +432,7 @@ impl Checker<'_> {
                     };
                     if let Some((field_name, group_owner, entity_owner)) =
                         self.lookup_restricted_field_owners(&current, &resolved_name)
-                    {
-                        if !self.restricted_field_mutation_allowed(&group_owner, &entity_owner) {
+                        && !self.restricted_field_mutation_allowed(&group_owner, &entity_owner) {
                             let declaring_sys = group_owner.as_ref().or(entity_owner.as_ref());
                             if let (Some(current_sys), Some(declaring_sys)) =
                                 (&self.current_system, declaring_sys)
@@ -448,7 +447,6 @@ impl Checker<'_> {
                                 return;
                             }
                         }
-                    }
                     current = self.resolve_field(&current, &resolved_name, lvalue.span);
                     path_key = format!("{path_key}.{name}");
                 }

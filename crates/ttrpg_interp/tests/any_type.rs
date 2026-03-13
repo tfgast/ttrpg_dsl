@@ -372,8 +372,7 @@ system "test" {
         errors
             .iter()
             .any(|e| e.contains("`is` can only be used with")),
-        "expected error about `is` on int, got: {:?}",
-        errors
+        "expected error about `is` on int, got: {errors:?}"
     );
 }
 
@@ -393,8 +392,7 @@ system "test" {
         errors
             .iter()
             .any(|e| e.contains("`is any` is not meaningful")),
-        "expected error about `is any`, got: {:?}",
-        errors
+        "expected error about `is any`, got: {errors:?}"
     );
 }
 

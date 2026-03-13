@@ -537,14 +537,10 @@ impl Runner {
         // Look up handles for readable output
         let target_handle = self
             .handles
-            .name_of(&target)
-            .map(|s| s.to_string())
-            .unwrap_or_else(|| format!("#{}", target.0));
+            .name_of(&target).map_or_else(|| format!("#{}", target.0), |s| s.to_string());
         let zone_handle = self
             .handles
-            .name_of(&zone)
-            .map(|s| s.to_string())
-            .unwrap_or_else(|| format!("#{}", zone.0));
+            .name_of(&zone).map_or_else(|| format!("#{}", zone.0), |s| s.to_string());
         self.cmd_emit(&format!(
             "{event_name}(target: {target_handle}, zone: {zone_handle})"
         ))

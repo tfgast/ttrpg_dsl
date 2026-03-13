@@ -355,18 +355,15 @@ fn apply_mutation<S: WritableState>(
         } => {
             // Bearer type compatibility: skip if target entity type doesn't match
             // the condition's declared receiver_type (Ty::AnyEntity always passes)
-            if let Some(Ty::Entity(expected)) = condition_receiver_types.get(condition) {
-                if let Some(ref actual) = state.entity_type_name(target) {
-                    if expected != actual {
+            if let Some(Ty::Entity(expected)) = condition_receiver_types.get(condition)
+                && let Some(ref actual) = state.entity_type_name(target)
+                    && expected != actual {
                         eprintln!(
-                            "apply_condition: skipping '{}' on entity {:?} — \
-                             bearer type '{}' incompatible with declared '{}'",
-                            condition, target, actual, expected
+                            "apply_condition: skipping '{condition}' on entity {target:?} — \
+                             bearer type '{actual}' incompatible with declared '{expected}'"
                         );
                         return;
                     }
-                }
-            }
             let applied_at = state.read_game_time();
             state.add_condition(
                 target,
@@ -1060,11 +1057,10 @@ mod tests {
             condition_id: u64,
             fields: BTreeMap<Name, Value>,
         ) {
-            if let Some(conds) = self.conditions.get_mut(&entity.0) {
-                if let Some(cond) = conds.iter_mut().find(|c| c.id == condition_id) {
+            if let Some(conds) = self.conditions.get_mut(&entity.0)
+                && let Some(cond) = conds.iter_mut().find(|c| c.id == condition_id) {
                     cond.state_fields = fields;
                 }
-            }
         }
 
         fn remove_suspension_source(&mut self, _entity: &EntityRef, _source_id: u64) {

@@ -69,6 +69,9 @@ cast_precision_loss = "allow"
 cast_sign_loss = "allow"
 cast_lossless = "allow"
 
+# Common in a compiler/interpreter — functions naturally take many contextual parameters
+too_many_arguments = "allow"
+
 # Would require large mechanical refactors for marginal benefit
 needless_pass_by_value = "allow"
 trivially_copy_pass_by_ref = "allow"

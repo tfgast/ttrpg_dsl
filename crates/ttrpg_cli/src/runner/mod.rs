@@ -368,15 +368,14 @@ impl Runner {
 
         // Check for loop start before continuation — `repeat N {` and
         // `for VAR in RANGE {` have an intentionally unbalanced `{`.
-        if trimmed.starts_with("repeat ") || trimmed.starts_with("for ") {
-            if let Some(cmd) = commands::parse_command(trimmed) {
+        if (trimmed.starts_with("repeat ") || trimmed.starts_with("for "))
+            && let Some(cmd) = commands::parse_command(trimmed) {
                 match cmd {
                     commands::Command::Repeat(tail) => return self.cmd_repeat(&tail),
                     commands::Command::For(tail) => return self.cmd_for(&tail),
                     _ => {}
                 }
             }
-        }
 
         // Check for explicit backslash continuation
         if let Some(stripped) = trimmed.strip_suffix('\\') {

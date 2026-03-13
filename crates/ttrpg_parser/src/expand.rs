@@ -129,7 +129,7 @@ pub fn expand_includes(mut program: Program, diags: &mut Vec<Diagnostic>) -> Pro
                     substitute_suppress_modify_params(&mut cloned, &source_decl.params, &param_map);
                     new_clauses.push(ConditionClause::SuppressModify(cloned));
                 }
-                _ => continue, // wrong kind, skip
+                _ => {} // wrong kind, skip
             }
         }
 

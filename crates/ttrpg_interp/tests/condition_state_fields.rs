@@ -277,8 +277,7 @@ system "test" {
         errors
             .iter()
             .any(|e| e.contains("cannot have type") && e.contains("disallowed")),
-        "expected disallowed type error, got: {:?}",
-        errors
+        "expected disallowed type error, got: {errors:?}"
     );
 }
 
@@ -296,8 +295,7 @@ system "test" {
     );
     assert!(
         errors.iter().any(|e| e.contains("default has type")),
-        "expected type mismatch error, got: {:?}",
-        errors
+        "expected type mismatch error, got: {errors:?}"
     );
 }
 
@@ -330,8 +328,7 @@ system "test" {
         errors
             .iter()
             .any(|e| e.contains("state") && e.contains("shadows")),
-        "expected reserved name error, got: {:?}",
-        errors
+        "expected reserved name error, got: {errors:?}"
     );
 }
 
@@ -349,8 +346,7 @@ system "test" {
         errors
             .iter()
             .any(|e| e.contains("state") && e.contains("shadows")),
-        "expected reserved name error, got: {:?}",
-        errors
+        "expected reserved name error, got: {errors:?}"
     );
 }
 
@@ -398,8 +394,7 @@ system "test" {
         errors
             .iter()
             .any(|e| e.contains("self") && e.contains("shadows")),
-        "expected reserved name error, got: {:?}",
-        errors
+        "expected reserved name error, got: {errors:?}"
     );
 }
 
@@ -456,8 +451,7 @@ system "test" {
         errors
             .iter()
             .any(|e| e.contains("self") && e.contains("shadows")),
-        "expected reserved name error, got: {:?}",
-        errors
+        "expected reserved name error, got: {errors:?}"
     );
 }
 

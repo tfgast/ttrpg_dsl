@@ -1,3 +1,6 @@
+// Parser idiom: Result<T, ()> signals "error already reported"
+#![allow(clippy::result_unit_err)]
+
 mod decl;
 pub mod diagnostic;
 pub mod expand;

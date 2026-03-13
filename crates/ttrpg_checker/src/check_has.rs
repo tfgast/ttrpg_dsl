@@ -150,7 +150,7 @@ impl Checker<'_> {
             Ty::Entity(name) => {
                 if let Ty::Entity(target_name) = &target_ty {
                     if name == target_name {
-                        self.warning(format!("`is {}` is always true here", target_name), span);
+                        self.warning(format!("`is {target_name}` is always true here"), span);
                     }
                 } else {
                     self.error(

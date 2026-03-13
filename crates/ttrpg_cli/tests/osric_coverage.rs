@@ -68,13 +68,11 @@ fn osric_combined_coverage() {
         }
     }
 
-    if !errors.is_empty() {
-        panic!(
-            "{} error(s) running CLI test scripts:\n{}",
-            errors.len(),
-            errors.join("\n")
-        );
-    }
+    assert!(errors.is_empty(), 
+        "{} error(s) running CLI test scripts:\n{}",
+        errors.len(),
+        errors.join("\n")
+    );
 
     // 4. Generate and write coverage report
     runner

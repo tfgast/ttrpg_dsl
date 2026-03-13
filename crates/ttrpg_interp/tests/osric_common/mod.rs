@@ -346,7 +346,6 @@ pub fn item_value(name: &str, weight: i64, gp_value: i64) -> Value {
 }
 
 /// Build a Character with Inventory group and optional equipment.
-#[allow(clippy::too_many_arguments)]
 pub fn make_character_with_inventory(
     state: &mut GameState,
     name: &str,
@@ -747,7 +746,6 @@ pub fn standard_abilities_12() -> Vec<(&'static str, i64)> {
 }
 
 /// Build a Character for combat/conditions/initiative tests (full params).
-#[allow(clippy::too_many_arguments)]
 pub fn make_character(
     state: &mut GameState,
     name: &str,
@@ -789,7 +787,6 @@ pub fn make_character(
 }
 
 /// Build a Character with a weapon equipped and optional magic bonus.
-#[allow(clippy::too_many_arguments)]
 pub fn make_armed_character(
     state: &mut GameState,
     name: &str,
@@ -884,7 +881,6 @@ pub fn make_turner(
 }
 
 /// Build a Character with a shield equipped (SmallShield, +1 AC).
-#[allow(clippy::too_many_arguments)]
 pub fn make_character_with_shield(
     state: &mut GameState,
     name: &str,
@@ -927,7 +923,6 @@ pub fn make_character_with_shield(
 }
 
 /// Build a Character with the Spellcasting optional group (for initiative tests).
-#[allow(clippy::too_many_arguments)]
 pub fn make_caster(
     state: &mut GameState,
     name: &str,
@@ -984,7 +979,6 @@ pub fn make_caster(
 
 /// Build a Character with the Spellcasting optional group pre-populated with slot data.
 /// `slots` is a list of (spell_level, max_slots) pairs.
-#[allow(clippy::too_many_arguments)]
 pub fn make_caster_with_slots(
     state: &mut GameState,
     name: &str,
@@ -1325,8 +1319,7 @@ pub struct SpellTestContext {
 
 impl SpellTestContext {
     /// Build a caster with full customisation.
-    #[allow(clippy::too_many_arguments)]
-    pub fn new(
+        pub fn new(
         name: &str,
         class: &str,
         level: i64,

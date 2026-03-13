@@ -140,8 +140,7 @@ impl Checker<'_> {
             if !cond_ty.is_error() && !self.types_compatible(&cond_ty, &Ty::Condition) {
                 self.error(
                     format!(
-                        "`with` clause expects Condition values, got {}",
-                        cond_ty
+                        "`with` clause expects Condition values, got {cond_ty}"
                     ),
                     cond_expr.span,
                 );

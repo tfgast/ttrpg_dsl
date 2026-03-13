@@ -931,7 +931,6 @@ fn collect_const(
     env.consts.insert(c.name.clone(), ty);
 }
 
-#[allow(clippy::too_many_arguments)]
 fn collect_fn(
     name: &str,
     kind: FnKind,

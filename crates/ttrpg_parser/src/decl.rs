@@ -1754,7 +1754,7 @@ impl Parser {
                             IncludeArgValue::Literal(ExprKind::IntLit(n))
                         }
                         TokenKind::String(s) => {
-                            let s = s.to_string();
+                            let s = s.clone();
                             self.advance();
                             IncludeArgValue::Literal(ExprKind::StringLit(s))
                         }

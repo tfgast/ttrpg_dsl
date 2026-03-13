@@ -170,8 +170,7 @@ fn osric_core_has_all_enums() {
     let spell_id_count = enums
         .iter()
         .find(|(name, _)| *name == "SpellId")
-        .map(|(_, c)| *c)
-        .unwrap_or(0);
+        .map_or(0, |(_, c)| *c);
     assert!(
         spell_id_count >= 24,
         "SpellId should have at least 24 variants, found {spell_id_count}"

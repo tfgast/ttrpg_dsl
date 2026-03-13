@@ -402,11 +402,10 @@ impl WritableState for GameState {
         condition_id: u64,
         fields: BTreeMap<Name, Value>,
     ) {
-        if let Some(conds) = self.conditions.get_mut(&entity.0) {
-            if let Some(cond) = conds.iter_mut().find(|c| c.id == condition_id) {
+        if let Some(conds) = self.conditions.get_mut(&entity.0)
+            && let Some(cond) = conds.iter_mut().find(|c| c.id == condition_id) {
                 cond.state_fields = fields;
             }
-        }
     }
 
     fn write_turn_field(&mut self, entity: &EntityRef, field: &str, value: Value) {
