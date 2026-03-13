@@ -247,6 +247,20 @@ function good() -> Monster {
 
 Entity construction spawns mutable state, so it requires a mutating context: `function`, `action`, `reaction`, `hook`, or `with_budget`. Use `function` instead of `derive`/`mechanic`.
 
+To apply conditions at creation time, use the `with [conditions]` clause:
+```ttrpg-with-preamble
+entity Monster { name: string, hit_dice: int, max_hp: int }
+enum Duration { Indefinite, Rounds(count: int) }
+condition Poisoned on target: Monster {}
+condition Weakened(amount: int) on target: Monster {}
+
+function create_cursed_rat() -> Monster {
+    Monster { name: "Rat", hit_dice: 1, max_hp: 2 } with [Poisoned, Weakened(amount: 3)]
+}
+```
+
+Each condition is applied as `Duration.Indefinite` in list order. Full lifecycle/veto behaviour is preserved. The `with` clause is only valid on entity construction — not on structs, enums, or existing entity references.
+
 ---
 
 ## Shared Preamble

@@ -193,6 +193,20 @@ Spawn blocks support:
 - Optional groups: `EquipmentSlots { ... }` (omit to leave unset)
 - Optional groups with fields: `ExceptionalStrength { percentile: 76 }`
 - Option values: `some(Melee(SwordLong))`, `none`
+- Conditions at creation: `with [Poisoned, Blessed]` (see below)
+
+An optional `with [conditions]` clause can follow the spawn block to apply
+Indefinite conditions at creation time:
+
+```
+spawn Monster rat { name: "Rat", hit_dice: 1, max_hp: 2 } with [Poisoned]
+spawn Monster guard { name: "Guard", hit_dice: 2, max_hp: 10 } with [Blessed, Shielded]
+spawn Monster zombie { name: "Zombie", hit_dice: 2, max_hp: 8 } with [Weakened(amount: 3)]
+```
+
+Each condition is applied via `apply_condition(entity, cond, Duration.Indefinite)`
+in list order after the entity is spawned and groups are materialized. Use
+`assert_condition` / `assert_no_condition` to verify.
 
 Note: spawn lines can be long. This is fine -- each command is one line.
 

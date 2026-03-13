@@ -75,6 +75,15 @@
 // table, condition, or prompt is a checker error, because creating an
 // entity requires spawning mutable state.
 //
+// An optional `with [conditions]` clause can follow entity construction
+// to apply Indefinite conditions at creation time:
+//   Monster { name: "Ogre", hit_dice: 4 } with [Poisoned, Blessed]
+// Each condition in the list is applied via apply_condition(entity, cond,
+// Duration.Indefinite) in order, after the entity is spawned and groups
+// are materialized. Full lifecycle/veto behaviour is preserved. The
+// clause is only valid on entity construction — not on struct/unit
+// types or existing entity references.
+//
 // Note: while `invocation()` cannot be called directly inside a function
 // body (there is no actor to anchor it), actions called BY a function
 // still get their own invocation context. The action dispatch saves the

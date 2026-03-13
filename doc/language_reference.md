@@ -102,10 +102,26 @@ function create_wizard() -> Monster {
 }
 ```
 
+An optional `with [conditions]` clause can follow entity construction to apply conditions at creation time with `Duration.Indefinite`:
+
+```
+function create_cursed_rat() -> Monster {
+    Monster { name: "Rat", hit_dice: 1, max_hp: 2 } with [Poisoned, Cursed]
+}
+
+// Conditions with parameters work too
+function create_weak_zombie() -> Monster {
+    Monster { name: "Zombie", hit_dice: 2, max_hp: 8 } with [Weakened(amount: 3)]
+}
+```
+
+Each condition is applied in list order via `apply_condition(entity, cond, Duration.Indefinite)` after the entity is spawned and groups are materialized. Full lifecycle/veto behaviour is preserved. The clause is only valid on entity construction — not on struct/unit types or existing entity references.
+
 - Include groups auto-materialize with defaults if not explicitly provided
 - Spread (`..base`) not supported for entities
 - Group initializers not valid on struct/unit types
 - Construction in derive/mechanic/table/condition/prompt is a checker error
+- `with [...]` clause only valid on entity types (checker error on structs/enums)
 
 ### Restricted Fields
 
@@ -824,7 +840,7 @@ emit EventName(param: value)       // fire event (named args only)
 ### Entity & Conditions
 `apply_condition(target, cond, duration [, source])` `remove_condition(target, cond)` `conditions(entity)` `has_condition(entity, cond)` `transfer_conditions(from, to, tag)`
 
-`apply_condition(...)` returns `option<int>`: `some(id)` when the condition is applied, `none` if the host vetoes it. The optional 4th argument is an `EffectSource` value (defaults to `EffectSource.Unknown`). Access the stored source on active conditions via `.source`.
+`apply_condition(...)` returns `option<int>`: `some(id)` when the condition is applied, `none` if the host vetoes it. The optional 4th argument is an `EffectSource` value (defaults to `EffectSource.Unknown`). Access the stored source on active conditions via `.source`. **Syntactic sugar:** `EntityType { ... } with [Cond1, Cond2]` desugars to `apply_condition(entity, cond, Duration.Indefinite)` for each condition (see Entity Construction above).
 
 `has_condition(entity, Prone)` returns `true` if the entity has an active condition with that name (bare condition identifier, not string). Shorthand for `any([c.name == "Prone" for c in conditions(entity)])`.
 

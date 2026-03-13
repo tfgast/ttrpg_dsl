@@ -356,6 +356,11 @@ hook Regenerate on creature: Character (
 //       Optional 4th argument: EffectSource metadata for the condition.
 //       Defaults to EffectSource.Unknown when omitted.
 //       Accessible on the resulting ActiveCondition via `.source`.
+//
+//   Syntactic sugar: the `with [conditions]` clause on entity construction
+//   desugars to apply_condition(entity, cond, Duration.Indefinite) for each
+//   condition in the list, applied in order after spawn + group materialization.
+//   Example: Monster { name: "Rat", hp: 5 } with [Poisoned, Weakened(amount: 3)]
 //   remove_condition(target: entity, cond: Condition | ActiveCondition)
 //       Accepts either a Condition value (removes by name + params) or an
 //       ActiveCondition instance (removes by unique id for precise removal).

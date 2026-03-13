@@ -940,12 +940,23 @@
 // them on struct and unit types. Spread (`..base`) is not valid on
 // entity types.
 //
-// struct_lit      = IDENT "{" struct_body? "}"
+// An optional `with [condition, ...]` clause may follow an entity
+// construction. Each expression in the list must be a Condition value.
+// The clause desugars to apply_condition(entity, cond, Duration.Indefinite)
+// for each condition, applied in list order after the entity is spawned
+// and groups are materialized. Full lifecycle/veto behaviour is preserved.
+// The `with [...]` clause is only valid on entity types — the checker
+// rejects it on struct, unit, and enum types. It is also only valid on
+// fresh construction, not as a general expression modifier (e.g.,
+// `some_existing_entity with [...]` is a parse error).
+//
+// struct_lit      = IDENT "{" struct_body? "}" with_clause?
 // struct_body     = struct_member ("," struct_member)* ("," ".." expr)? ","?
 //                 | ".." expr ","?
 // struct_member   = group_init | struct_field
 // struct_field    = IDENT ":" expr
 // group_init      = IDENT "{" (struct_field ("," struct_field)* ","?)? "}"
+// with_clause     = "with" "[" (expr ("," expr)* ","?)? "]"
 
 // --- List literal / list comprehension ---
 // list_lit            = "[" (list_comprehension | list_elements)? "]"
