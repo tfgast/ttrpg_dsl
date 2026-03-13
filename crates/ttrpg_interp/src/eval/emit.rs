@@ -2,11 +2,12 @@ use std::collections::BTreeMap;
 
 use ttrpg_ast::Name;
 use ttrpg_ast::Span;
-use ttrpg_ast::ast::Arg;
+use ttrpg_ast::ast::{Arg, ConditionClause};
 
 use crate::RuntimeError;
 use crate::action;
-use crate::event;
+use crate::effect::Effect;
+use crate::event::{self, ConditionHandlerInfo};
 use crate::value::Value;
 use crate::{Env, MAX_EMIT_DEPTH};
 
@@ -130,10 +131,132 @@ pub(crate) fn eval_emit(
 
             action::execute_hook(env, &hook_decl, hook_info.target, payload.clone(), span)?;
         }
+
+        // 8. Execute condition event handlers (after hooks, seeing post-hook state)
+        let cond_result = event::find_matching_condition_handlers(
+            env.interp,
+            env.state,
+            event_name,
+            &payload,
+            &candidates,
+        )?;
+        for handler_info in cond_result.handlers {
+            execute_condition_event_handler(env, &handler_info, payload.clone(), span)?;
+        }
+
         Ok(())
     })();
     env.emit_depth -= 1;
     env.in_lifecycle_block = saved_lifecycle;
 
     result
+}
+
+/// Execute a single condition event handler.
+///
+/// Follows the periodic block execution pattern:
+/// 1. Look up condition declaration
+/// 2. Verify condition still exists on bearer (snapshot safety)
+/// 3. Push scope, bind bearer/self/params/state/trigger
+/// 4. Execute block body
+/// 5. Read back mutated state, pop scope
+/// 6. Write back state via Effect::SetConditionState
+///
+/// No ActionStarted/ActionCompleted — condition handlers are implicit effects
+/// of the condition's existence, not actions.
+fn execute_condition_event_handler(
+    env: &mut Env,
+    handler_info: &ConditionHandlerInfo,
+    trigger_payload: Value,
+    span: Span,
+) -> Result<(), RuntimeError> {
+    let bearer = handler_info.bearer;
+
+    // 1. Look up condition declaration
+    let decl = env
+        .interp
+        .program
+        .conditions
+        .get(handler_info.condition_name.as_str())
+        .ok_or_else(|| {
+            RuntimeError::with_span(
+                format!(
+                    "undefined condition '{}' in event handler",
+                    handler_info.condition_name
+                ),
+                span,
+            )
+        })?
+        .clone();
+
+    // 2. Verify condition still exists on bearer (snapshot safety — may have been
+    //    removed by a previous hook or handler in this emit cycle)
+    let cond_instance = {
+        let conditions = env.state.read_conditions(&bearer).unwrap_or_default();
+        match conditions
+            .into_iter()
+            .find(|c| c.id == handler_info.instance_id)
+        {
+            Some(c) => c,
+            None => return Ok(()), // condition was removed, skip silently
+        }
+    };
+
+    // Get the on-event clause body
+    let clause_body = match decl.clauses.get(handler_info.clause_index) {
+        Some(ConditionClause::OnEvent(oe)) => oe.body.clone(),
+        _ => return Ok(()),
+    };
+
+    // Thread state through execution
+    let mut current_state = if cond_instance.state_fields.is_empty() {
+        None
+    } else {
+        Some(cond_instance.state_fields.clone())
+    };
+
+    // 3. Push scope and bind variables
+    env.push_scope();
+    env.bind(decl.receiver_name.clone(), Value::Entity(bearer));
+    env.bind("self".into(), cond_instance.to_value());
+    for (pname, pval) in &cond_instance.params {
+        env.bind(pname.clone(), pval.clone());
+    }
+    if let Some(ref state_fields) = current_state {
+        env.bind(
+            Name::from("state"),
+            Value::Struct {
+                name: Name::from("state"),
+                fields: state_fields.clone(),
+            },
+        );
+    }
+    env.bind(Name::from("trigger"), trigger_payload);
+
+    // 4. Execute block body
+    let result = super::eval_block(env, &clause_body);
+
+    // 5. Read back mutated state before popping scope
+    if current_state.is_some() {
+        if let Some(Value::Struct { fields, .. }) = env.lookup(&Name::from("state")).cloned() {
+            current_state = Some(fields);
+        }
+    }
+    env.pop_scope();
+    env.return_value = None;
+    result?;
+
+    // 6. Write back state via Effect::SetConditionState
+    if let Some(final_state) = current_state {
+        if !final_state.is_empty() {
+            let effect = Effect::SetConditionState {
+                target: bearer,
+                condition_id: cond_instance.id,
+                fields: final_state,
+            };
+            env.handler.handle(effect);
+        }
+    }
+
+    Ok(())
 }
