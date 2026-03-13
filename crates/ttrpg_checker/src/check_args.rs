@@ -483,6 +483,7 @@ impl Checker<'_> {
                         | BlockKind::WithBudget
                         | BlockKind::LifecycleBlock
                         | BlockKind::PeriodicBlock
+                        | BlockKind::OnEventBlock
                 )
             ) {
                 self.error(

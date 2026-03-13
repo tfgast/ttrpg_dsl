@@ -1049,6 +1049,57 @@ impl<'a> Checker<'a> {
                     self.check_block(&pc.body);
                     self.scope.pop();
                 }
+                ConditionClause::OnEvent(oe) => {
+                    // Type-check the on-event body with bearer, self, params,
+                    // state, and trigger in scope.
+                    self.scope.push(BlockKind::OnEventBlock);
+                    let recv_ty = self.env.resolve_type(&c.receiver_type);
+                    self.scope.bind(
+                        c.receiver_name.clone(),
+                        VarBinding {
+                            ty: recv_ty.clone(),
+                            mutable: false,
+                            is_local: false,
+                        },
+                    );
+                    self.validate_with_groups(
+                        &c.receiver_name,
+                        &recv_ty,
+                        &c.receiver_with_groups,
+                        c.receiver_type.span,
+                    );
+                    for param in &c.params {
+                        self.scope.bind(
+                            param.name.clone(),
+                            VarBinding {
+                                ty: self.env.resolve_type(&param.ty),
+                                mutable: false,
+                                is_local: false,
+                            },
+                        );
+                    }
+                    // Bind `self` as ActiveCondition
+                    self.scope.bind(
+                        "self".into(),
+                        VarBinding {
+                            ty: Ty::ActiveCondition,
+                            mutable: false,
+                            is_local: false,
+                        },
+                    );
+                    if !state_ty_fields.is_empty() {
+                        self.scope.bind(
+                            "state".into(),
+                            VarBinding {
+                                ty: Ty::ConditionState(state_ty_fields.clone()),
+                                mutable: true,
+                                is_local: false,
+                            },
+                        );
+                    }
+                    self.check_trigger_and_body("on-event", &oe.trigger, &oe.body);
+                    self.scope.pop();
+                }
                 ConditionClause::Include(inc) => {
                     // Include directives should be expanded before checking.
                     // If one reaches here, it means expand_includes didn't run or

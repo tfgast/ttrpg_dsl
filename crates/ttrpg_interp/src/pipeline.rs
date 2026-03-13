@@ -247,6 +247,7 @@ pub(crate) fn collect_modifiers_owned(
                     | ConditionClause::OnApply(_)
                     | ConditionClause::OnRemove(_)
                     | ConditionClause::Periodic(_)
+                    | ConditionClause::OnEvent(_)
                     | ConditionClause::Include(_) => continue,
                 };
 

@@ -31,6 +31,9 @@ pub enum BlockKind {
     /// Function-body-like permissions: allows mutations, dice, emit,
     /// condition manipulation, return. No `invocation()` or `turn`.
     PeriodicBlock,
+    /// `on EventName(...) { ... }` block inside a condition.
+    /// Same permissions as PeriodicBlock.
+    OnEventBlock,
     /// Inner blocks (if, match, etc.) inherit from enclosing real block.
     Inner,
 }
@@ -47,6 +50,7 @@ impl BlockKind {
                 | BlockKind::WithBudget
                 | BlockKind::LifecycleBlock
                 | BlockKind::PeriodicBlock
+                | BlockKind::OnEventBlock
         )
     }
 
@@ -60,6 +64,7 @@ impl BlockKind {
                 | BlockKind::WithBudget
                 | BlockKind::LifecycleBlock
                 | BlockKind::PeriodicBlock
+                | BlockKind::OnEventBlock
         )
     }
 
@@ -90,6 +95,7 @@ impl BlockKind {
                 | BlockKind::WithBudget
                 | BlockKind::LifecycleBlock
                 | BlockKind::PeriodicBlock
+                | BlockKind::OnEventBlock
         )
     }
 
@@ -109,6 +115,7 @@ impl BlockKind {
                 | BlockKind::WithBudget
                 | BlockKind::LifecycleBlock
                 | BlockKind::PeriodicBlock
+                | BlockKind::OnEventBlock
         )
     }
 

@@ -783,6 +783,8 @@ pub enum ConditionClause {
     OnRemove(LifecycleBlock),
     /// Periodic effect block: `periodic #tag { ... }`.
     Periodic(PeriodicClause),
+    /// Event-triggered block inside a condition: `on EventName(bindings) { ... }`.
+    OnEvent(OnEventClause),
     /// Include directive (pre-expansion only; replaced by expand_includes).
     Include(IncludeClause),
 }
@@ -803,6 +805,18 @@ pub struct LifecycleBlock {
 #[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub struct PeriodicClause {
     pub tag: Name,
+    pub body: Block,
+    pub span: Span,
+}
+
+/// An event-triggered block inside a condition.
+///
+/// Fires when the specified event occurs while the condition is active.
+/// Reuses `TriggerExpr` from hooks/reactions.
+#[derive(Clone)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
+pub struct OnEventClause {
+    pub trigger: TriggerExpr,
     pub body: Block,
     pub span: Span,
 }
