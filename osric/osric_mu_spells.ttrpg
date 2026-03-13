@@ -59,7 +59,7 @@ system "OSRIC MU Spells" {
         let cl = caster_level(caster, Arcane)
         let targets = area_occupants(placement, BURNING_HANDS_DEF.area)
         for target in targets {
-            target.TakeDamage(caster, cl)
+            target.TakeDamage(caster, cl, source: DamageSource.Spell)
             emit SpellDamaged(caster: caster, target: target, spell_name: "Burning Hands", amount: cl)
         }
     }
@@ -126,7 +126,7 @@ system "OSRIC MU Spells" {
         let target = targets.first().unwrap()
         let cl = caster_level(caster, Arcane)
         let damage = roll(1d8).total + cl
-        target.TakeDamage(caster, damage)
+        target.TakeDamage(caster, damage, source: DamageSource.Spell)
         emit SpellDamaged(caster: caster, target: target, spell_name: "Shocking Grasp", amount: damage)
     }
 
@@ -782,6 +782,86 @@ system "OSRIC MU Spells" {
         let source = EffectSource.Spell(name: "Shield", caster_level: cl)
         apply_condition(caster, Shielded, Duration.Rounds(duration_rounds), source)
         emit SpellApplied(caster: caster, target: caster, spell_name: "Shield")
+    }
+
+
+    // ========================================================
+    //  MIRROR IMAGE (§1.8.5.2)
+    //
+    //  Arcane illusion, level 2. Range: Caster.
+    //  Duration: 2 rounds per MU level.
+    //  Creates 1d4 phantasmal images of the caster in a 6ft
+    //  radius. When attacked, randomly determine whether
+    //  the attack targets the caster or an image. A successful
+    //  hit against an image destroys it; the others remain.
+    //  Images fade at spell expiry.
+    //  Casting time: 2 segments. No saving throw.
+    // ========================================================
+
+    condition MirrorImageActive on bearer: Character
+        stacking first
+    {
+        state {
+            images: int = 0
+            absorbing: bool = false
+        }
+
+        on_apply {
+            state.images = roll(1d4).total
+        }
+
+        // Step 1: When attack damage is incoming, roll to see
+        // if an image absorbs. Set absorbing flag for deal_damage.
+        on DamageIncoming(target: bearer) {
+            state.absorbing = false
+            if trigger.source == DamageSource.Attack && state.images > 0 {
+                // Random target: 1..(images+1). If <= images, image absorbs.
+                let targets = state.images + 1
+                let target_roll = roll(dice(1, targets)).total
+                if target_roll <= state.images {
+                    state.images -= 1
+                    state.absorbing = true
+                }
+            }
+        }
+
+        // Step 2: If absorbing, zero out the damage in the pipeline.
+        modify deal_damage(target: bearer) {
+            if state.absorbing {
+                result = 0
+            }
+        }
+
+        // Step 3: After damage applied, reset flag and check expiry.
+        on Damaged(target: bearer) {
+            state.absorbing = false
+            if state.images <= 0 {
+                remove_condition(bearer, "MirrorImageActive")
+            }
+        }
+    }
+
+    const MIRROR_IMAGE_DEF: SpellDef = SpellDef {
+        name: "Mirror Image",
+        class_type: Arcane,
+        school: Illusion,
+        level: 2,
+        range: SpellRange.Caster,
+        duration: SpellDuration.Special(description: "2 rounds/MU level"),
+
+        components: SpellComponents {},
+        casting_time: CastingTime.Segments(count: 2),
+        saving_throw: SpellSave.NoSave,
+        description: "Creates 1d4 illusory duplicates of the caster. Attacks randomly target images or caster; hit images are destroyed."
+    }
+
+    // Resolve Mirror Image. Self-only, no save.
+    function resolve_mirror_image(caster: entity) {
+        let cl = caster_level(caster, Arcane)
+        let duration_rounds = 2 * cl
+        let source = EffectSource.Spell(name: "Mirror Image", caster_level: cl)
+        apply_condition(caster, MirrorImageActive, Duration.Rounds(duration_rounds), source)
+        emit SpellApplied(caster: caster, target: caster, spell_name: "Mirror Image")
     }
 
 

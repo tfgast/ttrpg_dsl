@@ -122,12 +122,12 @@ system "OSRIC Falling" {
                     let saved = roll_saving_throw(target.saving_throws.unwrap(), SaveCategory.DeathParalysisPoison, save_bonus)
                     if saved {
                         let halved = max(1, base div 2)
-                        target.TakeDamage(target, halved, DamageType.Fall)
+                        target.TakeDamage(target, halved, DamageType.Fall, DamageSource.Fall)
                     } else {
-                        target.TakeDamage(target, base, DamageType.Fall)
+                        target.TakeDamage(target, base, DamageType.Fall, DamageSource.Fall)
                     }
                 } else {
-                    target.TakeDamage(target, base, DamageType.Fall)
+                    target.TakeDamage(target, base, DamageType.Fall, DamageSource.Fall)
                 }
             }
         }

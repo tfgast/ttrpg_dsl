@@ -85,7 +85,7 @@ system "OSRIC Cleric Spells" {
     function resolve_cause_light_wounds(caster: entity, targets: list<entity>) {
         let target = targets.first().unwrap()
         let damage = roll(1d8).total
-        target.TakeDamage(caster, damage)
+        target.TakeDamage(caster, damage, source: DamageSource.Spell)
         emit SpellDamaged(caster: caster, target: target, spell_name: "Cause Light Wounds", amount: damage)
     }
 

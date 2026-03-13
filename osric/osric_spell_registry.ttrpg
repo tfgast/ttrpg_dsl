@@ -164,6 +164,10 @@ system "OSRIC Spell Registry" {
             def: SCARE_DEF,
             resolve: SpellResolve.Targeted(resolve: resolve_scare)
         },
+        SpellId.MirrorImage => SpellEntry {
+            def: MIRROR_IMAGE_DEF,
+            resolve: SpellResolve.SelfOnly(resolve: resolve_mirror_image)
+        },
         SpellId.Strength => SpellEntry {
             def: STRENGTH_DEF,
             resolve: SpellResolve.Touch(resolve: resolve_strength)

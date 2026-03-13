@@ -200,10 +200,10 @@ system "OSRIC Zone Spells" {
 
     function deal_zone_damage(target: entity, zone: Zone, damage: int, damage_type: DamageType) {
         if let some(creator) = zone.creator {
-            target.TakeDamage(creator, damage, damage_type)
+            target.TakeDamage(creator, damage, damage_type, DamageSource.Zone)
             emit SpellDamaged(caster: creator, target: target, spell_name: zone.name, amount: damage)
         } else {
-            target.TakeDamage(zone, damage, damage_type)
+            target.TakeDamage(zone, damage, damage_type, DamageSource.Zone)
             emit SpellDamaged(caster: zone, target: target, spell_name: zone.name, amount: damage)
         }
     }
@@ -317,7 +317,7 @@ system "OSRIC Zone Spells" {
         on RoundEndDamage(combatant: bearer) {
             if let EffectSource.Spell(zone_name, cl) = self.source {
                 let damage = roll(8d8).total
-                bearer.TakeDamage(bearer, damage, DamageType.Slashing)
+                bearer.TakeDamage(bearer, damage, DamageType.Slashing, DamageSource.Zone)
                 emit SpellDamaged(caster: bearer, target: bearer, spell_name: zone_name, amount: damage)
             }
         }

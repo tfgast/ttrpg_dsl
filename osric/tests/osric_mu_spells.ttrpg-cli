@@ -804,3 +804,71 @@ rolls 2
 call resolve_strength(str_caster, [str_target_rng])
 assert_condition str_target_rng, Strengthened
 assert_eq effective_ability(str_target_rng, STR), 16
+
+
+// ══════════════════════════════════════════════════════════════
+//  MIRROR IMAGE (§1.8.5.2)
+// ══════════════════════════════════════════════════════════════
+
+// ── Mirror Image SpellDef ─────────────────────────────────────
+
+assert_eq MIRROR_IMAGE_DEF.level, 2
+assert_eq MIRROR_IMAGE_DEF.school, SpellSchool.Illusion
+assert_eq MIRROR_IMAGE_DEF.range, SpellRange.Caster
+
+// ── Mirror Image resolve: creates condition with images ───────
+
+spawn Character mi_caster { name: "MI Caster L5", classes: [ClassLevel { class: MagicUser, level: 5 }], abilities: { STR: 10, INT: 16, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 12, hp: 12 } }
+spawn Character mi_attacker { name: "MI Attacker", classes: [ClassLevel { class: Fighter, level: 5 }], abilities: { STR: 16, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 40, hp: 40 } }
+
+// Roll 1d4 = 3 images on apply
+rolls clear
+rolls 3
+call resolve_mirror_image(mi_caster)
+assert_condition mi_caster, MirrorImageActive
+
+// ── Image absorbs attack: roll targets image ──────────────────
+// 3 images → roll 1d4: values 1-3 = image, 4 = caster.
+// TakeDamage(source: Attack) emits DamageIncoming, handler rolls targeting.
+// Roll targeting = 2 → image absorbs, damage zeroed.
+rolls clear
+rolls 2
+do mi_caster.TakeDamage(mi_attacker, 5, DamageType.Slashing, DamageSource.Attack)
+assert_eq mi_caster.hp, 12
+assert_condition mi_caster, MirrorImageActive
+
+// ── Real target hit: roll misses images ───────────────────────
+// 2 images left → roll 1d3: values 1-2 = image, 3 = caster.
+// Roll targeting = 3 → real caster hit, full damage applied.
+rolls clear
+rolls 3
+do mi_caster.TakeDamage(mi_attacker, 4, DamageType.Slashing, DamageSource.Attack)
+assert_eq mi_caster.hp, 8
+assert_condition mi_caster, MirrorImageActive
+
+// ── Spell damage ignores mirror images ────────────────────────
+// DamageSource.Spell should not trigger image absorption.
+rolls clear
+do mi_caster.TakeDamage(mi_attacker, 3, DamageType.Fire, DamageSource.Spell)
+assert_eq mi_caster.hp, 5
+assert_condition mi_caster, MirrorImageActive
+
+// ── Destroy remaining images one by one ───────────────────────
+// 2 images left. Roll = 1 → image absorbs.
+rolls clear
+rolls 1
+do mi_caster.TakeDamage(mi_attacker, 5, DamageType.Slashing, DamageSource.Attack)
+assert_eq mi_caster.hp, 5
+assert_condition mi_caster, MirrorImageActive
+
+// 1 image left. Roll = 1 → last image absorbs, condition removed.
+rolls clear
+rolls 1
+do mi_caster.TakeDamage(mi_attacker, 5, DamageType.Slashing, DamageSource.Attack)
+assert_eq mi_caster.hp, 5
+assert_no_condition mi_caster, MirrorImageActive
+
+// ── No absorption after images gone ───────────────────────────
+rolls clear
+do mi_caster.TakeDamage(mi_attacker, 3, DamageType.Slashing, DamageSource.Attack)
+assert_eq mi_caster.hp, 2

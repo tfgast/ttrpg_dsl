@@ -857,7 +857,7 @@ system "OSRIC Spells" {
             let result = target.ResistSpell(category: some(SpellsUnlisted))
             if let some(saved) = result {
                 let damage = if saved { total_damage div 2 } else { total_damage }
-                target.TakeDamage(caster, damage, damage_type)
+                target.TakeDamage(caster, damage, damage_type, DamageSource.Spell)
                 emit SpellDamaged(caster: caster, target: target, spell_name: spell_name, amount: damage)
             }
         }
@@ -874,7 +874,7 @@ system "OSRIC Spells" {
     ) {
         for target in targets {
             let damage = roll(damage_dice).total
-            target.TakeDamage(caster, damage, damage_type)
+            target.TakeDamage(caster, damage, damage_type, DamageSource.Spell)
             emit SpellDamaged(caster: caster, target: target, spell_name: spell_name, amount: damage)
         }
     }

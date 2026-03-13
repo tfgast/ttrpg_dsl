@@ -502,6 +502,7 @@ system "OSRIC" {
         // Magic-User level 2
         Forget,
         Invisibility,
+        MirrorImage,
         LevitateMU,
         RayOfEnfeeblement,
         Scare,
