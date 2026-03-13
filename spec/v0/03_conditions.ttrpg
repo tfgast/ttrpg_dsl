@@ -2,7 +2,7 @@
 // v0 Spec — Part 3: Condition System
 //
 // Modify pipeline, stacking, lifecycle hooks, state fields,
-// periodic blocks, suspension, cost modification.
+// periodic blocks, event handlers, suspension, cost modification.
 //
 // Self-contained — all declarations check cleanly.
 // ============================================================
@@ -83,6 +83,7 @@ derive saving_throw(
 }
 
 event Damaged(target: entity, amount: int) {}
+event MeleeHit(attacker: Character, target: Character) {}
 event StatusGained(target: Character, status: string) {}
 event StatusLost(target: Character, status: string) {}
 event PoisonSummary(target: Character, total_damage: int, rounds: int) {}
@@ -619,6 +620,152 @@ condition InsideBladeBarrier on bearer: entity
 // process_periodic_conditions(combatants, "round_end_damage")
 // process_temp_healing(combatants)    // not condition-based
 // expire_conditions(combatants)
+
+
+// --- Condition event handlers (on EventName(...) { ... }) ---
+//
+// Conditions can include event handler blocks that fire automatically
+// during `emit` dispatch when the condition is active and the trigger
+// bindings match. This co-locates event-reactive logic with the condition
+// that grants it, replacing the pattern of a separate top-level hook +
+// manual `has_condition()` guard.
+//
+// SYNTAX: on EventName(param: expr, ...) { statements }
+//   The trigger bindings use the same fill-the-gaps semantics as hooks
+//   and reactions. The condition's receiver and parameters are in scope
+//   for binding expressions.
+//
+// SCOPING:
+//   `bearer`  — the entity carrying the condition (receiver)
+//   condition parameters — bound from the active-condition parameter map
+//   `self`    — the full ActiveCondition instance (.name, .duration, .source, .id, .applied_at, .tags)
+//   `state`   — mutable condition state fields (if declared)
+//   `trigger` — the event payload as a struct (same as hooks)
+//
+//   This is the union of periodic block scope (bearer, self, state, params)
+//   and hook scope (trigger).
+//
+// CAPABILITIES (checker-enforced):
+//   - Can mutate entity state, emit events, roll dice
+//   - Can call derives, mechanics, functions, actions
+//   - CAN call apply_condition(), remove_condition()
+//   - `invocation()` is NOT available
+//   Unlike lifecycle blocks, event handlers are NOT restricted from
+//   condition manipulation. They execute during event dispatch, not
+//   during condition application.
+//
+// RESERVED NAMES:
+//   `trigger` is reserved in conditions that declare `on` handlers —
+//   it cannot be used as the receiver name or a parameter name. The
+//   checker emits a diagnostic if shadowed. (`self` and `state` are
+//   already reserved in all conditions.)
+//
+// DISPATCH ORDER:
+//   When `emit EventName(...)` fires:
+//     1. All matching top-level hooks execute (existing behavior)
+//     2. All matching condition event handlers execute (against post-hook state)
+//   Hooks fire first because they represent system-level invariants.
+//   Condition handlers execute second, seeing any mutations hooks made.
+//
+// HANDLER MATCHING (after hooks complete):
+//   1. Collect entity-typed values from the event payload (params first,
+//      then fields). Deduplicate by entity ID (first occurrence wins).
+//   2. For each unique entity:
+//      a. Snapshot that entity's active conditions
+//      b. Compute stacking winners
+//      c. For each winning instance (in application order):
+//         - For each `on` clause matching the event name (in clause order):
+//           - Evaluate trigger bindings (receiver + condition params in scope)
+//           - If all bindings match, the handler fires
+//
+// SNAPSHOT SAFETY:
+//   - Removed conditions are skipped (not revisited)
+//   - Conditions applied to the same bearer during handler dispatch
+//     do not fire in this emit pass
+//   - Already-started handlers complete even if their condition is removed
+//
+// STACKING:
+//   Only stacking winners execute event handlers:
+//   - `all`: every instance fires separately with its own `self`
+//   - `first`: only the oldest instance fires
+//   - `best by`: only the winning instance fires
+//   Same computation as periodic blocks and modifier collection.
+//
+// STATE THREADING:
+//   If multiple `on` handlers on the same condition instance fire in the
+//   same emit (e.g., two handlers for the same event with different binding
+//   patterns both match), state is threaded through them in clause order.
+//   After all handlers for an instance complete, mutated state is written
+//   back via Effect::SetConditionState.
+//
+// EMIT DEPTH:
+//   Handlers participate in the existing emit depth limit (MAX_EMIT_DEPTH).
+//   A handler that emits an event increments the depth counter. This
+//   prevents infinite handler chains.
+//
+// NOT SUPPRESSIBLE:
+//   Condition event handlers are mandatory (like hooks). They cannot be
+//   suppressed via the `suppress` mechanism. To prevent a handler from
+//   firing, remove the condition.
+//
+// MULTIPLE HANDLERS:
+//   A condition may declare multiple `on` handlers for different events
+//   or for the same event. All matching handlers fire in clause order.
+//
+// RELATIONSHIP TO PERIODIC BLOCKS:
+//   Both event handlers and periodic blocks can coexist on the same
+//   condition. They fire through different dispatch paths:
+//   - periodic: via process_periodic_conditions(combatants, tag)
+//   - event handlers: via emit EventName(...)
+//   Both share the same stacking winner computation and state threading.
+
+// EXAMPLE: retaliation damage on melee hit (replaces hook + has_condition guard)
+condition Thorns on bearer: Character stacking first {
+    state { charges: int = 3 }
+
+    on MeleeHit(target: bearer) {
+        state.charges -= 1
+        trigger.attacker.HP -= roll(1d4).total
+        if state.charges <= 0 {
+            remove_condition(bearer, "Thorns")
+        }
+    }
+}
+
+// EXAMPLE: condition params accessible in handler + trigger bindings
+condition RetaliateVs(nemesis: Character) on bearer: Character stacking first {
+    // Only fires when the nemesis is the attacker
+    on MeleeHit(target: bearer, attacker: nemesis) {
+        bearer.HP += 2
+    }
+}
+
+// EXAMPLE: multiple handlers for the same event fire in clause order
+condition DualReact on bearer: Character stacking first {
+    state { tally: int = 0 }
+
+    on Damaged(target: bearer) {
+        state.tally += 1
+    }
+
+    on Damaged(target: bearer) {
+        // second handler sees tally incremented by first
+        bearer.HP += state.tally
+    }
+}
+
+// EXAMPLE: periodic + event handler on the same condition
+condition PoisonAura on bearer: Character stacking first {
+    state { event_count: int = 0 }
+
+    periodic #round_end_damage {
+        bearer.HP -= 1
+    }
+
+    on MeleeHit(attacker: bearer) {
+        state.event_count += 1
+    }
+}
 
 
 // --- Suspension (entity presence and turn/duration freezing) ---

@@ -146,14 +146,22 @@ hook Regenerate on creature: Character (
 //   3. Derived fields (event body fields with defaults) are evaluated.
 //   4. The runtime finds all hooks whose trigger matches this event.
 //   5. Each matching hook executes inline (in declaration order).
-//   6. Control returns to the statement after emit.
+//   6. The runtime finds all condition event handlers whose trigger matches.
+//   7. Each matching condition handler executes (against post-hook state).
+//   8. Control returns to the statement after emit.
+//
+// Steps 6-7 are the condition event handler dispatch added in v0.
+// Hooks fire first (system-level invariants), then condition handlers
+// (condition-scoped reactions). See 03_conditions.ttrpg "Condition
+// event handlers" for full matching, stacking, and snapshot semantics.
 //
 // Reactions are NOT auto-fired by emit — they remain host-driven.
 // The host receives the event payload and decides which reactions
 // to offer to the player.
 //
-// Emit is allowed in action, reaction, hook resolve blocks, and
-// condition lifecycle blocks (on_apply / on_remove).
+// Emit is allowed in action, reaction, hook resolve blocks, condition
+// lifecycle blocks (on_apply / on_remove), condition periodic blocks,
+// and condition event handler blocks.
 // It is a statement (fire-and-forget), not an expression — it always
 // returns unit.
 //

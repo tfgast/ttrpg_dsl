@@ -407,7 +407,7 @@
 //                 | "best" "by" stacking_dir "(" IDENT ")" "ties" "oldest"
 // stacking_dir    = "highest" | "lowest"
 
-// condition_clause = modify_clause | suppress_clause | suppress_modify_clause | lifecycle_clause | periodic_clause | include_clause
+// condition_clause = modify_clause | suppress_clause | suppress_modify_clause | lifecycle_clause | periodic_clause | on_event_clause | include_clause
 // include_clause   = "include" include_kind IDENT ("(" include_args ")")? term
 // include_kind     = "modify" | "suppress" | "suppress" "-" "modify"
 // include_args     = include_arg ("," include_arg)*
@@ -416,13 +416,14 @@
 // state_field_decl = IDENT ":" type_expr "=" expr term
 // lifecycle_clause = ("on_apply" | "on_remove") block
 // periodic_clause  = "periodic" "#" IDENT block
+// on_event_clause  = "on" IDENT "(" trigger_bindings? ")" block
 //
 // --- Condition body ordering ---
 //
 // Inside the condition body `{ ... }`, clauses must appear in this order:
 //   1. `tags:` and `suppress` declarations (any order, metadata)
 //   2. `state { ... }` block (optional, at most one)
-//   3. Executable blocks: on_apply, on_remove, periodic, modify (any order)
+//   3. Executable blocks: on_apply, on_remove, periodic, on (event handler), modify (any order)
 //
 // A `state` block appearing after any executable block is a parser error.
 // Duplicate `state` blocks are a parser error.
@@ -447,6 +448,22 @@
 // No duplicate periodic tags per condition declaration (parser error).
 // See 03_conditions.ttrpg for full semantic details (scoping, capabilities,
 // execution model, stacking, inheritance).
+//
+// --- On-event clause ---
+//
+// `on` followed by an identifier and `(` inside a condition body starts
+// an event handler clause. This is unambiguous:
+//   - `on_apply` and `on_remove` are single underscore-joined tokens
+//   - The condition header's `on bearer: Type` appears before the `{`
+//   - No other clause keyword starts with `on`
+//
+// The trigger bindings use the same syntax as hook/reaction triggers.
+// Multiple `on` clauses for the same event are allowed (all matching fire
+// in clause order). `trigger` is a reserved name in conditions with `on`
+// handlers — the checker emits a diagnostic if the receiver or a parameter
+// shadows it.
+// See 03_conditions.ttrpg for full semantic details (scoping, dispatch,
+// snapshot safety, stacking, state threading).
 
 // modify_clause   = "modify" modify_target "(" modify_bindings? ")" tag_list? modify_body
 //                 | "modify" IDENT "." "cost" "(" modify_bindings? ")" cost_modify_body

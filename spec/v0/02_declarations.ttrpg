@@ -51,8 +51,10 @@
 //   that alter computed results, not imperative assignments.
 //   However, conditions MAY include on_apply/on_remove lifecycle hooks that
 //   have hook-like mutation semantics (see 03_conditions.ttrpg),
-//   and `periodic #tag { ... }` blocks that have full function-body semantics
-//   (see 03_conditions.ttrpg "Condition periodic blocks").
+//   `periodic #tag { ... }` blocks that have full function-body semantics
+//   (see 03_conditions.ttrpg "Condition periodic blocks"), and
+//   `on EventName(...) { ... }` event handler blocks that fire during emit
+//   dispatch (see 03_conditions.ttrpg "Condition event handlers").
 //
 // Functions are general-purpose subroutines. They can do everything an
 // action resolve block can except: no receiver (`on`), no cost/requires
@@ -90,6 +92,9 @@
 //       (NO apply_condition, remove_condition, revoke(invocation), invocation())
 //   condition periodic -> can call derives, mechanics, functions, actions, builtins, emit
 //       CAN call apply_condition, remove_condition (full function-body permissions)
+//       (NO invocation())
+//   condition on (event handler) -> can call derives, mechanics, functions, actions, builtins, emit
+//       CAN call apply_condition, remove_condition (same as periodic — full permissions)
 //       (NO invocation())
 //   trigger binding  -> side-effect-free builtins only
 
