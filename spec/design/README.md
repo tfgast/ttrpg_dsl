@@ -11,4 +11,5 @@ All features below are **implemented** and in active use.
 | [spatial_zone_protocol.md](spatial_zone_protocol.md) | Host-driven zone events for area/barrier spell mechanics |
 | [tags_and_selectors.md](tags_and_selectors.md) | Tag declarations and signature selectors for modify targets |
 | [transfer_conditions.md](transfer_conditions.md) | Atomic condition transfer between entities (polymorph) |
+| [condition_event_handlers.md](condition_event_handlers.md) | Event-reactive logic co-located with condition declarations |
 | [with_budget.md](with_budget.md) | Function-provisioned turn budgets for calling costed actions |

@@ -32,7 +32,7 @@
 - Needs dice + mutation, triggered, optional (has cost)? → **reaction**
 - Needs dice + mutation, triggered, mandatory (no cost)? → **hook**
 - PbtA-style 2d6+stat with strong/weak/miss outcomes? → **move**
-- Declarative buff/debuff overlay? → **condition**
+- Declarative buff/debuff overlay (+ optional event reactions)? → **condition**
 - Human decision point? → **prompt**
 
 ---
@@ -621,6 +621,66 @@ condition OnFire on bearer: Creature
 ```
 
 See [`language_reference.md`](language_reference.md) for periodic block rules (scope, stacking, snapshot semantics).
+
+### Condition with Event Handlers
+
+Event handlers co-locate event-reactive logic inside the condition. They replace the pattern of a separate `hook` + `has_condition()` guard.
+
+```ttrpg-with-preamble
+event MeleeHit(attacker: Character, target: Character) {}
+
+condition FireShield(caster_level: int) on bearer: Character
+    stacking first
+{
+    on MeleeHit(target: bearer) {
+        trigger.attacker.HP -= roll(1d6 + caster_level).total
+    }
+}
+```
+
+Trigger bindings use the same syntax as hooks. The condition's receiver and params are in scope for binding expressions:
+
+```ttrpg-with-preamble
+// Only fires when the nemesis is the attacker
+condition Vendetta(nemesis: Character) on bearer: Character
+    stacking first
+{
+    on Damaged(target: bearer, attacker: nemesis) {
+        bearer.HP += trigger.amount
+    }
+}
+```
+
+**Handler scope:** `bearer`, `self` (ActiveCondition), `trigger` (event payload), `state` fields, condition params — the union of periodic block scope and hook scope.
+
+**State + self-removal:**
+
+```ttrpg-with-preamble
+event MeleeHit(attacker: Character, target: Character) {}
+
+condition Thorns on bearer: Character stacking first {
+    state { charges: int = 3 }
+
+    on MeleeHit(target: bearer) {
+        state.charges -= 1
+        trigger.attacker.HP -= roll(1d4).total
+        if state.charges <= 0 {
+            remove_condition(bearer, "Thorns")
+        }
+    }
+}
+```
+
+**Key rules:**
+
+- Handlers fire after all hooks for the event (post-hook state)
+- Only stacking winners execute handlers
+- Snapshot safety: removed conditions are skipped; newly applied conditions don't fire in the same emit
+- `trigger` is a reserved name in conditions with `on` handlers
+- Multiple `on` handlers per condition are allowed (same or different events)
+- Not suppressible — to stop a handler, remove the condition
+
+See [`language_reference.md`](language_reference.md) for full event handler rules (dispatch order, stacking, snapshot semantics, state threading).
 
 ### Condition Stacking Policies
 

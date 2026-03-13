@@ -364,7 +364,7 @@ hook DeathDrop on target: Character (trigger: Damaged(target: target)) {
 }
 ```
 
-Always fires, no cost, not suppressible.
+Always fires, no cost, not suppressible. During `emit`, hooks execute before condition event handlers (see [Event Handlers](#event-handlers-on)).
 
 ### Condition
 
@@ -545,6 +545,76 @@ condition Bleeding on bearer: entity
 **Stacking:** Only stacking winners execute periodic blocks (`all` = every instance, `first` = oldest, `best by` = winner).
 
 **Inheritance:** Parent periodic blocks execute before child blocks (same DFS post-order as lifecycle blocks).
+
+#### Event Handlers (`on`)
+
+Event handlers co-locate event-reactive logic with the condition that grants it. They fire automatically during `emit` dispatch for stacking winners, with lifetime scoped to the condition's active duration.
+
+```
+condition FireShield(caster_level: int) on bearer: Character
+    stacking first
+{
+    on MeleeHit(target: bearer) {
+        let attacker = trigger.attacker
+        apply_damage(attacker, roll(1d6 + caster_level).total, "fire")
+    }
+}
+```
+
+**Syntax:** `on EventName(param: expr, ...)` — trigger bindings use the same fill-the-gaps semantics as hooks and reactions. The condition's receiver and parameters are in scope for binding expressions.
+
+**Scope:** The handler body has access to:
+
+| Name | Type | Description |
+|------|------|-------------|
+| bearer (receiver) | entity | The entity carrying the condition |
+| `self` | ActiveCondition | The condition instance (`.name`, `.id`, `.duration`, `.source`, `.tags`, `.applied_at`) |
+| `trigger` | event payload struct | The event payload (same as hooks) |
+| `state` | mutable struct | Condition state fields (if declared) |
+| condition params | per-param types | Bound from the active condition's parameter map |
+
+**Capabilities:** Full function-body semantics — mutations, dice, emit, `apply_condition()`, `remove_condition()`, action calls. Unlike lifecycle blocks, event handlers are NOT restricted from condition manipulation.
+
+**Dispatch order:** When `emit EventName(...)` fires:
+1. All matching top-level hooks execute (existing behavior, unchanged)
+2. All matching condition event handlers execute (against post-hook state)
+
+Hooks fire first because they represent system-level invariants. Condition handlers execute second, seeing any mutations hooks made.
+
+**Handler matching:**
+1. Collect entity-typed values from the event payload (params first, then fields)
+2. Deduplicate by entity ID (first occurrence wins)
+3. For each unique entity, snapshot conditions and compute stacking winners
+4. For each winning instance, check `on` clauses for trigger match
+5. Matched handlers fire in entity order → application order → clause order
+
+**Stacking:** Only stacking winners execute event handlers (`all` = every instance, `first` = oldest, `best by` = winner). Same computation as periodic blocks and modifier collection.
+
+**Snapshot safety:**
+- Removed conditions are skipped (not revisited)
+- Conditions applied to the same bearer during handler dispatch do not fire in this emit pass
+- Already-started handlers complete even if their condition is removed
+
+**State threading:** If multiple `on` handlers on the same instance match (e.g., two handlers for the same event with different bindings), state is threaded through them in clause order. After all handlers complete, mutated state is written back via `SetConditionState`.
+
+**Emit depth:** Handlers participate in the existing emit depth limit. A handler that emits an event increments the depth counter.
+
+**Multiple handlers:** A condition may declare multiple `on` handlers for different events or for the same event:
+
+```
+condition Guardian on bearer: Character stacking first {
+    on Damaged(target: bearer) {
+        // self-damage reaction
+    }
+    on MeleeHit(target: bearer) {
+        // melee-specific reaction
+    }
+}
+```
+
+**Reserved names:** `trigger` is reserved in conditions that declare `on` handlers — it cannot be used as a receiver name or parameter name. The checker emits a diagnostic if shadowed. (`self` and `state` are already reserved in all conditions.)
+
+**Not suppressible:** Condition event handlers are mandatory (like hooks). They cannot be suppressed via `suppress` clauses. To prevent a handler from firing, remove the condition.
 
 ### Prompt
 
