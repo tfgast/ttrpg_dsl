@@ -434,7 +434,9 @@ system "OSRIC Combat" {
         target: entity,
         include_dex: bool = true,
         include_shield: bool = true,
-        ac_mod: int = 0
+        ac_mod: int = 0,
+        is_missile: bool = false,
+        is_hurled: bool = false
     ) -> int #ac_defense {
         if target is Character {
             // Monks use level-based AC (class feature) and never receive DEX AC bonus.
@@ -589,7 +591,7 @@ system "OSRIC Combat" {
         let spec_hit = missile_spec_hit_mod(attacker, weapon)
         let wdef = missile_weapon_def(weapon)
         let range_mod = missile_range_penalty(distance, wdef.range_increment)
-        let target_ac = effective_target_ac(target)
+        let target_ac = effective_target_ac(target, is_missile: true, is_hurled: wdef.is_hurled)
         let total_mod = bthb_val + dex_mod + spec_hit + range_mod + attack_mod + weapon_bonus
         let outcome = match roll_mode {
             RollMode.AutoHit => AttackOutcome.Hit,
@@ -1867,7 +1869,7 @@ system "OSRIC Combat" {
         let bthb_val = monster_bthb(attacker.hit_dice)
         let wdef = missile_weapon_def(weapon)
         let range_mod = missile_range_penalty(distance, wdef.range_increment)
-        let target_ac = effective_target_ac(target)
+        let target_ac = effective_target_ac(target, is_missile: true, is_hurled: wdef.is_hurled)
         let total_mod = bthb_val + range_mod + attack_mod + weapon_bonus
         let outcome = match roll_mode {
             RollMode.AutoHit => AttackOutcome.Hit,

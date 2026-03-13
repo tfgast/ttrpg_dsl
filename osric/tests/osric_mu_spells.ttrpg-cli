@@ -654,3 +654,153 @@ do UseJump(jmp_target_7)
 assert_condition jmp_target_7, Jumping
 do UseJump(jmp_target_7)
 assert_no_condition jmp_target_7, Jumping
+
+
+// ══════════════════════════════════════════════════════════════
+//  SHIELD (§1.8.5.1)
+// ══════════════════════════════════════════════════════════════
+
+// ── Shield SpellDef ──────────────────────────────────────────
+
+assert_eq SHIELD_DEF.level, 1
+assert_eq SHIELD_DEF.school, SpellSchool.Evocation
+assert_eq SHIELD_DEF.range, SpellRange.Caster
+
+// ── Shield resolve: applies Shielded condition ───────────────
+
+spawn Character shd_caster_1 { name: "Shield Caster L3", classes: [ClassLevel { class: MagicUser, level: 3 }], abilities: { STR: 10, INT: 16, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 8, hp: 8 } }
+
+rolls clear
+call resolve_shield(shd_caster_1)
+assert_condition shd_caster_1, Shielded
+
+// ── Shield AC: unarmored MU (AC 10) → AC 16 ─────────────────
+// DEX 12 gives no bonus, so base AC is 10. Shield sets min 16.
+
+assert_eq effective_target_ac(shd_caster_1), 16
+
+// ── Shield AC: missile context → AC 17 (propelled) / 18 (hurled) ──
+
+assert_eq effective_target_ac(shd_caster_1, is_missile: true, is_hurled: false), 17
+assert_eq effective_target_ac(shd_caster_1, is_missile: true, is_hurled: true), 18
+
+// ── Shield + better armour: Shield doesn't downgrade ─────────
+// A character with plate mail (AC 17) keeps 17 for melee,
+// but Shield gives 18 vs hurled missiles.
+
+spawn Character shd_armored { name: "Armored Shielder", classes: [ClassLevel { class: Fighter, level: 5 }], abilities: { STR: 14, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 40, hp: 40 }, EquipmentSlots { worn_armor: some(Armor { armour_type: PlateMail, magic_bonus: 0 }) } }
+
+rolls clear
+call resolve_shield(shd_armored)
+assert_condition shd_armored, Shielded
+
+// Plate mail = AC 17. Shield gives min 16, so plate is still used.
+assert_eq effective_target_ac(shd_armored), 17
+
+// Missile (propelled): max(17, 17) = 17
+assert_eq effective_target_ac(shd_armored, is_missile: true, is_hurled: false), 17
+
+// Missile (hurled): max(17, 18) = 18 — Shield helps here
+assert_eq effective_target_ac(shd_armored, is_missile: true, is_hurled: true), 18
+
+// ── Shield blocks Magic Missiles ─────────────────────────────
+
+spawn Character shd_mm_caster { name: "MM Caster", classes: [ClassLevel { class: MagicUser, level: 5 }], abilities: { STR: 10, INT: 16, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 12, hp: 12 } }
+spawn Character shd_mm_target { name: "Shielded Target", classes: [ClassLevel { class: MagicUser, level: 3 }], abilities: { STR: 10, INT: 16, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 8, hp: 8 } }
+
+// Apply Shield to target
+rolls clear
+call resolve_shield(shd_mm_target)
+assert_condition shd_mm_target, Shielded
+
+// Fire 3 magic missiles at Shielded target — no damage
+rolls clear
+rolls 3 2 4
+call resolve_magic_missile(shd_mm_caster, [shd_mm_target, shd_mm_target, shd_mm_target])
+assert_eq shd_mm_target.hp, 8
+
+
+// ══════════════════════════════════════════════════════════════
+//  INVISIBILITY (§1.8.5.2)
+// ══════════════════════════════════════════════════════════════
+
+// ── Invisibility SpellDef ────────────────────────────────────
+
+assert_eq INVISIBILITY_DEF.level, 2
+assert_eq INVISIBILITY_DEF.school, SpellSchool.Illusion
+assert_eq INVISIBILITY_DEF.range, SpellRange.Touch
+
+// ── Invisibility resolve: applies Invisible condition ────────
+
+spawn Character inv_caster { name: "Invis Caster L5", classes: [ClassLevel { class: MagicUser, level: 5 }], abilities: { STR: 10, INT: 16, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 12, hp: 12 } }
+spawn Character inv_target { name: "Invis Target", classes: [ClassLevel { class: Fighter, level: 3 }], abilities: { STR: 14, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 20, hp: 20 } }
+
+rolls clear
+call resolve_invisibility(inv_caster, [inv_target])
+assert_condition inv_target, Invisible
+
+// ── Invisibility on self ─────────────────────────────────────
+
+rolls clear
+call resolve_invisibility(inv_caster, [inv_caster])
+assert_condition inv_caster, Invisible
+
+
+// ══════════════════════════════════════════════════════════════
+//  STRENGTH (§1.8.5.2)
+// ══════════════════════════════════════════════════════════════
+
+// ── Strength SpellDef ────────────────────────────────────────
+
+assert_eq STRENGTH_DEF.level, 2
+assert_eq STRENGTH_DEF.school, SpellSchool.Transmutation
+assert_eq STRENGTH_DEF.range, SpellRange.Touch
+
+// ── Strength resolve: non-fighter gets d6 ────────────────────
+
+spawn Character str_caster { name: "Str Caster L5", classes: [ClassLevel { class: MagicUser, level: 5 }], abilities: { STR: 10, INT: 16, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 12, hp: 12 } }
+spawn Character str_target_mu { name: "Weak Wizard", classes: [ClassLevel { class: MagicUser, level: 3 }], abilities: { STR: 10, INT: 16, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 8, hp: 8 } }
+
+// Roll d6 = 4, no fighter bonus → STR bonus of 4
+rolls clear
+rolls 4
+call resolve_strength(str_caster, [str_target_mu])
+assert_condition str_target_mu, Strengthened
+
+// STR was 10, now effective STR is 14
+assert_eq effective_ability(str_target_mu, STR), 14
+
+// ── Strength resolve: fighter gets d6 + 1 ────────────────────
+
+spawn Character str_target_ftr { name: "Strong Fighter", classes: [ClassLevel { class: Fighter, level: 3 }], abilities: { STR: 15, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 25, hp: 25 } }
+
+// Roll d6 = 3, fighter bonus +1 → STR bonus of 4
+rolls clear
+rolls 3
+call resolve_strength(str_caster, [str_target_ftr])
+assert_condition str_target_ftr, Strengthened
+
+// STR was 15, now effective STR is 19
+assert_eq effective_ability(str_target_ftr, STR), 19
+
+// ── Strength resolve: paladin gets fighter bonus ─────────────
+
+spawn Character str_target_pal { name: "Paladin", classes: [ClassLevel { class: Paladin, level: 4 }], abilities: { STR: 14, INT: 12, WIS: 14, DEX: 12, CON: 12, CHA: 17 }, HitPoints { max_hp: 30, hp: 30 } }
+
+// Roll d6 = 5, paladin gets fighter bonus +1 → STR bonus of 6
+rolls clear
+rolls 5
+call resolve_strength(str_caster, [str_target_pal])
+assert_condition str_target_pal, Strengthened
+assert_eq effective_ability(str_target_pal, STR), 20
+
+// ── Strength resolve: ranger gets fighter bonus ──────────────
+
+spawn Character str_target_rng { name: "Ranger", classes: [ClassLevel { class: Ranger, level: 3 }], abilities: { STR: 13, INT: 12, WIS: 14, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 22, hp: 22 } }
+
+// Roll d6 = 2, ranger gets fighter bonus +1 → STR bonus of 3
+rolls clear
+rolls 2
+call resolve_strength(str_caster, [str_target_rng])
+assert_condition str_target_rng, Strengthened
+assert_eq effective_ability(str_target_rng, STR), 16

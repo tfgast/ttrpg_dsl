@@ -587,8 +587,10 @@ system "OSRIC MU Spells" {
     // entry per missile — caller decides target allocation by
     // repeating the same target for multiple missiles aimed at it.
     // Each entry gets one missile (1d4+1 damage, auto-hit, no save).
+    // Targets protected by Shield spell are immune (§1.8.5.1).
     function resolve_magic_missile(caster: entity, targets: list<entity>) {
-        resolve_no_save_damage_each(caster, targets, "Magic Missile", 1d4 + 1)
+        let valid_targets = [t for t in targets if !has_condition(t, Shielded)]
+        resolve_no_save_damage_each(caster, valid_targets, "Magic Missile", 1d4 + 1)
     }
 
 
@@ -720,5 +722,168 @@ system "OSRIC MU Spells" {
         let cl = caster_level(caster, Arcane)
         let targets = area_occupants(placement, DISPEL_MAGIC_MU_DEF.area)
         resolve_dispel_magic_on_targets(cl, targets)
+    }
+
+
+    // ========================================================
+    //  SHIELD (§1.8.5.1)
+    //
+    //  Arcane evocation, level 1. Range: Caster.
+    //  Duration: 5 rounds per MU level.
+    //  Creates invisible barrier of magical force:
+    //    - Magic missiles cannot penetrate at all
+    //    - AC 18 vs hurled weapons, AC 17 vs propelled
+    //      missiles, AC 16 vs all other attacks
+    //    - +1 to all saving throws vs frontal attacks
+    //  Frontal defence only (rear/flank not covered).
+    //  Does not stack with armour — replaces if better.
+    //  DEX bonuses still apply. Casting time: Fast.
+    // ========================================================
+
+    condition Shielded on bearer: entity
+        stacking first
+    {
+        // Base AC 16 vs melee/other, AC 17 vs propelled missiles,
+        // AC 18 vs hurled missiles. Replaces (not stacks with) armour.
+        modify effective_target_ac(target: bearer) {
+            let shield_ac = if is_hurled { 18 } else if is_missile { 17 } else { 16 }
+            result = max(result, shield_ac)
+        }
+        // +1 to all saving throws (frontal attacks).
+        modify entity_best_saves(target: bearer) {
+            result = SavingThrows {
+                aimed_magic: max(2, result.aimed_magic - 1),
+                breath: max(2, result.breath - 1),
+                death_paralysis_poison: max(2, result.death_paralysis_poison - 1),
+                petrification_polymorph: max(2, result.petrification_polymorph - 1),
+                spells: max(2, result.spells - 1)
+            }
+        }
+    }
+
+    const SHIELD_DEF: SpellDef = SpellDef {
+        name: "Shield",
+        class_type: Arcane,
+        school: Evocation,
+        level: 1,
+        range: SpellRange.Caster,
+        duration: SpellDuration.Special(description: "5 rounds/MU level"),
+
+        components: SpellComponents {},
+        casting_time: CastingTime.Fast,
+        saving_throw: SpellSave.NoSave,
+        description: "Invisible barrier of force. Blocks magic missiles. AC 18 vs hurled, 17 vs propelled, 16 vs other attacks. +1 saves."
+    }
+
+    // Resolve Shield. Self-only, no save.
+    function resolve_shield(caster: entity) {
+        let cl = caster_level(caster, Arcane)
+        let duration_rounds = 5 * cl
+        let source = EffectSource.Spell(name: "Shield", caster_level: cl)
+        apply_condition(caster, Shielded, Duration.Rounds(duration_rounds), source)
+        emit SpellApplied(caster: caster, target: caster, spell_name: "Shield")
+    }
+
+
+    // ========================================================
+    //  INVISIBILITY (§1.8.5.2)
+    //
+    //  Arcane illusion, level 2. Range: Touch.
+    //  Duration: Indefinite — broken when the recipient:
+    //    (1) attacks someone or casts a damage spell,
+    //    (2) caster ends the spell, or (3) dispelled.
+    //  Recipient and all carried items become invisible.
+    //  Even infravision cannot detect. Invisible creatures
+    //  can see themselves. Not quieter; scents remain.
+    //  Cannot be cast on an unwilling subject.
+    //  Casting time: 2 segments. No saving throw.
+    // ========================================================
+
+    const INVISIBILITY_DEF: SpellDef = SpellDef {
+        name: "Invisibility",
+        class_type: Arcane,
+        school: Illusion,
+        level: 2,
+        range: SpellRange.Touch,
+        duration: SpellDuration.Special(description: "Until attack, cast, or dispelled"),
+
+        components: SpellComponents {},
+        casting_time: CastingTime.Segments(count: 2),
+        saving_throw: SpellSave.NoSave,
+        description: "Recipient becomes invisible to all sight including infravision. Broken by attacking or casting a damage-dealing spell."
+    }
+
+    // Resolve Invisibility. Touch, willing target, no save.
+    // Uses the existing Invisible condition from osric_conditions.
+    // Duration is Indefinite — removal on attack/cast is GM-adjudicated.
+    function resolve_invisibility(caster: entity, targets: list<entity>) {
+        let cl = caster_level(caster, Arcane)
+        let source = EffectSource.Spell(name: "Invisibility", caster_level: cl)
+        for target in targets {
+            apply_condition(target, Invisible, Duration.Indefinite, source)
+            emit SpellApplied(caster: caster, target: target, spell_name: "Invisibility")
+        }
+    }
+
+
+    // ========================================================
+    //  STRENGTH (§1.8.5.2)
+    //
+    //  Arcane transmutation, level 2. Range: Touch.
+    //  Duration: 6 turns per MU level.
+    //  Increases a person's strength by 1d6. Fighter-type
+    //  classes (fighter, ranger, paladin) gain a +1 bonus
+    //  to the roll. Only affects bipedal humanoid creatures
+    //  of Medium size or smaller.
+    //  Casting time: 1 turn. No saving throw.
+    // ========================================================
+
+    condition Strengthened(bonus: int) on bearer: Character
+        stacking first
+    {
+        tags: #physical
+        modify effective_ability(character: bearer, ability: STR) {
+            result = result + bonus
+        }
+    }
+
+    const STRENGTH_DEF: SpellDef = SpellDef {
+        name: "Strength",
+        class_type: Arcane,
+        school: Transmutation,
+        level: 2,
+        range: SpellRange.Touch,
+        duration: SpellDuration.Special(description: "6 turns/MU level"),
+
+        components: SpellComponents {},
+        casting_time: CastingTime.Turns(count: 1),
+        saving_throw: SpellSave.NoSave,
+        description: "Increases target's strength by 1d6 (fighter-types gain +1 bonus). Affects bipedal humanoids only."
+    }
+
+    // Whether a class counts as a fighter-type for Strength bonus.
+    derive is_fighter_type(class: Class) -> bool {
+        match class {
+            Fighter => true,
+            Paladin => true,
+            Ranger => true,
+            _ => false
+        }
+    }
+
+    // Resolve Strength. Touch, no save, willing target.
+    // Fighter-types (fighter, ranger, paladin) get +1 to the d6 roll.
+    function resolve_strength(caster: entity, targets: list<entity>) {
+        let cl = caster_level(caster, Arcane)
+        let duration_turns = 6 * cl
+        let source = EffectSource.Spell(name: "Strength", caster_level: cl)
+        for target in targets {
+            if target is Character {
+                let fighter_bonus = if any([is_fighter_type(cl_entry.class) for cl_entry in target.classes]) { 1 } else { 0 }
+                let bonus = roll(1d6).total + fighter_bonus
+                apply_condition(target, Strengthened(bonus: bonus), Duration.Turns(duration_turns), source)
+                emit SpellApplied(caster: caster, target: target, spell_name: "Strength")
+            }
+        }
     }
 }

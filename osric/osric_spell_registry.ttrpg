@@ -123,6 +123,10 @@ system "OSRIC Spell Registry" {
             def: MAGIC_MISSILE_DEF,
             resolve: SpellResolve.Targeted(resolve: resolve_magic_missile)
         },
+        SpellId.ShieldSpell => SpellEntry {
+            def: SHIELD_DEF,
+            resolve: SpellResolve.SelfOnly(resolve: resolve_shield)
+        },
         SpellId.ShockingGrasp => SpellEntry {
             def: SHOCKING_GRASP_DEF,
             resolve: SpellResolve.Touch(resolve: resolve_shocking_grasp)
@@ -140,6 +144,10 @@ system "OSRIC Spell Registry" {
             resolve: SpellResolve.Touch(resolve: resolve_spider_climb)
         },
         // --- Magic-User level 2 ---
+        SpellId.Invisibility => SpellEntry {
+            def: INVISIBILITY_DEF,
+            resolve: SpellResolve.Touch(resolve: resolve_invisibility)
+        },
         SpellId.LevitateMU => SpellEntry {
             def: LEVITATE_DEF,
             resolve: SpellResolve.Targeted(resolve: resolve_levitate)
@@ -155,6 +163,10 @@ system "OSRIC Spell Registry" {
         SpellId.Scare => SpellEntry {
             def: SCARE_DEF,
             resolve: SpellResolve.Targeted(resolve: resolve_scare)
+        },
+        SpellId.Strength => SpellEntry {
+            def: STRENGTH_DEF,
+            resolve: SpellResolve.Touch(resolve: resolve_strength)
         },
         // --- Magic-User level 3 ---
         SpellId.DispelMagicMU => SpellEntry {
