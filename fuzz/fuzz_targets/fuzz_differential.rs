@@ -1,30 +1,30 @@
 #![no_main]
 
-//! Differential fuzzer: evaluates zero-argument derives and functions through
-//! both the recursive `Interpreter` path and the step-based `Execution` path,
-//! asserting that the results match.
+//! Differential fuzzer: generates arbitrary ASTs, then evaluates zero-argument
+//! derives, tables, and functions through both the recursive `Interpreter`
+//! path and the step-based `Execution` frame stack, asserting results match.
 
 use std::rc::Rc;
 use std::sync::Arc;
 
+use arbitrary::Unstructured;
 use libfuzzer_sys::fuzz_target;
-use ttrpg_ast::FileId;
+use ttrpg_ast::ast::Program;
 use ttrpg_interp::adapter::StateAdapter;
 use ttrpg_interp::effect::{Effect, EffectHandler, Response};
 use ttrpg_interp::execution::Execution;
 use ttrpg_interp::reference_state::GameState;
 use ttrpg_interp::runtime_core::RuntimeCore;
-use ttrpg_interp::value::{RollResult, Value};
+use ttrpg_interp::value::RollResult;
 use ttrpg_interp::Interpreter;
 
-/// Acknowledges everything, rolls deterministically, uses defaults for prompts.
+/// Deterministic handler: acknowledges gates, rolls all 1s, uses defaults.
 struct DeterministicHandler;
 
 impl EffectHandler for DeterministicHandler {
     fn handle(&mut self, effect: Effect) -> Response {
         match &effect {
             Effect::RollDice { expr } => {
-                // Deterministic: every die rolls 1
                 let num_dice: usize = expr.groups.iter().map(|g| g.count as usize).sum();
                 let total = num_dice as i64 + expr.modifier;
                 Response::Rolled(RollResult {
@@ -49,34 +49,16 @@ impl EffectHandler for DeterministicHandler {
 }
 
 fuzz_target!(|data: &[u8]| {
-    let Ok(source) = std::str::from_utf8(data) else {
+    let Ok(program) = Unstructured::new(data).arbitrary::<Program>() else {
         return;
     };
 
-    // Reject oversized inputs early
-    if source.len() > 4096 {
-        return;
-    }
-
-    let (program, parse_diags) = ttrpg_parser::parse(source, FileId::SYNTH);
-    if parse_diags
-        .iter()
-        .any(|d| d.severity == ttrpg_ast::diagnostic::Severity::Error)
-    {
-        return;
-    }
-
-    let mut lower_diags = Vec::new();
-    let program = ttrpg_parser::lower_moves(program, &mut lower_diags);
+    let mut diags = Vec::new();
+    let program = ttrpg_parser::lower_moves(program, &mut diags);
 
     let check_result = ttrpg_checker::check(&program);
-    if check_result
-        .diagnostics
-        .iter()
-        .any(|d| d.severity == ttrpg_ast::diagnostic::Severity::Error)
-    {
-        return;
-    }
+    // Don't filter on errors — the interpreter should handle (or reject)
+    // ill-typed programs the same way on both paths.
 
     let program = Arc::new(program);
     let type_env = Arc::new(check_result.env);
@@ -107,21 +89,23 @@ fuzz_target!(|data: &[u8]| {
         return;
     }
 
+    // Build interpreter once (shared across targets)
+    let interp = match Interpreter::new(&program, &type_env) {
+        Ok(i) => i,
+        Err(_) => return,
+    };
+
     for name in targets {
         let is_derive_or_table =
             program.derives.contains_key(name) || program.tables.contains_key(name);
 
         // ── Path A: Recursive Interpreter ──
-        let interp_a = match Interpreter::new(&program, &type_env) {
-            Ok(i) => i,
-            Err(_) => return,
-        };
         let gs_a = GameState::new();
         let mut handler_a = DeterministicHandler;
         let result_a = if is_derive_or_table {
-            interp_a.evaluate_derive(&gs_a, &mut handler_a, name, vec![])
+            interp.evaluate_derive(&gs_a, &mut handler_a, name, vec![])
         } else {
-            interp_a.evaluate_function(&gs_a, &mut handler_a, name, vec![])
+            interp.evaluate_function(&gs_a, &mut handler_a, name, vec![])
         };
 
         // ── Path B: Step-based Execution ──
@@ -152,9 +136,7 @@ fuzz_target!(|data: &[u8]| {
                     "DIVERGENCE in '{name}': recursive={va:?}, step={vb:?}"
                 );
             }
-            (Err(_), Err(_)) => {
-                // Both errored — acceptable
-            }
+            (Err(_), Err(_)) => {}
             (Ok(va), Err(eb)) => {
                 panic!("DIVERGENCE in '{name}': recursive=Ok({va:?}), step=Err({eb:?})");
             }
