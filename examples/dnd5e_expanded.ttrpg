@@ -201,6 +201,8 @@ system "D&D 5e Expanded" {
 
         // Defense
         AC: int
+        // INVARIANT: HP only changes via attack damage, healing spells,
+        // class features (Second Wind), and death save nat-20 recovery.
         restricted HP: resource(0..=max_HP)
         max_HP: int
         temp_HP: int = 0
@@ -233,21 +235,27 @@ system "D&D 5e Expanded" {
             spell_attack_bonus: int
             // RESOLVED: Resource-valued maps replace 9 separate fields. [ttrpg_dsl-5yt]
             // map<int, resource(0..=9)> gives clamped, per-level slots.
+            // INVARIANT: Slots only spent when casting a spell (one per cast).
             restricted spell_slots: map<int, resource(0..=9)>
             known_spells: list<SpellInfo>
             // RESOLVED: Invocation tracking provides spell instance IDs.  [ttrpg_dsl-5kb]
             // Storing option<Invocation> instead of option<string> lets
             // revoke() auto-remove all conditions from the spell cast.
+            // INVARIANT: Set when casting a concentration spell, cleared
+            // only on failed concentration save or explicit drop.
             restricted concentrating_on: option<Invocation>
         }
 
         optional FighterFeatures {
             has_extra_attack: bool = false
+            // INVARIANT: Decremented only by the ActionSurge action (one use per activation).
             restricted action_surge_uses: int = 0
+            // INVARIANT: Decremented only by the SecondWind action (one use per activation).
             restricted second_wind_uses: int = 0
         }
 
         optional RogueFeatures {
+            // INVARIANT: Set at grant time (level-dependent); read-only thereafter.
             restricted sneak_attack_dice: DiceExpr = 0d6
             // RESOLVED: 0d6 now works as a DiceExpr default.          [ttrpg_dsl-46i]
             // RESOLVED: has_cunning_action removed — Cunning Action   [ttrpg_dsl-xh9]
