@@ -235,3 +235,66 @@ assert any([c.name == "Ooze" for c in conditions(gooze)])
 assert any([c.name == "DissolvesMetal" for c in conditions(gooze)])
 assert any([c.name == "ImmuneToCold" for c in conditions(gooze)])
 assert any([c.name == "ImmuneToFire" for c in conditions(gooze)])
+
+// ── Stench zone — mechanical effects ─────────────────────────
+// Troglodyte stench creates a 30ft zone. Creatures inside
+// receive StenchNauseated: -2 attack, +2 (worse) saves.
+// Troglodytes themselves are immune.
+
+pos stench_origin 100 100
+
+// Create stench zone anchored to the troglodyte
+let stench_trog = create_troglodyte()
+let stench_zone = create_stench_zone(stench_trog, stench_origin, "stench-zone-1")
+place stench_zone 100 100
+
+// Spawn a victim fighter
+spawn Character stench_victim { name: "Stench Fighter", classes: [ClassLevel { class: Fighter, level: 5 }], abilities: { STR: 16, INT: 12, WIS: 12, DEX: 14, CON: 14, CHA: 12 }, HitPoints { max_hp: 40, hp: 40 } }
+
+// Before entering zone: no StenchNauseated
+assert_no_condition stench_victim, StenchNauseated
+
+// Enter the stench zone
+emit ZoneEntered(target: stench_victim, zone: stench_zone)
+assert_condition stench_victim, StenchNauseated
+
+// Verify saves are worsened (+2 penalty = higher target numbers).
+// Capture saves while nauseated, then remove and compare.
+let nauseated_saves = entity_best_saves(stench_victim)
+
+// Exit the stench zone — condition removed
+emit ZoneExited(target: stench_victim, zone: stench_zone)
+assert_no_condition stench_victim, StenchNauseated
+
+// Now compare: clean saves should be 2 lower (better) than nauseated
+let clean_saves = entity_best_saves(stench_victim)
+assert_eq nauseated_saves.aimed_magic, clean_saves.aimed_magic + 2
+assert_eq nauseated_saves.breath, clean_saves.breath + 2
+assert_eq nauseated_saves.death_paralysis_poison, clean_saves.death_paralysis_poison + 2
+assert_eq nauseated_saves.petrification_polymorph, clean_saves.petrification_polymorph + 2
+assert_eq nauseated_saves.spells, clean_saves.spells + 2
+
+// Troglodyte enters own stench zone — should NOT get nauseated
+emit ZoneEntered(target: stench_trog, zone: stench_zone)
+assert_no_condition stench_trog, StenchNauseated
+
+// ── Overlapping stench zones ─────────────────────────────────
+// Two troglodytes = two zones. Exiting one still leaves the other.
+
+let stench_trog2 = create_troglodyte()
+let stench_zone2 = create_stench_zone(stench_trog2, stench_origin, "stench-zone-2")
+place stench_zone2 100 100
+
+spawn Character stench_overlap { name: "Overlap Victim", classes: [ClassLevel { class: Fighter, level: 3 }], abilities: { STR: 14, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 20, hp: 20 } }
+
+emit ZoneEntered(target: stench_overlap, zone: stench_zone)
+emit ZoneEntered(target: stench_overlap, zone: stench_zone2)
+assert_condition stench_overlap, StenchNauseated
+
+// Exit one zone — still nauseated by the other
+emit ZoneExited(target: stench_overlap, zone: stench_zone)
+assert_condition stench_overlap, StenchNauseated
+
+// Exit second zone — fully clear
+emit ZoneExited(target: stench_overlap, zone: stench_zone2)
+assert_no_condition stench_overlap, StenchNauseated

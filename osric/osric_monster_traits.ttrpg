@@ -11,9 +11,11 @@
 
 import "osric_combat.ttrpg"
 import "osric_core.ttrpg"
+import "osric_saves.ttrpg"
 
 use "OSRIC"
 use "OSRIC Combat"
+use "OSRIC Saves"
 
 system "OSRIC Monster Traits" {
 
@@ -385,4 +387,91 @@ system "OSRIC Monster Traits" {
     condition VenomousSting on bearer: entity
         stacking first
     {}
+
+
+    // ========================================================
+    //  STENCH — ZONE-BASED AURA (TROGLODYTES)
+    //
+    //  All non-troglodytes within 30ft suffer -2 to attack
+    //  rolls and saving throws. Modelled as an anchored zone
+    //  that applies the StenchNauseated condition to occupants.
+    //
+    //  The Stench marker (above) identifies stench-capable
+    //  creatures. The zone must be created by the host or
+    //  combat setup via create_stench_zone().
+    //
+    //  Reference: OSRIC 3.0 GM Guide — Troglodyte entry.
+    // ========================================================
+
+    // Applied to creatures inside a Troglodyte Stench zone.
+    // -2 to attack rolls and -2 to all saving throws.
+    condition StenchNauseated on bearer: entity
+        stacking all
+    {
+        modify [#attack_resolution](attacker: bearer) {
+            attack_mod = attack_mod - 2
+        }
+        modify entity_best_saves(target: bearer) {
+            result = SavingThrows {
+                aimed_magic: result.aimed_magic + 2,
+                breath: result.breath + 2,
+                death_paralysis_poison: result.death_paralysis_poison + 2,
+                petrification_polymorph: result.petrification_polymorph + 2,
+                spells: result.spells + 2
+            }
+        }
+    }
+
+    // Apply StenchNauseated when a target enters a stench zone.
+    // Does not affect creatures that also have the Stench condition
+    // (troglodytes are immune to their own stench).
+    hook StenchZoneApply on target: entity (
+        trigger: ZoneEntered(target: target)
+    ) {
+        let zone = trigger.zone
+        if let EffectSource.MonsterAbility(ability_name) = zone.source {
+            if ability_name == "Troglodyte Stench" {
+                if !has_condition(target, Stench) {
+                    apply_condition(target, StenchNauseated, Duration.Indefinite,
+                        EffectSource.MonsterAbility(name: zone.name))
+                }
+            }
+        }
+    }
+
+    // Remove StenchNauseated when a target exits the stench zone.
+    // Only removes the instance keyed to this specific zone.
+    hook StenchZoneRemove on target: entity (
+        trigger: ZoneExited(target: target)
+    ) {
+        let zone = trigger.zone
+        if let EffectSource.MonsterAbility(ability_name) = zone.source {
+            if ability_name == "Troglodyte Stench" {
+                for cond in conditions(target) {
+                    if cond.name == "StenchNauseated" {
+                        if let EffectSource.MonsterAbility(src_name) = cond.source {
+                            if src_name == zone.name {
+                                remove_condition(target, cond)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // Create a 30ft stench zone anchored to the given monster.
+    // The zone moves with the bearer and tracks occupancy.
+    // zone_name must be unique per instance (for zone-keyed removal).
+    function create_stench_zone(bearer: entity, position: Position, zone_name: string) -> Zone {
+        Zone {
+            name: zone_name,
+            source: EffectSource.MonsterAbility(name: "Troglodyte Stench"),
+            creator: some(bearer),
+            anchor: some(bearer),
+            moves_with_anchor: true,
+            center: position,
+            shape: ZoneShape.Sphere(radius: 30ft)
+        }
+    }
 }
