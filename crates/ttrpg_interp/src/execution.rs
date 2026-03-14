@@ -446,6 +446,9 @@ pub(crate) enum Frame {
     BudgetGuard {
         actor: EntityRef,
         saved_budget: Option<BTreeMap<Name, Value>>,
+        body: Option<Block>,
+        child_result: Option<Result<Value, RuntimeError>>,
+        span: Span,
     },
 
     MultiBudgetGuard {
@@ -453,10 +456,15 @@ pub(crate) enum Frame {
         saved_budgets: Vec<(EntityRef, Option<BTreeMap<Name, Value>>)>,
         provision_index: usize,
         phase: MultiBudgetPhase,
+        body: Option<Block>,
+        child_result: Option<Result<Value, RuntimeError>>,
+        span: Span,
     },
 
     CostPayerGuard {
         saved_payer: Option<EntityRef>,
+        body: Option<Block>,
+        child_result: Option<Result<Value, RuntimeError>>,
     },
 
     /// Bridge call frame for non-action entry points (derive, mechanic,
@@ -1257,6 +1265,219 @@ impl Frame {
                 }
             }
 
+            Frame::BudgetGuard {
+                actor,
+                saved_budget,
+                body,
+                child_result,
+                span,
+            } => {
+                // Phase 2: body completed — restore budget and return.
+                if let Some(result) = child_result.take() {
+                    // Restore budget via bridge (locally-applied).
+                    let restore_result = match saved_budget {
+                        Some(old) => {
+                            let a = *actor;
+                            let b = old.clone();
+                            if let Some(ref mut h) = handler {
+                                bridge_eval_with(core, env, state, *h, move |tmp_env| {
+                                    tmp_env.emit(Effect::ProvisionBudget {
+                                        actor: a,
+                                        budget: b,
+                                    });
+                                    Ok(Value::Void)
+                                })
+                            } else {
+                                bridge_eval_with(
+                                    core, env, state, &mut NoYieldHandler,
+                                    move |tmp_env| {
+                                        tmp_env.emit(Effect::ProvisionBudget {
+                                            actor: a,
+                                            budget: b,
+                                        });
+                                        Ok(Value::Void)
+                                    },
+                                )
+                            }
+                        }
+                        None => {
+                            let a = *actor;
+                            if let Some(ref mut h) = handler {
+                                bridge_eval_with(core, env, state, *h, move |tmp_env| {
+                                    tmp_env.emit(Effect::ClearBudget { actor: a });
+                                    Ok(Value::Void)
+                                })
+                            } else {
+                                bridge_eval_with(
+                                    core, env, state, &mut NoYieldHandler,
+                                    move |tmp_env| {
+                                        tmp_env.emit(Effect::ClearBudget { actor: a });
+                                        Ok(Value::Void)
+                                    },
+                                )
+                            }
+                        }
+                    };
+
+                    // Body error takes precedence over cleanup error.
+                    return match result {
+                        Err(e) => Advance::Error(e),
+                        Ok(val) => match restore_result {
+                            Err(e) => Advance::Error(e),
+                            Ok(_) => Advance::Pop(val),
+                        },
+                    };
+                }
+
+                // Phase 1: push Block for body.
+                if let Some(block) = body.take() {
+                    return Advance::Push(Frame::Block {
+                        stmts: block.node,
+                        index: 0,
+                        result: Value::Void,
+                        expr_cache: Vec::new(),
+                    });
+                }
+
+                Advance::Error(RuntimeError::with_span(
+                    "BudgetGuard: no body and no result",
+                    *span,
+                ))
+            }
+
+            Frame::MultiBudgetGuard {
+                entries: _,
+                saved_budgets,
+                provision_index: _,
+                phase,
+                body,
+                child_result,
+                span,
+            } => {
+                match phase {
+                    MultiBudgetPhase::Provisioning => {
+                        // Provisioning is done by the caller before pushing
+                        // this frame. Transition to Body.
+                        *phase = MultiBudgetPhase::Body;
+                        Advance::Continue
+                    }
+
+                    MultiBudgetPhase::Body => {
+                        // Body completed — transition to Restoring.
+                        if let Some(result) = child_result.take() {
+                            *phase = MultiBudgetPhase::Restoring { index: 0 };
+                            // Stash result back for use in Restoring.
+                            *child_result = Some(result);
+                            return Advance::Continue;
+                        }
+
+                        // Push Block for body.
+                        if let Some(block) = body.take() {
+                            return Advance::Push(Frame::Block {
+                                stmts: block.node,
+                                index: 0,
+                                result: Value::Void,
+                                expr_cache: Vec::new(),
+                            });
+                        }
+
+                        Advance::Error(RuntimeError::with_span(
+                            "MultiBudgetGuard: no body and no result",
+                            *span,
+                        ))
+                    }
+
+                    MultiBudgetPhase::Restoring { index } => {
+                        if *index >= saved_budgets.len() {
+                            // All budgets restored. Return body result.
+                            return match child_result.take() {
+                                Some(Ok(val)) => Advance::Pop(val),
+                                Some(Err(e)) => Advance::Error(e),
+                                None => Advance::Pop(Value::Void),
+                            };
+                        }
+
+                        // Restore in reverse order.
+                        let restore_idx = saved_budgets.len() - 1 - *index;
+                        let (actor, ref prev) = saved_budgets[restore_idx];
+                        let a = actor;
+                        let _ = match prev {
+                            Some(old) => {
+                                let b = old.clone();
+                                if let Some(ref mut h) = handler {
+                                    bridge_eval_with(core, env, state, *h, move |tmp_env| {
+                                        tmp_env.emit(Effect::ProvisionBudget {
+                                            actor: a,
+                                            budget: b,
+                                        });
+                                        Ok(Value::Void)
+                                    })
+                                } else {
+                                    bridge_eval_with(
+                                        core, env, state, &mut NoYieldHandler,
+                                        move |tmp_env| {
+                                            tmp_env.emit(Effect::ProvisionBudget {
+                                                actor: a,
+                                                budget: b,
+                                            });
+                                            Ok(Value::Void)
+                                        },
+                                    )
+                                }
+                            }
+                            None => {
+                                if let Some(ref mut h) = handler {
+                                    bridge_eval_with(core, env, state, *h, move |tmp_env| {
+                                        tmp_env.emit(Effect::ClearBudget { actor: a });
+                                        Ok(Value::Void)
+                                    })
+                                } else {
+                                    bridge_eval_with(
+                                        core, env, state, &mut NoYieldHandler,
+                                        move |tmp_env| {
+                                            tmp_env.emit(Effect::ClearBudget { actor: a });
+                                            Ok(Value::Void)
+                                        },
+                                    )
+                                }
+                            }
+                        };
+
+                        *index += 1;
+                        Advance::Continue
+                    }
+                }
+            }
+
+            Frame::CostPayerGuard {
+                saved_payer,
+                body,
+                child_result,
+            } => {
+                // Phase 2: body completed — restore cost_payer and return.
+                if let Some(result) = child_result.take() {
+                    env.cost_payer = *saved_payer;
+                    return match result {
+                        Ok(val) => Advance::Pop(val),
+                        Err(e) => Advance::Error(e),
+                    };
+                }
+
+                // Phase 1: push Block for body.
+                if let Some(block) = body.take() {
+                    return Advance::Push(Frame::Block {
+                        stmts: block.node,
+                        index: 0,
+                        result: Value::Void,
+                        expr_cache: Vec::new(),
+                    });
+                }
+
+                Advance::Error(RuntimeError::new(
+                    "CostPayerGuard: no body and no result",
+                ))
+            }
+
             Frame::ScopeGuard => Advance::Pop(Value::Void),
             _ => Advance::Error(RuntimeError::new(
                 "frame type not yet implemented",
@@ -1299,6 +1520,15 @@ impl Frame {
                 // Block child completed.
                 *child_result = Some(Ok(value));
             }
+            Frame::BudgetGuard { child_result, .. } => {
+                *child_result = Some(Ok(value));
+            }
+            Frame::MultiBudgetGuard { child_result, .. } => {
+                *child_result = Some(Ok(value));
+            }
+            Frame::CostPayerGuard { child_result, .. } => {
+                *child_result = Some(Ok(value));
+            }
             _ => {}
         }
     }
@@ -1324,9 +1554,12 @@ impl Frame {
                 *step = ActionStep::EmitCompleted;
                 Ok(())
             }
-            Frame::FunctionEval { child_result, .. } => {
-                // Absorb the error so advance() can pop scope before
-                // propagating.
+            Frame::FunctionEval { child_result, .. }
+            | Frame::BudgetGuard { child_result, .. }
+            | Frame::MultiBudgetGuard { child_result, .. }
+            | Frame::CostPayerGuard { child_result, .. } => {
+                // Absorb the error so advance() can run cleanup
+                // (scope pop, budget restore) before propagating.
                 *child_result = Some(Err(error));
                 Ok(())
             }
@@ -6413,5 +6646,169 @@ mod tests {
 
         let step = exec.poll().unwrap();
         assert!(matches!(step, Step::Done(Value::Int(42))));
+    }
+
+    // ── BudgetGuard / CostPayerGuard tests (Phase 4.6) ──────
+
+    #[test]
+    fn budget_guard_restores_on_success() {
+        // BudgetGuard runs a body and restores the budget after.
+        use ttrpg_ast::ast::StmtKind;
+
+        let body = Block {
+            node: vec![Spanned {
+                node: StmtKind::Expr(Spanned {
+                    node: ExprKind::IntLit(99),
+                    span: Span::dummy(),
+                }),
+                span: Span::dummy(),
+            }],
+            span: Span::dummy(),
+        };
+
+        let mut exec = exec_with_frame(Frame::BudgetGuard {
+            actor: EntityRef(1),
+            saved_budget: Some({
+                let mut m = BTreeMap::new();
+                m.insert(Name::from("actions"), Value::Int(3));
+                m
+            }),
+            body: Some(body),
+            child_result: None,
+            span: Span::dummy(),
+        });
+
+        // Poll → body executes → budget restored → Done(99)
+        let step = exec.poll().unwrap();
+        assert!(matches!(step, Step::Done(Value::Int(99))));
+    }
+
+    #[test]
+    fn budget_guard_restores_on_error() {
+        // BudgetGuard must restore even when the body errors.
+        use ttrpg_ast::ast::StmtKind;
+
+        // Body that will error (index out of bounds)
+        let body = Block {
+            node: vec![Spanned {
+                node: StmtKind::Expr(Spanned {
+                    node: ExprKind::Index {
+                        object: Box::new(Spanned {
+                            node: ExprKind::ListLit(vec![]),
+                            span: Span::dummy(),
+                        }),
+                        index: Box::new(Spanned {
+                            node: ExprKind::IntLit(0),
+                            span: Span::dummy(),
+                        }),
+                    },
+                    span: Span::dummy(),
+                }),
+                span: Span::dummy(),
+            }],
+            span: Span::dummy(),
+        };
+
+        let mut exec = exec_with_frame(Frame::BudgetGuard {
+            actor: EntityRef(1),
+            saved_budget: None, // No previous budget → ClearBudget
+            body: Some(body),
+            child_result: None,
+            span: Span::dummy(),
+        });
+
+        // Poll → body errors → budget cleared → error propagated
+        let result = exec.poll();
+        assert!(matches!(result, Err(PollError::Runtime(_))));
+    }
+
+    #[test]
+    fn cost_payer_guard_restores_on_success() {
+        use ttrpg_ast::ast::StmtKind;
+
+        let body = Block {
+            node: vec![Spanned {
+                node: StmtKind::Expr(Spanned {
+                    node: ExprKind::IntLit(42),
+                    span: Span::dummy(),
+                }),
+                span: Span::dummy(),
+            }],
+            span: Span::dummy(),
+        };
+
+        let (core, _) = make_core(
+            r#"
+            system Test {
+                entity Creature { HP: int }
+            }
+            "#,
+        );
+        let game = GameState::new();
+        let adapter = StateAdapter::new(game);
+        let mut exec = Execution::new(core, adapter);
+
+        // Set initial cost_payer
+        exec.env.cost_payer = Some(EntityRef(99));
+
+        exec.frames.push(Frame::CostPayerGuard {
+            saved_payer: Some(EntityRef(99)),
+            body: Some(body),
+            child_result: None,
+        });
+
+        // During body execution, cost_payer could have been changed.
+        // After guard pops, it should be restored.
+        let step = exec.poll().unwrap();
+        assert!(matches!(step, Step::Done(Value::Int(42))));
+        assert_eq!(exec.env.cost_payer, Some(EntityRef(99)));
+    }
+
+    #[test]
+    fn multi_budget_guard_restores_all() {
+        use ttrpg_ast::ast::StmtKind;
+
+        let body = Block {
+            node: vec![Spanned {
+                node: StmtKind::Expr(Spanned {
+                    node: ExprKind::IntLit(77),
+                    span: Span::dummy(),
+                }),
+                span: Span::dummy(),
+            }],
+            span: Span::dummy(),
+        };
+
+        let mut exec = exec_with_frame(Frame::MultiBudgetGuard {
+            entries: vec![
+                (EntityRef(1), {
+                    let mut m = BTreeMap::new();
+                    m.insert(Name::from("actions"), Value::Int(2));
+                    m
+                }),
+                (EntityRef(2), {
+                    let mut m = BTreeMap::new();
+                    m.insert(Name::from("actions"), Value::Int(1));
+                    m
+                }),
+            ],
+            saved_budgets: vec![
+                (EntityRef(1), None), // No previous budget for entity 1
+                (EntityRef(2), Some({
+                    let mut m = BTreeMap::new();
+                    m.insert(Name::from("actions"), Value::Int(5));
+                    m
+                })),
+            ],
+            provision_index: 0,
+            phase: MultiBudgetPhase::Provisioning,
+            body: Some(body),
+            child_result: None,
+            span: Span::dummy(),
+        });
+
+        // Poll → provisions (pass-through), body executes, restores → Done(77)
+        let step = exec.poll().unwrap();
+        assert!(matches!(step, Step::Done(Value::Int(77))));
     }
 }
