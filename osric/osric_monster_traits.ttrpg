@@ -317,4 +317,72 @@ system "OSRIC Monster Traits" {
     condition TurnedAsUndead(effective_hd: int) on bearer: entity
         stacking first
     {}
+
+
+    // ========================================================
+    //  CREATURE TYPE MARKERS (continued)
+    // ========================================================
+
+    // Ooze — mindless, amorphous creatures (slimes, jellies, oozes).
+    condition Ooze on bearer: entity
+        stacking first
+    {}
+
+    // Fungus — fungal organisms (shriekers, yellow mold).
+    condition Fungus on bearer: entity
+        stacking first
+    {}
+
+
+    // ========================================================
+    //  SPECIAL ABILITY MARKERS
+    //
+    //  Marker conditions for innate monster abilities.
+    //  Mechanical resolution deferred to combat actions.
+    // ========================================================
+
+    // Blood drain — attaches and drains HP each round (stirges).
+    condition BloodDrain on bearer: entity
+        stacking first
+    {}
+
+    // Charm song — audible charm effect (harpies).
+    condition CharmSong on bearer: entity
+        stacking first
+    {}
+
+    // Stench — nauseating odour penalises nearby creatures (troglodytes).
+    condition Stench on bearer: entity
+        stacking first
+    {}
+
+    // Dissolves metal on contact (grey ooze).
+    condition DissolvesMetal on bearer: entity
+        stacking first
+    {}
+
+    // Dissolves organic material on contact (green slime).
+    condition DissolvesOrganic on bearer: entity
+        stacking first
+    {}
+
+    // Spore attack — releases damaging/infectious spores (yellow mold).
+    condition SporeAttack on bearer: entity
+        stacking first
+    {}
+
+    // Weak poison — bite causes illness, not death (giant centipedes).
+    condition WeakPoison on bearer: entity
+        stacking first
+    {}
+
+    // Ceiling drop — single devastating attack from above (piercers).
+    condition CeilingDrop on bearer: entity
+        stacking first
+    {}
+
+    // Venomous sting/bite with strong poison (giant ant soldiers).
+    condition VenomousSting on bearer: entity
+        stacking first
+    {}
 }

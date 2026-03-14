@@ -641,6 +641,260 @@ system "OSRIC Bestiary" {
     //  OUTSIDERS
     // ========================================================
 
+    // ========================================================
+    //  LOW-LEVEL DUNGEON MONSTERS
+    //
+    //  Common encounters for levels 1-4. Stats from OSRIC 3.0
+    //  Gamemaster Guide Chapter 10.
+    // ========================================================
+
+    function create_troglodyte() -> Monster {
+        Monster {
+            name: "Troglodyte",
+            hit_dice: 2d8,
+            max_hp: 9,
+            hp: 9,
+            ac: 15,
+            morale: 9,
+            xp_value: 47,
+            intelligence: 6,
+            alignment: Alignment.ChaoticEvil,
+            base_movement: 120ft,
+            attacks: [
+                MonsterAttack { name: "Claw", damage: 1d4 },
+                MonsterAttack { name: "Claw", damage: 1d4 },
+                MonsterAttack { name: "Bite", damage: 1d4 }
+            ],
+            size: Size.Medium,
+            special: ["Stench", "ChameleonSkin", "Infravision"]
+        } with [Stench, Infravision(range: 60ft)]
+    }
+
+    function create_lizard_man() -> Monster {
+        Monster {
+            name: "Lizard Man",
+            hit_dice: 2d8 + 1,
+            max_hp: 10,
+            hp: 10,
+            ac: 15,
+            morale: 9,
+            xp_value: 47,
+            intelligence: 6,
+            alignment: Alignment.TrueNeutral,
+            base_movement: 60ft,
+            attacks: [
+                MonsterAttack { name: "Claw", damage: 1d3 },
+                MonsterAttack { name: "Claw", damage: 1d3 },
+                MonsterAttack { name: "Bite", damage: 1d4 }
+            ],
+            size: Size.Medium,
+            special: ["Aquatic", "Swim120ft"]
+        }
+    }
+
+    function create_shrieker() -> Monster {
+        Monster {
+            name: "Shrieker",
+            hit_dice: 3d8,
+            max_hp: 13,
+            hp: 13,
+            ac: 13,
+            morale: 12,
+            xp_value: 65,
+            intelligence: 0,
+            alignment: Alignment.TrueNeutral,
+            base_movement: 10ft,
+            attacks: [],
+            size: Size.Medium,
+            special: ["AlarmCreature"]
+        } with [Fungus, ImmuneToMindControl]
+    }
+
+    function create_giant_centipede() -> Monster {
+        // Small giant centipede — weak poison bite causes illness.
+        Monster {
+            name: "Giant Centipede",
+            hit_dice: 1d2,
+            max_hp: 1,
+            hp: 1,
+            ac: 11,
+            morale: 12,
+            xp_value: 5,
+            intelligence: 0,
+            alignment: Alignment.TrueNeutral,
+            base_movement: 60ft,
+            attacks: [MonsterAttack { name: "Bite", damage: 1d1 }],
+            size: Size.Small,
+            special: ["WeakPoison"]
+        } with [WeakPoison, ImmuneToMindControl]
+    }
+
+    function create_giant_ant_worker() -> Monster {
+        Monster {
+            name: "Giant Ant (Worker)",
+            hit_dice: 2d8,
+            max_hp: 9,
+            hp: 9,
+            ac: 17,
+            morale: 8,
+            xp_value: 30,
+            intelligence: 1,
+            alignment: Alignment.TrueNeutral,
+            base_movement: 180ft,
+            attacks: [MonsterAttack { name: "Bite", damage: 1d6 }],
+            size: Size.Small,
+            special: ["Climber"]
+        } with [ImmuneToMindControl]
+    }
+
+    function create_giant_ant_soldier() -> Monster {
+        Monster {
+            name: "Giant Ant (Soldier)",
+            hit_dice: 3d8,
+            max_hp: 13,
+            hp: 13,
+            ac: 17,
+            morale: 9,
+            xp_value: 50,
+            intelligence: 1,
+            alignment: Alignment.TrueNeutral,
+            base_movement: 180ft,
+            attacks: [MonsterAttack { name: "Bite", damage: 2d4 }],
+            size: Size.Medium,
+            special: ["VenomousSting", "Climber"]
+        } with [VenomousSting, ImmuneToMindControl]
+    }
+
+    function create_stirge() -> Monster {
+        Monster {
+            name: "Stirge",
+            hit_dice: 1d8 + 1,
+            max_hp: 5,
+            hp: 5,
+            ac: 12,
+            morale: 7,
+            xp_value: 28,
+            intelligence: 1,
+            alignment: Alignment.TrueNeutral,
+            base_movement: 30ft,
+            attacks: [MonsterAttack { name: "Proboscis", damage: 1d3 }],
+            size: Size.Small,
+            special: ["BloodDrain", "Fly180ft"]
+        } with [BloodDrain]
+    }
+
+    function create_harpy() -> Monster {
+        Monster {
+            name: "Harpy",
+            hit_dice: 3d8,
+            max_hp: 13,
+            hp: 13,
+            ac: 13,
+            morale: 9,
+            xp_value: 145,
+            intelligence: 6,
+            alignment: Alignment.ChaoticEvil,
+            base_movement: 60ft,
+            attacks: [
+                MonsterAttack { name: "Talon", damage: 1d3 },
+                MonsterAttack { name: "Talon", damage: 1d3 },
+                MonsterAttack { name: "Weapon", damage: 1d6 }
+            ],
+            size: Size.Medium,
+            special: ["CharmSong", "Fly150ft"]
+        } with [CharmSong]
+    }
+
+    function create_piercer(hd: int) -> Monster {
+        // Piercers range from 1-4 HD. Drop from ceiling for hd*d6 damage.
+        let hp = hd * 4
+        let hd_dice = if hd == 1 { 1d8 } else if hd == 2 { 2d8 } else if hd == 3 { 3d8 } else { 4d8 }
+        let dmg = if hd == 1 { 1d6 } else if hd == 2 { 2d6 } else if hd == 3 { 3d6 } else { 4d6 }
+        let sz = if hd <= 2 { Size.Small } else { Size.Medium }
+        let xp = if hd == 1 { 15 } else if hd == 2 { 30 } else if hd == 3 { 50 } else { 75 }
+        Monster {
+            name: "Piercer",
+            hit_dice: hd_dice,
+            max_hp: hp,
+            hp: hp,
+            ac: 17,
+            morale: 12,
+            xp_value: xp,
+            intelligence: 0,
+            alignment: Alignment.TrueNeutral,
+            base_movement: 10ft,
+            attacks: [MonsterAttack { name: "Drop", damage: dmg }],
+            size: sz,
+            special: ["CeilingDrop"]
+        } with [CeilingDrop, ImmuneToMindControl]
+    }
+
+    // ── Oozes and Fungi ─────────────────────────────────────
+
+    function create_green_slime() -> Monster {
+        // Not a true combatant — dissolves organic material on contact.
+        // AC 11 is nominal; immune to normal weapons per special rules.
+        Monster {
+            name: "Green Slime",
+            hit_dice: 2d8,
+            max_hp: 9,
+            hp: 9,
+            ac: 11,
+            morale: 12,
+            xp_value: 26,
+            intelligence: 0,
+            alignment: Alignment.TrueNeutral,
+            base_movement: 3ft,
+            attacks: [],
+            size: Size.Small,
+            special: ["DissolvesOrganic"]
+        } with [Ooze, DissolvesOrganic, ImmuneToMindControl]
+    }
+
+    function create_yellow_mold() -> Monster {
+        // Stationary fungus — releases spores when disturbed.
+        // AC 11 is nominal; immune to physical damage per special rules.
+        Monster {
+            name: "Yellow Mold",
+            hit_dice: 2d8,
+            max_hp: 9,
+            hp: 9,
+            ac: 11,
+            morale: 12,
+            xp_value: 26,
+            intelligence: 0,
+            alignment: Alignment.TrueNeutral,
+            base_movement: 0ft,
+            attacks: [],
+            size: Size.Small,
+            special: ["SporeAttack"]
+        } with [Fungus, SporeAttack, ImmuneToMindControl]
+    }
+
+    function create_grey_ooze() -> Monster {
+        // Corrodes metal on contact; immune to cold and fire.
+        Monster {
+            name: "Grey Ooze",
+            hit_dice: 3d8 + 3,
+            max_hp: 16,
+            hp: 16,
+            ac: 12,
+            morale: 12,
+            xp_value: 155,
+            intelligence: 0,
+            alignment: Alignment.TrueNeutral,
+            base_movement: 10ft,
+            attacks: [MonsterAttack { name: "Strike", damage: 2d8 }],
+            size: Size.Medium,
+            special: ["DissolvesMetal"]
+        } with [Ooze, DissolvesMetal, ImmuneToMindControl, ImmuneToCold, ImmuneToFire]
+    }
+
+
+    // ========================================================
+    //  OUTSIDERS
+    // ========================================================
+
     function create_efreet() -> Monster {
         Monster {
             name: "Efreet",
