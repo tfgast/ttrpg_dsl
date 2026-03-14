@@ -1326,6 +1326,12 @@ pub struct LValue {
     pub span: Span,
 }
 
+impl std::fmt::Debug for LValue {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "LValue({})", self.root)
+    }
+}
+
 #[derive(Clone)]
 #[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub enum LValueSegment {

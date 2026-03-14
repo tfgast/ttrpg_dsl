@@ -12,7 +12,7 @@ use std::rc::Rc;
 
 use rustc_hash::FxHashMap;
 
-use ttrpg_ast::ast::{Block, CostClause, ExprKind, StmtKind};
+use ttrpg_ast::ast::{AssignOp, Block, CostClause, ExprKind, LValue, StmtKind};
 use ttrpg_ast::{Name, Span, Spanned};
 
 use crate::adapter::StateAdapter;
@@ -190,6 +190,99 @@ fn effect_to_yield_frame(effect: Effect, span: Span) -> Option<Frame> {
 
 /// Evaluate a block using the existing recursive evaluator.
 ///
+/// Try to dispatch a statement via frame-based execution instead of
+/// `bridge_eval_with`. Returns `Some((frame, awaiting))` if the
+/// statement is a bare function call or a let binding whose value is
+/// a function call that can be dispatched via `FunctionEval`.
+///
+/// This avoids the unsound bridge replay pattern for functions whose
+/// bodies contain mutations followed by host-decided effects.
+fn try_frame_dispatch_stmt<S: WritableState>(
+    core: &RuntimeCore,
+    env: &mut ExecEnv,
+    state: &StateAdapter<S>,
+    stmt: &Spanned<StmtKind>,
+) -> Option<(Frame, AwaitingFn)> {
+    // Extract the call expression and determine the awaiting type.
+    let (call_expr, awaiting) = match &stmt.node {
+        StmtKind::Expr(expr) => (expr, AwaitingFn::ExprStmt),
+        StmtKind::Let { name, value, .. } => {
+            (value, AwaitingFn::LetBinding { name: name.clone() })
+        }
+        StmtKind::Assign { target, op, value } => (
+            value,
+            AwaitingFn::Assign {
+                target: target.clone(),
+                op: *op,
+                span: stmt.span,
+            },
+        ),
+        StmtKind::Return(Some(expr)) => (expr, AwaitingFn::Return),
+        _ => return None,
+    };
+
+    // Only handle direct function calls: name(args).
+    let (callee_name, args) = match &call_expr.node {
+        ExprKind::Call { callee, args } => match &callee.node {
+            ExprKind::Ident(name) => (name.clone(), args),
+            _ => return None,
+        },
+        _ => return None,
+    };
+
+    // Must be a user-defined function (not a builtin, condition, etc.)
+    let fn_decl = core.program.functions.get(callee_name.as_str())?;
+    let fn_info = core.type_env.lookup_fn(callee_name.as_str())?;
+    if fn_info.kind != ttrpg_checker::env::FnKind::Function {
+        return None;
+    }
+
+    // Evaluate argument expressions via bridge (typically pure).
+    // If any arg triggers a mutation+yield, this will error via the
+    // recursive evaluator, which is acceptable — that's an edge case.
+    let mut evaluated_args: Vec<(Name, Value)> = Vec::new();
+    for (i, arg) in args.iter().enumerate() {
+        let param_name = if let Some(ref name) = arg.name {
+            name.clone()
+        } else if i < fn_info.params.len() {
+            fn_info.params[i].name.clone()
+        } else {
+            return None; // Too many args — let the recursive path handle
+        };
+
+        let val = bridge_eval_expr(core, env, state, &arg.value).ok()?;
+        evaluated_args.push((param_name, val));
+    }
+
+    // Collect default expressions for missing optional params.
+    let mut default_params = Vec::new();
+    for i in evaluated_args.len()..fn_info.params.len() {
+        if fn_info.params[i].has_default {
+            if let Some(default_expr) =
+                fn_decl.params.get(i).and_then(|p| p.default.as_ref())
+            {
+                default_params.push((
+                    fn_info.params[i].name.clone(),
+                    default_expr.clone(),
+                ));
+            }
+        } else {
+            return None; // Missing required arg — let recursive path error
+        }
+    }
+
+    Some((
+        Frame::FunctionEval {
+            name: callee_name,
+            args: evaluated_args,
+            default_params,
+            body: Some(fn_decl.body.clone()),
+            child_result: None,
+        },
+        awaiting,
+    ))
+}
+
 /// Creates a temporary `Interpreter` and `Env` backed by the step-based
 /// context, runs `eval_block`, and syncs state back. Locally-applied
 /// mutation effects are handled by the `StateAdapter`; host-decided
@@ -387,6 +480,11 @@ pub(crate) enum Frame {
         index: usize,
         result: Value,
         expr_cache: Vec<Value>,
+        /// When `Some`, a child frame (FunctionEval) was pushed to handle
+        /// the current statement. The next `receive_child_result` stores
+        /// the value here, and the next `advance()` uses it to complete
+        /// the statement (bind for Let, set result for Expr).
+        awaiting_fn: Option<AwaitingFn>,
     },
 
     StmtResume {
@@ -811,6 +909,7 @@ impl Frame {
                             index: 0,
                             result: Value::Void,
                             expr_cache: Vec::new(),
+                            awaiting_fn: None,
                         })
                     }
 
@@ -985,7 +1084,58 @@ impl Frame {
                 index,
                 result,
                 expr_cache,
+                awaiting_fn,
             } => {
+                // Handle completed child frame for a statement that was
+                // dispatched via FunctionEval instead of bridge_eval_with.
+                if let Some(awaiting) = awaiting_fn.take() {
+                    let value = std::mem::replace(result, Value::Void);
+                    match awaiting {
+                        AwaitingFn::ExprStmt => {
+                            *result = value;
+                        }
+                        AwaitingFn::LetBinding { name } => {
+                            env.bind(name, value);
+                        }
+                        AwaitingFn::Assign { target, op, span } => {
+                            // RHS was evaluated by FunctionEval. Now
+                            // apply the assignment via bridge (the assign
+                            // logic does only locally-applied mutations).
+                            let rhs = value;
+                            let assign_result = bridge_eval_with(
+                                core,
+                                env,
+                                state,
+                                &mut NoYieldHandler,
+                                |tmp_env| {
+                                    crate::eval::eval_assign_with_rhs(
+                                        tmp_env, &target, op, rhs, span,
+                                    )?;
+                                    Ok(Value::Void)
+                                },
+                            );
+                            if let Err(e) = assign_result {
+                                env.pop_scope();
+                                return Advance::Error(e);
+                            }
+                        }
+                        AwaitingFn::Return => {
+                            env.return_value = Some(value);
+                            let ret = env.return_value.clone().unwrap();
+                            env.pop_scope();
+                            return Advance::Pop(ret);
+                        }
+                    }
+                    *index += 1;
+                    expr_cache.clear();
+                    if env.return_value.is_some() {
+                        let ret = env.return_value.clone().unwrap();
+                        env.pop_scope();
+                        return Advance::Pop(ret);
+                    }
+                    return Advance::Continue;
+                }
+
                 // Push scope on first entry (before first statement).
                 if *index == 0 {
                     env.push_scope();
@@ -1029,8 +1179,19 @@ impl Frame {
                         }
                     }
                 } else {
-                    // Async path: use CachingHandler to capture
-                    // host-decided effects and push yield frames.
+                    // Async path: try frame-based dispatch for function
+                    // calls (avoids unsound bridge replay for functions
+                    // whose bodies contain mutations + yields).
+                    if let Some((fn_frame, awaiting)) =
+                        try_frame_dispatch_stmt(core, env, state, &stmt)
+                    {
+                        *awaiting_fn = Some(awaiting);
+                        return Advance::Push(fn_frame);
+                    }
+
+                    // Fall back to CachingHandler bridge for statements
+                    // that aren't function calls (or can't be resolved).
+                    state.reset_mutation_flag();
                     let mut caching =
                         CachingHandler::from_expr_cache(expr_cache);
                     let eval_result = bridge_eval_with(
@@ -1042,6 +1203,26 @@ impl Frame {
                     );
 
                     if let Some(effect) = caching.captured {
+                        // Containment guard: if a local mutation was
+                        // applied during this bridge run AND the handler
+                        // captured a host-decided effect, replaying the
+                        // statement would re-apply the mutation. Fail
+                        // fast instead of silently corrupting state.
+                        if state.local_mutation_applied() {
+                            env.pop_scope();
+                            return Advance::Error(RuntimeError::new(
+                                format!(
+                                    "async replay unsound: local mutation \
+                                     applied before host-decided effect \
+                                     {:?} in statement at {:?}; \
+                                     StmtResume not yet implemented for \
+                                     this pattern",
+                                    EffectKind::of(&effect),
+                                    stmt.span,
+                                ),
+                            ));
+                        }
+
                         // Statement suspended on a host-decided effect.
                         // Push a yield frame; don't advance index.
                         if let Some(yield_frame) =
@@ -1217,6 +1398,7 @@ impl Frame {
                         index: 0,
                         result: Value::Void,
                         expr_cache: Vec::new(),
+                        awaiting_fn: None,
                     });
                 }
 
@@ -1282,6 +1464,7 @@ impl Frame {
                                     index: 0,
                                     result: Value::Void,
                                     expr_cache: Vec::new(),
+                                    awaiting_fn: None,
                                 })
                             } else {
                                 Advance::Error(RuntimeError::with_span(
@@ -1463,6 +1646,7 @@ impl Frame {
                         index: 0,
                         result: Value::Void,
                         expr_cache: Vec::new(),
+                        awaiting_fn: None,
                     });
                 }
 
@@ -1505,6 +1689,7 @@ impl Frame {
                                 index: 0,
                                 result: Value::Void,
                                 expr_cache: Vec::new(),
+                                awaiting_fn: None,
                             });
                         }
 
@@ -1597,6 +1782,7 @@ impl Frame {
                         index: 0,
                         result: Value::Void,
                         expr_cache: Vec::new(),
+                        awaiting_fn: None,
                     });
                 }
 
@@ -1634,13 +1820,25 @@ impl Frame {
                     *step = ActionStep::EmitCompleted;
                 }
             }
-            Frame::Block { expr_cache, .. } => {
-                // Child yield frame completed (RollDiceWaiting, etc.).
-                // Cache the result for replay-with-cache on the next
-                // advance(). The statement index was not advanced, so
-                // the same statement will be retried with the cached
-                // value available.
-                expr_cache.push(value);
+            Frame::Block {
+                expr_cache,
+                awaiting_fn,
+                result,
+                ..
+            } => {
+                if awaiting_fn.is_some() {
+                    // Child FunctionEval completed. Store the result
+                    // in `result` temporarily — advance() will read it
+                    // and complete the statement.
+                    *result = value;
+                } else {
+                    // Child yield frame completed (RollDiceWaiting, etc.).
+                    // Cache the result for replay-with-cache on the next
+                    // advance(). The statement index was not advanced, so
+                    // the same statement will be retried with the cached
+                    // value available.
+                    expr_cache.push(value);
+                }
             }
             Frame::PromptWaiting { result, .. } => {
                 // UseDefault → Block child completed.
@@ -1745,6 +1943,24 @@ pub(crate) enum StmtResumeKind {
         fields: BTreeMap<Name, Value>,
         span: Span,
     },
+}
+
+/// Tracks that a child frame (FunctionEval) was pushed to handle a
+/// statement's sub-expression on the async path.
+#[derive(Debug)]
+pub(crate) enum AwaitingFn {
+    /// Bare expression statement — child result becomes block result.
+    ExprStmt,
+    /// Let binding — child result is bound to `name`.
+    LetBinding { name: Name },
+    /// Assignment — child result is the RHS value; apply the assign.
+    Assign {
+        target: LValue,
+        op: AssignOp,
+        span: Span,
+    },
+    /// Return statement — child result becomes the return value.
+    Return,
 }
 
 /// A parameter whose default expression may need evaluation.
@@ -7242,4 +7458,203 @@ mod tests {
 
         assert!(result1.is_ok(), "recursive failed: {result1:?}");
     }
+
+    // ── Mutation replay soundness tests ───────────────────────
+
+    #[test]
+    fn async_mutation_before_roll_no_double_fire() {
+        // When a nested function call performs a mutation (advance_time)
+        // before a host-decided effect (roll), the Block frame dispatches
+        // the function call via FunctionEval instead of bridge_eval_with.
+        // This ensures advance_time fires exactly once.
+        use crate::value::{DiceExpr, RollResult};
+
+        let (core, _) = make_core(
+            r#"
+            system Test {
+                entity Creature { HP: int }
+                function tick_and_roll() -> int {
+                    advance_time(1)
+                    roll(1d6).total
+                }
+                function caller() -> int {
+                    tick_and_roll()
+                }
+            }
+            "#,
+        );
+
+        let game = GameState::new();
+        assert_eq!(game.game_time(), 0);
+        let adapter = StateAdapter::new(game);
+
+        let mut exec = Execution::start_function(
+            core, adapter, "caller", vec![],
+        )
+        .unwrap();
+
+        // Poll: tick_and_roll() dispatched via FunctionEval.
+        // Inner Block: advance_time(1) completes as stmt 0,
+        // then roll(1d6) yields as stmt 1.
+        let step = exec.poll().unwrap();
+        assert!(
+            matches!(&step, Step::Yielded(e) if matches!(&**e, Effect::RollDice { .. })),
+            "expected RollDice yield, got {step:?}"
+        );
+
+        // game_time should be 1.
+        assert_eq!(exec.state().read_game_time(), 1);
+
+        // Respond with roll result.
+        exec.respond(Response::Rolled(RollResult {
+            expr: DiceExpr::single(1, 6, None, 0),
+            dice: vec![4],
+            kept: vec![4],
+            modifier: 0,
+            total: 4,
+            unmodified: 4,
+        }))
+        .unwrap();
+
+        // Should complete with 4.
+        let step = exec.poll().unwrap();
+        assert!(
+            matches!(&step, Step::Done(Value::Int(4))),
+            "expected Done(4), got {step:?}"
+        );
+
+        // Critical: game_time must be 1, not 2.
+        assert_eq!(
+            exec.state().read_game_time(),
+            1,
+            "game_time should be 1 — mutation must not double-fire"
+        );
+    }
+
+    #[test]
+    fn async_let_binding_with_fn_call_no_double_fire() {
+        // Let binding with a function call that mutates then yields.
+        use crate::value::{DiceExpr, RollResult};
+
+        let (core, _) = make_core(
+            r#"
+            system Test {
+                entity Creature { HP: int }
+                function tick_and_roll() -> int {
+                    advance_time(1)
+                    roll(1d6).total
+                }
+                function caller() -> int {
+                    let x = tick_and_roll()
+                    x + 10
+                }
+            }
+            "#,
+        );
+
+        let game = GameState::new();
+        let adapter = StateAdapter::new(game);
+
+        let mut exec = Execution::start_function(
+            core, adapter, "caller", vec![],
+        )
+        .unwrap();
+
+        let step = exec.poll().unwrap();
+        assert!(
+            matches!(&step, Step::Yielded(e) if matches!(&**e, Effect::RollDice { .. })),
+            "expected RollDice yield, got {step:?}"
+        );
+
+        exec.respond(Response::Rolled(RollResult {
+            expr: DiceExpr::single(1, 6, None, 0),
+            dice: vec![4],
+            kept: vec![4],
+            modifier: 0,
+            total: 4,
+            unmodified: 4,
+        }))
+        .unwrap();
+
+        let step = exec.poll().unwrap();
+        assert!(
+            matches!(&step, Step::Done(Value::Int(14))),
+            "expected Done(14) (4 + 10), got {step:?}"
+        );
+
+        assert_eq!(exec.state().read_game_time(), 1);
+    }
+
+    #[test]
+    fn async_assign_with_fn_call_rhs_no_double_fire() {
+        // Assign where the RHS is a function call that mutates then yields.
+        use crate::value::{DiceExpr, RollResult};
+
+        let (core, _) = make_core(
+            r#"
+            system Test {
+                entity Creature { HP: int }
+                function tick_and_roll() -> int {
+                    advance_time(1)
+                    roll(1d6).total
+                }
+                function caller(target: Creature) {
+                    target.HP -= tick_and_roll()
+                }
+            }
+            "#,
+        );
+
+        let mut game = GameState::new();
+        let target = add_creature(&mut game, 20);
+        let adapter = StateAdapter::new(game);
+
+        let mut exec = Execution::start_function(
+            core,
+            adapter,
+            "caller",
+            vec![Value::Entity(target)],
+        )
+        .unwrap();
+
+        let step = exec.poll().unwrap();
+        assert!(
+            matches!(&step, Step::Yielded(e) if matches!(&**e, Effect::RollDice { .. })),
+            "expected RollDice yield, got {step:?}"
+        );
+
+        exec.respond(Response::Rolled(RollResult {
+            expr: DiceExpr::single(1, 6, None, 0),
+            dice: vec![4],
+            kept: vec![4],
+            modifier: 0,
+            total: 4,
+            unmodified: 4,
+        }))
+        .unwrap();
+
+        let step = exec.poll().unwrap();
+        assert!(
+            matches!(&step, Step::Done(Value::Void)),
+            "expected Done(Void), got {step:?}"
+        );
+
+        // HP should be 20 - 4 = 16
+        exec.state().with_state_mut(|gs| {
+            assert_eq!(
+                gs.read_field(&target, "HP").unwrap(),
+                Value::Int(16),
+                "HP should be 20 - 4 = 16"
+            );
+        });
+
+        // game_time must be 1, not 2
+        assert_eq!(exec.state().read_game_time(), 1);
+    }
+
+    // Note: Return statement with function call RHS is also covered
+    // by the AwaitingFn::Return variant, but testing it requires
+    // explicit `return` syntax which has checker constraints. The
+    // pattern is the same as ExprStmt — the last expression in the
+    // function body IS the return value.
 }

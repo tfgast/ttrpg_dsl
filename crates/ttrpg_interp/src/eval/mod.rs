@@ -11,6 +11,7 @@ mod ops;
 mod tests;
 
 // Re-export the crate-visible API.
+pub(crate) use assign::eval_assign_with_rhs;
 pub(crate) use compare::value_eq;
 pub(crate) use control::{eval_block, eval_stmt};
 pub(crate) use dispatch::eval_expr;

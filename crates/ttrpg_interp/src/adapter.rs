@@ -1,4 +1,4 @@
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 use std::collections::HashSet;
 
 use ttrpg_ast::Name;
@@ -40,6 +40,12 @@ pub struct StateAdapter<S: WritableState> {
     /// type compatibility checks. Maps condition name → receiver Ty.
     /// Empty means skip bearer type checking.
     condition_receiver_types: FxHashMap<Name, Ty>,
+    /// Tracks whether a local mutation was applied during the current
+    /// bridge_eval_with call. Used by the Block frame's async path
+    /// to detect when CachingHandler replay would be unsound (because
+    /// mutations already applied would be re-applied on replay).
+    /// Reset before each bridge call, checked after.
+    local_mutation_applied: Cell<bool>,
 }
 
 impl<S: WritableState> StateAdapter<S> {
@@ -49,6 +55,7 @@ impl<S: WritableState> StateAdapter<S> {
             state: RefCell::new(state),
             pass_through: HashSet::new(),
             condition_receiver_types: FxHashMap::default(),
+            local_mutation_applied: Cell::new(false),
         }
     }
 
@@ -93,6 +100,17 @@ impl<S: WritableState> StateAdapter<S> {
     /// Consume the adapter and return the inner state.
     pub fn into_inner(self) -> S {
         self.state.into_inner()
+    }
+
+    /// Reset the local-mutation-applied flag. Call before a bridge_eval_with
+    /// run to start tracking fresh.
+    pub fn reset_mutation_flag(&self) {
+        self.local_mutation_applied.set(false);
+    }
+
+    /// Check whether any local mutation was applied since the last reset.
+    pub fn local_mutation_applied(&self) -> bool {
+        self.local_mutation_applied.get()
     }
 }
 
@@ -214,10 +232,12 @@ impl<S: WritableState, H: EffectHandler + ?Sized> EffectHandler for AdaptedHandl
                 if let Response::EntitySpawned(_) = &response {
                     // Host handled spawning; sync locally too
                     apply_spawn(&mut *self.adapter.state.borrow_mut(), &effect);
+                    self.adapter.local_mutation_applied.set(true);
                 }
                 return response;
             }
             let entity_ref = apply_spawn(&mut *self.adapter.state.borrow_mut(), &effect);
+            self.adapter.local_mutation_applied.set(true);
             return Response::EntitySpawned(entity_ref);
         }
 
@@ -232,6 +252,7 @@ impl<S: WritableState, H: EffectHandler + ?Sized> EffectHandler for AdaptedHandl
                             &effect,
                             &self.adapter.condition_receiver_types,
                         );
+                        self.adapter.local_mutation_applied.set(true);
                     }
                     Response::Override(override_val) => {
                         apply_mutation_with_override(
@@ -239,6 +260,7 @@ impl<S: WritableState, H: EffectHandler + ?Sized> EffectHandler for AdaptedHandl
                             &effect,
                             override_val,
                         );
+                        self.adapter.local_mutation_applied.set(true);
                     }
                     Response::Vetoed => {
                         // No local mutation
@@ -257,6 +279,7 @@ impl<S: WritableState, H: EffectHandler + ?Sized> EffectHandler for AdaptedHandl
                     &effect,
                     &self.adapter.condition_receiver_types,
                 );
+                self.adapter.local_mutation_applied.set(true);
                 Response::Acknowledged
             }
         } else {
@@ -285,6 +308,7 @@ impl<S: WritableState, H: EffectHandler + ?Sized> AdaptedHandler<'_, S, H> {
             Response::Acknowledged => {
                 // Decrement the original budget field by 1
                 deduct_budget_field(&mut *self.adapter.state.borrow_mut(), &actor, &budget_field);
+                self.adapter.local_mutation_applied.set(true);
             }
             Response::Override(Value::Str(replacement)) => {
                 // Legacy aliases map to TurnBudget field names; custom tokens are
@@ -295,6 +319,7 @@ impl<S: WritableState, H: EffectHandler + ?Sized> AdaptedHandler<'_, S, H> {
                     &actor,
                     replacement_field,
                 );
+                self.adapter.local_mutation_applied.set(true);
             }
             Response::Vetoed => {
                 // Cost waived — no mutation

@@ -32,6 +32,19 @@ pub(super) fn eval_assign(
     span: ttrpg_ast::Span,
 ) -> Result<(), RuntimeError> {
     let rhs = eval_expr(env, value)?;
+    eval_assign_with_rhs(env, target, op, rhs, span)
+}
+
+/// Like `eval_assign` but with a pre-evaluated RHS value.
+/// Used by the step-based execution path when the RHS was evaluated
+/// via a child frame (e.g., FunctionEval).
+pub(crate) fn eval_assign_with_rhs(
+    env: &mut Env,
+    target: &LValue,
+    op: AssignOp,
+    rhs: Value,
+    span: ttrpg_ast::Span,
+) -> Result<(), RuntimeError> {
 
     // ── Turn budget mutation path ───────────────────────────
     if target.root == "turn" {
