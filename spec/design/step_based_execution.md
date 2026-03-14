@@ -71,11 +71,12 @@ The principal recursive chains that cross effect boundaries:
 
 ```
 execute_action (action.rs:199)
-  └─ bind_args / fill_defaults (args.rs:70)     ← eval_expr per default, may EFFECT
+  └─ bind_args (positional only)                  ← no defaults yet
+  └─ alloc_invocation_id()                        ← pre-allocate before gate (infallible pairing)
   └─ emit ActionStarted                          ← EFFECT
-  └─ [if vetoed: emit ActionCompleted(Vetoed, invocation: None) ← EFFECT]
+  └─ [if vetoed: emit ActionCompleted(Vetoed, invocation: None) ← EFFECT, return]
   └─ scoped_execute (action.rs:79)
-       └─ alloc_invocation_id()                   ← only after gate passes
+       └─ fill_defaults (args.rs:70)              ← eval_expr per default, may EFFECT
        └─ execute_pipeline (action.rs:120)
             ├─ eval_expr (requires clause)        ← may EFFECT (effectful builtins)
             ├─ emit RequiresCheck                 ← EFFECT
@@ -115,8 +116,8 @@ spawn_entity (eval/dispatch.rs:433)
   └─ emit GrantGroup (×N)                         ← EFFECT
 
 apply_condition (builtins.rs:600)
-  └─ eval_expr per state field default            ← may EFFECT
-  └─ emit ConditionApplyGate                      ← EFFECT
+  └─ emit ConditionApplyGate                      ← EFFECT (gate first, host can veto)
+  └─ eval_expr per state field default            ← may EFFECT (only if gate passes)
   └─ eval on_apply blocks                         ← RECURSIVE, may EFFECT
   └─ emit ApplyCondition                          ← EFFECT
 
@@ -152,8 +153,8 @@ Every public `Interpreter` method that can trigger effects, with v1 step-based c
 | `execute_action` | Yes | Full action lifecycle, builtins | Yes (Phase 3) |
 | `execute_reaction` | Yes | Same as action (different gate kind) | Yes (Phase 3) |
 | `execute_hook` | Yes | Same as action (hooks are mini-actions) | Yes (Phase 3) |
-| `fire_hooks` | Yes | Hook dispatch loop | Yes (Phase 5) |
-| `fire_condition_handlers` | Yes | Condition handler dispatch | Yes (Phase 5) |
+| `fire_hooks` | Yes | Hook dispatch loop | Deferred — returns `Vec<(Name, EntityRef, Value)>`, not `Value` |
+| `fire_condition_handlers` | Yes | Condition handler dispatch | Deferred — returns `usize`, not `Value` |
 | `evaluate_derive` | Yes | Modify pipeline (hooks), RollDice | Yes (Phase 4) |
 | `evaluate_mechanic` | Yes | Modify pipeline, RollDice | Yes (Phase 4) |
 | `evaluate_function` | Yes | Builtins (roll, prompt, apply_condition, etc.) | Yes (Phase 4) |
@@ -173,7 +174,7 @@ Every public `Interpreter` method that can trigger effects, with v1 step-based c
 
 - **`GameState`** (`reference_state.rs`): Reference implementation of `WritableState`. Can serve as the owned state inside an `Execution`.
 
-- **`TrackedInterpreter`** (`reference_state.rs:650-687`): RAII wrapper that syncs ID counters back to `GameState` on drop. The `Execution` type replaces this pattern by owning the counters directly.
+- **`TrackedInterpreter`** (`reference_state.rs:650-687`): RAII wrapper that syncs ID counters back to `GameState` on drop. The `Execution` type replaces this pattern by owning the counters in `RuntimeCore` (see [ID counter lifecycle](#id-counter-lifecycle) below).
 
 ## Design
 
@@ -211,13 +212,20 @@ enum Frame {
     // ── Action lifecycle ────────────────────────────────────
 
     /// Action has emitted ActionStarted, waiting for gate response.
-    /// On Acknowledged: push ActionBody (which allocates invocation ID).
+    /// Invocation ID is pre-allocated before ActionStarted is emitted,
+    /// so allocation failure cannot break the ActionStarted/ActionCompleted
+    /// pairing guarantee. Note: pre-allocation consumes the ID regardless
+    /// of outcome — a vetoed action still advances the counter. This is a
+    /// deliberate change from the current recursive path (where allocation
+    /// happens after the gate) to eliminate the pairing gap.
+    /// On Acknowledged: push FillDefaults (if needed), then ActionBody.
     /// On Vetoed: emit ActionCompleted(Vetoed, invocation: None), pop.
     ActionGate {
         name: Name,
         actor: EntityRef,
         call_span: Span,
         has_return_type: bool,
+        inv_id: InvocationId,  // pre-allocated before ActionStarted
         // Pipeline data needed after gate passes
         requires: Option<Spanned<ExprKind>>,
         cost: Option<CostClause>,
@@ -227,8 +235,9 @@ enum Frame {
         saved_invocation: Option<InvocationId>,
     },
 
-    /// Gate passed. Allocates invocation ID, sets up scoped context,
-    /// then drives the pipeline (requires → cost → body).
+    /// Gate passed. Invocation ID already allocated in ActionGate.
+    /// Sets up scoped context, then drives the pipeline
+    /// (defaults → requires → cost → body).
     ActionBody {
         name: Name,
         actor: EntityRef,
@@ -330,6 +339,21 @@ enum Frame {
 
     // ── Emit / hook dispatch ────────────────────────────────
 
+    /// Evaluating an emit statement's argument expressions and field
+    /// defaults before constructing the payload. eval_emit (emit.rs)
+    /// evaluates positional args, fills param defaults (which may
+    /// contain effectful builtins like roll()), then evaluates field
+    /// defaults — all before the payload Value exists. This frame
+    /// drives that evaluation, then pushes EmitHooks with the
+    /// constructed payload.
+    EmitEval {
+        event_name: Name,
+        params: Vec<ParamInfo>,
+        resolved_args: Vec<(Name, Value)>,
+        arg_index: usize,
+        phase: EmitEvalPhase,  // Args | ParamDefaults | FieldDefaults | Ready
+    },
+
     /// Dispatching hooks for an emitted event. Iterates hook list.
     /// Each hook pushes an ActionGate frame (hooks are mini-actions).
     EmitHooks {
@@ -360,6 +384,8 @@ enum Frame {
     // ── Condition lifecycle ─────────────────────────────────
 
     /// apply_condition: gate emitted, waiting for response.
+    /// On Acknowledged: evaluate state field defaults, then push ConditionOnApply.
+    /// On Vetoed: return Option(None), no state defaults evaluated.
     ConditionApplyGate {
         target: EntityRef,
         condition_name: Name,
@@ -370,8 +396,8 @@ enum Frame {
         token: ConditionToken,
     },
 
-    /// apply_condition: on_apply lifecycle blocks executing.
-    /// After completion, emits ApplyCondition effect.
+    /// apply_condition: state field defaults evaluated, on_apply lifecycle
+    /// blocks executing. After completion, emits ApplyCondition effect.
     ConditionOnApply {
         target: EntityRef,
         condition_name: Name,
@@ -446,9 +472,27 @@ enum Frame {
     ScopeGuard,
 
     /// Budget scope. Restores budget on pop.
+    /// Note: BudgetGuard cleanup (ProvisionBudget/ClearBudget to restore
+    /// saved budget) is locally-applied and must not suspend. If budget
+    /// mutations are promoted to pass-through, cleanup-time budget
+    /// mutations must be excluded — otherwise unwind yields would
+    /// interleave with error propagation in undefined ways. v1 forbids
+    /// pass-through for cleanup-time budget mutations.
     BudgetGuard {
         actor: EntityRef,
         saved_budget: Option<BTreeMap<Name, Value>>,
+    },
+
+    /// Multi-entity budget scope (with_budgets, eval/control.rs:436).
+    /// Iterates (actor, budget) pairs, emitting ProvisionBudget for each
+    /// before executing the body, then emitting ClearBudget/ProvisionBudget
+    /// to restore each entity's budget after. Budget field expressions
+    /// (eval_expr per field) can yield.
+    MultiBudgetGuard {
+        entries: Vec<(EntityRef, BTreeMap<Name, Value>)>,
+        saved_budgets: Vec<(EntityRef, Option<BTreeMap<Name, Value>>)>,
+        provision_index: usize,
+        phase: MultiBudgetPhase,  // Provisioning | Body | Restoring { index }
     },
 
     /// Cost payer override. Restores on pop.
@@ -479,6 +523,16 @@ Multiple `Execution` instances can share a single `Rc<RuntimeCore>` (sequential,
 
 ID counters use `Cell` since `RuntimeCore` is single-threaded. The const cache uses `RefCell` since const evaluation is rare after warmup. If concurrent executions become a goal later, these can be promoted to `AtomicU64` and `RwLock` respectively, and `Rc` to `Arc`.
 
+#### ID counter lifecycle
+
+Today `GameState` owns `next_invocation_id` and `next_condition_id` as persistent fields, and `TrackedInterpreter` seeds the `Interpreter` from these on construction and writes them back on drop. The step-based design moves the counters into `RuntimeCore`, which means they must be explicitly seeded and persisted:
+
+1. **Seeding:** When constructing a `RuntimeCore`, the caller passes the current counter values from the state (e.g., `state.next_invocation_id()`, `state.next_condition_id()`). A convenience constructor `RuntimeCore::from_state(program, type_env, &S)` handles this for `S: WritableState`.
+
+2. **Persistence:** When an `Execution<S>` completes (reaches `ProtocolState::Completed` via `Done` or `Error`), the final counter values are written back to the owned state via `state.set_next_invocation_id()` / `state.set_next_condition_id()`. This happens in `poll()` at the completion transition, not in `Drop` — drop-based persistence is fragile if the `Execution` is forgotten or leaked.
+
+3. **Multi-execution sharing:** When multiple sequential `Execution` instances share an `Rc<RuntimeCore>`, the counters are already correct in `RuntimeCore` between executions. The `WritableState` only needs to be updated when the state is extracted from the last execution (e.g., for serialization or handoff to another system).
+
 ### Execution struct
 
 ```rust
@@ -505,6 +559,9 @@ pub struct Execution<S: WritableState> {
 
     // ── Protocol state ──
     protocol: ProtocolState,
+    /// Saved protocol state before a Yield. Restored by respond()
+    /// so that Unwinding mode survives across yield/respond cycles.
+    pending_before_yield: Option<ProtocolState>,
 }
 
 /// Tracks the poll/respond protocol to prevent misuse.
@@ -513,6 +570,10 @@ enum ProtocolState {
     Idle,
     /// poll() yielded an effect. Host must call respond().
     Pending,
+    /// Unwinding after an error. Cleanup frames may still yield
+    /// effects (e.g., ActionCompleted). The stashed error is
+    /// returned after all cleanup frames complete.
+    Unwinding(RuntimeError),
     /// Execution has completed (Done or Error). No further calls.
     Completed,
 }
@@ -567,13 +628,19 @@ impl<S: WritableState> Execution<S> {
         match self.protocol {
             ProtocolState::Pending => return Err(ProtocolError::EffectPending.into()),
             ProtocolState::Completed => return Err(ProtocolError::ExecutionCompleted.into()),
-            ProtocolState::Idle => {}
+            ProtocolState::Idle | ProtocolState::Unwinding(_) => {}
         }
 
         loop {
             let frame = match self.frames.last_mut() {
                 Some(f) => f,
                 None => {
+                    // If we were unwinding, return the stashed error.
+                    if let ProtocolState::Unwinding(e) =
+                        std::mem::replace(&mut self.protocol, ProtocolState::Completed)
+                    {
+                        return Err(e);
+                    }
                     self.protocol = ProtocolState::Completed;
                     let result = self.final_result
                         .take()
@@ -587,6 +654,7 @@ impl<S: WritableState> Execution<S> {
 
             match frame.advance(&mut self.exec_state) {
                 Advance::Yield(effect) => {
+                    self.pending_before_yield = self.protocol.clone();
                     self.protocol = ProtocolState::Pending;
                     return Ok(Step::Yielded(Box::new(effect)));
                 }
@@ -603,10 +671,14 @@ impl<S: WritableState> Execution<S> {
                 }
                 Advance::Continue => {}
                 Advance::Error(e) => {
-                    self.protocol = ProtocolState::Completed;
-                    // Unwind: pop all frames, run cleanup
-                    self.unwind(e.clone());
-                    return Err(e);
+                    // Enter unwinding mode: cleanup frames may still
+                    // yield effects (e.g., ActionCompleted on error path).
+                    self.protocol = ProtocolState::Unwinding(e);
+                    self.begin_unwind();
+                    // Continue the loop — unwind frames will either
+                    // Yield (suspending for host) or Pop (cleanup done).
+                    // When all frames are popped, the empty-stack branch
+                    // above returns Err(stashed_error).
                 }
             }
         }
@@ -614,11 +686,17 @@ impl<S: WritableState> Execution<S> {
 
     pub fn respond(&mut self, response: Response) -> Result<(), ProtocolError> {
         match self.protocol {
-            ProtocolState::Idle => return Err(ProtocolError::NoPendingEffect),
+            ProtocolState::Idle | ProtocolState::Unwinding(_) => {
+                return Err(ProtocolError::NoPendingEffect)
+            }
             ProtocolState::Completed => return Err(ProtocolError::ExecutionCompleted),
             ProtocolState::Pending => {}
         }
-        self.protocol = ProtocolState::Idle;
+        // Restore the pre-yield state: Idle for normal flow,
+        // Unwinding(e) if we yielded during error cleanup.
+        self.protocol = self.pending_before_yield
+            .take()
+            .unwrap_or(ProtocolState::Idle);
         // Deliver response to the top frame
         if let Some(frame) = self.frames.last_mut() {
             frame.receive_response(response);
@@ -641,6 +719,7 @@ fn execute_action(env, name, actor, args) {
         return abort_value
     }
     scoped_execute(env, || {     // ← allocates invocation ID here
+        fill_defaults(env, args) // ← defaults evaluated after gate
         execute_pipeline(env, requires, cost, resolve)
     })                           // always emits ActionCompleted
 }
@@ -648,7 +727,7 @@ fn execute_action(env, name, actor, args) {
 
 As frames:
 ```
-Initial:  push ActionGate { ... }
+Initial:  alloc invocation ID, push ActionGate { inv_id, ... }
           → advance(): emit ActionStarted → Yield
 
           Case 1: host responds Vetoed
@@ -656,7 +735,10 @@ Initial:  push ActionGate { ... }
           → Pop(abort_value)
 
           Case 2: host responds Acknowledged
-          → receive_response(): alloc invocation ID, push ActionBody { inv_id }
+          → receive_response(): push FillDefaults (if any defaults needed)
+          FillDefaults.advance(): eval default exprs (may Yield for effectful defaults)
+          → Pop(resolved_args)
+          ActionGate.receive_child_result(): push ActionBody { inv_id }
           ActionBody.advance(): eval requires expr (sync), emit RequiresCheck → Yield
           → host responds Acknowledged
           → advance(): deduct costs → push ActionCost
@@ -728,13 +810,13 @@ For example, `roll()` pushes a `RollDiceWaiting` frame which yields `RollDice` a
 
 Several code paths evaluate expressions that can yield *before* the main body executes:
 
-- **Default arguments** (`call/args.rs`): `fill_defaults()` calls `eval_expr()` for each parameter with a default expression. A default like `damage = roll(2d6)` will yield `RollDice`. The `FillDefaults` frame iterates parameters, yielding when a default triggers an effectful builtin. Scope management follows the existing pattern: a temporary scope is pushed so later defaults can reference earlier ones.
+- **Default arguments** (`call/args.rs`): `fill_defaults()` calls `eval_expr()` for each parameter with a default expression. A default like `damage = roll(2d6)` will yield `RollDice`. The `FillDefaults` frame iterates parameters, yielding when a default triggers an effectful builtin. Scope management follows the existing pattern: a temporary scope is pushed so later defaults can reference earlier ones. **Note:** For actions, defaults are evaluated *after* `ActionStarted` is acknowledged and the veto check passes — not before. This is locked by the `action_default_not_evaluated_on_veto` regression test (`action_default_ordering.rs:78`). The `ActionGate` frame pushes `FillDefaults` in its post-response phase (on Acknowledged), before pushing `ActionBody`.
 
 - **Prompt suggest expressions** (`call/functions.rs`): The `suggest` body is evaluated with `eval_expr()` before `ResolvePrompt` is emitted. If the suggest expression triggers builtins (e.g., computing a suggestion via `roll()`), it yields via the standard expression frame mechanism.
 
 - **Entity/group field defaults** (`eval/dispatch.rs`, `eval/control.rs`): During `spawn` and `grant`, missing fields are filled from defaults via `eval_expr()`. The `SpawnEntity` frame handles this in its `Defaults` phase before emitting `SpawnEntity` / `GrantGroup` effects.
 
-- **Condition state field defaults** (`builtins.rs`): During `apply_condition`, state field defaults are evaluated with `eval_expr()` before the `ConditionApplyGate` is emitted. The `ConditionApplyGate` frame's setup phase handles this.
+- **Condition state field defaults** (`builtins.rs`): During `apply_condition`, the `ConditionApplyGate` is emitted first. State field defaults are evaluated with `eval_expr()` only after the gate passes (host responds `Acknowledged`). If the host vetoes, no defaults are evaluated. The `ConditionApplyGate` frame evaluates defaults in its post-response phase, then pushes `ConditionOnApply`.
 
 - **Budget field expressions** (`eval/control.rs`): `with_budget` evaluates budget field expressions via `eval_expr()` before emitting `ProvisionBudget`. Handled by a setup phase in the budget frame.
 
@@ -750,18 +832,23 @@ The `Interpreter` type continues to exist for the callback-based API (no Arc nee
 
 `Execution<S>` owns a `StateAdapter<S>` where `S: WritableState`. Not all effects suspend execution — the adapter handles some effects locally, and only effects that require host input yield from `poll()`.
 
-Effects fall into three categories:
+Effects fall into four categories:
 
 | Category | Behavior | Examples |
 |----------|----------|----------|
-| **Host-decided** | Always yielded. Execution suspends. Host must `respond()`. | `ActionStarted`, `ConditionApplyGate`, `ConditionRemovalGate`, `RequiresCheck`, `RollDice`, `ResolvePrompt` |
-| **Locally-applied** | Applied by `StateAdapter` immediately. Execution continues without suspending. Host does not see these. | `MutateField`, `MutateTurnField`, `GrantGroup`, `RevokeGroup`, `ApplyCondition`, `RemoveCondition`, `SetConditionState`, `ProvisionBudget`, `ClearBudget`, `SpawnEntity`, `RemoveEntity`, `AddSuspension`, `RemoveSuspensionSource`, `RevokeInvocation`, `AdvanceTime`, `TransferConditions`, `DeductCost`, `ModifyApplied` |
+| **Host-decided** | Always yielded. Execution suspends. Host must `respond()`. | `ActionStarted`, `ConditionApplyGate`, `ConditionRemovalGate`, `RequiresCheck`, `RollDice`, `ResolvePrompt`, `DeductCost` |
+| **Informational** | Always yielded. Host must `respond()` with `Acknowledged`. These carry telemetry or lifecycle signals the host needs to observe but cannot alter. | `ActionCompleted`, `ModifyApplied` |
+| **Locally-applied** | Applied by `StateAdapter` immediately. Execution continues without suspending. Host does not see these. | `MutateField`, `MutateTurnField`, `GrantGroup`, `RevokeGroup`, `ApplyCondition`, `RemoveCondition`, `SetConditionState`, `ProvisionBudget`, `ClearBudget`, `SpawnEntity`, `RemoveEntity`, `AddSuspension`, `RemoveSuspensionSource`, `RevokeInvocation`, `AdvanceTime`, `TransferConditions` |
 | **Pass-through** | Configured per effect kind via `StateAdapter::pass_through()`. Promoted from locally-applied to host-decided: yielded, host responds, adapter syncs local state based on response (Acknowledged → apply, Vetoed → skip). | Any mutation kind the host opts into |
 
-This matches the existing `StateAdapter` contract exactly:
-- When an effect kind is **not** in the `pass_through` set, the adapter applies the mutation locally and returns `Response::Acknowledged` without forwarding to any inner handler.
-- When an effect kind **is** in the `pass_through` set, the adapter forwards the effect, and the host's response controls whether the mutation is applied locally (Acknowledged/Override → apply, Vetoed → skip).
-- Non-mutation effects (gates, value effects) are always forwarded.
+This matches the existing `StateAdapter` contract, with two corrections:
+- `DeductCost` is a **decision effect** — it is always passed through to the host, and the adapter applies the mutation based on the host's response (`adapter.rs:34`). Classifying it as locally-applied would remove host control over cost waivers and overrides.
+- `ModifyApplied` is **informational** — it is always forwarded and requires `Acknowledged` (`pipeline.rs:722`). Classifying it as locally-applied would hide modifier telemetry from the host.
+
+The remaining contract is unchanged:
+- When a mutation effect kind is **not** in the `pass_through` set, the adapter applies the mutation locally and returns `Response::Acknowledged` without forwarding to any inner handler.
+- When a mutation effect kind **is** in the `pass_through` set, the adapter forwards the effect, and the host's response controls whether the mutation is applied locally (Acknowledged/Override → apply, Vetoed → skip).
+- Non-mutation effects (gates, value effects, informational effects) are always forwarded.
 
 In the step-based API, "forwarded" becomes "yielded from `poll()`". The host configures which mutations it wants to see and potentially veto by calling `pass_through()` on the adapter at construction time. By default, all mutations are local and non-suspending.
 
@@ -772,10 +859,15 @@ In the step-based API, "forwarded" becomes "yielded from `poll()`". The host con
 When a `RuntimeError` occurs:
 
 1. The error propagates as `Advance::Error` from the frame that detected it.
-2. The driver loop calls `self.unwind(error)`, which pops all frames in reverse order.
-3. Guard frames (`ScopeGuard`, `BudgetGuard`, `CostPayerGuard`) perform cleanup during unwind (pop scope, restore budget, restore cost payer).
-4. `ActionEpilogue` frames emit `ActionCompleted(Failed)` during unwind if they haven't already — preserving the invariant that every `ActionStarted` is paired with an `ActionCompleted`.
-5. The error is returned from `poll()` as `Err(RuntimeError)`.
+2. The driver loop stashes the error and enters **unwinding mode** rather than immediately returning `Err`.
+3. In unwinding mode, the driver pops frames in reverse order. Each frame's `unwind()` method runs:
+   - Guard frames (`ScopeGuard`, `BudgetGuard`, `MultiBudgetGuard`, `CostPayerGuard`) perform cleanup synchronously (pop scope, restore budget, restore cost payer). `BudgetGuard`/`MultiBudgetGuard` emit `ProvisionBudget`/`ClearBudget` through the adapter to restore the budget — these are locally-applied and do not suspend. **v1 constraint:** budget mutation effects must not be promoted to pass-through during cleanup (unwind). If the host has configured pass-through for budget mutations, the adapter must suppress forwarding during unwind-triggered budget restoration to prevent cleanup yields from interleaving with error propagation.
+   - `ActionEpilogue` frames emit `ActionCompleted(Failed)` — this is an informational effect that **yields to the host**. The driver returns `Ok(Step::Yielded(ActionCompleted(...)))` and the host must `respond(Acknowledged)`. The next `poll()` continues the unwind.
+4. After all frames are unwound, the next `poll()` returns `Err(stashed_error)` and transitions to `ProtocolState::Completed`.
+
+This design preserves the current behavior where cleanup effects (ActionCompleted, budget restoration) are visible to the host even on error paths. Without this, an async host would never observe the ActionCompleted that pairs with an ActionStarted when the action body errors.
+
+The `ProtocolState::Unwinding(RuntimeError)` variant (defined above in the `Execution` struct) carries the stashed error through the unwind phase.
 
 #### Deferred error mode
 
@@ -861,7 +953,7 @@ Convert `eval_block` / `eval_stmt` to `Block` and `StmtResume` frames. Synchrono
 Add `DeriveEval`, `FunctionEval`, `RollDiceWaiting`, `PromptWaiting`, and `SpawnEntity` frames for the non-action entry points. Includes prompt suggest/default body evaluation paths and entity/group field default evaluation during spawn and grant.
 
 **Resume sites covered in this phase:**
-- `eval/control.rs`: Grant/Revoke with field defaults, `with_budget` field expression evaluation, budget rollback
+- `eval/control.rs`: Grant/Revoke with field defaults, `with_budget`/`with_budgets` field expression evaluation, multi-entity budget provision/restore loops, budget rollback
 - `eval/dispatch.rs`: Entity field defaults, group field defaults during spawn
 - `call/functions.rs`: Prompt suggest expression, prompt default block on `UseDefault`
 - `builtins.rs`: Condition state field defaults during `apply_condition`
@@ -874,7 +966,7 @@ Add `DeriveEval`, `FunctionEval`, `RollDiceWaiting`, `PromptWaiting`, and `Spawn
 
 Convert `eval_emit` (hook dispatch + condition handler dispatch) and `apply_condition` / `remove_condition` / `revoke` to frames. These are the most state-heavy conversions (emit_depth tracking, lifecycle block counters, condition token pre-allocation, per-instance removal loops with deferred error propagation).
 
-**Entry points covered:** `fire_hooks`, `fire_condition_handlers`.
+**Note:** The internal frame conversion for emit dispatch and condition lifecycle is needed by Phase 3-4 entry points (actions that contain `emit` statements or call `apply_condition`/`remove_condition`). The *public* `fire_hooks` and `fire_condition_handlers` entry points are deferred because their return types (`Vec<(Name, EntityRef, Value)>` and `usize`) do not fit the `Step::Done(Value)` completion type.
 
 **Parity bar:** Condition removal with `on_remove` errors still completes all instances. Nested emit dispatch preserves ordering. All differential test scenarios pass.
 
@@ -892,16 +984,17 @@ Before implementation begins, define differential tests that run each scenario t
 
 | Category | Scenario | Key invariant |
 |----------|----------|---------------|
-| **Action lifecycle** | ActionStarted → Vetoed | ActionCompleted emitted with `invocation: None`, no ID allocated |
+| **Action lifecycle** | ActionStarted → Vetoed | ActionCompleted emitted with `invocation: None`. Pre-allocation consumes the ID (counter advances) but `invocation` field is `None`. |
 | **Action lifecycle** | ActionStarted → invalid Response type | ActionCompleted(Failed) emitted, RuntimeError returned |
 | **Action lifecycle** | Nested action (hook triggers action) | Inner action gets its own invocation ID, outer resumes after |
-| **Defaults** | Action with effectful default (`roll()`) | RollDice yielded before ActionStarted, default value used in body |
+| **Defaults** | Action with effectful default (`roll()`) | ActionStarted yielded first, then RollDice for default, default value used in body |
 | **Defaults** | Prompt with effectful suggest expr | Effectful suggest evaluated before ResolvePrompt yielded |
 | **Defaults** | Entity spawn with field defaults | Defaults evaluated before SpawnEntity, GrantGroup effects |
-| **Requires** | RequiresCheck → Override(false) | Action aborts with abort_value, ActionCompleted(Failed) |
-| **Cost** | Budget insufficient (DeductCost → Vetoed) | Action aborts, budget not mutated |
+| **Requires** | RequiresCheck → Override(false) | Action aborts with abort_value, ActionCompleted(Succeeded) — abort returns `Ok(abort_value)` so `is_ok()` → Succeeded. See note below. |
+| **Cost** | Budget insufficient (RequiresCheck → Acknowledged with passed=false) | Action aborts with abort_value, budget not mutated, no DeductCost emitted |
+| **Cost** | Cost deduction vetoed (DeductCost → Vetoed) | Cost waived, action body still executes, ActionCompleted(Succeeded) |
 | **Condition** | apply_condition → gate Vetoed | No condition applied, no on_apply executed |
-| **Condition** | apply_condition with effectful state field default | State default yields before ConditionApplyGate |
+| **Condition** | apply_condition with effectful state field default | ConditionApplyGate yielded first, state default yields after gate passes |
 | **Condition** | remove_condition with on_remove error | All instances still removed, error propagated after loop |
 | **Condition** | revoke(invocation) with multiple conditions | All tagged conditions removed, first error deferred |
 | **Prompt** | ResolvePrompt → UseDefault | Default block evaluates, result used as prompt value |
@@ -910,9 +1003,19 @@ Before implementation begins, define differential tests that run each scenario t
 | **Emit** | Condition handler modifies state fields | SetConditionState emitted with delta |
 | **Budget** | with_budget scope + error during body | Budget restored to saved state |
 | **Budget** | with_budget with effectful field expr | Budget field expression yields before ProvisionBudget |
+| **Budget** | with_budgets (multi-entity) | ProvisionBudget emitted per entity, restore emitted per entity on exit |
+| **Emit** | Emit with effectful argument default | Argument default (e.g., `roll()`) yields before payload is constructed |
 | **Scope** | Early return from nested block | All scope guards popped, return_value propagated |
 | **Spawn** | spawn in action body | SpawnEntity + GrantGroup(×N) emitted, entity ref returned |
 | **Roll** | roll() in expression | RollDice yielded, Override(RollResult) consumed |
+| **Error path** | RuntimeError during action body | ActionCompleted(Failed) yielded during unwind, budget restored |
+| **Error path** | alloc_invocation_id overflow | With pre-allocation: RuntimeError before ActionStarted, no pairing needed (see note below) |
+
+**Note on abort outcomes:** The current interpreter returns `Ok(abort_value)` when `RequiresCheck` or cost checks fail (`action.rs:170, 184`), so `scoped_execute` derives the outcome from `result.is_ok()` → `ActionOutcome::Succeeded`. This means graceful aborts report Succeeded, not Failed, even though the action did not execute its body. If a future change wants to report these as Failed, it should be tracked as a separate behavior-change issue with its own differential test, not introduced silently as part of the step-based migration.
+
+**Note on `fire_hooks` / `fire_condition_handlers` return types:** These entry points return `Vec<(Name, EntityRef, Value)>` and `usize` respectively, which do not fit `Step::Done(Value)`. This spec defers step-based versions of these entry points to a future phase. The v1 scope (Phases 3-6) covers `execute_action`, `execute_reaction`, `execute_hook`, `evaluate_derive`, `evaluate_mechanic`, `evaluate_function`, and `evaluate_expr` — all of which return `Value`. A future extension can either wrap these results in `Value` encodings or parameterize `Execution` over its result type.
+
+**Note on invocation ID allocation:** `alloc_invocation_id()` can fail (u64 overflow) after `ActionStarted` has been acknowledged but before `ActionEpilogue` exists on the stack. This breaks the ActionStarted/ActionCompleted pairing guarantee in both the current recursive path and the proposed frame-based path. To close this gap, the frame-based design should **pre-allocate** the invocation ID before emitting `ActionStarted`. The `ActionGate` frame receives a pre-allocated `inv_id: InvocationId` at construction time. If allocation fails, no `ActionStarted` is emitted and no pairing is needed. This also fixes the existing gap in the recursive path (where `scoped_execute` calls `alloc_invocation_id()?` after ActionStarted). **Behavioral change:** pre-allocation means a vetoed action now consumes an invocation ID (the counter advances even though `ActionCompleted` reports `invocation: None`). In the current recursive path, allocation happens after the gate, so vetoed actions do not advance the counter. This change is acceptable — invocation IDs are not required to be dense, and the safety of the pairing guarantee outweighs the minor counter gap.
 
 ## Alternatives Considered
 
