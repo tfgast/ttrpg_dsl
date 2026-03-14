@@ -950,8 +950,8 @@ system "test" {
             _ => unreachable!(),
         }
 
-        // Counter should not have been consumed
-        assert_eq!(interp.next_invocation_id(), 1);
+        // Counter is consumed by pre-allocation (advances even on veto)
+        assert_eq!(interp.next_invocation_id(), 2);
     }
 
     #[test]

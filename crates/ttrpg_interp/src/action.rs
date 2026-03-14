@@ -74,12 +74,17 @@ fn emit_action_completed(
 /// Run `body` inside a scoped environment with `turn_actor` and invocation
 /// context set.
 ///
+/// The caller must pre-allocate the `InvocationId` before emitting
+/// `ActionStarted` so that allocation failure cannot break the
+/// ActionStarted/ActionCompleted pairing guarantee.
+///
 /// Guarantees: every call emits exactly one `ActionCompleted` with the
-/// allocated `InvocationId`, regardless of whether the body succeeds or fails.
+/// given `InvocationId`, regardless of whether the body succeeds or fails.
 fn scoped_execute(
     env: &mut Env,
     name: &str,
     actor: EntityRef,
+    inv_id: InvocationId,
     call_span: Span,
     body: impl FnOnce(&mut Env) -> Result<Value, RuntimeError>,
 ) -> Result<Value, RuntimeError> {
@@ -89,7 +94,6 @@ fn scoped_execute(
 
     // Set new context
     env.turn_actor = Some(actor);
-    let inv_id = env.interp.alloc_invocation_id()?;
     env.current_invocation_id = Some(inv_id);
     env.push_scope();
 
@@ -223,6 +227,10 @@ pub(crate) fn execute_action(
         Value::Void
     };
 
+    // Pre-allocate invocation ID so allocation failure cannot break the
+    // ActionStarted/ActionCompleted pairing guarantee.
+    let inv_id = env.interp.alloc_invocation_id()?;
+
     // 1. Emit ActionStarted (veto → early return)
     if let LifecycleStart::Vetoed = emit_action_started(
         env,
@@ -244,7 +252,7 @@ pub(crate) fn execute_action(
     // Defaults are evaluated inside the scoped closure so they run with
     // invocation context set and failures are covered by the always-emit
     // ActionCompleted guarantee.
-    scoped_execute(env, &action_name, actor, call_span, |env| {
+    scoped_execute(env, &action_name, actor, inv_id, call_span, |env| {
         // Bind receiver first so defaults can reference it
         env.bind(action.receiver_name.clone(), Value::Entity(actor));
         for (pname, pval) in &args {
@@ -290,6 +298,9 @@ pub(crate) fn execute_reaction(
     env.record_function_entry(&reaction.name);
     let reaction_name = reaction.name.clone();
 
+    // Pre-allocate invocation ID before ActionStarted.
+    let inv_id = env.interp.alloc_invocation_id()?;
+
     // 1. Emit ActionStarted (veto → early return)
     if let LifecycleStart::Vetoed = emit_action_started(
         env,
@@ -310,7 +321,7 @@ pub(crate) fn execute_reaction(
     }
 
     // 2–4. Scoped execution with lifecycle completion
-    scoped_execute(env, &reaction_name, reactor, call_span, |env| {
+    scoped_execute(env, &reaction_name, reactor, inv_id, call_span, |env| {
         env.bind(reaction.receiver_name.clone(), Value::Entity(reactor));
         env.bind(Name::from("trigger"), event_payload);
         execute_pipeline(
@@ -344,6 +355,9 @@ pub(crate) fn execute_hook(
     env.record_function_entry(&hook.name);
     let hook_name = hook.name.clone();
 
+    // Pre-allocate invocation ID before ActionStarted.
+    let inv_id = env.interp.alloc_invocation_id()?;
+
     // 1. Emit ActionStarted (veto → early return)
     if let LifecycleStart::Vetoed = emit_action_started(
         env,
@@ -364,7 +378,7 @@ pub(crate) fn execute_hook(
     }
 
     // 2–4. Scoped execution with lifecycle completion
-    scoped_execute(env, &hook_name, target, call_span, |env| {
+    scoped_execute(env, &hook_name, target, inv_id, call_span, |env| {
         env.bind(hook.receiver_name.clone(), Value::Entity(target));
         env.bind(Name::from("trigger"), event_payload);
         let resolve = hook.resolve.clone();
