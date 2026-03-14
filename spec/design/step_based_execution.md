@@ -186,7 +186,7 @@ The design has three layers:
 
 2. **Frame stack** — an explicit `Vec<Frame>` replaces implicit Rust call frames. Each `Frame` variant captures the state needed to resume after a yielded effect. A driver loop pops/pushes frames and yields effects to the host.
 
-3. **Execution object** — an owning `Execution<S>` struct that holds the frame stack, all `Env` state, an owned `StateAdapter<S>`, and `Arc<RuntimeCore>`. Exposes `poll() -> Result<Step, RuntimeError>` and `respond(Response) -> Result<(), ProtocolError>`.
+3. **Execution object** — an owning `Execution<S>` struct that holds the frame stack, all `Env` state, an owned `StateAdapter<S>`, and `Arc<RuntimeCore>`. Exposes `poll() -> Result<Step, PollError>` and `respond(Response) -> Result<(), ProtocolError>`. `PollError` distinguishes protocol misuse (`PollError::Protocol`) from DSL evaluation failures (`PollError::Runtime`).
 
 ### Emission seam
 
@@ -292,6 +292,10 @@ enum Frame {
         stmts: Vec<Spanned<StmtKind>>,
         index: usize,
         result: Value,
+        /// Cached results from effectful sub-expressions during
+        /// replay-with-cache evaluation. See "Replay-with-cache
+        /// for multi-yield expressions" above.
+        expr_cache: Vec<Value>,
     },
 
     /// A statement yielded mid-evaluation. Captures the continuation
@@ -299,6 +303,8 @@ enum Frame {
     /// statement.
     StmtResume {
         kind: StmtResumeKind,
+        /// See Block::expr_cache.
+        expr_cache: Vec<Value>,
         // StmtResumeKind variants:
         //   GrantWaiting { entity, group_name, fields, span }
         //   RevokeWaiting { entity, group_name, span }
@@ -527,11 +533,47 @@ ID counters use `Cell` since `RuntimeCore` is single-threaded. The const cache u
 
 Today `GameState` owns `next_invocation_id` and `next_condition_id` as persistent fields, and `TrackedInterpreter` seeds the `Interpreter` from these on construction and writes them back on drop. The step-based design moves the counters into `RuntimeCore`, which means they must be explicitly seeded and persisted:
 
-1. **Seeding:** When constructing a `RuntimeCore`, the caller passes the current counter values from the state (e.g., `state.next_invocation_id()`, `state.next_condition_id()`). A convenience constructor `RuntimeCore::from_state(program, type_env, &S)` handles this for `S: WritableState`.
+1. **Seeding:** The primary constructor takes explicit counter values:
 
-2. **Persistence:** When an `Execution<S>` completes (reaches `ProtocolState::Completed` via `Done` or `Error`), the final counter values are written back to the owned state via `state.set_next_invocation_id()` / `state.set_next_condition_id()`. This happens in `poll()` at the completion transition, not in `Drop` — drop-based persistence is fragile if the `Execution` is forgotten or leaked.
+    ```rust
+    impl RuntimeCore {
+        /// Primary constructor. Caller provides counter start values.
+        pub fn new(
+            program: Arc<Program>,
+            type_env: Arc<TypeEnv>,
+            invocation_start: u64,
+            condition_start: u64,
+        ) -> Self { ... }
 
-3. **Multi-execution sharing:** When multiple sequential `Execution` instances share an `Rc<RuntimeCore>`, the counters are already correct in `RuntimeCore` between executions. The `WritableState` only needs to be updated when the state is extracted from the last execution (e.g., for serialization or handoff to another system).
+        /// Convenience for GameState, which exposes counter getters.
+        pub fn from_game_state(
+            program: Arc<Program>,
+            type_env: Arc<TypeEnv>,
+            state: &GameState,
+        ) -> Self {
+            Self::new(program, type_env,
+                state.next_invocation_id(), state.next_condition_id())
+        }
+    }
+    ```
+
+    Counter getters are **not** added to `WritableState` — they are an implementation detail of `GameState`, not a fundamental state concern. The existing `allocate_condition_id()` on `WritableState` serves a different purpose (pre-allocation for condition tokens). Hosts with custom `WritableState` implementations pass counter values explicitly via `RuntimeCore::new()`.
+
+2. **Persistence:** `Execution<S>` exposes the current counter values via a generic accessor:
+
+    ```rust
+    impl<S: WritableState> Execution<S> {
+        /// Current ID counter values. Call after completion to persist.
+        pub fn counters(&self) -> (u64, u64) {
+            (self.core.next_invocation_id.get(),
+             self.core.next_condition_id.get())
+        }
+    }
+    ```
+
+    The caller writes the values back to their state however they choose (e.g., `game_state.set_next_invocation_id(inv)` for `GameState`). This happens after `poll()` returns `Done` or `Err`, not in `Drop` — drop-based persistence is fragile if the `Execution` is forgotten or leaked.
+
+3. **Multi-execution sharing:** When multiple sequential `Execution` instances share an `Rc<RuntimeCore>`, the counters are already correct in `RuntimeCore` between executions. The state only needs to be updated when the state is extracted from the last execution (e.g., for serialization or handoff to another system).
 
 ### Execution struct
 
@@ -587,9 +629,20 @@ pub enum ProtocolError {
     /// poll() or respond() called after execution completed.
     ExecutionCompleted,
 }
+
+/// Unified error type for poll()/respond(). Separates host bugs
+/// (protocol misuse) from DSL evaluation failures (runtime errors).
+pub enum PollError {
+    /// Host violated the poll/respond protocol (programming error).
+    Protocol(ProtocolError),
+    /// DSL evaluation produced a runtime error (after unwind completed).
+    Runtime(RuntimeError),
+}
 ```
 
 The generic parameter `S: WritableState` allows hosts to supply their own state implementation. `GameState` is the reference implementation, but any `WritableState` works.
+
+Hosts should handle the two `PollError` variants differently: `Protocol` errors indicate a bug in the host's poll/respond sequencing (typically a panic or assertion), while `Runtime` errors are expected DSL evaluation failures to report to the user.
 
 ### Dual API boundary
 
@@ -624,10 +677,10 @@ enum Advance {
 }
 
 impl<S: WritableState> Execution<S> {
-    pub fn poll(&mut self) -> Result<Step, RuntimeError> {
+    pub fn poll(&mut self) -> Result<Step, PollError> {
         match self.protocol {
-            ProtocolState::Pending => return Err(ProtocolError::EffectPending.into()),
-            ProtocolState::Completed => return Err(ProtocolError::ExecutionCompleted.into()),
+            ProtocolState::Pending => return Err(PollError::Protocol(ProtocolError::EffectPending)),
+            ProtocolState::Completed => return Err(PollError::Protocol(ProtocolError::ExecutionCompleted)),
             ProtocolState::Idle | ProtocolState::Unwinding(_) => {}
         }
 
@@ -639,7 +692,7 @@ impl<S: WritableState> Execution<S> {
                     if let ProtocolState::Unwinding(e) =
                         std::mem::replace(&mut self.protocol, ProtocolState::Completed)
                     {
-                        return Err(e);
+                        return Err(PollError::Runtime(e));
                     }
                     self.protocol = ProtocolState::Completed;
                     let result = self.final_result
@@ -647,7 +700,7 @@ impl<S: WritableState> Execution<S> {
                         .unwrap_or(Ok(Value::Void));
                     return match result {
                         Ok(v) => Ok(Step::Done(v)),
-                        Err(e) => Err(e),
+                        Err(e) => Err(PollError::Runtime(e)),
                     };
                 }
             };
@@ -806,6 +859,40 @@ When `eval_expr` encounters an effectful builtin, the builtin pushes its own fra
 
 For example, `roll()` pushes a `RollDiceWaiting` frame which yields `RollDice` and expects `Override(Value::RollResult(...))` back. `prompt()` pushes a `PromptWaiting` frame which yields `ResolvePrompt`; if the host responds `UseDefault`, the frame pushes a `Block` frame for the default expression rather than directly returning.
 
+#### Replay-with-cache for multi-yield expressions
+
+An expression can contain multiple effectful sub-expressions (e.g., `roll(2d6) + roll(1d8)`). Since expression evaluation is synchronous within a frame's `advance()`, the frame cannot yield in the middle of `eval_expr` and resume at the same point in the expression tree.
+
+The solution is a **replay-with-cache** mechanism. Each frame that evaluates expressions keeps an `expr_cache: Vec<Value>` of pre-computed effectful results:
+
+1. The frame calls `eval_expr_resumable(expr, &mut expr_cache)`, which walks the expression tree left-to-right.
+2. For each effectful builtin encountered, it first checks the cache — if a cached value exists at the current index, it consumes the value and continues synchronous evaluation.
+3. If no cached value exists, the builtin constructs its child frame and returns `ExprSuspended(child_frame)`. The calling frame returns `Advance::Push(child_frame)`.
+4. When the child frame pops, `receive_child_result(value)` appends the value to `expr_cache`.
+5. The frame re-enters `eval_expr_resumable` with the same cache. Previously-evaluated builtins hit the cache; evaluation continues until the next uncached builtin or full completion.
+6. On full completion, `expr_cache` is cleared for the next statement.
+
+This is lightweight — expressions rarely contain more than one effectful call — and avoids CPS transformation of the evaluator. The `Block` and `StmtResume` frame variants carry `expr_cache: Vec<Value>` for this purpose.
+
+```
+Example: roll(2d6) + roll(1d8)
+
+  advance() → eval_expr_resumable(expr, cache=[])
+    → encounters roll(2d6), cache empty → ExprSuspended(RollDiceWaiting)
+  → Advance::Push(RollDiceWaiting)
+  ... host provides RollResult(7) ...
+  receive_child_result(7) → cache=[7]
+  advance() → eval_expr_resumable(expr, cache=[7])
+    → encounters roll(2d6), cache[0]=7 → continue with 7
+    → encounters roll(1d8), cache empty at index 1 → ExprSuspended(RollDiceWaiting)
+  → Advance::Push(RollDiceWaiting)
+  ... host provides RollResult(3) ...
+  receive_child_result(3) → cache=[7, 3]
+  advance() → eval_expr_resumable(expr, cache=[7, 3])
+    → roll(2d6) → 7, roll(1d8) → 3, result = 10
+  → expression complete, clear cache
+```
+
 #### Effectful setup and default evaluation
 
 Several code paths evaluate expressions that can yield *before* the main body executes:
@@ -862,8 +949,10 @@ When a `RuntimeError` occurs:
 2. The driver loop stashes the error and enters **unwinding mode** rather than immediately returning `Err`.
 3. In unwinding mode, the driver pops frames in reverse order. Each frame's `unwind()` method runs:
    - Guard frames (`ScopeGuard`, `BudgetGuard`, `MultiBudgetGuard`, `CostPayerGuard`) perform cleanup synchronously (pop scope, restore budget, restore cost payer). `BudgetGuard`/`MultiBudgetGuard` emit `ProvisionBudget`/`ClearBudget` through the adapter to restore the budget — these are locally-applied and do not suspend. **v1 constraint:** budget mutation effects must not be promoted to pass-through during cleanup (unwind). If the host has configured pass-through for budget mutations, the adapter must suppress forwarding during unwind-triggered budget restoration to prevent cleanup yields from interleaving with error propagation.
+
+     **Behavior change from recursive API:** In the recursive interpreter (`eval/control.rs:552-578`), cleanup budget mutations are emitted through the handler and can be vetoed, which produces an error during error cleanup — a problematic pattern since the cleanup error masks or competes with the original error. The step-based API intentionally makes cleanup budget mutations locally-applied during unwind, ensuring cleanup cannot fail. Hosts that need visibility into budget restoration during error paths can observe the `ProvisionBudget`/`ClearBudget` effects through the event log (if enabled) but cannot veto them. This eliminates the "error during error cleanup" failure mode.
    - `ActionEpilogue` frames emit `ActionCompleted(Failed)` — this is an informational effect that **yields to the host**. The driver returns `Ok(Step::Yielded(ActionCompleted(...)))` and the host must `respond(Acknowledged)`. The next `poll()` continues the unwind.
-4. After all frames are unwound, the next `poll()` returns `Err(stashed_error)` and transitions to `ProtocolState::Completed`.
+4. After all frames are unwound, the next `poll()` returns `Err(PollError::Runtime(stashed_error))` and transitions to `ProtocolState::Completed`.
 
 This design preserves the current behavior where cleanup effects (ActionCompleted, budget restoration) are visible to the host even on error paths. Without this, an async host would never observe the ActionCompleted that pairs with an ActionStarted when the action body errors.
 
@@ -899,13 +988,17 @@ impl<S: WritableState> Execution<S> {
         handler: &mut dyn EffectHandler,
     ) -> Result<Value, RuntimeError> {
         loop {
-            match self.poll()? {
-                Step::Yielded(effect) => {
+            match self.poll() {
+                Ok(Step::Yielded(effect)) => {
                     let response = handler.handle(*effect);
                     self.respond(response)
                         .expect("protocol error in run_with_handler");
                 }
-                Step::Done(value) => return Ok(value),
+                Ok(Step::Done(value)) => return Ok(value),
+                Err(PollError::Runtime(e)) => return Err(e),
+                Err(PollError::Protocol(e)) => {
+                    panic!("protocol error in run_with_handler: {:?}", e)
+                }
             }
         }
     }
@@ -960,7 +1053,9 @@ Add `DeriveEval`, `FunctionEval`, `RollDiceWaiting`, `PromptWaiting`, and `Spawn
 
 **Entry points covered:** `evaluate_derive`, `evaluate_mechanic`, `evaluate_function`, `evaluate_expr`, `evaluate_expr_with_bindings`.
 
-**Parity bar:** All entry points produce identical effect sequences. Prompt `UseDefault` correctly pushes a block frame for the default expression. Default arguments with effectful builtins yield correctly.
+**Phase 5 dependency:** `evaluate_derive` and `evaluate_mechanic` can trigger `emit_modify_applied_events()` (`pipeline.rs:1128`), which dispatches hooks via `emit_depth`-tracked recursion. Hook dispatch requires the Phase 5 emit dispatch frames. Phase 4 parity testing covers these entry points **only for scenarios where no `modify_applied` hooks are registered** (the fast-path at `pipeline.rs:1134` short-circuits). Full parity including hook-triggering derives is validated after Phase 5.
+
+**Parity bar:** All entry points produce identical effect sequences for scenarios without `modify_applied` hook dispatch. Prompt `UseDefault` correctly pushes a block frame for the default expression. Default arguments with effectful builtins yield correctly. Derive/mechanic entry points validated with and without `modify_applied` hooks separately (pre- and post-Phase 5).
 
 ### Phase 5: Emit dispatch and condition lifecycle frames
 
@@ -1061,4 +1156,4 @@ Make all eval functions `async`, use a custom single-threaded executor that extr
 
 4. **Incremental adoption friction.** During the transition, new effectful features must be added to both the recursive evaluator and the frame-based evaluator. Mitigation: complete the migration before adding new effectful features, or add them only to the frame-based path once it's the primary path.
 
-5. **Expression evaluation boundary.** The division between "synchronous expression evaluation" and "effectful builtins that need frames" must be maintained carefully. Any new builtin that emits effects must use the frame mechanism.
+5. **Expression evaluation boundary.** The division between "synchronous expression evaluation" and "effectful builtins that need frames" must be maintained carefully. Any new builtin that emits effects must use the frame mechanism. Expressions with multiple effectful sub-expressions are handled by replay-with-cache (see [above](#replay-with-cache-for-multi-yield-expressions)), which is correct but re-walks the expression tree once per yield point — acceptable given that multi-yield expressions are rare in practice.
