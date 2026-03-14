@@ -296,7 +296,7 @@ pub(crate) fn eval_block(
 
 // ── Statement evaluation ───────────────────────────────────────
 
-pub(super) fn eval_stmt(
+pub(crate) fn eval_stmt(
     env: &mut Env,
     stmt: &Spanned<ttrpg_ast::ast::StmtKind>,
 ) -> Result<Value, RuntimeError> {
