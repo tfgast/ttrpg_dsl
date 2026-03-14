@@ -17,6 +17,34 @@ use super::compare::match_pattern;
 use super::dispatch::eval_expr;
 use super::helpers::{find_optional_group_fields, type_name};
 
+/// Maximum number of elements a range expression may produce.
+/// Prevents capacity overflow from expressions like `0..2147483647`.
+const MAX_RANGE_LEN: i64 = 1_000_000;
+
+/// Materialize a range into a Vec<Value>, returning an error if the range
+/// would exceed `MAX_RANGE_LEN` elements.
+fn collect_range(s: i64, e: i64, inclusive: bool, span: Span) -> Result<Vec<Value>, RuntimeError> {
+    let len = if inclusive {
+        (e - s).saturating_add(1)
+    } else {
+        e - s
+    };
+    if len < 0 {
+        return Ok(Vec::new());
+    }
+    if len > MAX_RANGE_LEN {
+        return Err(RuntimeError::with_span(
+            format!("range too large ({len} elements, max {MAX_RANGE_LEN})"),
+            span,
+        ));
+    }
+    if inclusive {
+        Ok((s..=e).map(Value::Int).collect())
+    } else {
+        Ok((s..e).map(Value::Int).collect())
+    }
+}
+
 // ── If expression evaluation ───────────────────────────────────
 
 pub(super) fn eval_if(
@@ -123,6 +151,7 @@ pub(super) fn eval_for(
             end,
             inclusive,
         } => {
+            let range_span = start.span;
             let s = match eval_expr(env, start)? {
                 Value::Int(n) => n,
                 other => {
@@ -141,11 +170,7 @@ pub(super) fn eval_for(
                     ));
                 }
             };
-            if *inclusive {
-                (s..=e).map(Value::Int).collect()
-            } else {
-                (s..e).map(Value::Int).collect()
-            }
+            collect_range(s, e, *inclusive, range_span)?
         }
     };
 
@@ -191,6 +216,7 @@ pub(super) fn eval_list_comprehension(
             end,
             inclusive,
         } => {
+            let range_span = start.span;
             let s = match eval_expr(env, start)? {
                 Value::Int(n) => n,
                 other => {
@@ -209,11 +235,7 @@ pub(super) fn eval_list_comprehension(
                     ));
                 }
             };
-            if *inclusive {
-                (s..=e).map(Value::Int).collect()
-            } else {
-                (s..e).map(Value::Int).collect()
-            }
+            collect_range(s, e, *inclusive, range_span)?
         }
     };
 
