@@ -10,6 +10,8 @@
 use std::collections::BTreeMap;
 use std::rc::Rc;
 
+use rustc_hash::FxHashMap;
+
 use ttrpg_ast::ast::{Block, CostClause, ExprKind, StmtKind};
 use ttrpg_ast::{Name, Span, Spanned};
 
@@ -437,6 +439,10 @@ pub(crate) enum Frame {
         base_fields: Vec<(Name, Value)>,
         groups: Vec<GroupInit>,
         phase: SpawnPhase,
+        pending: Option<Response>,
+        /// Entity ref returned by the host/adapter after SpawnEntity effect.
+        entity_ref: Option<EntityRef>,
+        span: Span,
     },
 
     ScopeGuard,
@@ -1036,6 +1042,87 @@ impl Frame {
                 }
             }
 
+            Frame::SpawnEntity {
+                entity_type,
+                base_fields,
+                groups,
+                phase,
+                pending,
+                entity_ref,
+                span,
+            } => {
+                match phase {
+                    SpawnPhase::Defaults => {
+                        // Field defaults are evaluated by the caller before
+                        // constructing this frame. Transition to Spawned.
+                        *phase = SpawnPhase::Spawned;
+                        Advance::Continue
+                    }
+
+                    SpawnPhase::Spawned => {
+                        if let Some(response) = pending.take() {
+                            match response {
+                                Response::EntitySpawned(r) => {
+                                    *entity_ref = Some(r);
+                                    *phase = SpawnPhase::GrantingGroups { index: 0 };
+                                    Advance::Continue
+                                }
+                                Response::Vetoed => Advance::Error(
+                                    RuntimeError::with_span(
+                                        format!(
+                                            "entity construction for `{entity_type}` \
+                                             was vetoed by host"
+                                        ),
+                                        *span,
+                                    ),
+                                ),
+                                other => Advance::Error(RuntimeError::with_span(
+                                    format!(
+                                        "protocol error: expected EntitySpawned for \
+                                         SpawnEntity, got {other:?}"
+                                    ),
+                                    *span,
+                                )),
+                            }
+                        } else {
+                            // Emit SpawnEntity effect.
+                            let fields: FxHashMap<Name, Value> =
+                                base_fields.drain(..).collect();
+                            Advance::Yield(Effect::SpawnEntity {
+                                entity_type: entity_type.clone(),
+                                fields,
+                            })
+                        }
+                    }
+
+                    SpawnPhase::GrantingGroups { index } => {
+                        if let Some(_response) = pending.take() {
+                            // Previous GrantGroup acknowledged; advance.
+                            *index += 1;
+                            return Advance::Continue;
+                        }
+
+                        if *index >= groups.len() {
+                            let r = entity_ref
+                                .expect("entity_ref must be set after Spawned");
+                            return Advance::Pop(Value::Entity(r));
+                        }
+
+                        let r = entity_ref
+                            .expect("entity_ref must be set after Spawned");
+                        let group = &groups[*index];
+                        Advance::Yield(Effect::GrantGroup {
+                            entity: r,
+                            group_name: group.group_name.clone(),
+                            fields: Value::Struct {
+                                name: group.group_name.clone(),
+                                fields: group.fields.clone(),
+                            },
+                        })
+                    }
+                }
+            }
+
             Frame::ScopeGuard => Advance::Pop(Value::Void),
             _ => Advance::Error(RuntimeError::new(
                 "frame type not yet implemented",
@@ -1049,6 +1136,7 @@ impl Frame {
             Frame::ActionLifecycle { pending, .. } => *pending = Some(response),
             Frame::RollDiceWaiting { pending, .. } => *pending = Some(response),
             Frame::PromptWaiting { pending, .. } => *pending = Some(response),
+            Frame::SpawnEntity { pending, .. } => *pending = Some(response),
             _ => {}
         }
     }
@@ -5766,6 +5854,146 @@ mod tests {
         exec.respond(Response::UseDefault).unwrap();
 
         // Should error — no default block
+        let result = exec.poll();
+        assert!(matches!(result, Err(PollError::Runtime(_))));
+    }
+
+    // ── SpawnEntity frame tests (Phase 4.4) ─────────────────
+
+    #[test]
+    fn spawn_entity_no_groups() {
+        let mut exec = exec_with_frame(Frame::SpawnEntity {
+            entity_type: Name::from("Creature"),
+            base_fields: vec![
+                (Name::from("HP"), Value::Int(10)),
+            ],
+            groups: vec![],
+            phase: SpawnPhase::Defaults,
+            pending: None,
+            entity_ref: None,
+            span: Span::dummy(),
+        });
+
+        // Poll → SpawnEntity effect (after Defaults → Spawned transition)
+        let step = exec.poll().unwrap();
+        match step {
+            Step::Yielded(e) => {
+                assert!(matches!(&*e, Effect::SpawnEntity { entity_type, .. }
+                    if entity_type == "Creature"));
+            }
+            Step::Done(_) => panic!("expected Yielded"),
+        }
+
+        // Respond with EntitySpawned
+        exec.respond(Response::EntitySpawned(EntityRef(42))).unwrap();
+
+        // No groups → Done with Entity ref
+        let step = exec.poll().unwrap();
+        assert!(matches!(step, Step::Done(Value::Entity(EntityRef(42)))));
+    }
+
+    #[test]
+    fn spawn_entity_with_groups() {
+        let mut exec = exec_with_frame(Frame::SpawnEntity {
+            entity_type: Name::from("Character"),
+            base_fields: vec![
+                (Name::from("HP"), Value::Int(20)),
+            ],
+            groups: vec![
+                GroupInit {
+                    group_name: Name::from("Stats"),
+                    fields: {
+                        let mut f = BTreeMap::new();
+                        f.insert(Name::from("STR"), Value::Int(10));
+                        f
+                    },
+                },
+                GroupInit {
+                    group_name: Name::from("Skills"),
+                    fields: BTreeMap::new(),
+                },
+            ],
+            phase: SpawnPhase::Defaults,
+            pending: None,
+            entity_ref: None,
+            span: Span::dummy(),
+        });
+
+        // SpawnEntity effect
+        let step = exec.poll().unwrap();
+        assert!(matches!(&step, Step::Yielded(e) if matches!(&**e, Effect::SpawnEntity { .. })));
+        exec.respond(Response::EntitySpawned(EntityRef(7))).unwrap();
+
+        // GrantGroup for Stats
+        let step = exec.poll().unwrap();
+        match step {
+            Step::Yielded(e) => {
+                assert!(matches!(
+                    &*e,
+                    Effect::GrantGroup { entity: EntityRef(7), group_name, .. }
+                    if group_name == "Stats"
+                ));
+            }
+            Step::Done(_) => panic!("expected GrantGroup for Stats"),
+        }
+        exec.respond(Response::Acknowledged).unwrap();
+
+        // GrantGroup for Skills
+        let step = exec.poll().unwrap();
+        match step {
+            Step::Yielded(e) => {
+                assert!(matches!(
+                    &*e,
+                    Effect::GrantGroup { entity: EntityRef(7), group_name, .. }
+                    if group_name == "Skills"
+                ));
+            }
+            Step::Done(_) => panic!("expected GrantGroup for Skills"),
+        }
+        exec.respond(Response::Acknowledged).unwrap();
+
+        // All groups granted → Done
+        let step = exec.poll().unwrap();
+        assert!(matches!(step, Step::Done(Value::Entity(EntityRef(7)))));
+    }
+
+    #[test]
+    fn spawn_entity_vetoed() {
+        let mut exec = exec_with_frame(Frame::SpawnEntity {
+            entity_type: Name::from("Creature"),
+            base_fields: vec![(Name::from("HP"), Value::Int(5))],
+            groups: vec![],
+            phase: SpawnPhase::Defaults,
+            pending: None,
+            entity_ref: None,
+            span: Span::dummy(),
+        });
+
+        // SpawnEntity effect
+        let _ = exec.poll().unwrap();
+        exec.respond(Response::Vetoed).unwrap();
+
+        // Should error
+        let result = exec.poll();
+        assert!(matches!(result, Err(PollError::Runtime(_))));
+    }
+
+    #[test]
+    fn spawn_entity_invalid_response() {
+        let mut exec = exec_with_frame(Frame::SpawnEntity {
+            entity_type: Name::from("Creature"),
+            base_fields: vec![(Name::from("HP"), Value::Int(5))],
+            groups: vec![],
+            phase: SpawnPhase::Defaults,
+            pending: None,
+            entity_ref: None,
+            span: Span::dummy(),
+        });
+
+        let _ = exec.poll().unwrap();
+        exec.respond(Response::Acknowledged).unwrap();
+
+        // Acknowledged is not valid for SpawnEntity
         let result = exec.poll();
         assert!(matches!(result, Err(PollError::Runtime(_))));
     }
