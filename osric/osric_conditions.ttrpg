@@ -764,6 +764,184 @@ system "OSRIC Conditions" {
     //       originates from an evil creature.
     // ========================================================
 
+    // ========================================================
+    //  HASTED (§1.8.5.3 — Haste)
+    //
+    //  Affected creatures move and attack at double their normal
+    //  rate. Used by the Haste spell (MU L3) and Potion of Speed.
+    //  Movement doubling is handled mechanically via entity_movement
+    //  modify. Attack doubling is a marker checked by the combat
+    //  loop. Ages the target 1 year (applied by the spell resolver,
+    //  not the condition). Per §1.8.5.3 (Haste).
+    // ========================================================
+
+    condition Hasted on bearer: entity
+        stacking first
+    {
+        tags: #movement
+        modify entity_movement(target: bearer) {
+            result = result * 2
+        }
+    }
+
+
+    // ========================================================
+    //  SLOWED (§1.8.5.3 — Slow)
+    //
+    //  Movement and attacks are halved. Used by the Slow spell
+    //  (MU L3, reverse of Haste). Movement halving is handled
+    //  mechanically; attack halving is a marker checked by the
+    //  combat loop. Per §1.8.5.3 (Slow).
+    // ========================================================
+
+    condition Slowed on bearer: entity
+        stacking first
+    {
+        tags: #movement
+        modify entity_movement(target: bearer) {
+            result = result div 2
+        }
+    }
+
+
+    // ========================================================
+    //  SANCTUARY (§1.8.2 — Sanctuary)
+    //
+    //  Any opponent attempting to strike the bearer must first
+    //  make a saving throw vs. spells. On failure, the attacker
+    //  must choose another target or lose the attack. On success,
+    //  the attack proceeds normally. Broken if the bearer attacks
+    //  or casts an offensive spell. Marker condition — the save
+    //  check is resolved by the combat loop or spell resolver.
+    //  Per §1.8.2 (Sanctuary).
+    // ========================================================
+
+    condition Sanctuary on bearer: entity
+        stacking first
+    {
+        tags: #mental
+    }
+
+
+    // ========================================================
+    //  FLYING (§1.8.5.3 — Fly)
+    //
+    //  Grants the Fly movement mode at the specified speed.
+    //  Used by the Fly spell (MU L3), Potion of Flying, and
+    //  monster abilities. Aerial agility class depends on the
+    //  source (spell = class B, potion = class A, etc.) but
+    //  is not tracked mechanically here.
+    //  Per §1.8.5.3 (Fly).
+    // ========================================================
+
+    condition Flying(speed: Feet) on bearer: entity
+        stacking first
+    {
+        tags: #movement
+        modify get_movement_speed(target: bearer, mode: Fly) {
+            result = speed
+        }
+    }
+
+
+    // ========================================================
+    //  BREATHES WATER (§1.8.5.3 — Water Breathing, §1.8.2)
+    //
+    //  Bearer can breathe underwater. Does not grant swim
+    //  speed — movement underwater is at half normal rate per
+    //  GM adjudication. Marker condition used by the Water
+    //  Breathing spell (MU/Druid L3) and Potion of Water
+    //  Breathing. Per §1.8.5.3 / §1.8.2.
+    // ========================================================
+
+    condition BreathesWater on bearer: entity
+        stacking first
+    {}
+
+
+    // ========================================================
+    //  PETRIFIED (§1.6.10.16 — Flesh to Stone, Medusa gaze)
+    //
+    //  Turned to stone. Completely helpless — automatic hit,
+    //  maximum damage (if the stone form can be damaged at all),
+    //  no shield or DEX bonus, cannot act. Reversed by Stone
+    //  to Flesh spell. The creature is effectively an object
+    //  until restored. Per §1.6.10.16 and §1.8.5.6 (Flesh to
+    //  Stone / Stone to Flesh).
+    // ========================================================
+
+    condition Petrified on bearer: entity
+        stacking first
+    {
+        tags: #physical
+        modify [#attack_resolution](target: bearer) {
+            roll_mode = RollMode.AutoHit
+            max_damage = true
+        }
+        modify effective_target_ac(target: bearer) {
+            include_dex = false
+            include_shield = false
+        }
+        modify [#attack_resolution](attacker: bearer) {
+            result.outcome = AttackOutcome.Miss
+            result.damage = 0
+        }
+        modify [#spellcasting_gate](caster: bearer) {
+            result = false
+        }
+    }
+
+
+    // ========================================================
+    //  POISON IMMUNITY (§1.8.2 — Neutralize Poison)
+    //
+    //  Bearer is immune to new poison effects for the duration.
+    //  Existing poison conditions should be removed separately
+    //  by the spell resolver (via tag-based condition removal
+    //  on #poison). This condition prevents re-poisoning during
+    //  its duration. Marker condition checked by the poison
+    //  application logic. Per §1.8.2 (Neutralize Poison).
+    // ========================================================
+
+    condition PoisonImmunity on bearer: entity
+        stacking first
+    {
+        tags: #poison
+    }
+
+
+    // ========================================================
+    //  DISEASE IMMUNITY (§1.8.2 — Cure Disease)
+    //
+    //  Bearer is immune to new disease effects for the duration.
+    //  Existing disease conditions should be removed separately
+    //  by the spell resolver (via tag-based condition removal
+    //  on #disease). This condition prevents re-infection during
+    //  its duration. Marker condition checked by the disease
+    //  contraction logic. Per §1.8.2 (Cure Disease).
+    // ========================================================
+
+    condition DiseaseImmunity on bearer: entity
+        stacking first
+    {
+        tags: #disease
+    }
+
+
+    // ========================================================
+    //  PROTECTED FROM EVIL (§1.8.2, §1.8.5.1)
+    //
+    //  Shared condition used by both Protection from Evil (L1)
+    //  and Protection from Evil 10' Radius (L4).
+    //
+    //  Effects:
+    //    1. Evil attackers suffer -2 to hit the bearer.
+    //    2. Summoned/conjured creatures cannot make melee
+    //       attacks against the bearer (auto-miss).
+    //    3. Bearer gains +2 to all saves when the effect
+    //       originates from an evil creature.
+    // ========================================================
+
     condition ProtectedFromEvil on bearer: entity
         stacking first
     {

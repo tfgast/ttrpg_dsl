@@ -545,3 +545,123 @@ let pdex_result = resolve_melee_attack(pdex_atk, pdex_tgt, SwordLong)
 assert_eq pdex_result.total_mod, 4
 assert_eq pdex_result.outcome, AttackOutcome.Hit
 assert_eq pdex_result.damage, 8
+
+
+// ══════════════════════════════════════════════════════════════
+//  SPELL STATUS CONDITIONS
+// ══════════════════════════════════════════════════════════════
+
+
+// ── Hasted: doubles movement ──────────────────────────────────
+
+spawn Character haste_char { name: "Hasted", classes: [ClassLevel { class: Fighter, level: 5 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 30, hp: 30 } }
+assert_eq entity_movement(haste_char).value, 120
+call apply_condition(haste_char, Hasted, Duration.Indefinite)
+assert_condition haste_char, Hasted
+assert_eq entity_movement(haste_char).value, 240
+
+// Hasted on a Monster
+spawn Monster haste_mon { name: "Hasted Ogre", hit_dice: 4d8, max_hp: 20, hp: 20, ac: 14, morale: 10, morale_checks_made: 0, xp_value: 0, intelligence: 7, base_movement: 90ft, attacks: [MonsterAttack { name: "Club", damage: 1d10 }], size: Large, special: [] }
+assert_eq entity_movement(haste_mon).value, 90
+call apply_condition(haste_mon, Hasted, Duration.Indefinite)
+assert_eq entity_movement(haste_mon).value, 180
+
+// ── Slowed: halves movement ───────────────────────────────────
+
+spawn Character slow_char { name: "Slowed", classes: [ClassLevel { class: Fighter, level: 5 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 30, hp: 30 } }
+assert_eq entity_movement(slow_char).value, 120
+call apply_condition(slow_char, Slowed, Duration.Indefinite)
+assert_condition slow_char, Slowed
+assert_eq entity_movement(slow_char).value, 60
+
+// Slowed on a Monster
+spawn Monster slow_mon { name: "Slow Ogre", hit_dice: 4d8, max_hp: 20, hp: 20, ac: 14, morale: 10, morale_checks_made: 0, xp_value: 0, intelligence: 7, base_movement: 90ft, attacks: [MonsterAttack { name: "Club", damage: 1d10 }], size: Large, special: [] }
+call apply_condition(slow_mon, Slowed, Duration.Indefinite)
+assert_eq entity_movement(slow_mon).value, 45
+
+// ── Sanctuary: marker condition ───────────────────────────────
+
+spawn Character sanc_char { name: "Sanctuary", classes: [ClassLevel { class: Cleric, level: 3 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 15, hp: 15 } }
+call apply_condition(sanc_char, Sanctuary, Duration.Rounds(6))
+assert_condition sanc_char, Sanctuary
+
+// ── Flying: grants Fly movement mode ──────────────────────────
+
+spawn Character fly_char { name: "Flyer", classes: [ClassLevel { class: MagicUser, level: 5 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 12, hp: 12 } }
+assert_eq get_movement_speed(fly_char, Fly).value, 0
+assert (has_movement_mode(fly_char, Fly)) == false
+
+call apply_condition(fly_char, Flying(speed: 120ft), Duration.Indefinite)
+assert_condition fly_char, Flying
+assert_eq get_movement_speed(fly_char, Fly).value, 120
+assert (has_movement_mode(fly_char, Fly)) == true
+
+// Walk speed unchanged
+assert_eq get_movement_speed(fly_char, Walk).value, 120
+
+// Flying on a Monster (grants Fly if it doesn't have one)
+spawn Monster fly_mon { name: "Hoverer", hit_dice: 2d8, max_hp: 10, hp: 10, ac: 12, morale: 8, morale_checks_made: 0, xp_value: 0, intelligence: 5, base_movement: 60ft, attacks: [MonsterAttack { name: "Claw", damage: 1d4 }], size: Small, special: [] }
+assert_eq get_movement_speed(fly_mon, Fly).value, 0
+call apply_condition(fly_mon, Flying(speed: 180ft), Duration.Indefinite)
+assert_eq get_movement_speed(fly_mon, Fly).value, 180
+
+// ── BreathesWater: marker condition ──────────────────────────
+
+spawn Character wb_char { name: "WaterBreather", classes: [ClassLevel { class: Cleric, level: 5 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 20, hp: 20 } }
+call apply_condition(wb_char, BreathesWater, Duration.Turns(5))
+assert_condition wb_char, BreathesWater
+
+// Also works on Monsters
+spawn Monster wb_mon { name: "WB Ogre", hit_dice: 4d8, max_hp: 20, hp: 20, ac: 14, morale: 10, morale_checks_made: 0, xp_value: 0, intelligence: 7, base_movement: 90ft, attacks: [MonsterAttack { name: "Club", damage: 1d10 }], size: Large, special: [] }
+call apply_condition(wb_mon, BreathesWater, Duration.Indefinite)
+assert_condition wb_mon, BreathesWater
+
+// ── Petrified: fully helpless ─────────────────────────────────
+
+spawn Character petr_atk { name: "Fighter", classes: [ClassLevel { class: Fighter, level: 5 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 30, hp: 30 }, EquipmentSlots { worn_armor: some(Armor { armour_type: ScaleLamellar }) } }
+spawn Character petr_tgt { name: "Statue", classes: [ClassLevel { class: Fighter, level: 1 }], abilities: { STR: 12, INT: 12, WIS: 17, DEX: 17, CON: 12, CHA: 12 }, HitPoints { max_hp: 10, hp: 10 }, EquipmentSlots { worn_armor: some(Armor { armour_type: ScaleLamellar }), worn_shield: some(Shield { shield_type: SmallShield }) } }
+call apply_condition(petr_tgt, Petrified, Duration.Indefinite)
+assert_condition petr_tgt, Petrified
+
+// Auto-hit, max damage against Petrified target
+rolls clear
+let petr_result = resolve_melee_attack(petr_atk, petr_tgt, SwordLong)
+assert_eq petr_result.outcome, AttackOutcome.Hit
+assert_eq petr_result.damage, 8
+
+// Petrified bearer cannot attack (forced miss)
+rolls clear
+rolls 20 6
+let petr_atk_result = resolve_melee_attack(petr_tgt, petr_atk, SwordLong)
+assert_eq petr_atk_result.outcome, AttackOutcome.Miss
+assert_eq petr_atk_result.damage, 0
+
+// ── PoisonImmunity: marker condition ──────────────────────────
+
+spawn Character pimm_char { name: "Neutralized", classes: [ClassLevel { class: Cleric, level: 5 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 20, hp: 20 } }
+call apply_condition(pimm_char, PoisonImmunity, Duration.Turns(10))
+assert_condition pimm_char, PoisonImmunity
+
+// ── DiseaseImmunity: marker condition ─────────────────────────
+
+spawn Character dimm_char { name: "Cured", classes: [ClassLevel { class: Cleric, level: 5 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 20, hp: 20 } }
+call apply_condition(dimm_char, DiseaseImmunity, Duration.Turns(10))
+assert_condition dimm_char, DiseaseImmunity
+
+// ── Removal: verify conditions can be removed ─────────────────
+
+spawn Character removal_char { name: "Removable", classes: [ClassLevel { class: Fighter, level: 3 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 20, hp: 20 } }
+call apply_condition(removal_char, Hasted, Duration.Indefinite)
+assert_condition removal_char, Hasted
+assert_eq entity_movement(removal_char).value, 240
+call remove_condition(removal_char, "Hasted")
+assert_no_condition removal_char, Hasted
+assert_eq entity_movement(removal_char).value, 120
+
+// ── Stacking: Hasted first prevents double-application ────────
+
+spawn Character stack_char { name: "Stackable", classes: [ClassLevel { class: Fighter, level: 3 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 20, hp: 20 } }
+call apply_condition(stack_char, Hasted, Duration.Indefinite)
+call apply_condition(stack_char, Hasted, Duration.Indefinite)
+// Movement should be doubled once, not quadrupled
+assert_eq entity_movement(stack_char).value, 240
