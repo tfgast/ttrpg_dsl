@@ -49,5 +49,10 @@ name = "fuzz_interp_ast"
 path = "fuzz_targets/fuzz_interp_ast.rs"
 doc = false
 
+[[bin]]
+name = "fuzz_differential"
+path = "fuzz_targets/fuzz_differential.rs"
+doc = false
+
 # Prevent Cargo from merging this into the parent workspace
 [workspace]

@@ -129,7 +129,7 @@ fuzz_malloc_limit := "2048"
 fuzz-seed:
     #!/usr/bin/env bash
     set -euo pipefail
-    targets=(fuzz_lexer fuzz_parser fuzz_checker fuzz_full_pipeline)
+    targets=(fuzz_lexer fuzz_parser fuzz_checker fuzz_full_pipeline fuzz_differential)
     for target in "${targets[@]}"; do
         dir="fuzz/corpus/${target}"
         mkdir -p "$dir"
@@ -163,7 +163,7 @@ fuzz-smoke:
     #!/usr/bin/env bash
     set -euo pipefail
     just fuzz-seed
-    targets=(fuzz_lexer fuzz_parser fuzz_checker fuzz_full_pipeline fuzz_checker_ast fuzz_interp_ast)
+    targets=(fuzz_lexer fuzz_parser fuzz_checker fuzz_full_pipeline fuzz_checker_ast fuzz_interp_ast fuzz_differential)
     for target in "${targets[@]}"; do
         echo "── Fuzzing $target for 30s ──"
         cargo +nightly fuzz run "$target" -- \
