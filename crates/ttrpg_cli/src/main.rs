@@ -144,6 +144,9 @@ fn run_pipe(coverage: bool, quiet: bool) {
         runner.enable_coverage();
     }
     runner.set_quiet(quiet);
+    if std::env::var("TTRPG_EXEC_MODE").as_deref() == Ok("step") {
+        runner.set_exec_mode(ttrpg_cli::runner::ExecutionMode::StepBased);
+    }
     let mut had_error = false;
 
     for line in stdin.lock().lines() {
@@ -209,6 +212,9 @@ fn exec_commands(label: &str, content: &str, coverage: bool, quiet: bool) {
         runner.enable_coverage();
     }
     runner.set_quiet(quiet);
+    if std::env::var("TTRPG_EXEC_MODE").as_deref() == Ok("step") {
+        runner.set_exec_mode(ttrpg_cli::runner::ExecutionMode::StepBased);
+    }
     let mut had_error = false;
 
     for (lineno, line) in content.lines().enumerate() {

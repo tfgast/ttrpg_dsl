@@ -2,6 +2,7 @@ use std::cell::RefCell;
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet, VecDeque};
 use std::path::PathBuf;
 use std::rc::Rc;
+use std::sync::Arc;
 
 use rand::SeedableRng;
 use rand::rngs::StdRng;
@@ -12,10 +13,13 @@ use ttrpg_ast::diagnostic::{Diagnostic, MultiSourceMap, Severity};
 use ttrpg_ast::module::ModuleMap;
 use ttrpg_checker::env::{DeclInfo, FnKind, TypeEnv};
 use ttrpg_interp::Interpreter;
+use ttrpg_interp::adapter::StateAdapter;
 use ttrpg_interp::coverage::{self, CoverageData};
 use ttrpg_interp::effect::FieldPathSegment;
+use ttrpg_interp::execution::Execution;
 use ttrpg_interp::handle_registry::HandleRegistry;
 use ttrpg_interp::reference_state::GameState;
+use ttrpg_interp::runtime_core::RuntimeCore;
 use ttrpg_interp::state::{EntityRef, StateProvider, WritableState};
 use ttrpg_interp::value::Value;
 
@@ -117,10 +121,19 @@ struct ContinuationState {
     lines: Vec<String>,
 }
 
+/// Execution mode for the runner.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ExecutionMode {
+    /// Use the recursive `Interpreter` evaluator (original path).
+    Recursive,
+    /// Use the step-based `Execution` frame stack with `run_with_handler`.
+    StepBased,
+}
+
 /// The core CLI runner. Owns program state and dispatches commands.
 pub struct Runner {
-    program: Box<Program>,
-    type_env: Box<TypeEnv>,
+    program: Arc<Program>,
+    type_env: Arc<TypeEnv>,
     module_map: ModuleMap,
     game_state: RefCell<GameState>,
     last_paths: Vec<PathBuf>,
@@ -142,14 +155,16 @@ pub struct Runner {
     /// Prior zone membership: `(target_id, zone_id) -> is_inside`.
     /// Tracked across `zone_sync` calls for membership diffing.
     zone_membership: HashSet<(u64, u64)>,
+    /// Which execution path to use for expression evaluation.
+    exec_mode: ExecutionMode,
 }
 
 impl Runner {
     /// Create a new runner with empty program state.
     pub fn new() -> Self {
         Runner {
-            program: Box::new(Program::default()),
-            type_env: Box::new(TypeEnv::new()),
+            program: Arc::new(Program::default()),
+            type_env: Arc::new(TypeEnv::new()),
             module_map: ModuleMap::default(),
             game_state: RefCell::new(GameState::new()),
             last_paths: Vec::new(),
@@ -167,6 +182,7 @@ impl Runner {
             interactive: false,
             heredoc: None,
             continuation: None,
+            exec_mode: ExecutionMode::Recursive,
             loop_state: None,
             zone_membership: HashSet::new(),
         }
@@ -664,6 +680,14 @@ impl Runner {
 
     /// Evaluate an expression and return the value directly (for testing).
     pub fn eval(&mut self, expr: &str) -> Result<Value, CliError> {
+        match self.exec_mode {
+            ExecutionMode::Recursive => self.eval_recursive(expr),
+            ExecutionMode::StepBased => self.eval_step_based(expr),
+        }
+    }
+
+    /// Evaluate using the recursive `Interpreter` path.
+    fn eval_recursive(&mut self, expr: &str) -> Result<Value, CliError> {
         let (parsed, diags) = ttrpg_parser::parse_expr(expr);
         if !diags.is_empty() {
             let msgs: Vec<_> = diags.iter().map(|d| d.message.as_str()).collect();
@@ -716,6 +740,86 @@ impl Runner {
         Ok(result)
     }
 
+    /// Evaluate using the step-based `Execution` frame stack.
+    fn eval_step_based(&mut self, expr: &str) -> Result<Value, CliError> {
+        let (parsed, diags) = ttrpg_parser::parse_expr(expr);
+        if !diags.is_empty() {
+            let msgs: Vec<_> = diags.iter().map(|d| d.message.as_str()).collect();
+            return Err(CliError::Message(format!(
+                "parse error: {}",
+                msgs.join("; ")
+            )));
+        }
+        let parsed =
+            parsed.ok_or_else(|| CliError::Message("failed to parse expression".into()))?;
+
+        // Take GameState out of RefCell for ownership transfer to Execution
+        let gs = self.game_state.replace(GameState::new());
+
+        // Build RuntimeCore from counter state
+        let core = RuntimeCore::from_game_state(
+            Arc::clone(&self.program),
+            Arc::clone(&self.type_env),
+            &gs,
+        );
+        // Enable coverage if configured
+        let core = if self.coverage.is_some() {
+            core.with_coverage()
+        } else {
+            core
+        };
+
+        let adapter = StateAdapter::new(gs);
+
+        // Build bindings
+        let bindings: Vec<(Name, Value)> = self
+            .variables
+            .iter()
+            .map(|(name, val)| (Name::from(name.as_str()), val.clone()))
+            .collect();
+
+        let exec = Execution::start_expr_with_bindings(core.clone(), adapter, parsed, bindings);
+
+        let mut handler = CliHandler::new(
+            // CliHandler needs &RefCell<GameState> for MutateField handling,
+            // but in step-based mode the StateAdapter owns the GameState.
+            // We pass a dummy RefCell that won't be used since MutateField
+            // is handled locally by StateAdapter.
+            &self.game_state,
+            self.handles.by_entity(),
+            &mut self.rng,
+            &mut self.roll_queue,
+            &mut self.prompt_queue,
+            &self.unit_suffixes,
+        )
+        .quiet(self.quiet)
+        .interactive(self.interactive);
+
+        let (result, gs) = exec.run_returning_state(&mut handler);
+
+        // Persist counters back to GameState
+        let (inv_id, cond_id) = core.counters();
+        let mut gs = gs;
+        gs.set_next_invocation_id(inv_id);
+        gs.set_next_condition_id(cond_id);
+
+        // Put GameState back
+        self.game_state.replace(gs);
+
+        let result = result.map_err(|e| {
+            for line in handler.log.drain(..) {
+                self.output.push(line);
+            }
+            render_runtime_error(&e, &self.source_map)
+        })?;
+
+        for line in handler.log.drain(..) {
+            self.output.push(line);
+        }
+
+        Ok(result)
+    }
+
     /// Resolve a handle name to an EntityRef.
     fn resolve_handle(&self, name: &str) -> Result<EntityRef, CliError> {
         match self.variables.get(name) {
@@ -741,6 +845,11 @@ impl Runner {
     /// Returns whether the runner is in interactive mode.
     pub fn is_interactive(&self) -> bool {
         self.interactive
+    }
+
+    /// Set the execution mode for expression evaluation.
+    pub fn set_exec_mode(&mut self, mode: ExecutionMode) {
+        self.exec_mode = mode;
     }
 
     /// Enable coverage tracking. Creates the shared `Rc` that will be

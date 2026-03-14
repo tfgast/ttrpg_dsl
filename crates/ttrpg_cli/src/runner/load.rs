@@ -4,8 +4,8 @@ use ttrpg_parser::manifest;
 impl Runner {
     /// Reset all loaded state (program, types, game state, entities, etc.)
     fn clear_state(&mut self, paths: Vec<PathBuf>) {
-        *self.program = Program::default();
-        *self.type_env = TypeEnv::new();
+        self.program = Arc::new(Program::default());
+        self.type_env = Arc::new(TypeEnv::new());
         self.module_map = ModuleMap::default();
         self.game_state = RefCell::new(GameState::new());
         self.last_paths = paths;
@@ -197,8 +197,8 @@ impl Runner {
         };
 
         if error_count == 0 && !result.has_errors {
-            *self.program = result.program;
-            *self.type_env = check_result.env;
+            self.program = Arc::new(result.program);
+            self.type_env = Arc::new(check_result.env);
             self.unit_suffixes = crate::format::build_unit_suffixes(&self.type_env);
             self.module_map = result.module_map;
             let mut gs = GameState::new();
@@ -269,8 +269,8 @@ impl Runner {
             .count();
 
         if error_count == 0 && !result.has_errors {
-            *self.program = result.program;
-            *self.type_env = check_result.env;
+            self.program = Arc::new(result.program);
+            self.type_env = Arc::new(check_result.env);
             self.unit_suffixes = crate::format::build_unit_suffixes(&self.type_env);
             self.module_map = result.module_map;
             let mut gs = GameState::new();

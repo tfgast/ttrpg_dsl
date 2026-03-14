@@ -4262,6 +4262,22 @@ impl<S: WritableState> Execution<S> {
         mut self,
         handler: &mut dyn EffectHandler,
     ) -> Result<Value, RuntimeError> {
+        self.drive(handler)
+    }
+
+    /// Like `run_with_handler`, but returns the inner state alongside the
+    /// result. Useful when the caller needs the mutated state back (e.g.,
+    /// the CLI runner which borrows `GameState` from a `RefCell`).
+    pub fn run_returning_state(
+        mut self,
+        handler: &mut dyn EffectHandler,
+    ) -> (Result<Value, RuntimeError>, S) {
+        let result = self.drive(handler);
+        (result, self.state.into_inner())
+    }
+
+    /// Inner loop shared by `run_with_handler` and `run_returning_state`.
+    fn drive(&mut self, handler: &mut dyn EffectHandler) -> Result<Value, RuntimeError> {
         loop {
             if self.frames.is_empty() {
                 return self.final_result.take().unwrap_or(Ok(Value::Void));

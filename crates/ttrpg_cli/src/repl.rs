@@ -122,6 +122,9 @@ pub fn run_repl(vi_mode: bool, coverage: bool, interactive: bool) {
         runner.enable_coverage();
     }
     runner.set_interactive(interactive);
+    if std::env::var("TTRPG_EXEC_MODE").as_deref() == Ok("step") {
+        runner.set_exec_mode(crate::runner::ExecutionMode::StepBased);
+    }
     let completion_ctx = Arc::new(Mutex::new(CompletionContext::default()));
 
     let completer = TtrpgCompleter::new(Arc::clone(&completion_ctx));

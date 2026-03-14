@@ -47,7 +47,7 @@ bench *ARGS:
 run *ARGS:
     cargo run --release -- {{ARGS}}
 
-# Run .ttrpg-cli integration test scripts
+# Run .ttrpg-cli integration test scripts (recursive mode)
 test-scripts:
     #!/usr/bin/env bash
     set -euo pipefail
@@ -71,9 +71,46 @@ test-scripts:
     echo ""
     echo "═══════════════════════════════════════"
     if [ $failed -eq 0 ]; then
-        echo "  ✓ All $total test scripts passed"
+        echo "  ✓ All $total test scripts passed (recursive)"
     else
-        echo "  $passed passed, $failed failed out of $total test scripts"
+        echo "  $passed passed, $failed failed out of $total test scripts (recursive)"
+        echo ""
+        echo "  Failed:"
+        for s in "${failed_scripts[@]}"; do
+            echo "    • $s"
+        done
+    fi
+    echo "═══════════════════════════════════════"
+    [ $failed -eq 0 ]
+
+# Run .ttrpg-cli integration test scripts (step-based mode)
+test-scripts-step:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    export TTRPG_EXEC_MODE=step
+    total=0
+    passed=0
+    failed=0
+    failed_scripts=()
+    for script in osric/tests/*.ttrpg-cli ose/tests/*.ttrpg-cli tests/*.ttrpg-cli; do
+        [ -f "$script" ] || continue
+        total=$((total + 1))
+        echo "── $script (step) ──"
+        if cargo run --quiet --bin ttrpg -- --quiet run "$script"; then
+            echo "  PASS"
+            passed=$((passed + 1))
+        else
+            echo "  FAIL"
+            failed=$((failed + 1))
+            failed_scripts+=("$script")
+        fi
+    done
+    echo ""
+    echo "═══════════════════════════════════════"
+    if [ $failed -eq 0 ]; then
+        echo "  ✓ All $total test scripts passed (step-based)"
+    else
+        echo "  $passed passed, $failed failed out of $total test scripts (step-based)"
         echo ""
         echo "  Failed:"
         for s in "${failed_scripts[@]}"; do
