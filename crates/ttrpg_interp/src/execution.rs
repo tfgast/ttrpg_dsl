@@ -10484,4 +10484,459 @@ mod tests {
             "expected 3 ActionStarted, got {action_started_count}"
         );
     }
+
+    // ── Phase 5 manual poll/respond tests ─────────────────────
+
+    #[test]
+    fn poll_respond_emit_effectful_arg_default() {
+        // Manual poll/respond: action resolve block does roll(2d6) then
+        // emits an event with the result. Verifies the RollDice effect
+        // is yielded between ActionStarted and ActionCompleted, and that
+        // the emit triggers a hook that modifies state.
+        use crate::value::{DiceExpr, RollResult};
+
+        let source = r#"
+            system Test {
+                entity Creature { HP: int }
+                event DamageDealt(target: entity, amount: int)
+                action SmashRoll on actor: Creature (target: Creature) {
+                    resolve {
+                        let dmg = roll(2d6).total
+                        target.HP -= dmg
+                        emit DamageDealt(target: target, amount: dmg)
+                    }
+                }
+                hook OnDamage on receiver: Creature (
+                    trigger: DamageDealt(target: receiver)
+                ) {
+                    receiver.HP -= 1
+                }
+            }
+        "#;
+        let (program, type_env) = setup(source);
+
+        let roll = RollResult {
+            expr: DiceExpr::single(2, 6, None, 0),
+            dice: vec![3, 4],
+            kept: vec![3, 4],
+            modifier: 0,
+            total: 7,
+            unmodified: 7,
+        };
+
+        let core = RuntimeCore::new(Arc::clone(&program), Arc::clone(&type_env), 1, 1);
+        let mut game = GameState::new();
+        let actor = add_creature(&mut game, 20);
+        let target = add_creature(&mut game, 30);
+        let adapter = StateAdapter::new(game);
+
+        let mut exec = Execution::start_action(
+            core,
+            adapter,
+            "SmashRoll",
+            actor,
+            vec![Value::Entity(target)],
+            Span::dummy(),
+        )
+        .unwrap();
+
+        let mut effect_kinds = Vec::new();
+
+        // Step 1: ActionStarted
+        let step = exec.poll().unwrap();
+        assert!(
+            matches!(&step, Step::Yielded(e) if matches!(&**e, Effect::ActionStarted { .. })),
+            "expected ActionStarted, got {step:?}"
+        );
+        effect_kinds.push(EffectKind::ActionStarted);
+        exec.respond(Response::Acknowledged).unwrap();
+
+        // Step 2: RollDice (from roll(2d6) in resolve block)
+        let step = exec.poll().unwrap();
+        assert!(
+            matches!(&step, Step::Yielded(e) if matches!(&**e, Effect::RollDice { .. })),
+            "expected RollDice, got {step:?}"
+        );
+        effect_kinds.push(EffectKind::RollDice);
+        exec.respond(Response::Rolled(roll.clone())).unwrap();
+
+        // Remaining steps: emit triggers hook (ActionStarted/Completed for hook)
+        // plus MutateField effects, then ActionCompleted for the main action.
+        loop {
+            match exec.poll() {
+                Ok(Step::Yielded(e)) => {
+                    effect_kinds.push(EffectKind::of(&e));
+                    exec.respond(Response::Acknowledged).unwrap();
+                }
+                Ok(Step::Done(_)) => break,
+                Err(PollError::Runtime(e)) => panic!("runtime error: {e}"),
+                Err(PollError::Protocol(e)) => panic!("protocol error: {e:?}"),
+            }
+        }
+
+        // Verify the expected structural effects are present.
+        assert!(
+            effect_kinds.contains(&EffectKind::ActionStarted),
+            "expected ActionStarted in effects"
+        );
+        assert!(
+            effect_kinds.contains(&EffectKind::RollDice),
+            "expected RollDice in effects"
+        );
+        assert!(
+            effect_kinds.contains(&EffectKind::ActionCompleted),
+            "expected ActionCompleted in effects"
+        );
+
+        // The hook should have fired (extra ActionStarted beyond the main one).
+        let action_started_count = effect_kinds
+            .iter()
+            .filter(|k| **k == EffectKind::ActionStarted)
+            .count();
+        assert!(
+            action_started_count >= 2,
+            "expected at least 2 ActionStarted (main + hook), got {action_started_count}"
+        );
+
+        // Verify state: target HP = 30 - 7 (roll) - 1 (hook) = 22
+        let final_hp = exec.state().read_field(&target, "HP");
+        assert_eq!(
+            final_hp,
+            Some(Value::Int(22)),
+            "target HP should be 22 (30 - 7 from roll - 1 from hook)"
+        );
+    }
+
+    #[test]
+    fn poll_respond_emit_from_on_apply() {
+        // Manual poll/respond: a condition's on_apply block emits an event,
+        // which triggers a hook. Verifies that lifecycle_condition_stack is
+        // managed correctly (the condition is being applied when the emit
+        // happens) and the hook runs as expected.
+        let source = r#"
+            system Test {
+                entity Creature { HP: int }
+                event ConditionApplied(target: entity, severity: int)
+                condition Cursed(power: int) on bearer: Creature {
+                    on_apply {
+                        bearer.HP -= power
+                        emit ConditionApplied(target: bearer, severity: power)
+                    }
+                }
+                hook OnCondApplied on receiver: Creature (
+                    trigger: ConditionApplied(target: receiver)
+                ) {
+                    receiver.HP -= 1
+                }
+                action ApplyCurse on actor: Creature (target: Creature) {
+                    resolve {
+                        apply_condition(target, Cursed(power: 5), Duration.Indefinite)
+                    }
+                }
+            }
+        "#;
+        let (program, type_env) = setup(source);
+
+        let core = RuntimeCore::new(Arc::clone(&program), Arc::clone(&type_env), 1, 1);
+        let mut game = GameState::new();
+        let actor = add_creature(&mut game, 20);
+        let target = add_creature(&mut game, 30);
+        let adapter = StateAdapter::new(game);
+
+        let mut exec = Execution::start_action(
+            core,
+            adapter,
+            "ApplyCurse",
+            actor,
+            vec![Value::Entity(target)],
+            Span::dummy(),
+        )
+        .unwrap();
+
+        let mut effect_kinds = Vec::new();
+
+        // Step 1: ActionStarted
+        let step = exec.poll().unwrap();
+        assert!(
+            matches!(&step, Step::Yielded(e) if matches!(&**e, Effect::ActionStarted { .. })),
+            "expected ActionStarted, got {step:?}"
+        );
+        effect_kinds.push(EffectKind::ActionStarted);
+        exec.respond(Response::Acknowledged).unwrap();
+
+        // Step 2: ConditionApplyGate (from apply_condition)
+        let step = exec.poll().unwrap();
+        assert!(
+            matches!(&step, Step::Yielded(e) if matches!(&**e, Effect::ConditionApplyGate { .. })),
+            "expected ConditionApplyGate, got {step:?}"
+        );
+        effect_kinds.push(EffectKind::ConditionApplyGate);
+        exec.respond(Response::Acknowledged).unwrap();
+
+        // Remaining steps: on_apply runs (MutateField for bearer.HP -= power),
+        // then emit ConditionApplied triggers hook (ActionStarted/Completed),
+        // then ApplyCondition mutation, then ActionCompleted.
+        loop {
+            match exec.poll() {
+                Ok(Step::Yielded(e)) => {
+                    effect_kinds.push(EffectKind::of(&e));
+                    exec.respond(Response::Acknowledged).unwrap();
+                }
+                Ok(Step::Done(_)) => break,
+                Err(PollError::Runtime(e)) => panic!("runtime error: {e}"),
+                Err(PollError::Protocol(e)) => panic!("protocol error: {e:?}"),
+            }
+        }
+
+        // The hook (OnCondApplied) should have fired during on_apply's emit.
+        // ApplyCondition is a mutation effect applied locally by StateAdapter,
+        // so it doesn't appear in the yielded effects. Instead verify via state.
+        let action_started_count = effect_kinds
+            .iter()
+            .filter(|k| **k == EffectKind::ActionStarted)
+            .count();
+        assert!(
+            action_started_count >= 2,
+            "expected at least 2 ActionStarted (main action + hook), got {action_started_count}"
+        );
+
+        // Verify the condition was applied to state.
+        let conditions = exec.state().read_conditions(&target).unwrap_or_default();
+        assert!(
+            conditions.iter().any(|c| c.name == "Cursed"),
+            "Cursed condition should have been applied to target"
+        );
+
+        // Verify state: target HP = 30 - 5 (on_apply) - 1 (hook) = 24
+        let final_hp = exec.state().read_field(&target, "HP");
+        assert_eq!(
+            final_hp,
+            Some(Value::Int(24)),
+            "target HP should be 24 (30 - 5 from on_apply - 1 from hook)"
+        );
+    }
+
+    #[test]
+    fn poll_respond_hook_removes_condition_before_handler() {
+        // Manual poll/respond: an event is emitted that has both a hook
+        // and a condition handler. The hook runs first and removes the
+        // condition from the entity. The condition handler should be
+        // skipped because the condition no longer exists (snapshot safety).
+        let source = r#"
+            system Test {
+                entity Creature { HP: int }
+                event TurnStarted(actor: entity)
+                condition Fragile on bearer: Creature {
+                    state { ticks: int = 0 }
+                    on TurnStarted(actor: bearer) {
+                        state.ticks += 1
+                        bearer.HP -= 10
+                    }
+                }
+                hook ClearFragile on receiver: Creature (
+                    trigger: TurnStarted(actor: receiver)
+                ) {
+                    remove_condition(receiver, Fragile)
+                }
+                action StartTurn on actor: Creature () {
+                    resolve {
+                        emit TurnStarted(actor: actor)
+                    }
+                }
+            }
+        "#;
+        let (program, type_env) = setup(source);
+
+        let core = RuntimeCore::new(Arc::clone(&program), Arc::clone(&type_env), 1, 1);
+        let mut game = GameState::new();
+        let actor = add_creature(&mut game, 20);
+        // Pre-apply the Fragile condition.
+        game.add_condition(
+            &actor,
+            ActiveCondition {
+                id: 200,
+                name: Name::from("Fragile"),
+                params: BTreeMap::new(),
+                bearer: actor,
+                gained_at: 1,
+                duration: Value::Str("Indefinite".into()),
+                invocation: None,
+                applied_at: 0,
+                source: Value::Str("Unknown".into()),
+                tags: BTreeSet::new(),
+                state_fields: {
+                    let mut m = BTreeMap::new();
+                    m.insert(Name::from("ticks"), Value::Int(0));
+                    m
+                },
+            },
+        );
+        let adapter = StateAdapter::new(game);
+
+        let mut exec = Execution::start_action(
+            core,
+            adapter,
+            "StartTurn",
+            actor,
+            vec![],
+            Span::dummy(),
+        )
+        .unwrap();
+
+        let mut effect_kinds = Vec::new();
+        let mut saw_removal_gate = false;
+
+        // Step through manually
+        loop {
+            match exec.poll() {
+                Ok(Step::Yielded(e)) => {
+                    let kind = EffectKind::of(&e);
+                    if kind == EffectKind::ConditionRemovalGate {
+                        saw_removal_gate = true;
+                    }
+                    effect_kinds.push(kind);
+                    exec.respond(Response::Acknowledged).unwrap();
+                }
+                Ok(Step::Done(_)) => break,
+                Err(PollError::Runtime(e)) => panic!("runtime error: {e}"),
+                Err(PollError::Protocol(e)) => panic!("protocol error: {e:?}"),
+            }
+        }
+
+        // The hook should have run and removed the condition.
+        // ConditionRemovalGate is a host-decided gate, so it IS yielded.
+        assert!(
+            saw_removal_gate,
+            "expected ConditionRemovalGate from hook's remove_condition"
+        );
+
+        // Verify the condition is no longer present (RemoveCondition is a
+        // mutation effect applied locally by StateAdapter, not yielded).
+        let conditions = exec.state().read_conditions(&actor).unwrap_or_default();
+        assert!(
+            conditions.iter().all(|c| c.name != "Fragile"),
+            "Fragile condition should have been removed"
+        );
+
+        // HP should be 20 (unchanged) if the condition handler was skipped,
+        // or 10 if the handler ran despite removal. The hook removes the
+        // condition before the handler fires, so HP should stay at 20.
+        let final_hp = exec.state().read_field(&actor, "HP");
+        assert_eq!(
+            final_hp,
+            Some(Value::Int(20)),
+            "HP should be 20 — condition handler should be skipped after removal"
+        );
+    }
+
+    #[test]
+    fn poll_respond_removal_deferred_error() {
+        // Manual poll/respond: entity has multiple instances of a condition
+        // with on_remove blocks. One on_remove block errors. Verify that
+        // ALL instances are still removed and the error is propagated only
+        // after all removals complete.
+        //
+        // We use a parameterless condition and add multiple instances
+        // manually. The on_remove block accesses a state field; the second
+        // instance has a state value that causes an error (division by zero).
+        let source = r#"
+            system Test {
+                entity Creature { HP: int }
+                condition Marked on bearer: Creature {
+                    state { severity: int = 1 }
+                    on_remove {
+                        bearer.HP -= 100 div state.severity
+                    }
+                }
+                action ClearMarks on actor: Creature () {
+                    resolve {
+                        remove_condition(actor, "Marked")
+                    }
+                }
+            }
+        "#;
+        let (program, type_env) = setup(source);
+
+        let core = RuntimeCore::new(Arc::clone(&program), Arc::clone(&type_env), 1, 1);
+        let mut game = GameState::new();
+        let actor = add_creature(&mut game, 200);
+
+        // Add 3 instances of Marked with different state fields.
+        // Instance 2 has severity=0, which will cause division by zero.
+        for (i, severity) in [1i64, 0, 2].iter().enumerate() {
+            let mut state_fields = BTreeMap::new();
+            state_fields.insert(Name::from("severity"), Value::Int(*severity));
+            game.add_condition(
+                &actor,
+                ActiveCondition {
+                    id: 0, // auto-assign
+                    name: Name::from("Marked"),
+                    params: BTreeMap::new(),
+                    bearer: actor,
+                    gained_at: i as u64 + 1,
+                    duration: Value::Str("Indefinite".into()),
+                    invocation: None,
+                    applied_at: 0,
+                    source: Value::Str("Unknown".into()),
+                    tags: BTreeSet::new(),
+                    state_fields,
+                },
+            );
+        }
+
+        let adapter = StateAdapter::new(game);
+
+        let mut exec = Execution::start_action(
+            core,
+            adapter,
+            "ClearMarks",
+            actor,
+            vec![],
+            Span::dummy(),
+        )
+        .unwrap();
+
+        let mut effect_kinds = Vec::new();
+        let mut removal_gate_count = 0;
+        let mut final_error = None;
+
+        loop {
+            match exec.poll() {
+                Ok(Step::Yielded(e)) => {
+                    let kind = EffectKind::of(&e);
+                    if kind == EffectKind::ConditionRemovalGate {
+                        removal_gate_count += 1;
+                    }
+                    effect_kinds.push(kind);
+                    exec.respond(Response::Acknowledged).unwrap();
+                }
+                Ok(Step::Done(_)) => break,
+                Err(PollError::Runtime(e)) => {
+                    final_error = Some(e);
+                    break;
+                }
+                Err(PollError::Protocol(e)) => panic!("protocol error: {e:?}"),
+            }
+        }
+
+        // All 3 instances should have had removal gates.
+        assert_eq!(
+            removal_gate_count, 3,
+            "expected 3 ConditionRemovalGate effects, got {removal_gate_count}"
+        );
+
+        // The deferred error from severity=0's on_remove (div by zero)
+        // should propagate after all instances are processed.
+        assert!(
+            final_error.is_some(),
+            "expected deferred runtime error from on_remove, but execution succeeded"
+        );
+
+        // All conditions should have been removed from state despite the error.
+        let conditions = exec.state().read_conditions(&actor).unwrap_or_default();
+        assert!(
+            conditions.iter().all(|c| c.name != "Marked"),
+            "all Marked conditions should have been removed despite on_remove error"
+        );
+    }
 }
