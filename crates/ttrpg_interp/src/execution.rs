@@ -158,6 +158,27 @@ impl EffectHandler for CachingHandler {
     }
 }
 
+/// Handler that captures any forwarded effect by returning `Vetoed`.
+/// Simpler than `CachingHandler` — no cache, no effect storage.
+/// Used by `try_frame_dispatch_stmt` to probe whether argument
+/// evaluation would yield a host-decided effect.
+struct TryEvalHandler {
+    captured: bool,
+}
+
+impl TryEvalHandler {
+    fn new() -> Self {
+        TryEvalHandler { captured: false }
+    }
+}
+
+impl EffectHandler for TryEvalHandler {
+    fn handle(&mut self, _effect: Effect) -> Response {
+        self.captured = true;
+        Response::Vetoed
+    }
+}
+
 /// Convert a captured host-decided effect into the appropriate yield frame.
 fn effect_to_yield_frame(effect: Effect, span: Span) -> Option<Frame> {
     match effect {
@@ -202,7 +223,7 @@ fn try_frame_dispatch_stmt<S: WritableState>(
     env: &mut ExecEnv,
     state: &StateAdapter<S>,
     stmt: &Spanned<StmtKind>,
-) -> Option<(Frame, AwaitingFn)> {
+) -> Result<Option<(Frame, AwaitingFn)>, RuntimeError> {
     // Extract the call expression and determine the awaiting type.
     let (call_expr, awaiting) = match &stmt.node {
         StmtKind::Expr(expr) => (expr, AwaitingFn::ExprStmt),
@@ -218,60 +239,116 @@ fn try_frame_dispatch_stmt<S: WritableState>(
             },
         ),
         StmtKind::Return(Some(expr)) => (expr, AwaitingFn::Return),
-        _ => return None,
+        _ => return Ok(None),
     };
 
     // Only handle direct function calls: name(args).
     let (callee_name, args) = match &call_expr.node {
         ExprKind::Call { callee, args } => match &callee.node {
             ExprKind::Ident(name) => (name.clone(), args),
-            _ => return None,
+            _ => return Ok(None),
         },
-        _ => return None,
+        _ => return Ok(None),
     };
 
     // Must be a user-defined function (not a builtin, condition, etc.)
-    let fn_decl = core.program.functions.get(callee_name.as_str())?;
-    let fn_info = core.type_env.lookup_fn(callee_name.as_str())?;
+    let fn_decl = match core.program.functions.get(callee_name.as_str()) {
+        Some(d) => d,
+        None => return Ok(None),
+    };
+    let fn_info = match core.type_env.lookup_fn(callee_name.as_str()) {
+        Some(i) => i,
+        None => return Ok(None),
+    };
     if fn_info.kind != ttrpg_checker::env::FnKind::Function {
-        return None;
+        return Ok(None);
     }
 
-    // Evaluate argument expressions via bridge (typically pure).
-    // If any arg triggers a mutation+yield, this will error via the
-    // recursive evaluator, which is acceptable — that's an edge case.
-    let mut evaluated_args: Vec<(Name, Value)> = Vec::new();
-    for (i, arg) in args.iter().enumerate() {
-        let param_name = if let Some(ref name) = arg.name {
-            name.clone()
-        } else if i < fn_info.params.len() {
-            fn_info.params[i].name.clone()
-        } else {
-            return None; // Too many args — let the recursive path handle
-        };
+    let params = &fn_info.params;
 
-        let val = bridge_eval_expr(core, env, state, &arg.value).ok()?;
-        evaluated_args.push((param_name, val));
-    }
-
-    // Collect default expressions for missing optional params.
-    let mut default_params = Vec::new();
-    for i in evaluated_args.len()..fn_info.params.len() {
-        if fn_info.params[i].has_default {
-            if let Some(default_expr) =
-                fn_decl.params.get(i).and_then(|p| p.default.as_ref())
-            {
-                default_params.push((
-                    fn_info.params[i].name.clone(),
-                    default_expr.clone(),
-                ));
+    // ── Pre-pass: determine named-arg → slot mapping ──────────
+    // Mirrors bind_args pre-pass. On duplicate or unknown param,
+    // return Ok(None) to fall back to bridge path for proper error.
+    let mut named_slots = vec![false; params.len()];
+    for arg in args {
+        if let Some(ref name) = arg.name {
+            let pos = match params.iter().position(|p| p.name == *name) {
+                Some(p) => p,
+                None => return Ok(None), // unknown param — bridge will error
+            };
+            if named_slots[pos] {
+                return Ok(None); // duplicate — bridge will error
             }
-        } else {
-            return None; // Missing required arg — let recursive path error
+            named_slots[pos] = true;
         }
     }
 
-    Some((
+    // ── Eval pass: evaluate args with TryEvalHandler ──────────
+    let mut slot_values: Vec<Option<Value>> = vec![None; params.len()];
+    let mut pos_iter = (0..params.len()).filter(|i| !named_slots[*i]);
+
+    for arg in args {
+        let slot_idx = if let Some(ref name) = arg.name {
+            // Already validated above.
+            params.iter().position(|p| p.name == *name).unwrap()
+        } else {
+            match pos_iter.next() {
+                Some(i) => i,
+                None => return Ok(None), // too many positional args
+            }
+        };
+
+        state.reset_mutation_flag();
+        let mut probe = TryEvalHandler::new();
+        let eval_result = bridge_eval_with(core, env, state, &mut probe, |tmp_env| {
+            crate::eval::eval_expr(tmp_env, &arg.value)
+        });
+
+        if probe.captured {
+            // The arg expression yielded a host-decided effect.
+            if state.local_mutation_applied() {
+                // Double-mutation bug: mutation happened before yield
+                // in arg probing — hard error, not a safe fallback.
+                return Err(RuntimeError::new(format!(
+                    "async replay unsound: local mutation applied \
+                     before host-decided effect in argument evaluation \
+                     for call to '{}' at {:?}",
+                    callee_name, stmt.span,
+                )));
+            }
+            // Safe fallback: no mutation was applied, so the bridge
+            // path can re-evaluate the args without corruption.
+            return Ok(None);
+        }
+
+        // No yield — eval_result should be Ok.
+        match eval_result {
+            Ok(val) => slot_values[slot_idx] = Some(val),
+            Err(_) => return Ok(None), // eval error — bridge will report
+        }
+    }
+
+    // ── Post-pass: collect evaluated args + defaults ──────────
+    let mut evaluated_args: Vec<(Name, Value)> = Vec::new();
+    let mut default_params: Vec<(Name, Spanned<ExprKind>)> = Vec::new();
+
+    for (i, param) in params.iter().enumerate() {
+        if let Some(val) = slot_values[i].take() {
+            evaluated_args.push((param.name.clone(), val));
+        } else if param.has_default {
+            if let Some(default_expr) =
+                fn_decl.params.get(i).and_then(|p| p.default.as_ref())
+            {
+                default_params.push((param.name.clone(), default_expr.clone()));
+            } else {
+                return Ok(None); // missing default expr
+            }
+        } else {
+            return Ok(None); // missing required arg — bridge will error
+        }
+    }
+
+    Ok(Some((
         Frame::FunctionEval {
             name: callee_name,
             args: evaluated_args,
@@ -280,7 +357,7 @@ fn try_frame_dispatch_stmt<S: WritableState>(
             child_result: None,
         },
         awaiting,
-    ))
+    )))
 }
 
 /// Creates a temporary `Interpreter` and `Env` backed by the step-based
@@ -485,6 +562,10 @@ pub(crate) enum Frame {
         /// the value here, and the next `advance()` uses it to complete
         /// the statement (bind for Let, set result for Expr).
         awaiting_fn: Option<AwaitingFn>,
+        /// Error from a child frame dispatched via `awaiting_fn`.
+        /// Checked before `awaiting_fn` in `advance()` so errors
+        /// propagate instead of being silently dropped.
+        awaiting_error: Option<RuntimeError>,
     },
 
     StmtResume {
@@ -910,6 +991,7 @@ impl Frame {
                             result: Value::Void,
                             expr_cache: Vec::new(),
                             awaiting_fn: None,
+                            awaiting_error: None,
                         })
                     }
 
@@ -1085,7 +1167,15 @@ impl Frame {
                 result,
                 expr_cache,
                 awaiting_fn,
+                awaiting_error,
             } => {
+                // Handle error from a child frame dispatched via awaiting_fn.
+                if let Some(err) = awaiting_error.take() {
+                    awaiting_fn.take();
+                    env.pop_scope();
+                    return Advance::Error(err);
+                }
+
                 // Handle completed child frame for a statement that was
                 // dispatched via FunctionEval instead of bridge_eval_with.
                 if let Some(awaiting) = awaiting_fn.take() {
@@ -1182,11 +1272,16 @@ impl Frame {
                     // Async path: try frame-based dispatch for function
                     // calls (avoids unsound bridge replay for functions
                     // whose bodies contain mutations + yields).
-                    if let Some((fn_frame, awaiting)) =
-                        try_frame_dispatch_stmt(core, env, state, &stmt)
-                    {
-                        *awaiting_fn = Some(awaiting);
-                        return Advance::Push(fn_frame);
+                    match try_frame_dispatch_stmt(core, env, state, &stmt) {
+                        Ok(Some((fn_frame, awaiting))) => {
+                            *awaiting_fn = Some(awaiting);
+                            return Advance::Push(fn_frame);
+                        }
+                        Err(e) => {
+                            env.pop_scope();
+                            return Advance::Error(e);
+                        }
+                        Ok(None) => {} // fall through to CachingHandler
                     }
 
                     // Fall back to CachingHandler bridge for statements
@@ -1399,6 +1494,7 @@ impl Frame {
                         result: Value::Void,
                         expr_cache: Vec::new(),
                         awaiting_fn: None,
+                        awaiting_error: None,
                     });
                 }
 
@@ -1465,6 +1561,7 @@ impl Frame {
                                     result: Value::Void,
                                     expr_cache: Vec::new(),
                                     awaiting_fn: None,
+                                    awaiting_error: None,
                                 })
                             } else {
                                 Advance::Error(RuntimeError::with_span(
@@ -1647,6 +1744,7 @@ impl Frame {
                         result: Value::Void,
                         expr_cache: Vec::new(),
                         awaiting_fn: None,
+                        awaiting_error: None,
                     });
                 }
 
@@ -1690,6 +1788,7 @@ impl Frame {
                                 result: Value::Void,
                                 expr_cache: Vec::new(),
                                 awaiting_fn: None,
+                                awaiting_error: None,
                             });
                         }
 
@@ -1783,6 +1882,7 @@ impl Frame {
                         result: Value::Void,
                         expr_cache: Vec::new(),
                         awaiting_fn: None,
+                        awaiting_error: None,
                     });
                 }
 
@@ -1880,6 +1980,15 @@ impl Frame {
             ) => {
                 *body_result = Some(Err(error));
                 *step = ActionStep::EmitCompleted;
+                Ok(())
+            }
+            Frame::Block { awaiting_fn, awaiting_error, .. }
+                if awaiting_fn.is_some() =>
+            {
+                // Child FunctionEval errored while awaiting_fn is set.
+                // Store the error so advance() can propagate it after
+                // scope cleanup, matching the FunctionEval pattern.
+                *awaiting_error = Some(error);
                 Ok(())
             }
             Frame::FunctionEval { child_result, .. }
@@ -7657,4 +7766,211 @@ mod tests {
     // explicit `return` syntax which has checker constraints. The
     // pattern is the same as ExprStmt — the last expression in the
     // function body IS the return value.
+
+    // ── Bug fix tests (try_frame_dispatch_stmt) ───────────────
+
+    #[test]
+    fn yielding_arg_falls_back_to_bridge() {
+        // Bug 1: calling a user function whose arg expression yields
+        // (e.g., roll(1d6).total) should not panic — it should fall
+        // back to the bridge path and yield the RollDice effect.
+        use crate::value::{DiceExpr, RollResult};
+
+        let (core, _) = make_core(
+            r#"
+            system Test {
+                entity Creature { HP: int }
+                function consume(x: int) -> int { x }
+                function caller() -> int {
+                    consume(roll(1d6).total)
+                }
+            }
+            "#,
+        );
+
+        let game = GameState::new();
+        let adapter = StateAdapter::new(game);
+
+        let mut exec = Execution::start_function(
+            core, adapter, "caller", vec![],
+        )
+        .unwrap();
+
+        // Should yield RollDice, not panic.
+        let step = exec.poll().unwrap();
+        assert!(
+            matches!(&step, Step::Yielded(e) if matches!(&**e, Effect::RollDice { .. })),
+            "expected RollDice yield, got {step:?}"
+        );
+
+        exec.respond(Response::Rolled(RollResult {
+            expr: DiceExpr::single(1, 6, None, 0),
+            dice: vec![3],
+            kept: vec![3],
+            modifier: 0,
+            total: 3,
+            unmodified: 3,
+        }))
+        .unwrap();
+
+        let step = exec.poll().unwrap();
+        assert!(
+            matches!(&step, Step::Done(Value::Int(3))),
+            "expected Done(3), got {step:?}"
+        );
+    }
+
+    #[test]
+    fn error_propagation_through_awaiting_fn() {
+        // Bug 2: when a function called via the awaiting_fn path
+        // errors, the error should propagate through Block and be
+        // reported as ActionCompleted(Failed), not silently dropped.
+        let (core, _) = make_core(
+            r#"
+            system Test {
+                entity Creature { HP: int }
+                function explode() -> float {
+                    1 / 0
+                }
+                action Boom on actor: Creature () {
+                    resolve {
+                        let x = explode()
+                    }
+                }
+            }
+            "#,
+        );
+
+        let mut game = GameState::new();
+        let actor = add_creature(&mut game, 10);
+        let adapter = StateAdapter::new(game);
+
+        let exec = Execution::start_action(
+            core, adapter, "Boom", actor, vec![], Span::dummy(),
+        )
+        .unwrap();
+
+        let mut handler = ScriptedHandler::always_ack();
+        let _result = exec.run_with_handler(&mut handler);
+
+        // Should have ActionCompleted(Failed).
+        let completed = handler.log.iter().find(|e| {
+            matches!(e, Effect::ActionCompleted { .. })
+        });
+        assert!(
+            completed.is_some(),
+            "expected ActionCompleted effect"
+        );
+        if let Some(Effect::ActionCompleted { outcome, .. }) = completed {
+            assert_eq!(
+                *outcome,
+                ActionOutcome::Failed,
+                "expected Failed outcome for division by zero"
+            );
+        }
+    }
+
+    #[test]
+    fn named_arg_binding_on_async_path() {
+        // Bug 3: named arguments should be bound correctly on the
+        // async frame-dispatch path, matching bind_args semantics.
+        let (core, _) = make_core(
+            r#"
+            system Test {
+                entity Creature { HP: int }
+                function sub(a: int, b: int) -> int {
+                    a - b
+                }
+                function caller() -> int {
+                    sub(b: 7, a: 3)
+                }
+            }
+            "#,
+        );
+
+        let game = GameState::new();
+        let adapter = StateAdapter::new(game);
+
+        let mut exec = Execution::start_function(
+            core, adapter, "caller", vec![],
+        )
+        .unwrap();
+
+        let step = exec.poll().unwrap();
+        // a=3, b=7, so 3-7 = -4
+        assert!(
+            matches!(&step, Step::Done(Value::Int(-4))),
+            "expected Done(-4), got {step:?}"
+        );
+    }
+
+    #[test]
+    fn mutation_and_yield_in_arg_probe_is_hard_error() {
+        // When a function arg expression both mutates state AND yields
+        // a host-decided effect, that's the double-mutation bug in arg
+        // probing — should be a hard RuntimeError, not a fallback.
+        let (core, _) = make_core(
+            r#"
+            system Test {
+                entity Creature { HP: int }
+                function tick_and_roll() -> int {
+                    advance_time(1)
+                    roll(1d6).total
+                }
+                function consume(x: int) -> int { x }
+                function caller() -> int {
+                    consume(tick_and_roll())
+                }
+            }
+            "#,
+        );
+
+        let game = GameState::new();
+        let adapter = StateAdapter::new(game);
+
+        let mut exec = Execution::start_function(
+            core, adapter, "caller", vec![],
+        )
+        .unwrap();
+
+        let result = exec.poll();
+        assert!(
+            matches!(&result, Err(PollError::Runtime(_))),
+            "expected hard RuntimeError for mutation+yield in arg probe, got {result:?}"
+        );
+    }
+
+    #[test]
+    fn mixed_positional_and_named_args_on_async_path() {
+        // Mixed positional/named: f(1, c: 3, b: 2) for f(a, b, c)
+        // should bind a=1, b=2, c=3.
+        let (core, _) = make_core(
+            r#"
+            system Test {
+                entity Creature { HP: int }
+                function f(a: int, b: int, c: int) -> int {
+                    a * 100 + b * 10 + c
+                }
+                function caller() -> int {
+                    f(1, c: 3, b: 2)
+                }
+            }
+            "#,
+        );
+
+        let game = GameState::new();
+        let adapter = StateAdapter::new(game);
+
+        let mut exec = Execution::start_function(
+            core, adapter, "caller", vec![],
+        )
+        .unwrap();
+
+        let step = exec.poll().unwrap();
+        // a=1, b=2, c=3 → 1*100 + 2*10 + 3 = 123
+        assert!(
+            matches!(&step, Step::Done(Value::Int(123))),
+            "expected Done(123), got {step:?}"
+        );
+    }
 }
