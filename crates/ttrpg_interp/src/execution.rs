@@ -17,6 +17,8 @@ use crate::adapter::StateAdapter;
 use crate::effect::{
     ActionKind, ActionOutcome, Effect, EffectHandler, EffectKind, Response, Step,
 };
+use crate::value::DiceExpr;
+use ttrpg_checker::ty::Ty;
 use crate::runtime_core::RuntimeCore;
 use crate::select_action_overload;
 use crate::state::{
@@ -412,12 +414,22 @@ pub(crate) enum Frame {
     },
 
     RollDiceWaiting {
+        dice_expr: DiceExpr,
         span: Span,
+        pending: Option<Response>,
     },
 
     PromptWaiting {
+        prompt_name: Name,
+        params: Vec<(Name, Value)>,
+        return_type: Ty,
+        hint: Option<String>,
+        suggest: Option<Value>,
         default_block: Option<Block>,
         span: Span,
+        pending: Option<Response>,
+        /// Stores the result from a UseDefault Block child frame.
+        result: Option<Value>,
     },
 
     SpawnEntity {
@@ -939,6 +951,91 @@ impl Frame {
                 }
             }
 
+            Frame::RollDiceWaiting {
+                dice_expr,
+                span,
+                pending,
+            } => {
+                if let Some(response) = pending.take() {
+                    // Host responded — extract the roll result.
+                    match response {
+                        Response::Rolled(rr) => Advance::Pop(Value::RollResult(rr)),
+                        Response::Override(Value::RollResult(rr)) => {
+                            Advance::Pop(Value::RollResult(rr))
+                        }
+                        other => Advance::Error(RuntimeError::with_span(
+                            format!(
+                                "protocol error: expected Rolled or Override(RollResult) \
+                                 for RollDice, got {other:?}"
+                            ),
+                            *span,
+                        )),
+                    }
+                } else {
+                    // First advance — emit the RollDice effect.
+                    Advance::Yield(Effect::RollDice {
+                        expr: dice_expr.clone(),
+                    })
+                }
+            }
+
+            Frame::PromptWaiting {
+                prompt_name,
+                params,
+                return_type,
+                hint,
+                suggest,
+                default_block,
+                span,
+                pending,
+                result,
+            } => {
+                // If we have a result from a UseDefault Block child, pop it.
+                if let Some(val) = result.take() {
+                    return Advance::Pop(val);
+                }
+
+                if let Some(response) = pending.take() {
+                    // Host responded to ResolvePrompt.
+                    match response {
+                        Response::PromptResult(val) => Advance::Pop(val),
+                        Response::Override(val) => Advance::Pop(val),
+                        Response::UseDefault => {
+                            if let Some(block) = default_block.take() {
+                                Advance::Push(Frame::Block {
+                                    stmts: block.node,
+                                    index: 0,
+                                    result: Value::Void,
+                                    expr_cache: Vec::new(),
+                                })
+                            } else {
+                                Advance::Error(RuntimeError::with_span(
+                                    "prompt: UseDefault response but no default block",
+                                    *span,
+                                ))
+                            }
+                        }
+                        other => Advance::Error(RuntimeError::with_span(
+                            format!(
+                                "protocol error: expected PromptResult, Override, \
+                                 or UseDefault for ResolvePrompt, got {other:?}"
+                            ),
+                            *span,
+                        )),
+                    }
+                } else {
+                    // First advance — emit the ResolvePrompt effect.
+                    Advance::Yield(Effect::ResolvePrompt {
+                        name: prompt_name.clone(),
+                        params: params.clone(),
+                        return_type: return_type.clone(),
+                        hint: hint.clone(),
+                        suggest: suggest.take(),
+                        has_default: default_block.is_some(),
+                    })
+                }
+            }
+
             Frame::ScopeGuard => Advance::Pop(Value::Void),
             _ => Advance::Error(RuntimeError::new(
                 "frame type not yet implemented",
@@ -948,8 +1045,11 @@ impl Frame {
 
     /// Deliver a host response to this frame.
     fn receive_response(&mut self, response: Response) {
-        if let Frame::ActionLifecycle { pending, .. } = self {
-            *pending = Some(response);
+        match self {
+            Frame::ActionLifecycle { pending, .. } => *pending = Some(response),
+            Frame::RollDiceWaiting { pending, .. } => *pending = Some(response),
+            Frame::PromptWaiting { pending, .. } => *pending = Some(response),
+            _ => {}
         }
     }
 
@@ -968,6 +1068,10 @@ impl Frame {
                 // Child frame (e.g., BudgetGuard body) completed.
                 // Store result; the next advance() will continue iteration.
                 *result = value;
+            }
+            Frame::PromptWaiting { result, .. } => {
+                // UseDefault → Block child completed.
+                *result = Some(value);
             }
             _ => {}
         }
@@ -5418,5 +5522,251 @@ mod tests {
                 outcome: ActionOutcome::Succeeded, ..
             })
         ));
+    }
+
+    // ── RollDiceWaiting / PromptWaiting tests (Phase 4.3) ───
+
+    /// Helper: create a minimal Execution with a single frame pushed.
+    fn exec_with_frame(frame: Frame) -> Execution<GameState> {
+        let (core, _) = make_core(
+            r#"
+            system Test {
+                entity Creature { HP: int }
+            }
+            "#,
+        );
+        let game = GameState::new();
+        let adapter = StateAdapter::new(game);
+        let mut exec = Execution::new(core, adapter);
+        exec.frames.push(frame);
+        exec
+    }
+
+    #[test]
+    fn roll_dice_waiting_yields_and_resumes() {
+        use crate::value::{DiceExpr, RollResult};
+
+        let mut exec = exec_with_frame(Frame::RollDiceWaiting {
+            dice_expr: DiceExpr::single(2, 6, None, 0),
+            span: Span::dummy(),
+            pending: None,
+        });
+
+        // Poll → should yield RollDice
+        let step = exec.poll().unwrap();
+        match step {
+            Step::Yielded(e) => {
+                assert!(matches!(&*e, Effect::RollDice { expr } if expr.groups[0].count == 2 && expr.groups[0].sides == 6));
+            }
+            Step::Done(_) => panic!("expected Yielded"),
+        }
+
+        // Respond with a roll result
+        let rr = RollResult {
+            expr: DiceExpr::single(2, 6, None, 0),
+            dice: vec![3, 5],
+            kept: vec![3, 5],
+            modifier: 0,
+            total: 8,
+            unmodified: 8,
+        };
+        exec.respond(Response::Rolled(rr.clone())).unwrap();
+
+        // Poll → Done with the roll result
+        let step = exec.poll().unwrap();
+        match step {
+            Step::Done(Value::RollResult(result)) => {
+                assert_eq!(result.total, 8);
+                assert_eq!(result.dice, vec![3, 5]);
+            }
+            other => panic!("expected Done(RollResult), got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn roll_dice_waiting_override_response() {
+        use crate::value::{DiceExpr, RollResult};
+
+        let mut exec = exec_with_frame(Frame::RollDiceWaiting {
+            dice_expr: DiceExpr::single(1, 20, None, 0),
+            span: Span::dummy(),
+            pending: None,
+        });
+
+        // Poll → yield
+        let _ = exec.poll().unwrap();
+
+        // Override with a specific result
+        let rr = RollResult {
+            expr: DiceExpr::single(1, 20, None, 0),
+            dice: vec![20],
+            kept: vec![20],
+            modifier: 0,
+            total: 20,
+            unmodified: 20,
+        };
+        exec.respond(Response::Override(Value::RollResult(rr)))
+            .unwrap();
+
+        // Should get the overridden result
+        let step = exec.poll().unwrap();
+        match step {
+            Step::Done(Value::RollResult(result)) => {
+                assert_eq!(result.total, 20);
+            }
+            other => panic!("expected Done(RollResult), got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn roll_dice_waiting_invalid_response() {
+        use crate::value::DiceExpr;
+
+        let mut exec = exec_with_frame(Frame::RollDiceWaiting {
+            dice_expr: DiceExpr::single(1, 6, None, 0),
+            span: Span::dummy(),
+            pending: None,
+        });
+
+        let _ = exec.poll().unwrap();
+        exec.respond(Response::Vetoed).unwrap();
+
+        // Should error on invalid response
+        let result = exec.poll();
+        assert!(matches!(result, Err(PollError::Runtime(_))));
+    }
+
+    #[test]
+    fn prompt_waiting_override_response() {
+        let mut exec = exec_with_frame(Frame::PromptWaiting {
+            prompt_name: Name::from("ask_target"),
+            params: vec![],
+            return_type: Ty::Int,
+            hint: Some("Pick a number".to_string()),
+            suggest: Some(Value::Int(5)),
+            default_block: None,
+            span: Span::dummy(),
+            pending: None,
+            result: None,
+        });
+
+        // Poll → yield ResolvePrompt
+        let step = exec.poll().unwrap();
+        match step {
+            Step::Yielded(e) => {
+                assert!(matches!(
+                    &*e,
+                    Effect::ResolvePrompt {
+                        name,
+                        has_default: false,
+                        ..
+                    }
+                    if name == "ask_target"
+                ));
+            }
+            Step::Done(_) => panic!("expected Yielded"),
+        }
+
+        // Respond with a value
+        exec.respond(Response::Override(Value::Int(42))).unwrap();
+
+        // Done with the prompt result
+        let step = exec.poll().unwrap();
+        assert!(matches!(step, Step::Done(Value::Int(42))));
+    }
+
+    #[test]
+    fn prompt_waiting_prompt_result_response() {
+        let mut exec = exec_with_frame(Frame::PromptWaiting {
+            prompt_name: Name::from("ask"),
+            params: vec![],
+            return_type: Ty::Int,
+            hint: None,
+            suggest: None,
+            default_block: None,
+            span: Span::dummy(),
+            pending: None,
+            result: None,
+        });
+
+        let _ = exec.poll().unwrap();
+        exec.respond(Response::PromptResult(Value::Int(7)))
+            .unwrap();
+
+        let step = exec.poll().unwrap();
+        assert!(matches!(step, Step::Done(Value::Int(7))));
+    }
+
+    #[test]
+    fn prompt_waiting_use_default_pushes_block() {
+        use ttrpg_ast::ast::StmtKind;
+
+        // Create a default block that evaluates to 99
+        let default_block = Block {
+            node: vec![Spanned {
+                node: StmtKind::Expr(Spanned {
+                    node: ExprKind::IntLit(99),
+                    span: Span::dummy(),
+                }),
+                span: Span::dummy(),
+            }],
+            span: Span::dummy(),
+        };
+
+        let mut exec = exec_with_frame(Frame::PromptWaiting {
+            prompt_name: Name::from("ask"),
+            params: vec![],
+            return_type: Ty::Int,
+            hint: None,
+            suggest: None,
+            default_block: Some(default_block),
+            span: Span::dummy(),
+            pending: None,
+            result: None,
+        });
+
+        // Poll → yield ResolvePrompt (has_default: true)
+        let step = exec.poll().unwrap();
+        match step {
+            Step::Yielded(e) => {
+                assert!(matches!(
+                    &*e,
+                    Effect::ResolvePrompt {
+                        has_default: true,
+                        ..
+                    }
+                ));
+            }
+            Step::Done(_) => panic!("expected Yielded"),
+        }
+
+        // Respond with UseDefault
+        exec.respond(Response::UseDefault).unwrap();
+
+        // Poll → Block evaluates the default body → Done(99)
+        let step = exec.poll().unwrap();
+        assert!(matches!(step, Step::Done(Value::Int(99))));
+    }
+
+    #[test]
+    fn prompt_waiting_use_default_no_block_errors() {
+        let mut exec = exec_with_frame(Frame::PromptWaiting {
+            prompt_name: Name::from("ask"),
+            params: vec![],
+            return_type: Ty::Int,
+            hint: None,
+            suggest: None,
+            default_block: None, // no default
+            span: Span::dummy(),
+            pending: None,
+            result: None,
+        });
+
+        let _ = exec.poll().unwrap();
+        exec.respond(Response::UseDefault).unwrap();
+
+        // Should error — no default block
+        let result = exec.poll();
+        assert!(matches!(result, Err(PollError::Runtime(_))));
     }
 }
