@@ -310,6 +310,211 @@ fn try_dispatch_apply_condition<S: WritableState>(
     )))
 }
 
+/// Try to dispatch a `remove_condition(...)` call as a frame.
+///
+/// Evaluates arguments via bridge, resolves matching condition instances,
+/// then constructs a `ConditionRemovalLoop` frame.
+fn try_dispatch_remove_condition<S: WritableState>(
+    core: &RuntimeCore,
+    env: &mut ExecEnv,
+    state: &StateAdapter<S>,
+    args: &[Arg],
+    span: Span,
+    awaiting: AwaitingFn,
+) -> Result<Option<(Frame, AwaitingFn)>, RuntimeError> {
+    // Evaluate all arguments via bridge (no host-decided effects expected).
+    let mut values = Vec::new();
+    for arg in args {
+        let mut probe = TryEvalHandler::new();
+        let eval_result = bridge_eval_with(core, env, state, &mut probe, |tmp_env| {
+            crate::eval::eval_expr(tmp_env, &arg.value)
+        });
+        if probe.captured {
+            return Ok(None);
+        }
+        match eval_result {
+            Ok(v) => values.push(v),
+            Err(_) => return Ok(None),
+        }
+    }
+
+    // Check lifecycle guard
+    if env.in_lifecycle_block > 0 {
+        return Err(RuntimeError::with_span(
+            "remove_condition() cannot be called inside on_apply/on_remove blocks",
+            span,
+        ));
+    }
+
+    // Extract target and matching instances (mirrors builtin_remove_condition)
+    let (target, instances) = match (values.first(), values.get(1)) {
+        (
+            Some(Value::Entity(target)),
+            Some(Value::Condition {
+                name: cond_name,
+                args: cond_args,
+            }),
+        ) => {
+            let conditions = state.read_conditions(target).unwrap_or_default();
+            let matching: Vec<_> = conditions
+                .into_iter()
+                .filter(|c| c.name == *cond_name && c.params == *cond_args)
+                .collect();
+            (*target, matching)
+        }
+        (Some(Value::Entity(target)), Some(Value::Str(cond_name))) => {
+            let conditions = state.read_conditions(target).unwrap_or_default();
+            let name = Name::from(cond_name.as_str());
+            let matching: Vec<_> = conditions.into_iter().filter(|c| c.name == name).collect();
+            (*target, matching)
+        }
+        (Some(Value::Entity(target)), Some(Value::Struct { name, fields }))
+            if name == "ActiveCondition" =>
+        {
+            let cond_id = match fields.get("id") {
+                Some(Value::Int(id)) if *id >= 0 => *id as u64,
+                Some(Value::Int(_)) => {
+                    return Err(RuntimeError::with_span(
+                        "ActiveCondition id must be non-negative",
+                        span,
+                    ));
+                }
+                _ => {
+                    return Err(RuntimeError::with_span(
+                        "ActiveCondition missing 'id' field",
+                        span,
+                    ));
+                }
+            };
+            let conditions = state.read_conditions(target).unwrap_or_default();
+            let matching: Vec<_> = conditions.into_iter().filter(|c| c.id == cond_id).collect();
+            (*target, matching)
+        }
+        _ => return Ok(None), // type mismatch — bridge will report error
+    };
+
+    // Sort by gained_at and pair with target
+    let mut sorted: Vec<(EntityRef, ActiveCondition)> = instances
+        .into_iter()
+        .map(|c| (target, c))
+        .collect();
+    sorted.sort_by_key(|(_, c)| c.gained_at);
+
+    Ok(Some((
+        Frame::ConditionRemovalLoop {
+            target,
+            condition_name: sorted.first().map(|(_, c)| c.name.clone()).unwrap_or_default(),
+            instances: sorted,
+            index: 0,
+            first_error: None,
+            removed_count: 0,
+            revoke_invocation: None,
+            child_result: None,
+        },
+        awaiting,
+    )))
+}
+
+/// Try to dispatch a `revoke(...)` call as a frame.
+///
+/// Evaluates the invocation argument, collects matching conditions across
+/// all entities, then constructs a `ConditionRemovalLoop` frame with
+/// `revoke_invocation` set.
+fn try_dispatch_revoke<S: WritableState>(
+    core: &RuntimeCore,
+    env: &mut ExecEnv,
+    state: &StateAdapter<S>,
+    args: &[Arg],
+    span: Span,
+    awaiting: AwaitingFn,
+) -> Result<Option<(Frame, AwaitingFn)>, RuntimeError> {
+    // Evaluate all arguments via bridge.
+    let mut values = Vec::new();
+    for arg in args {
+        let mut probe = TryEvalHandler::new();
+        let eval_result = bridge_eval_with(core, env, state, &mut probe, |tmp_env| {
+            crate::eval::eval_expr(tmp_env, &arg.value)
+        });
+        if probe.captured {
+            return Ok(None);
+        }
+        match eval_result {
+            Ok(v) => values.push(v),
+            Err(_) => return Ok(None),
+        }
+    }
+
+    // Check lifecycle guard
+    if env.in_lifecycle_block > 0 {
+        return Err(RuntimeError::with_span(
+            "revoke() cannot be called inside on_apply/on_remove blocks",
+            span,
+        ));
+    }
+
+    let arg = match values.first() {
+        Some(v) => v,
+        None => return Ok(None), // bridge will error
+    };
+
+    let inv_id = match arg {
+        Value::Invocation(id) => *id,
+        Value::Option(Some(inner)) => match inner.as_ref() {
+            Value::Invocation(id) => *id,
+            _ => return Ok(None),
+        },
+        Value::Option(None) | Value::Void => {
+            // No-op: nothing to revoke.
+            return Ok(Some((
+                // Use a ConditionRemovalLoop with empty instances — it will
+                // just pop immediately.
+                Frame::ConditionRemovalLoop {
+                    target: EntityRef(0),
+                    condition_name: Name::from(""),
+                    instances: Vec::new(),
+                    index: 0,
+                    first_error: None,
+                    removed_count: 0,
+                    revoke_invocation: None,
+                    child_result: None,
+                },
+                awaiting,
+            )));
+        }
+        _ => return Ok(None),
+    };
+
+    // Collect all conditions with this invocation across all entities
+    let entities = state.all_entities();
+    let mut matching: Vec<(EntityRef, ActiveCondition)> = Vec::new();
+    for entity in &entities {
+        if let Some(conditions) = state.read_conditions(entity) {
+            for cond in conditions {
+                if cond.invocation == Some(inv_id) {
+                    matching.push((*entity, cond));
+                }
+            }
+        }
+    }
+
+    // Sort by gained_at
+    matching.sort_by_key(|(_, c)| c.gained_at);
+
+    Ok(Some((
+        Frame::ConditionRemovalLoop {
+            target: matching.first().map_or(EntityRef(0), |(t, _)| *t),
+            condition_name: Name::from(""),
+            instances: matching,
+            index: 0,
+            first_error: None,
+            removed_count: 0,
+            revoke_invocation: Some(inv_id),
+            child_result: None,
+        },
+        awaiting,
+    )))
+}
+
 /// Evaluate a block using the existing recursive evaluator.
 ///
 /// Try to dispatch a statement via frame-based execution instead of
@@ -354,6 +559,18 @@ fn try_frame_dispatch_stmt<S: WritableState>(
     // because it yields a ConditionApplyGate effect.
     if callee_name.as_str() == "apply_condition" {
         return try_dispatch_apply_condition(core, env, state, args, call_expr.span, awaiting);
+    }
+
+    // Check for remove_condition builtin — must be dispatched as a frame
+    // because it yields ConditionRemovalGate effects.
+    if callee_name.as_str() == "remove_condition" {
+        return try_dispatch_remove_condition(core, env, state, args, call_expr.span, awaiting);
+    }
+
+    // Check for revoke builtin — must be dispatched as a frame
+    // because it yields ConditionRemovalGate effects.
+    if callee_name.as_str() == "revoke" {
+        return try_dispatch_revoke(core, env, state, args, call_expr.span, awaiting);
     }
 
     // Must be a user-defined function (not a builtin, condition, etc.)
@@ -805,23 +1022,38 @@ pub(crate) enum Frame {
     ConditionRemovalLoop {
         target: EntityRef,
         condition_name: Name,
-        instances: Vec<ActiveCondition>,
+        instances: Vec<(EntityRef, ActiveCondition)>,
         index: usize,
         first_error: Option<RuntimeError>,
         removed_count: u32,
+        revoke_invocation: Option<InvocationId>,
+        /// Result from child ConditionRemovalGate or ConditionOnRemove frames.
+        child_result: Option<Result<Value, RuntimeError>>,
     },
 
     ConditionRemovalGate {
         target: EntityRef,
         condition_name: Name,
         instance_id: u64,
+        pending: Option<Response>,
     },
 
     ConditionOnRemove {
         target: EntityRef,
         condition_name: Name,
         instance_id: u64,
+        params: BTreeMap<Name, Value>,
         state_fields: BTreeMap<Name, Value>,
+        /// Index into the condition declaration's clauses (on_remove blocks).
+        clause_index: usize,
+        /// Result from a child Block frame (on_remove body).
+        child_result: Option<Result<Value, RuntimeError>>,
+        /// Saved condition token to restore after lifecycle blocks.
+        saved_condition_token: Option<ConditionToken>,
+        /// Whether lifecycle context (counters) has been set up.
+        lifecycle_setup: bool,
+        /// Whether on_remove blocks have errored (still need to emit RemoveCondition).
+        on_remove_error: Option<RuntimeError>,
     },
 
     RollDiceWaiting {
@@ -2917,6 +3149,306 @@ impl Frame {
                 Advance::Pop(Value::Void)
             }
 
+            // ── Condition removal frames (Phase 5.4) ──────────────
+
+            Frame::ConditionRemovalLoop {
+                target: _,
+                condition_name: _,
+                instances,
+                index,
+                first_error,
+                removed_count: _,
+                revoke_invocation,
+                child_result,
+            } => {
+                // Handle completed child (ConditionRemovalGate or ConditionOnRemove).
+                if let Some(result) = child_result.take() {
+                    match result {
+                        Ok(_) => {
+                            // Child completed successfully; advance index.
+                            *index += 1;
+                            return Advance::Continue;
+                        }
+                        Err(e) => {
+                            // Deferred error: stash and continue to next instance.
+                            if first_error.is_none() {
+                                *first_error = Some(e);
+                            }
+                            *index += 1;
+                            return Advance::Continue;
+                        }
+                    }
+                }
+
+                // Push ConditionRemovalGate for the next instance.
+                if *index < instances.len() {
+                    let (inst_target, inst) = &instances[*index];
+                    return Advance::Push(Frame::ConditionRemovalGate {
+                        target: *inst_target,
+                        condition_name: inst.name.clone(),
+                        instance_id: inst.id,
+                        pending: None,
+                    });
+                }
+
+                // All instances processed. Emit RevokeInvocation if needed.
+                if let Some(inv_id) = revoke_invocation.take() {
+                    let effect = Effect::RevokeInvocation { invocation: inv_id };
+                    let emit_result = if let Some(ref mut h) = handler {
+                        bridge_eval_with(core, env, state, *h, |tmp_env| {
+                            let _ = tmp_env.emit(effect);
+                            Ok(Value::Void)
+                        })
+                    } else {
+                        bridge_eval_with(core, env, state, &mut NoYieldHandler, |tmp_env| {
+                            let _ = tmp_env.emit(effect);
+                            Ok(Value::Void)
+                        })
+                    };
+                    if let Err(e) = emit_result
+                        && first_error.is_none()
+                    {
+                        *first_error = Some(e);
+                    }
+                }
+
+                // Return deferred error or success.
+                if let Some(err) = first_error.take() {
+                    Advance::Error(err)
+                } else {
+                    Advance::Pop(Value::Void)
+                }
+            }
+
+            Frame::ConditionRemovalGate {
+                target,
+                condition_name,
+                instance_id,
+                pending,
+            } => {
+                if let Some(response) = pending.take() {
+                    match response {
+                        Response::Vetoed => {
+                            // Host vetoed removal — skip this instance.
+                            Advance::Pop(Value::Void)
+                        }
+                        Response::Acknowledged => {
+                            // Gate passed — transition to ConditionOnRemove.
+                            // Read the instance's state fields and params from game state.
+                            let inst_target = *target;
+                            let inst_id = *instance_id;
+                            let cond_name = condition_name.clone();
+                            let conditions = state.read_conditions(&inst_target).unwrap_or_default();
+                            let (state_fields, params) = conditions
+                                .iter()
+                                .find(|c| c.id == inst_id)
+                                .map(|c| (c.state_fields.clone(), c.params.clone()))
+                                .unwrap_or_default();
+                            let saved_token = env.current_condition_token;
+                            *frame = Frame::ConditionOnRemove {
+                                target: inst_target,
+                                condition_name: cond_name,
+                                instance_id: inst_id,
+                                params,
+                                state_fields,
+                                clause_index: 0,
+                                child_result: None,
+                                saved_condition_token: saved_token,
+                                lifecycle_setup: false,
+                                on_remove_error: None,
+                            };
+                            Advance::Continue
+                        }
+                        other => Advance::Error(RuntimeError::new(
+                            format!(
+                                "protocol error: unexpected response \
+                                 for ConditionRemovalGate: {other:?}"
+                            ),
+                        )),
+                    }
+                } else {
+                    // First advance — emit the gate effect.
+                    Advance::Yield(Effect::ConditionRemovalGate {
+                        target: *target,
+                        condition: condition_name.clone(),
+                        id: *instance_id,
+                    })
+                }
+            }
+
+            Frame::ConditionOnRemove {
+                target,
+                condition_name,
+                instance_id,
+                params,
+                state_fields,
+                clause_index,
+                child_result,
+                saved_condition_token,
+                lifecycle_setup,
+                on_remove_error,
+            } => {
+                // Handle completed child Block (on_remove body).
+                if let Some(result) = child_result.take() {
+                    match result {
+                        Ok(_) => {
+                            // Read back mutated state from scope.
+                            if let Some(Value::Struct { fields, .. }) =
+                                env.scopes.last()
+                                    .and_then(|s| s.bindings.get(&Name::from("state")))
+                                    .cloned()
+                            {
+                                *state_fields = fields;
+                            }
+                            env.pop_scope();
+                            env.return_value = None;
+                            *clause_index += 1;
+                            return Advance::Continue;
+                        }
+                        Err(e) => {
+                            env.pop_scope();
+                            env.return_value = None;
+                            // Stash error but continue — we must still emit RemoveCondition.
+                            if on_remove_error.is_none() {
+                                *on_remove_error = Some(e);
+                            }
+                            *clause_index += 1;
+                            // Skip remaining on_remove clauses; fall through to cleanup.
+                            // Set clause_index past all clauses so the loop below exits.
+                            *clause_index = usize::MAX;
+                            return Advance::Continue;
+                        }
+                    }
+                }
+
+                // Set up lifecycle context on first entry.
+                if !*lifecycle_setup {
+                    *lifecycle_setup = true;
+                    env.in_lifecycle_block += 1;
+                    env.lifecycle_condition_stack.push(*instance_id);
+                    env.current_condition_token = Some(ConditionToken(*instance_id));
+                }
+
+                // Find the next on_remove clause to execute.
+                let decl = core.program.conditions.get(condition_name.as_str());
+                if let Some(decl) = decl {
+                    while *clause_index < decl.clauses.len() {
+                        if let ttrpg_ast::ast::ConditionClause::OnRemove(lb) =
+                            &decl.clauses[*clause_index]
+                        {
+                            // Set up scope for this on_remove block.
+                            env.push_scope();
+                            env.bind(
+                                decl.receiver_name.clone(),
+                                Value::Entity(*target),
+                            );
+                            for (pname, pval) in params.iter() {
+                                env.bind(pname.clone(), pval.clone());
+                            }
+                            // Bind state fields as a mutable struct.
+                            if !state_fields.is_empty() {
+                                env.bind(
+                                    Name::from("state"),
+                                    Value::Struct {
+                                        name: Name::from("state"),
+                                        fields: state_fields.clone(),
+                                    },
+                                );
+                            }
+                            // Push Block frame for the on_remove body.
+                            return Advance::Push(Frame::Block {
+                                stmts: lb.body.node.clone(),
+                                index: 0,
+                                result: Value::Void,
+                                expr_cache: Vec::new(),
+                                awaiting_fn: None,
+                                awaiting_error: None,
+                            });
+                        }
+                        *clause_index += 1;
+                    }
+                }
+
+                // All on_remove clauses processed (or none exist / error skipped rest).
+                // Cleanup lifecycle state.
+                env.in_lifecycle_block -= 1;
+                env.lifecycle_condition_stack.pop();
+                env.current_condition_token = *saved_condition_token;
+
+                // If state changed, emit SetConditionState.
+                if !state_fields.is_empty() {
+                    let set_state_effect = Effect::SetConditionState {
+                        target: *target,
+                        condition_id: *instance_id,
+                        fields: std::mem::take(state_fields),
+                    };
+                    let emit_result = if let Some(ref mut h) = handler {
+                        bridge_eval_with(core, env, state, *h, |tmp_env| {
+                            tmp_env.emit(set_state_effect);
+                            Ok(Value::Void)
+                        })
+                    } else {
+                        bridge_eval_with(core, env, state, &mut NoYieldHandler, |tmp_env| {
+                            tmp_env.emit(set_state_effect);
+                            Ok(Value::Void)
+                        })
+                    };
+                    if let Err(e) = emit_result
+                        && on_remove_error.is_none()
+                    {
+                        *on_remove_error = Some(e);
+                    }
+                }
+
+                // Always emit RemoveCondition (even if on_remove errored).
+                let remove_effect = Effect::RemoveCondition {
+                    target: *target,
+                    condition: condition_name.clone(),
+                    params: None,
+                    id: Some(*instance_id),
+                };
+                let remove_result = if let Some(ref mut h) = handler {
+                    bridge_eval_with(core, env, state, *h, |tmp_env| {
+                        let _ = tmp_env.emit(remove_effect);
+                        Ok(Value::Void)
+                    })
+                } else {
+                    bridge_eval_with(core, env, state, &mut NoYieldHandler, |tmp_env| {
+                        let _ = tmp_env.emit(remove_effect);
+                        Ok(Value::Void)
+                    })
+                };
+                if let Err(e) = remove_result
+                    && on_remove_error.is_none()
+                {
+                    *on_remove_error = Some(e);
+                }
+
+                // Always emit RemoveSuspensionSource.
+                let suspension_effect = Effect::RemoveSuspensionSource {
+                    entity: *target,
+                    source_id: *instance_id,
+                };
+                let _ = if let Some(ref mut h) = handler {
+                    bridge_eval_with(core, env, state, *h, |tmp_env| {
+                        let _ = tmp_env.emit(suspension_effect);
+                        Ok(Value::Void)
+                    })
+                } else {
+                    bridge_eval_with(core, env, state, &mut NoYieldHandler, |tmp_env| {
+                        let _ = tmp_env.emit(suspension_effect);
+                        Ok(Value::Void)
+                    })
+                };
+
+                // If on_remove errored, propagate.
+                if let Some(err) = on_remove_error.take() {
+                    Advance::Error(err)
+                } else {
+                    Advance::Pop(Value::Void)
+                }
+            }
+
             _ => Advance::Error(RuntimeError::new("frame type not yet implemented")),
         }
     }
@@ -2929,6 +3461,7 @@ impl Frame {
             Frame::PromptWaiting { pending, .. } => *pending = Some(response),
             Frame::SpawnEntity { pending, .. } => *pending = Some(response),
             Frame::ConditionApplyGate { pending, .. } => *pending = Some(response),
+            Frame::ConditionRemovalGate { pending, .. } => *pending = Some(response),
             _ => {}
         }
     }
@@ -2987,6 +3520,12 @@ impl Frame {
             Frame::ConditionOnApply { child_result, .. } => {
                 *child_result = Some(Ok(value));
             }
+            Frame::ConditionRemovalLoop { child_result, .. } => {
+                *child_result = Some(Ok(value));
+            }
+            Frame::ConditionOnRemove { child_result, .. } => {
+                *child_result = Some(Ok(value));
+            }
             Frame::EmitHooks { child_result, .. } => {
                 *child_result = Some(Ok(value));
             }
@@ -3034,11 +3573,19 @@ impl Frame {
             | Frame::CostPayerGuard { child_result, .. }
             | Frame::EmitEval { child_result, .. }
             | Frame::ConditionOnApply { child_result, .. }
+            | Frame::ConditionOnRemove { child_result, .. }
             | Frame::EmitHooks { child_result, .. }
             | Frame::EmitConditionHandlers { child_result, .. }
             | Frame::ConditionHandlerEpilogue { child_result, .. } => {
                 // Absorb the error so advance() can run cleanup
                 // (scope pop, budget restore) before propagating.
+                *child_result = Some(Err(error));
+                Ok(())
+            }
+            Frame::ConditionRemovalLoop { child_result, .. } => {
+                // Deferred error mode: absorb child errors so the loop
+                // can stash them in first_error and continue processing
+                // remaining instances.
                 *child_result = Some(Err(error));
                 Ok(())
             }
@@ -6723,6 +7270,175 @@ mod tests {
         );
 
         // Both should succeed (or fail identically)
+        assert_eq!(
+            result1.is_ok(),
+            result2.is_ok(),
+            "result divergence: recursive={result1:?}, step={result2:?}"
+        );
+    }
+
+    #[test]
+    fn differential_condition_remove_simple() {
+        // Simple remove_condition with no on_remove blocks
+        let source = r#"
+            system Test {
+                entity Creature { HP: int }
+                condition Prone on bearer: Creature {}
+                function knock_down_and_up(target: Creature) {
+                    apply_condition(target, Prone(), Duration.Indefinite)
+                    remove_condition(target, "Prone")
+                }
+            }
+        "#;
+        let (program, type_env) = setup(source);
+
+        // Recursive path
+        let interp = crate::Interpreter::new(&program, &type_env).unwrap();
+        let mut game1 = GameState::new();
+        let t1 = add_creature(&mut game1, 15);
+        let adapter1 = StateAdapter::new(game1);
+        let mut handler1 = ScriptedHandler::always_ack();
+        let result1 = adapter1.run(&mut handler1, |state, handler| {
+            interp.evaluate_function(state, handler, "knock_down_and_up", vec![Value::Entity(t1)])
+        });
+
+        // Step-based path
+        let core = RuntimeCore::new(Arc::clone(&program), Arc::clone(&type_env), 1, 1);
+        let mut game2 = GameState::new();
+        let t2 = add_creature(&mut game2, 15);
+        let adapter2 = StateAdapter::new(game2);
+        let exec =
+            Execution::start_function(core, adapter2, "knock_down_and_up", vec![Value::Entity(t2)])
+                .unwrap();
+        let mut handler2 = ScriptedHandler::always_ack();
+        let result2 = exec.run_with_handler(&mut handler2);
+
+        let kinds1 = all_structural_kinds(&handler1.log);
+        let kinds2 = all_structural_kinds(&handler2.log);
+        assert_eq!(
+            kinds1, kinds2,
+            "structural effect sequence mismatch for simple remove"
+        );
+
+        assert!(result1.is_ok(), "recursive failed: {result1:?}");
+        assert!(result2.is_ok(), "step-based failed: {result2:?}");
+    }
+
+    #[test]
+    fn differential_condition_remove_vetoed() {
+        // remove_condition with gate vetoed — condition should remain
+        let source = r#"
+            system Test {
+                entity Creature { HP: int }
+                condition Sticky on bearer: Creature {}
+                function try_remove(target: Creature) {
+                    apply_condition(target, Sticky(), Duration.Indefinite)
+                    remove_condition(target, "Sticky")
+                }
+            }
+        "#;
+        let (program, type_env) = setup(source);
+
+        // Recursive path — veto the removal gate
+        let interp = crate::Interpreter::new(&program, &type_env).unwrap();
+        let mut game1 = GameState::new();
+        let t1 = add_creature(&mut game1, 15);
+        let adapter1 = StateAdapter::new(game1);
+        let mut handler1 = ScriptedHandler::new(vec![
+            Response::Acknowledged, // ConditionApplyGate
+            Response::Vetoed,       // ConditionRemovalGate → vetoed
+        ]);
+        let result1 = adapter1.run(&mut handler1, |state, handler| {
+            interp.evaluate_function(state, handler, "try_remove", vec![Value::Entity(t1)])
+        });
+
+        // Step-based path
+        let core = RuntimeCore::new(Arc::clone(&program), Arc::clone(&type_env), 1, 1);
+        let mut game2 = GameState::new();
+        let t2 = add_creature(&mut game2, 15);
+        let adapter2 = StateAdapter::new(game2);
+        let exec =
+            Execution::start_function(core, adapter2, "try_remove", vec![Value::Entity(t2)])
+                .unwrap();
+        let mut handler2 = ScriptedHandler::new(vec![
+            Response::Acknowledged, // ConditionApplyGate
+            Response::Vetoed,       // ConditionRemovalGate → vetoed
+        ]);
+        let result2 = exec.run_with_handler(&mut handler2);
+
+        let kinds1 = all_structural_kinds(&handler1.log);
+        let kinds2 = all_structural_kinds(&handler2.log);
+        assert_eq!(
+            kinds1, kinds2,
+            "structural effect sequence mismatch for vetoed remove"
+        );
+
+        assert!(result1.is_ok(), "recursive failed: {result1:?}");
+        assert!(result2.is_ok(), "step-based failed: {result2:?}");
+    }
+
+    #[test]
+    fn differential_revoke_with_on_remove_error() {
+        // revoke() with on_remove error — all conditions still removed, error propagated
+        let source = r#"
+            system Test {
+                entity Creature { HP: int }
+                condition Cursed on bearer: Creature {
+                    on_remove { error("curse removal backlash") }
+                }
+                condition Blessed on bearer: Creature {}
+                action DualCast on actor: Creature (target: Creature) {
+                    resolve {
+                        apply_condition(target, Cursed(), Duration.Indefinite)
+                        apply_condition(target, Blessed(), Duration.Indefinite)
+                        revoke(invocation())
+                    }
+                }
+            }
+        "#;
+        let (program, type_env) = setup(source);
+
+        // Recursive path
+        let interp = crate::Interpreter::new(&program, &type_env).unwrap();
+        let mut game1 = GameState::new();
+        let a1 = add_creature(&mut game1, 20);
+        let t1 = add_creature(&mut game1, 15);
+        let adapter1 = StateAdapter::new(game1);
+        let mut handler1 = ScriptedHandler::always_ack();
+        let result1 = adapter1.run(&mut handler1, |state, handler| {
+            interp.execute_action(
+                state, handler, "DualCast", a1, vec![Value::Entity(t1)],
+            )
+        });
+
+        // Step-based path
+        let core = RuntimeCore::new(Arc::clone(&program), Arc::clone(&type_env), 1, 1);
+        let mut game2 = GameState::new();
+        let a2 = add_creature(&mut game2, 20);
+        let t2 = add_creature(&mut game2, 15);
+        let adapter2 = StateAdapter::new(game2);
+        let exec = Execution::start_action(
+            core, adapter2, "DualCast", a2, vec![Value::Entity(t2)], Span::dummy(),
+        )
+        .unwrap();
+        let mut handler2 = ScriptedHandler::always_ack();
+        let result2 = exec.run_with_handler(&mut handler2);
+
+        let kinds1 = all_structural_kinds(&handler1.log);
+        let kinds2 = all_structural_kinds(&handler2.log);
+        assert_eq!(
+            kinds1, kinds2,
+            "structural effect sequence mismatch for revoke with on_remove error"
+        );
+
+        // Both should contain ConditionRemovalGate
+        assert!(
+            kinds1.contains(&EffectKind::ConditionRemovalGate),
+            "expected ConditionRemovalGate in recursive log: {:?}",
+            kinds1
+        );
+
+        // Both should fail identically (on_remove error)
         assert_eq!(
             result1.is_ok(),
             result2.is_ok(),
