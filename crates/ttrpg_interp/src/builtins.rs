@@ -856,8 +856,7 @@ fn remove_condition_instances(
             params: None,
             id: Some(instance.id),
         };
-        if let Err(e) =
-            validate_mutation_response(env.emit(effect), "RemoveCondition", span)
+        if let Err(e) = validate_mutation_response(env.emit(effect), "RemoveCondition", span)
             && first_error.is_none()
         {
             first_error = Some(e);

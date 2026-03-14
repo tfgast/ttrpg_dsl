@@ -45,7 +45,6 @@ pub(crate) fn eval_assign_with_rhs(
     rhs: Value,
     span: ttrpg_ast::Span,
 ) -> Result<(), RuntimeError> {
-
     // ── Turn budget mutation path ───────────────────────────
     if target.root == "turn" {
         return eval_assign_turn(env, target, op, rhs, span);

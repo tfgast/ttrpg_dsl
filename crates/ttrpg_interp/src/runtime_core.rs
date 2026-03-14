@@ -12,8 +12,8 @@ use std::rc::Rc;
 use std::sync::Arc;
 
 use rustc_hash::FxHashMap;
-use ttrpg_ast::ast::Program;
 use ttrpg_ast::Name;
+use ttrpg_ast::ast::Program;
 use ttrpg_checker::env::TypeEnv;
 
 use crate::coverage::CoverageData;
@@ -92,10 +92,7 @@ impl RuntimeCore {
 
     /// Current ID counter values. Call after completion to persist.
     pub fn counters(&self) -> (u64, u64) {
-        (
-            self.next_invocation_id.get(),
-            self.next_condition_id.get(),
-        )
+        (self.next_invocation_id.get(), self.next_condition_id.get())
     }
 
     /// Sync ID counters from a bridge interpreter back to this core.

@@ -12,23 +12,20 @@ use std::rc::Rc;
 
 use rustc_hash::FxHashMap;
 
-use ttrpg_ast::ast::{AssignOp, Block, CostClause, ExprKind, LValue, StmtKind};
+use ttrpg_ast::ast::{Arg, AssignOp, Block, CostClause, ExprKind, LValue, StmtKind};
 use ttrpg_ast::{Name, Span, Spanned};
 
 use crate::adapter::StateAdapter;
-use crate::effect::{
-    ActionKind, ActionOutcome, Effect, EffectHandler, EffectKind, Response, Step,
-};
-use crate::value::DiceExpr;
-use ttrpg_checker::ty::Ty;
+use crate::effect::{ActionKind, ActionOutcome, Effect, EffectHandler, EffectKind, Response, Step};
 use crate::runtime_core::RuntimeCore;
 use crate::select_action_overload;
 use crate::state::{
-    ActiveCondition, ConditionToken, EntityRef, InvocationId, StateProvider,
-    WritableState,
+    ActiveCondition, ConditionToken, EntityRef, InvocationId, StateProvider, WritableState,
 };
+use crate::value::DiceExpr;
 use crate::value::Value;
 use crate::{Env, Interpreter, RuntimeError, Scope};
+use ttrpg_checker::ty::Ty;
 
 // ── ExecEnv ────────────────────────────────────────────────────
 
@@ -227,9 +224,7 @@ fn try_frame_dispatch_stmt<S: WritableState>(
     // Extract the call expression and determine the awaiting type.
     let (call_expr, awaiting) = match &stmt.node {
         StmtKind::Expr(expr) => (expr, AwaitingFn::ExprStmt),
-        StmtKind::Let { name, value, .. } => {
-            (value, AwaitingFn::LetBinding { name: name.clone() })
-        }
+        StmtKind::Let { name, value, .. } => (value, AwaitingFn::LetBinding { name: name.clone() }),
         StmtKind::Assign { target, op, value } => (
             value,
             AwaitingFn::Assign {
@@ -336,9 +331,7 @@ fn try_frame_dispatch_stmt<S: WritableState>(
         if let Some(val) = slot_values[i].take() {
             evaluated_args.push((param.name.clone(), val));
         } else if param.has_default {
-            if let Some(default_expr) =
-                fn_decl.params.get(i).and_then(|p| p.default.as_ref())
-            {
+            if let Some(default_expr) = fn_decl.params.get(i).and_then(|p| p.default.as_ref()) {
                 default_params.push((param.name.clone(), default_expr.clone()));
             } else {
                 return Ok(None); // missing default expr
@@ -519,7 +512,6 @@ pub(crate) enum ActionStep {
 #[allow(clippy::large_enum_variant)]
 pub(crate) enum Frame {
     // ── Action lifecycle (Phase 3) ──────────────────────────
-
     /// Unified action/reaction/hook lifecycle frame.
     ///
     /// Manages the entire lifecycle: ActionStarted gate → context setup →
@@ -550,7 +542,6 @@ pub(crate) enum Frame {
     },
 
     // ── Placeholder variants for Phases 4-5 ─────────────────
-
     /// Block execution (Phase 4).
     Block {
         stmts: Vec<Spanned<StmtKind>>,
@@ -602,7 +593,28 @@ pub(crate) enum Frame {
 
     EmitEval {
         event_name: Name,
+        /// Argument expressions from the emit statement.
+        args: Vec<Arg>,
+        span: Span,
         phase: EmitEvalPhase,
+        /// Accumulated param → value map from evaluated args.
+        param_map: BTreeMap<Name, Value>,
+        /// All fields (params + derived fields) for the payload.
+        all_fields: BTreeMap<Name, Value>,
+        /// Default expressions for missing params (collected from EventDecl).
+        param_defaults: Vec<(Name, Spanned<ExprKind>)>,
+        /// Default expressions for derived fields (collected from EventDecl).
+        field_defaults: Vec<(Name, Spanned<ExprKind>)>,
+        /// Index into param_defaults or field_defaults during iteration.
+        default_index: usize,
+        /// Saved emit_depth counter (restored on completion).
+        saved_emit_depth: u32,
+        /// Saved in_lifecycle_block counter (restored on completion).
+        saved_lifecycle: u32,
+        /// Whether a scope was pushed for field default evaluation.
+        scope_pushed: bool,
+        /// Result from child EmitHooks/EmitConditionHandlers frame.
+        child_result: Option<Result<Value, RuntimeError>>,
     },
 
     EmitHooks {
@@ -888,10 +900,7 @@ impl Frame {
                     }
 
                     ActionStep::EmitVetoedCompleted => {
-                        let outcome = if body_result
-                            .as_ref()
-                            .is_some_and(|r| r.is_err())
-                        {
+                        let outcome = if body_result.as_ref().is_some_and(|r| r.is_err()) {
                             ActionOutcome::Failed
                         } else {
                             ActionOutcome::Vetoed
@@ -933,9 +942,7 @@ impl Frame {
                                     Advance::Yield(effect)
                                 }
                                 Ok(other) => Advance::Error(RuntimeError::with_span(
-                                    format!(
-                                        "requires clause must evaluate to Bool, got {other:?}"
-                                    ),
+                                    format!("requires clause must evaluate to Bool, got {other:?}"),
                                     req_expr.span,
                                 )),
                                 Err(e) => Advance::Error(e),
@@ -999,7 +1006,8 @@ impl Frame {
                         // Run the full pipeline (requires → cost → resolve)
                         // through the recursive evaluator with a handler.
                         // Only reachable from the sync path (handler is Some).
-                        let h = handler.as_mut()
+                        let h = handler
+                            .as_mut()
                             .expect("RunPipeline requires a handler (sync path)");
                         let actor_val = *actor;
                         let name_val = name.clone();
@@ -1009,21 +1017,18 @@ impl Frame {
                         let hrt = *has_return_type;
                         let span = *call_span;
 
-                        let result = bridge_eval_with(
-                            core, env, state, *h,
-                            move |tmp_env| {
-                                crate::action::execute_pipeline(
-                                    tmp_env,
-                                    &actor_val,
-                                    &name_val,
-                                    requires_val.as_ref(),
-                                    cost_val.as_ref(),
-                                    &resolve_val,
-                                    hrt,
-                                    span,
-                                )
-                            },
-                        );
+                        let result = bridge_eval_with(core, env, state, *h, move |tmp_env| {
+                            crate::action::execute_pipeline(
+                                tmp_env,
+                                &actor_val,
+                                &name_val,
+                                requires_val.as_ref(),
+                                cost_val.as_ref(),
+                                &resolve_val,
+                                hrt,
+                                span,
+                            )
+                        });
                         env.return_value = None;
                         *body_result = Some(result);
                         *step = ActionStep::EmitCompleted;
@@ -1061,7 +1066,6 @@ impl Frame {
                             None => Advance::Pop(Value::Void),
                         }
                     }
-
                 }
             }
 
@@ -1083,26 +1087,44 @@ impl Frame {
                                 bridge_eval_with(core, env, state, *h, move |tmp_env| {
                                     if is_table {
                                         crate::call::dispatch_table_with_values(
-                                            tmp_env, &n, a, Span::dummy(),
+                                            tmp_env,
+                                            &n,
+                                            a,
+                                            Span::dummy(),
                                         )
                                     } else {
                                         crate::call::evaluate_fn_with_values(
-                                            tmp_env, &n, a, Span::dummy(),
+                                            tmp_env,
+                                            &n,
+                                            a,
+                                            Span::dummy(),
                                         )
                                     }
                                 })
                             } else {
-                                bridge_eval_with(core, env, state, &mut NoYieldHandler, move |tmp_env| {
-                                    if is_table {
-                                        crate::call::dispatch_table_with_values(
-                                            tmp_env, &n, a, Span::dummy(),
-                                        )
-                                    } else {
-                                        crate::call::evaluate_fn_with_values(
-                                            tmp_env, &n, a, Span::dummy(),
-                                        )
-                                    }
-                                })
+                                bridge_eval_with(
+                                    core,
+                                    env,
+                                    state,
+                                    &mut NoYieldHandler,
+                                    move |tmp_env| {
+                                        if is_table {
+                                            crate::call::dispatch_table_with_values(
+                                                tmp_env,
+                                                &n,
+                                                a,
+                                                Span::dummy(),
+                                            )
+                                        } else {
+                                            crate::call::evaluate_fn_with_values(
+                                                tmp_env,
+                                                &n,
+                                                a,
+                                                Span::dummy(),
+                                            )
+                                        }
+                                    },
+                                )
                             }
                         }
                         BridgeCallInfo::Mechanic { ref name, ref args } => {
@@ -1111,15 +1133,27 @@ impl Frame {
                             if let Some(ref mut h) = handler {
                                 bridge_eval_with(core, env, state, *h, move |tmp_env| {
                                     crate::call::evaluate_fn_with_values(
-                                        tmp_env, &n, a, Span::dummy(),
+                                        tmp_env,
+                                        &n,
+                                        a,
+                                        Span::dummy(),
                                     )
                                 })
                             } else {
-                                bridge_eval_with(core, env, state, &mut NoYieldHandler, move |tmp_env| {
-                                    crate::call::evaluate_fn_with_values(
-                                        tmp_env, &n, a, Span::dummy(),
-                                    )
-                                })
+                                bridge_eval_with(
+                                    core,
+                                    env,
+                                    state,
+                                    &mut NoYieldHandler,
+                                    move |tmp_env| {
+                                        crate::call::evaluate_fn_with_values(
+                                            tmp_env,
+                                            &n,
+                                            a,
+                                            Span::dummy(),
+                                        )
+                                    },
+                                )
                             }
                         }
                         BridgeCallInfo::Function { ref name, ref args } => {
@@ -1128,15 +1162,27 @@ impl Frame {
                             if let Some(ref mut h) = handler {
                                 bridge_eval_with(core, env, state, *h, move |tmp_env| {
                                     crate::call::evaluate_function_with_values(
-                                        tmp_env, &n, a, Span::dummy(),
+                                        tmp_env,
+                                        &n,
+                                        a,
+                                        Span::dummy(),
                                     )
                                 })
                             } else {
-                                bridge_eval_with(core, env, state, &mut NoYieldHandler, move |tmp_env| {
-                                    crate::call::evaluate_function_with_values(
-                                        tmp_env, &n, a, Span::dummy(),
-                                    )
-                                })
+                                bridge_eval_with(
+                                    core,
+                                    env,
+                                    state,
+                                    &mut NoYieldHandler,
+                                    move |tmp_env| {
+                                        crate::call::evaluate_function_with_values(
+                                            tmp_env,
+                                            &n,
+                                            a,
+                                            Span::dummy(),
+                                        )
+                                    },
+                                )
                             }
                         }
                         BridgeCallInfo::Expr { ref expr } => {
@@ -1249,8 +1295,7 @@ impl Frame {
 
                 if let Some(ref mut h) = handler {
                     // Sync path: handler forwards host-decided effects.
-                    let eval_result =
-                        bridge_eval_stmt(core, env, state, &stmt, Some(*h));
+                    let eval_result = bridge_eval_stmt(core, env, state, &stmt, Some(*h));
                     match eval_result {
                         Ok(val) => {
                             *result = val;
@@ -1284,18 +1329,40 @@ impl Frame {
                         Ok(None) => {} // fall through to CachingHandler
                     }
 
+                    // Intercept emit statements for frame-based dispatch.
+                    if let StmtKind::Emit {
+                        event_name: ref ev_name,
+                        args: ref emit_args,
+                        span: emit_span,
+                    } = stmt.node
+                    {
+                        let emit_frame = Frame::EmitEval {
+                            event_name: ev_name.clone(),
+                            args: emit_args.clone(),
+                            span: emit_span,
+                            phase: EmitEvalPhase::Args,
+                            param_map: BTreeMap::new(),
+                            all_fields: BTreeMap::new(),
+                            param_defaults: Vec::new(),
+                            field_defaults: Vec::new(),
+                            default_index: 0,
+                            saved_emit_depth: env.emit_depth,
+                            saved_lifecycle: env.in_lifecycle_block,
+                            scope_pushed: false,
+                            child_result: None,
+                        };
+                        // EmitEval produces Void; treat like an expr stmt.
+                        *awaiting_fn = Some(AwaitingFn::ExprStmt);
+                        return Advance::Push(emit_frame);
+                    }
+
                     // Fall back to CachingHandler bridge for statements
                     // that aren't function calls (or can't be resolved).
                     state.reset_mutation_flag();
-                    let mut caching =
-                        CachingHandler::from_expr_cache(expr_cache);
-                    let eval_result = bridge_eval_with(
-                        core,
-                        env,
-                        state,
-                        &mut caching,
-                        |tmp_env| crate::eval::eval_stmt(tmp_env, &stmt),
-                    );
+                    let mut caching = CachingHandler::from_expr_cache(expr_cache);
+                    let eval_result = bridge_eval_with(core, env, state, &mut caching, |tmp_env| {
+                        crate::eval::eval_stmt(tmp_env, &stmt)
+                    });
 
                     if let Some(effect) = caching.captured {
                         // Containment guard: if a local mutation was
@@ -1305,24 +1372,20 @@ impl Frame {
                         // fast instead of silently corrupting state.
                         if state.local_mutation_applied() {
                             env.pop_scope();
-                            return Advance::Error(RuntimeError::new(
-                                format!(
-                                    "async replay unsound: local mutation \
+                            return Advance::Error(RuntimeError::new(format!(
+                                "async replay unsound: local mutation \
                                      applied before host-decided effect \
                                      {:?} in statement at {:?}; \
                                      StmtResume not yet implemented for \
                                      this pattern",
-                                    EffectKind::of(&effect),
-                                    stmt.span,
-                                ),
-                            ));
+                                EffectKind::of(&effect),
+                                stmt.span,
+                            )));
                         }
 
                         // Statement suspended on a host-decided effect.
                         // Push a yield frame; don't advance index.
-                        if let Some(yield_frame) =
-                            effect_to_yield_frame(effect, stmt.span)
-                        {
+                        if let Some(yield_frame) = effect_to_yield_frame(effect, stmt.span) {
                             return Advance::Push(yield_frame);
                         }
                         // Unknown host-decided effect — fall through
@@ -1414,25 +1477,17 @@ impl Frame {
                 let result = if let Some(ref mut h) = handler {
                     bridge_eval_with(core, env, state, *h, move |tmp_env| {
                         if is_tbl {
-                            crate::call::dispatch_table_with_values(
-                                tmp_env, &n, a, Span::dummy(),
-                            )
+                            crate::call::dispatch_table_with_values(tmp_env, &n, a, Span::dummy())
                         } else {
-                            crate::call::evaluate_fn_with_values(
-                                tmp_env, &n, a, Span::dummy(),
-                            )
+                            crate::call::evaluate_fn_with_values(tmp_env, &n, a, Span::dummy())
                         }
                     })
                 } else {
                     bridge_eval_with(core, env, state, &mut NoYieldHandler, move |tmp_env| {
                         if is_tbl {
-                            crate::call::dispatch_table_with_values(
-                                tmp_env, &n, a, Span::dummy(),
-                            )
+                            crate::call::dispatch_table_with_values(tmp_env, &n, a, Span::dummy())
                         } else {
-                            crate::call::evaluate_fn_with_values(
-                                tmp_env, &n, a, Span::dummy(),
-                            )
+                            crate::call::evaluate_fn_with_values(tmp_env, &n, a, Span::dummy())
                         }
                     })
                 };
@@ -1472,10 +1527,9 @@ impl Frame {
                     // so later defaults can reference earlier ones).
                     for (dname, dexpr) in default_params.drain(..) {
                         let result = if let Some(ref mut h) = handler {
-                            bridge_eval_with(
-                                core, env, state, *h,
-                                |tmp_env| crate::eval::eval_expr(tmp_env, &dexpr),
-                            )
+                            bridge_eval_with(core, env, state, *h, |tmp_env| {
+                                crate::eval::eval_expr(tmp_env, &dexpr)
+                            })
                         } else {
                             bridge_eval_expr(core, env, state, &dexpr)
                         };
@@ -1616,15 +1670,13 @@ impl Frame {
                                     *phase = SpawnPhase::GrantingGroups { index: 0 };
                                     Advance::Continue
                                 }
-                                Response::Vetoed => Advance::Error(
-                                    RuntimeError::with_span(
-                                        format!(
-                                            "entity construction for `{entity_type}` \
+                                Response::Vetoed => Advance::Error(RuntimeError::with_span(
+                                    format!(
+                                        "entity construction for `{entity_type}` \
                                              was vetoed by host"
-                                        ),
-                                        *span,
                                     ),
-                                ),
+                                    *span,
+                                )),
                                 other => Advance::Error(RuntimeError::with_span(
                                     format!(
                                         "protocol error: expected EntitySpawned for \
@@ -1635,8 +1687,7 @@ impl Frame {
                             }
                         } else {
                             // Emit SpawnEntity effect.
-                            let fields: FxHashMap<Name, Value> =
-                                base_fields.drain(..).collect();
+                            let fields: FxHashMap<Name, Value> = base_fields.drain(..).collect();
                             Advance::Yield(Effect::SpawnEntity {
                                 entity_type: entity_type.clone(),
                                 fields,
@@ -1652,13 +1703,11 @@ impl Frame {
                         }
 
                         if *index >= groups.len() {
-                            let r = entity_ref
-                                .expect("entity_ref must be set after Spawned");
+                            let r = entity_ref.expect("entity_ref must be set after Spawned");
                             return Advance::Pop(Value::Entity(r));
                         }
 
-                        let r = entity_ref
-                            .expect("entity_ref must be set after Spawned");
+                        let r = entity_ref.expect("entity_ref must be set after Spawned");
                         let group = &groups[*index];
                         Advance::Yield(Effect::GrantGroup {
                             entity: r,
@@ -1696,7 +1745,10 @@ impl Frame {
                                 })
                             } else {
                                 bridge_eval_with(
-                                    core, env, state, &mut NoYieldHandler,
+                                    core,
+                                    env,
+                                    state,
+                                    &mut NoYieldHandler,
                                     move |tmp_env| {
                                         tmp_env.emit(Effect::ProvisionBudget {
                                             actor: a,
@@ -1716,7 +1768,10 @@ impl Frame {
                                 })
                             } else {
                                 bridge_eval_with(
-                                    core, env, state, &mut NoYieldHandler,
+                                    core,
+                                    env,
+                                    state,
+                                    &mut NoYieldHandler,
                                     move |tmp_env| {
                                         tmp_env.emit(Effect::ClearBudget { actor: a });
                                         Ok(Value::Void)
@@ -1825,7 +1880,10 @@ impl Frame {
                                     })
                                 } else {
                                     bridge_eval_with(
-                                        core, env, state, &mut NoYieldHandler,
+                                        core,
+                                        env,
+                                        state,
+                                        &mut NoYieldHandler,
                                         move |tmp_env| {
                                             tmp_env.emit(Effect::ProvisionBudget {
                                                 actor: a,
@@ -1844,7 +1902,10 @@ impl Frame {
                                     })
                                 } else {
                                     bridge_eval_with(
-                                        core, env, state, &mut NoYieldHandler,
+                                        core,
+                                        env,
+                                        state,
+                                        &mut NoYieldHandler,
                                         move |tmp_env| {
                                             tmp_env.emit(Effect::ClearBudget { actor: a });
                                             Ok(Value::Void)
@@ -1886,15 +1947,282 @@ impl Frame {
                     });
                 }
 
-                Advance::Error(RuntimeError::new(
-                    "CostPayerGuard: no body and no result",
-                ))
+                Advance::Error(RuntimeError::new("CostPayerGuard: no body and no result"))
+            }
+
+            Frame::EmitEval {
+                event_name,
+                args,
+                span,
+                phase,
+                param_map,
+                all_fields,
+                param_defaults,
+                field_defaults,
+                default_index,
+                saved_emit_depth,
+                saved_lifecycle,
+                scope_pushed,
+                child_result,
+            } => {
+                // Phase 2+: child frame (EmitHooks or EmitConditionHandlers)
+                // returned — restore emit_depth/lifecycle and propagate.
+                if let Some(result) = child_result.take() {
+                    env.emit_depth = *saved_emit_depth;
+                    env.in_lifecycle_block = *saved_lifecycle;
+                    return match result {
+                        Ok(_) => Advance::Pop(Value::Void),
+                        Err(e) => Advance::Error(e),
+                    };
+                }
+
+                match phase {
+                    EmitEvalPhase::Args => {
+                        // 1. Check emit depth limit
+                        if env.emit_depth >= crate::MAX_EMIT_DEPTH {
+                            return Advance::Error(RuntimeError::with_span(
+                                format!(
+                                    "emit depth limit ({}) exceeded — possible \
+                                     circular emit chain",
+                                    crate::MAX_EMIT_DEPTH
+                                ),
+                                *span,
+                            ));
+                        }
+
+                        // 2. Look up EventDecl
+                        let event_decl = match core.program.events.get(event_name) {
+                            Some(d) => d.clone(),
+                            None => {
+                                return Advance::Error(RuntimeError::with_span(
+                                    format!("undefined event '{event_name}'"),
+                                    *span,
+                                ));
+                            }
+                        };
+
+                        // 3. Evaluate arg expressions via bridge
+                        for arg in args.drain(..) {
+                            let expr = arg.value.clone();
+                            let val = if let Some(ref mut h) = handler {
+                                bridge_eval_with(core, env, state, *h, |tmp_env| {
+                                    crate::eval::eval_expr(tmp_env, &expr)
+                                })
+                            } else {
+                                bridge_eval_expr(core, env, state, &expr)
+                            };
+                            match val {
+                                Ok(v) => {
+                                    if let Some(name) = arg.name {
+                                        param_map.insert(name, v);
+                                    }
+                                }
+                                Err(e) => return Advance::Error(e),
+                            }
+                        }
+
+                        // 4. Collect defaults for missing params
+                        *param_defaults = event_decl
+                            .params
+                            .iter()
+                            .filter_map(|p| {
+                                if param_map.contains_key(&p.name) {
+                                    None
+                                } else {
+                                    p.default.clone().map(|d| (p.name.clone(), d))
+                                }
+                            })
+                            .collect();
+
+                        // Collect field defaults
+                        *field_defaults = event_decl
+                            .fields
+                            .iter()
+                            .filter_map(|f| f.default.clone().map(|d| (f.name.clone(), d)))
+                            .collect();
+
+                        *default_index = 0;
+                        *phase = EmitEvalPhase::ParamDefaults;
+                        Advance::Continue
+                    }
+
+                    EmitEvalPhase::ParamDefaults => {
+                        // Fill defaults for missing params, one at a time.
+                        if *default_index >= param_defaults.len() {
+                            // All param defaults filled — transition to
+                            // FieldDefaults. Push a scope with params bound.
+                            *all_fields = param_map.clone();
+                            env.push_scope();
+                            *scope_pushed = true;
+                            for (name, val) in param_map.iter() {
+                                env.bind(name.clone(), val.clone());
+                            }
+                            *default_index = 0;
+                            *phase = EmitEvalPhase::FieldDefaults;
+                            return Advance::Continue;
+                        }
+
+                        let (ref name, ref default_expr) = param_defaults[*default_index];
+                        let expr = default_expr.clone();
+                        let pname = name.clone();
+                        let val = if let Some(ref mut h) = handler {
+                            bridge_eval_with(core, env, state, *h, |tmp_env| {
+                                crate::eval::eval_expr(tmp_env, &expr)
+                            })
+                        } else {
+                            bridge_eval_expr(core, env, state, &expr)
+                        };
+                        match val {
+                            Ok(v) => {
+                                param_map.insert(pname, v);
+                                *default_index += 1;
+                                Advance::Continue
+                            }
+                            Err(e) => Advance::Error(e),
+                        }
+                    }
+
+                    EmitEvalPhase::FieldDefaults => {
+                        // Evaluate derived fields with params in scope.
+                        if *default_index >= field_defaults.len() {
+                            // Pop the scope we pushed for field evaluation.
+                            if *scope_pushed {
+                                env.pop_scope();
+                                *scope_pushed = false;
+                            }
+                            *phase = EmitEvalPhase::Ready;
+                            return Advance::Continue;
+                        }
+
+                        let (ref fname, ref default_expr) = field_defaults[*default_index];
+                        if all_fields.contains_key(fname) {
+                            // Already present (from params) — skip.
+                            *default_index += 1;
+                            return Advance::Continue;
+                        }
+
+                        let expr = default_expr.clone();
+                        let field_name = fname.clone();
+                        let val = if let Some(ref mut h) = handler {
+                            bridge_eval_with(core, env, state, *h, |tmp_env| {
+                                crate::eval::eval_expr(tmp_env, &expr)
+                            })
+                        } else {
+                            bridge_eval_expr(core, env, state, &expr)
+                        };
+                        match val {
+                            Ok(v) => {
+                                all_fields.insert(field_name, v);
+                                *default_index += 1;
+                                Advance::Continue
+                            }
+                            Err(e) => {
+                                if *scope_pushed {
+                                    env.pop_scope();
+                                    *scope_pushed = false;
+                                }
+                                Advance::Error(e)
+                            }
+                        }
+                    }
+
+                    EmitEvalPhase::Ready => {
+                        // 5. Construct payload
+                        let payload = Value::Struct {
+                            name: Name::from(format!("__event_{event_name}")),
+                            fields: std::mem::take(all_fields),
+                        };
+
+                        // 6. Find matching hooks and condition handlers.
+                        // These are pure queries — they create their own Env
+                        // internally. We need an Interpreter for the query.
+                        let interp = Interpreter::bridge(
+                            &core.program,
+                            &core.type_env,
+                            core.counters().0,
+                            core.counters().1,
+                        );
+
+                        // StateAdapter implements StateProvider directly.
+                        let candidates = state.entities_in_play();
+
+                        let hook_result = crate::event::find_matching_hooks(
+                            &interp,
+                            state,
+                            event_name,
+                            &payload,
+                            &candidates,
+                        );
+                        let hooks = match hook_result {
+                            Ok(hr) => hr.hooks,
+                            Err(e) => return Advance::Error(e),
+                        };
+
+                        let cond_result = crate::event::find_matching_condition_handlers(
+                            &interp,
+                            state,
+                            event_name,
+                            &payload,
+                            &candidates,
+                        );
+                        let cond_handlers = match cond_result {
+                            Ok(cr) => cr.handlers,
+                            Err(e) => return Advance::Error(e),
+                        };
+
+                        core.sync_counters(interp.id_counters().0, interp.id_counters().1);
+
+                        // Save depth/lifecycle counters
+                        *saved_emit_depth = env.emit_depth;
+                        *saved_lifecycle = env.in_lifecycle_block;
+
+                        // Convert event::HookInfo -> execution::HookInfo
+                        let exec_hooks: Vec<crate::execution::HookInfo> = hooks
+                            .into_iter()
+                            .map(|h| crate::execution::HookInfo {
+                                hook_name: h.name,
+                                actor: h.target,
+                            })
+                            .collect();
+
+                        // Convert event::ConditionHandlerInfo -> execution::ConditionHandlerInfo
+                        let exec_handlers: Vec<crate::execution::ConditionHandlerInfo> =
+                            cond_handlers
+                                .into_iter()
+                                .map(|h| crate::execution::ConditionHandlerInfo {
+                                    target: h.bearer,
+                                    condition_name: h.condition_name,
+                                    instance_id: h.instance_id,
+                                    handler_index: h.clause_index,
+                                })
+                                .collect();
+
+                        if exec_hooks.is_empty() && exec_handlers.is_empty() {
+                            // No hooks or condition handlers — fast path.
+                            // No depth/lifecycle changes needed since nobody
+                            // ran. Just complete.
+                            return Advance::Pop(Value::Void);
+                        }
+
+                        // Push EmitHooks frame (it will handle hooks, then
+                        // push EmitConditionHandlers when done).
+                        // EmitHooks increments emit_depth and clears
+                        // in_lifecycle_block; this frame restores them
+                        // when it receives the child result.
+                        Advance::Push(Frame::EmitHooks {
+                            event_name: event_name.clone(),
+                            hooks: exec_hooks,
+                            index: 0,
+                            payload,
+                            saved_emit_depth: *saved_emit_depth,
+                            saved_lifecycle: *saved_lifecycle,
+                        })
+                    }
+                }
             }
 
             Frame::ScopeGuard => Advance::Pop(Value::Void),
-            _ => Advance::Error(RuntimeError::new(
-                "frame type not yet implemented",
-            )),
+            _ => Advance::Error(RuntimeError::new("frame type not yet implemented")),
         }
     }
 
@@ -1957,6 +2285,9 @@ impl Frame {
             Frame::CostPayerGuard { child_result, .. } => {
                 *child_result = Some(Ok(value));
             }
+            Frame::EmitEval { child_result, .. } => {
+                *child_result = Some(Ok(value));
+            }
             _ => {}
         }
     }
@@ -1965,26 +2296,24 @@ impl Frame {
     /// absorbed the error (e.g., ActionLifecycle stores it for
     /// ActionCompleted(Failed)). Returns `Err(e)` if the parent cannot
     /// handle the error and it should propagate.
-    fn receive_child_error(
-        &mut self,
-        error: RuntimeError,
-    ) -> Result<(), RuntimeError> {
+    fn receive_child_error(&mut self, error: RuntimeError) -> Result<(), RuntimeError> {
         match self {
             Frame::ActionLifecycle {
                 step, body_result, ..
             } if matches!(
                 step,
-                ActionStep::RunResolve
-                    | ActionStep::EvalRequires
-                    | ActionStep::RunPipeline
-            ) => {
+                ActionStep::RunResolve | ActionStep::EvalRequires | ActionStep::RunPipeline
+            ) =>
+            {
                 *body_result = Some(Err(error));
                 *step = ActionStep::EmitCompleted;
                 Ok(())
             }
-            Frame::Block { awaiting_fn, awaiting_error, .. }
-                if awaiting_fn.is_some() =>
-            {
+            Frame::Block {
+                awaiting_fn,
+                awaiting_error,
+                ..
+            } if awaiting_fn.is_some() => {
                 // Child FunctionEval errored while awaiting_fn is set.
                 // Store the error so advance() can propagate it after
                 // scope cleanup, matching the FunctionEval pattern.
@@ -1994,7 +2323,8 @@ impl Frame {
             Frame::FunctionEval { child_result, .. }
             | Frame::BudgetGuard { child_result, .. }
             | Frame::MultiBudgetGuard { child_result, .. }
-            | Frame::CostPayerGuard { child_result, .. } => {
+            | Frame::CostPayerGuard { child_result, .. }
+            | Frame::EmitEval { child_result, .. } => {
                 // Absorb the error so advance() can run cleanup
                 // (scope pop, budget restore) before propagating.
                 *child_result = Some(Err(error));
@@ -2252,16 +2582,15 @@ impl<S: WritableState> Execution<S> {
             .ok_or_else(|| RuntimeError::new(format!("undefined action '{action_name}'")))?;
 
         let entity_type = state.entity_type_name(&actor);
-        let action_decl =
-            select_action_overload(overloads, entity_type.as_ref())
-                .ok_or_else(|| {
-                    RuntimeError::new(format!(
-                        "no matching overload for action '{}' on entity type '{}'",
-                        action_name,
-                        entity_type.as_deref().unwrap_or("unknown")
-                    ))
-                })?
-                .clone();
+        let action_decl = select_action_overload(overloads, entity_type.as_ref())
+            .ok_or_else(|| {
+                RuntimeError::new(format!(
+                    "no matching overload for action '{}' on entity type '{}'",
+                    action_name,
+                    entity_type.as_deref().unwrap_or("unknown")
+                ))
+            })?
+            .clone();
 
         // Map positional args to param names
         if args.len() > action_decl.params.len() {
@@ -2291,10 +2620,7 @@ impl<S: WritableState> Execution<S> {
         let mut default_params = Vec::new();
         for i in bindings.len()..action_decl.params.len() {
             if let Some(ref default_expr) = action_decl.params[i].default {
-                default_params.push((
-                    action_decl.params[i].name.clone(),
-                    default_expr.clone(),
-                ));
+                default_params.push((action_decl.params[i].name.clone(), default_expr.clone()));
             }
         }
 
@@ -2339,9 +2665,7 @@ impl<S: WritableState> Execution<S> {
             .program
             .reactions
             .get(reaction_name)
-            .ok_or_else(|| {
-                RuntimeError::new(format!("undefined reaction '{reaction_name}'"))
-            })?
+            .ok_or_else(|| RuntimeError::new(format!("undefined reaction '{reaction_name}'")))?
             .clone();
 
         let inv_id = InvocationId(core.alloc_invocation_id());
@@ -2387,9 +2711,7 @@ impl<S: WritableState> Execution<S> {
             .program
             .hooks
             .get(hook_name)
-            .ok_or_else(|| {
-                RuntimeError::new(format!("undefined hook '{hook_name}'"))
-            })?
+            .ok_or_else(|| RuntimeError::new(format!("undefined hook '{hook_name}'")))?
             .clone();
 
         let inv_id = InvocationId(core.alloc_invocation_id());
@@ -2462,9 +2784,7 @@ impl<S: WritableState> Execution<S> {
         args: Vec<Value>,
     ) -> Result<Self, RuntimeError> {
         if !core.program.mechanics.contains_key(name) {
-            return Err(RuntimeError::new(format!(
-                "undefined mechanic '{name}'"
-            )));
+            return Err(RuntimeError::new(format!("undefined mechanic '{name}'")));
         }
         let mut exec = Self::new(core, state);
         exec.frames.push(Frame::DeriveEval {
@@ -2526,13 +2846,8 @@ impl<S: WritableState> Execution<S> {
         let mut default_params = Vec::new();
         for i in bound.len()..fn_info.params.len() {
             if fn_info.params[i].has_default {
-                if let Some(default_expr) =
-                    fn_decl.params.get(i).and_then(|p| p.default.as_ref())
-                {
-                    default_params.push((
-                        fn_info.params[i].name.clone(),
-                        default_expr.clone(),
-                    ));
+                if let Some(default_expr) = fn_decl.params.get(i).and_then(|p| p.default.as_ref()) {
+                    default_params.push((fn_info.params[i].name.clone(), default_expr.clone()));
                 }
             } else {
                 return Err(RuntimeError::new(format!(
@@ -2560,9 +2875,7 @@ impl<S: WritableState> Execution<S> {
         expr: Spanned<ExprKind>,
     ) -> Self {
         let mut exec = Self::new(core, state);
-        exec.frames.push(Frame::BridgeCall {
-            result: None,
-        });
+        exec.frames.push(Frame::BridgeCall { result: None });
         exec.env.bridge_call = Some(BridgeCallInfo::Expr { expr });
         exec
     }
@@ -2578,9 +2891,7 @@ impl<S: WritableState> Execution<S> {
         for (name, value) in bindings {
             exec.env.bind(name, value);
         }
-        exec.frames.push(Frame::BridgeCall {
-            result: None,
-        });
+        exec.frames.push(Frame::BridgeCall { result: None });
         exec.env.bridge_call = Some(BridgeCallInfo::Expr { expr });
         exec
     }
@@ -2591,10 +2902,10 @@ impl<S: WritableState> Execution<S> {
     pub fn poll(&mut self) -> Result<Step, PollError> {
         match &self.protocol {
             ProtocolState::Pending => {
-                return Err(PollError::Protocol(ProtocolError::EffectPending))
+                return Err(PollError::Protocol(ProtocolError::EffectPending));
             }
             ProtocolState::Completed => {
-                return Err(PollError::Protocol(ProtocolError::ExecutionCompleted))
+                return Err(PollError::Protocol(ProtocolError::ExecutionCompleted));
             }
             ProtocolState::Idle | ProtocolState::Unwinding(_) => {}
         }
@@ -2621,8 +2932,10 @@ impl<S: WritableState> Execution<S> {
 
             match advance {
                 Advance::Yield(effect) => {
-                    self.pending_before_yield =
-                        Some(std::mem::replace(&mut self.protocol, ProtocolState::Pending));
+                    self.pending_before_yield = Some(std::mem::replace(
+                        &mut self.protocol,
+                        ProtocolState::Pending,
+                    ));
                     return Ok(Step::Yielded(Box::new(effect)));
                 }
                 Advance::Push(child) => {
@@ -2665,7 +2978,7 @@ impl<S: WritableState> Execution<S> {
     pub fn respond(&mut self, response: Response) -> Result<(), ProtocolError> {
         match &self.protocol {
             ProtocolState::Idle | ProtocolState::Unwinding(_) => {
-                return Err(ProtocolError::NoPendingEffect)
+                return Err(ProtocolError::NoPendingEffect);
             }
             ProtocolState::Completed => return Err(ProtocolError::ExecutionCompleted),
             ProtocolState::Pending => {}
@@ -2696,12 +3009,7 @@ impl<S: WritableState> Execution<S> {
             }
 
             let frame = self.frames.last_mut().unwrap();
-            let advance = frame.advance_sync(
-                &self.core,
-                &mut self.env,
-                &self.state,
-                handler,
-            );
+            let advance = frame.advance_sync(&self.core, &mut self.env, &self.state, handler);
 
             match advance {
                 Advance::Yield(effect) => {
@@ -2804,8 +3112,7 @@ mod tests {
     // ── Test infrastructure ──────────────────────────────────
 
     fn setup(source: &str) -> (Arc<ttrpg_ast::ast::Program>, Arc<TypeEnv>) {
-        let (program, parse_errors) =
-            ttrpg_parser::parse(source, ttrpg_ast::FileId::SYNTH);
+        let (program, parse_errors) = ttrpg_parser::parse(source, ttrpg_ast::FileId::SYNTH);
         assert!(
             parse_errors.is_empty(),
             "parse errors: {:?}",
@@ -2855,9 +3162,7 @@ mod tests {
     impl EffectHandler for ScriptedHandler {
         fn handle(&mut self, effect: Effect) -> Response {
             self.log.push(effect);
-            self.script
-                .pop_front()
-                .unwrap_or(Response::Acknowledged)
+            self.script.pop_front().unwrap_or(Response::Acknowledged)
         }
     }
 
@@ -3213,17 +3518,18 @@ mod tests {
         let actor = add_creature(&mut game, 10);
         let adapter = StateAdapter::new(game);
 
-        let mut exec = Execution::start_action(
-            core, adapter, "Noop", actor, vec![], Span::dummy(),
-        )
-        .unwrap();
+        let mut exec =
+            Execution::start_action(core, adapter, "Noop", actor, vec![], Span::dummy()).unwrap();
 
         // First poll yields ActionStarted
         let _ = exec.poll().unwrap();
 
         // Second poll without respond should error
         let err = exec.poll().unwrap_err();
-        assert!(matches!(err, PollError::Protocol(ProtocolError::EffectPending)));
+        assert!(matches!(
+            err,
+            PollError::Protocol(ProtocolError::EffectPending)
+        ));
     }
 
     #[test]
@@ -3243,10 +3549,8 @@ mod tests {
         let actor = add_creature(&mut game, 10);
         let adapter = StateAdapter::new(game);
 
-        let mut exec = Execution::start_action(
-            core, adapter, "Noop", actor, vec![], Span::dummy(),
-        )
-        .unwrap();
+        let mut exec =
+            Execution::start_action(core, adapter, "Noop", actor, vec![], Span::dummy()).unwrap();
 
         // respond without poll should error
         let err = exec.respond(Response::Acknowledged).unwrap_err();
@@ -3303,9 +3607,7 @@ mod tests {
         let adapter1 = StateAdapter::new(game1);
         let mut handler1 = ScriptedHandler::always_ack();
         let result1 = adapter1.run(&mut handler1, |state, handler| {
-            interp.execute_action(
-                state, handler, "Attack", a1, vec![Value::Entity(d1)],
-            )
+            interp.execute_action(state, handler, "Attack", a1, vec![Value::Entity(d1)])
         });
 
         // Step-based path
@@ -3315,7 +3617,12 @@ mod tests {
         let d2 = add_creature(&mut game2, 15);
         let adapter2 = StateAdapter::new(game2);
         let exec = Execution::start_action(
-            core, adapter2, "Attack", a2, vec![Value::Entity(d2)], Span::dummy(),
+            core,
+            adapter2,
+            "Attack",
+            a2,
+            vec![Value::Entity(d2)],
+            Span::dummy(),
         )
         .unwrap();
         let mut handler2 = ScriptedHandler::always_ack();
@@ -3358,9 +3665,7 @@ mod tests {
         let adapter1 = StateAdapter::new(game1);
         let mut handler1 = ScriptedHandler::always_ack();
         let _ = adapter1.run(&mut handler1, |state, handler| {
-            interp.execute_action(
-                state, handler, "Heal", h1, vec![Value::Entity(p1)],
-            )
+            interp.execute_action(state, handler, "Heal", h1, vec![Value::Entity(p1)])
         });
 
         // Step-based path
@@ -3370,7 +3675,12 @@ mod tests {
         let p2 = add_creature(&mut game2, 10);
         let adapter2 = StateAdapter::new(game2);
         let exec = Execution::start_action(
-            core, adapter2, "Heal", h2, vec![Value::Entity(p2)], Span::dummy(),
+            core,
+            adapter2,
+            "Heal",
+            h2,
+            vec![Value::Entity(p2)],
+            Span::dummy(),
         )
         .unwrap();
         let mut handler2 = ScriptedHandler::always_ack();
@@ -3411,13 +3721,11 @@ mod tests {
         let d1 = add_creature(&mut game1, 15);
         let adapter1 = StateAdapter::new(game1);
         let mut handler1 = ScriptedHandler::new(vec![
-            Response::Vetoed,        // ActionStarted → Vetoed
-            Response::Acknowledged,  // ActionCompleted(Vetoed)
+            Response::Vetoed,       // ActionStarted → Vetoed
+            Response::Acknowledged, // ActionCompleted(Vetoed)
         ]);
         let _ = adapter1.run(&mut handler1, |state, handler| {
-            interp.execute_action(
-                state, handler, "Attack", a1, vec![Value::Entity(d1)],
-            )
+            interp.execute_action(state, handler, "Attack", a1, vec![Value::Entity(d1)])
         });
 
         // Step-based path with veto
@@ -3427,12 +3735,17 @@ mod tests {
         let d2 = add_creature(&mut game2, 15);
         let adapter2 = StateAdapter::new(game2);
         let exec = Execution::start_action(
-            core, adapter2, "Attack", a2, vec![Value::Entity(d2)], Span::dummy(),
+            core,
+            adapter2,
+            "Attack",
+            a2,
+            vec![Value::Entity(d2)],
+            Span::dummy(),
         )
         .unwrap();
         let mut handler2 = ScriptedHandler::new(vec![
-            Response::Vetoed,        // ActionStarted → Vetoed
-            Response::Acknowledged,  // ActionCompleted(Vetoed)
+            Response::Vetoed,       // ActionStarted → Vetoed
+            Response::Acknowledged, // ActionCompleted(Vetoed)
         ]);
         let _ = exec.run_with_handler(&mut handler2);
 
@@ -3498,7 +3811,12 @@ mod tests {
         let r2 = add_creature(&mut game2, 20);
         let adapter2 = StateAdapter::new(game2);
         let exec = Execution::start_reaction(
-            core, adapter2, "OnDamage", r2, payload.clone(), Span::dummy(),
+            core,
+            adapter2,
+            "OnDamage",
+            r2,
+            payload.clone(),
+            Span::dummy(),
         )
         .unwrap();
         let mut handler2 = ScriptedHandler::always_ack();
@@ -3506,7 +3824,10 @@ mod tests {
 
         let kinds1 = structural_kinds(&handler1.log);
         let kinds2 = structural_kinds(&handler2.log);
-        assert_eq!(kinds1, kinds2, "structural effect sequence mismatch for reaction");
+        assert_eq!(
+            kinds1, kinds2,
+            "structural effect sequence mismatch for reaction"
+        );
         assert_eq!(kinds1.len(), 2);
         assert_eq!(kinds1[0], EffectKind::ActionStarted);
         assert_eq!(kinds1[1], EffectKind::ActionCompleted);
@@ -3514,11 +3835,17 @@ mod tests {
         // Verify ActionStarted kind is Reaction
         assert!(matches!(
             &handler1.log[0],
-            Effect::ActionStarted { kind: ActionKind::Reaction { .. }, .. }
+            Effect::ActionStarted {
+                kind: ActionKind::Reaction { .. },
+                ..
+            }
         ));
         assert!(matches!(
             &handler2.log[0],
-            Effect::ActionStarted { kind: ActionKind::Reaction { .. }, .. }
+            Effect::ActionStarted {
+                kind: ActionKind::Reaction { .. },
+                ..
+            }
         ));
     }
 
@@ -3561,7 +3888,12 @@ mod tests {
         let t2 = add_creature(&mut game2, 20);
         let adapter2 = StateAdapter::new(game2);
         let exec = Execution::start_hook(
-            core, adapter2, "OnDamage", t2, payload.clone(), Span::dummy(),
+            core,
+            adapter2,
+            "OnDamage",
+            t2,
+            payload.clone(),
+            Span::dummy(),
         )
         .unwrap();
         let mut handler2 = ScriptedHandler::always_ack();
@@ -3569,7 +3901,10 @@ mod tests {
 
         let kinds1 = structural_kinds(&handler1.log);
         let kinds2 = structural_kinds(&handler2.log);
-        assert_eq!(kinds1, kinds2, "structural effect sequence mismatch for hook");
+        assert_eq!(
+            kinds1, kinds2,
+            "structural effect sequence mismatch for hook"
+        );
         assert_eq!(kinds1.len(), 2);
         assert_eq!(kinds1[0], EffectKind::ActionStarted);
         assert_eq!(kinds1[1], EffectKind::ActionCompleted);
@@ -3577,11 +3912,17 @@ mod tests {
         // Verify ActionStarted kind is Hook
         assert!(matches!(
             &handler1.log[0],
-            Effect::ActionStarted { kind: ActionKind::Hook { .. }, .. }
+            Effect::ActionStarted {
+                kind: ActionKind::Hook { .. },
+                ..
+            }
         ));
         assert!(matches!(
             &handler2.log[0],
-            Effect::ActionStarted { kind: ActionKind::Hook { .. }, .. }
+            Effect::ActionStarted {
+                kind: ActionKind::Hook { .. },
+                ..
+            }
         ));
     }
 
@@ -3604,7 +3945,7 @@ mod tests {
         // Both paths: requires fails (HP=0), host overrides to pass
         let responses = vec![
             Response::Acknowledged,                // ActionStarted
-            Response::Override(Value::Bool(true)),  // RequiresCheck(false) → force pass
+            Response::Override(Value::Bool(true)), // RequiresCheck(false) → force pass
             Response::Acknowledged,                // ActionCompleted
         ];
 
@@ -3626,7 +3967,12 @@ mod tests {
         let p2 = add_creature(&mut game2, 0);
         let adapter2 = StateAdapter::new(game2);
         let exec = Execution::start_action(
-            core, adapter2, "Heal", h2, vec![Value::Entity(p2)], Span::dummy(),
+            core,
+            adapter2,
+            "Heal",
+            h2,
+            vec![Value::Entity(p2)],
+            Span::dummy(),
         )
         .unwrap();
         let mut handler2 = ScriptedHandler::new(responses);
@@ -3634,7 +3980,10 @@ mod tests {
 
         let kinds1 = structural_kinds(&handler1.log);
         let kinds2 = structural_kinds(&handler2.log);
-        assert_eq!(kinds1, kinds2, "structural effect sequence mismatch for requires override (force pass)");
+        assert_eq!(
+            kinds1, kinds2,
+            "structural effect sequence mismatch for requires override (force pass)"
+        );
 
         // Should have: ActionStarted, RequiresCheck, ActionCompleted
         assert_eq!(kinds1.len(), 3);
@@ -3671,9 +4020,9 @@ mod tests {
 
         // Both paths: requires passes (HP=10), host overrides to fail
         let responses = vec![
-            Response::Acknowledged,                  // ActionStarted
-            Response::Override(Value::Bool(false)),   // RequiresCheck(true) → force fail
-            Response::Acknowledged,                  // ActionCompleted
+            Response::Acknowledged,                 // ActionStarted
+            Response::Override(Value::Bool(false)), // RequiresCheck(true) → force fail
+            Response::Acknowledged,                 // ActionCompleted
         ];
 
         // Recursive path
@@ -3694,7 +4043,12 @@ mod tests {
         let p2 = add_creature(&mut game2, 10);
         let adapter2 = StateAdapter::new(game2);
         let exec = Execution::start_action(
-            core, adapter2, "Heal", h2, vec![Value::Entity(p2)], Span::dummy(),
+            core,
+            adapter2,
+            "Heal",
+            h2,
+            vec![Value::Entity(p2)],
+            Span::dummy(),
         )
         .unwrap();
         let mut handler2 = ScriptedHandler::new(responses);
@@ -3702,7 +4056,10 @@ mod tests {
 
         let kinds1 = structural_kinds(&handler1.log);
         let kinds2 = structural_kinds(&handler2.log);
-        assert_eq!(kinds1, kinds2, "structural effect sequence mismatch for requires override (force fail)");
+        assert_eq!(
+            kinds1, kinds2,
+            "structural effect sequence mismatch for requires override (force fail)"
+        );
 
         // Should have: ActionStarted, RequiresCheck, ActionCompleted
         assert_eq!(kinds1.len(), 3);
@@ -3763,7 +4120,12 @@ mod tests {
         let p2 = add_creature(&mut game2, 10);
         let adapter2 = StateAdapter::new(game2);
         let exec = Execution::start_action(
-            core, adapter2, "Heal", h2, vec![Value::Entity(p2)], Span::dummy(),
+            core,
+            adapter2,
+            "Heal",
+            h2,
+            vec![Value::Entity(p2)],
+            Span::dummy(),
         )
         .unwrap();
         let mut handler2 = ScriptedHandler::always_ack();
@@ -3771,7 +4133,10 @@ mod tests {
 
         let kinds1 = structural_kinds(&handler1.log);
         let kinds2 = structural_kinds(&handler2.log);
-        assert_eq!(kinds1, kinds2, "structural effect sequence mismatch for default params");
+        assert_eq!(
+            kinds1, kinds2,
+            "structural effect sequence mismatch for default params"
+        );
 
         // Both should succeed
         assert!(result1.is_ok(), "recursive path failed: {result1:?}");
@@ -3807,8 +4172,8 @@ mod tests {
         };
 
         let responses = vec![
-            Response::Vetoed,        // ActionStarted → Vetoed
-            Response::Acknowledged,  // ActionCompleted(Vetoed)
+            Response::Vetoed,       // ActionStarted → Vetoed
+            Response::Acknowledged, // ActionCompleted(Vetoed)
         ];
 
         // Recursive path
@@ -3827,7 +4192,12 @@ mod tests {
         let r2 = add_creature(&mut game2, 20);
         let adapter2 = StateAdapter::new(game2);
         let exec = Execution::start_reaction(
-            core, adapter2, "OnDamage", r2, payload.clone(), Span::dummy(),
+            core,
+            adapter2,
+            "OnDamage",
+            r2,
+            payload.clone(),
+            Span::dummy(),
         )
         .unwrap();
         let mut handler2 = ScriptedHandler::new(responses);
@@ -3835,7 +4205,10 @@ mod tests {
 
         let kinds1 = structural_kinds(&handler1.log);
         let kinds2 = structural_kinds(&handler2.log);
-        assert_eq!(kinds1, kinds2, "structural effect sequence mismatch for vetoed reaction");
+        assert_eq!(
+            kinds1, kinds2,
+            "structural effect sequence mismatch for vetoed reaction"
+        );
         assert_eq!(kinds1.len(), 2);
 
         // Verify both have Vetoed outcome
@@ -3871,8 +4244,8 @@ mod tests {
         };
 
         let responses = vec![
-            Response::Vetoed,        // ActionStarted → Vetoed
-            Response::Acknowledged,  // ActionCompleted(Vetoed)
+            Response::Vetoed,       // ActionStarted → Vetoed
+            Response::Acknowledged, // ActionCompleted(Vetoed)
         ];
 
         // Recursive path
@@ -3891,7 +4264,12 @@ mod tests {
         let t2 = add_creature(&mut game2, 20);
         let adapter2 = StateAdapter::new(game2);
         let exec = Execution::start_hook(
-            core, adapter2, "OnDamage", t2, payload.clone(), Span::dummy(),
+            core,
+            adapter2,
+            "OnDamage",
+            t2,
+            payload.clone(),
+            Span::dummy(),
         )
         .unwrap();
         let mut handler2 = ScriptedHandler::new(responses);
@@ -3899,7 +4277,10 @@ mod tests {
 
         let kinds1 = structural_kinds(&handler1.log);
         let kinds2 = structural_kinds(&handler2.log);
-        assert_eq!(kinds1, kinds2, "structural effect sequence mismatch for vetoed hook");
+        assert_eq!(
+            kinds1, kinds2,
+            "structural effect sequence mismatch for vetoed hook"
+        );
         assert_eq!(kinds1.len(), 2);
 
         if let Effect::ActionCompleted { outcome: o1, .. } = &handler1.log[1] {
@@ -3933,12 +4314,8 @@ mod tests {
         let adapter1 = StateAdapter::new(game1);
         let mut handler1 = ScriptedHandler::always_ack();
         let _ = adapter1.run(&mut handler1, |state, handler| {
-            interp.execute_action(
-                state, handler, "Attack", a1, vec![Value::Entity(d1)],
-            )?;
-            interp.execute_action(
-                state, handler, "Attack", a1, vec![Value::Entity(d1)],
-            )
+            interp.execute_action(state, handler, "Attack", a1, vec![Value::Entity(d1)])?;
+            interp.execute_action(state, handler, "Attack", a1, vec![Value::Entity(d1)])
         });
 
         // Step-based path: two actions with shared RuntimeCore
@@ -3950,7 +4327,12 @@ mod tests {
 
         // First action
         let exec1 = Execution::start_action(
-            Rc::clone(&core), adapter2, "Attack", a2, vec![Value::Entity(d2)], Span::dummy(),
+            Rc::clone(&core),
+            adapter2,
+            "Attack",
+            a2,
+            vec![Value::Entity(d2)],
+            Span::dummy(),
         )
         .unwrap();
         let mut handler2 = ScriptedHandler::always_ack();
@@ -3967,7 +4349,12 @@ mod tests {
 
         // Second action
         let exec2 = Execution::start_action(
-            Rc::clone(&core), adapter2, "Attack", a2, vec![Value::Entity(d2)], Span::dummy(),
+            Rc::clone(&core),
+            adapter2,
+            "Attack",
+            a2,
+            vec![Value::Entity(d2)],
+            Span::dummy(),
         )
         .unwrap();
         let mut handler2b = ScriptedHandler::always_ack();
@@ -3979,31 +4366,54 @@ mod tests {
 
         let kinds1 = structural_kinds(&handler1.log);
         let kinds2 = structural_kinds(&combined_log);
-        assert_eq!(kinds1, kinds2, "structural effect sequence mismatch for sequential actions");
+        assert_eq!(
+            kinds1, kinds2,
+            "structural effect sequence mismatch for sequential actions"
+        );
 
         // Both should have 4 structural effects: 2x(ActionStarted, ActionCompleted)
         assert_eq!(kinds1.len(), 4);
 
         // Verify invocation IDs increment correctly
         let inv1_recursive = match &handler1.log[1] {
-            Effect::ActionCompleted { invocation: Some(id), .. } => id.0,
+            Effect::ActionCompleted {
+                invocation: Some(id),
+                ..
+            } => id.0,
             other => panic!("expected ActionCompleted, got {other:?}"),
         };
         let inv2_recursive = match &handler1.log[3] {
-            Effect::ActionCompleted { invocation: Some(id), .. } => id.0,
+            Effect::ActionCompleted {
+                invocation: Some(id),
+                ..
+            } => id.0,
             other => panic!("expected ActionCompleted, got {other:?}"),
         };
-        assert_eq!(inv2_recursive, inv1_recursive + 1, "recursive invocation IDs should increment");
+        assert_eq!(
+            inv2_recursive,
+            inv1_recursive + 1,
+            "recursive invocation IDs should increment"
+        );
 
         let inv1_step = match &combined_log[1] {
-            Effect::ActionCompleted { invocation: Some(id), .. } => id.0,
+            Effect::ActionCompleted {
+                invocation: Some(id),
+                ..
+            } => id.0,
             other => panic!("expected ActionCompleted, got {other:?}"),
         };
         let inv2_step = match &combined_log[3] {
-            Effect::ActionCompleted { invocation: Some(id), .. } => id.0,
+            Effect::ActionCompleted {
+                invocation: Some(id),
+                ..
+            } => id.0,
             other => panic!("expected ActionCompleted, got {other:?}"),
         };
-        assert_eq!(inv2_step, inv1_step + 1, "step-based invocation IDs should increment");
+        assert_eq!(
+            inv2_step,
+            inv1_step + 1,
+            "step-based invocation IDs should increment"
+        );
     }
 
     #[test]
@@ -4032,7 +4442,11 @@ mod tests {
         let mut handler1 = ScriptedHandler::always_ack();
         let result1 = adapter1.run(&mut handler1, |state, handler| {
             interp.execute_action(
-                state, handler, "MultiHit", a1, vec![Value::Entity(d1), Value::Int(7)],
+                state,
+                handler,
+                "MultiHit",
+                a1,
+                vec![Value::Entity(d1), Value::Int(7)],
             )
         });
 
@@ -4043,8 +4457,12 @@ mod tests {
         let d2 = add_creature(&mut game2, 30);
         let adapter2 = StateAdapter::new(game2);
         let exec = Execution::start_action(
-            core, adapter2, "MultiHit", a2,
-            vec![Value::Entity(d2), Value::Int(7)], Span::dummy(),
+            core,
+            adapter2,
+            "MultiHit",
+            a2,
+            vec![Value::Entity(d2), Value::Int(7)],
+            Span::dummy(),
         )
         .unwrap();
         let mut handler2 = ScriptedHandler::always_ack();
@@ -4052,7 +4470,10 @@ mod tests {
 
         let kinds1 = structural_kinds(&handler1.log);
         let kinds2 = structural_kinds(&handler2.log);
-        assert_eq!(kinds1, kinds2, "structural effect sequence mismatch for multiple params");
+        assert_eq!(
+            kinds1, kinds2,
+            "structural effect sequence mismatch for multiple params"
+        );
 
         assert!(result1.is_ok());
         assert!(result2.is_ok());
@@ -4087,16 +4508,17 @@ mod tests {
         let mut game2 = GameState::new();
         let a2 = add_creature(&mut game2, 10);
         let adapter2 = StateAdapter::new(game2);
-        let exec = Execution::start_action(
-            core, adapter2, "Noop", a2, vec![], Span::dummy(),
-        )
-        .unwrap();
+        let exec =
+            Execution::start_action(core, adapter2, "Noop", a2, vec![], Span::dummy()).unwrap();
         let mut handler2 = ScriptedHandler::always_ack();
         let result2 = exec.run_with_handler(&mut handler2);
 
         let kinds1 = structural_kinds(&handler1.log);
         let kinds2 = structural_kinds(&handler2.log);
-        assert_eq!(kinds1, kinds2, "structural effect sequence mismatch for empty resolve");
+        assert_eq!(
+            kinds1, kinds2,
+            "structural effect sequence mismatch for empty resolve"
+        );
 
         assert!(result1.is_ok());
         assert!(result2.is_ok());
@@ -4138,7 +4560,12 @@ mod tests {
         let p2 = add_creature(&mut game2, 0);
         let adapter2 = StateAdapter::new(game2);
         let exec = Execution::start_action(
-            core, adapter2, "Heal", h2, vec![Value::Entity(p2)], Span::dummy(),
+            core,
+            adapter2,
+            "Heal",
+            h2,
+            vec![Value::Entity(p2)],
+            Span::dummy(),
         )
         .unwrap();
         let mut handler2 = ScriptedHandler::always_ack();
@@ -4146,7 +4573,10 @@ mod tests {
 
         let kinds1 = structural_kinds(&handler1.log);
         let kinds2 = structural_kinds(&handler2.log);
-        assert_eq!(kinds1, kinds2, "structural effect sequence mismatch for requires fail (ack)");
+        assert_eq!(
+            kinds1, kinds2,
+            "structural effect sequence mismatch for requires fail (ack)"
+        );
 
         // Should have: ActionStarted, RequiresCheck, ActionCompleted
         assert_eq!(kinds1.len(), 3);
@@ -4195,16 +4625,18 @@ mod tests {
         let mut game2 = GameState::new();
         let a2 = add_creature(&mut game2, 20);
         let adapter2 = StateAdapter::new(game2);
-        let exec = Execution::start_action(
-            core, adapter2, "Attack", a2, vec![], Span::dummy(),
-        ).unwrap();
+        let exec =
+            Execution::start_action(core, adapter2, "Attack", a2, vec![], Span::dummy()).unwrap();
         let mut handler2 = ScriptedHandler::new(vec![Response::Override(Value::Int(42))]);
         let _result2 = exec.run_with_handler(&mut handler2);
 
         // Both should produce matching structural effect sequences
         let kinds1 = structural_kinds(&handler1.log);
         let kinds2 = structural_kinds(&handler2.log);
-        assert_eq!(kinds1, kinds2, "structural effect sequence mismatch for invalid response");
+        assert_eq!(
+            kinds1, kinds2,
+            "structural effect sequence mismatch for invalid response"
+        );
     }
 
     #[test]
@@ -4239,14 +4671,12 @@ mod tests {
             unmodified: 4,
         };
         let mut handler1 = ScriptedHandler::new(vec![
-            Response::Acknowledged, // ActionStarted
+            Response::Acknowledged,                // ActionStarted
             Response::Rolled(roll_result.clone()), // RollDice → result 4
-            Response::Acknowledged, // ActionCompleted
+            Response::Acknowledged,                // ActionCompleted
         ]);
         let result1 = adapter1.run(&mut handler1, |state, handler| {
-            interp.execute_action(
-                state, handler, "Attack", a1, vec![Value::Entity(d1)],
-            )
+            interp.execute_action(state, handler, "Attack", a1, vec![Value::Entity(d1)])
         });
 
         // Step-based path
@@ -4256,8 +4686,14 @@ mod tests {
         let d2 = add_creature(&mut game2, 15);
         let adapter2 = StateAdapter::new(game2);
         let exec = Execution::start_action(
-            core, adapter2, "Attack", a2, vec![Value::Entity(d2)], Span::dummy(),
-        ).unwrap();
+            core,
+            adapter2,
+            "Attack",
+            a2,
+            vec![Value::Entity(d2)],
+            Span::dummy(),
+        )
+        .unwrap();
         let roll_result2 = RollResult {
             expr: DiceExpr::single(1, 6, None, 0),
             dice: vec![4],
@@ -4267,15 +4703,18 @@ mod tests {
             unmodified: 4,
         };
         let mut handler2 = ScriptedHandler::new(vec![
-            Response::Acknowledged, // ActionStarted
+            Response::Acknowledged,         // ActionStarted
             Response::Rolled(roll_result2), // RollDice → result 4
-            Response::Acknowledged, // ActionCompleted
+            Response::Acknowledged,         // ActionCompleted
         ]);
         let result2 = exec.run_with_handler(&mut handler2);
 
         let kinds1 = structural_kinds(&handler1.log);
         let kinds2 = structural_kinds(&handler2.log);
-        assert_eq!(kinds1, kinds2, "structural effect sequence mismatch for roll in body");
+        assert_eq!(
+            kinds1, kinds2,
+            "structural effect sequence mismatch for roll in body"
+        );
 
         assert!(result1.is_ok(), "recursive failed: {result1:?}");
         assert!(result2.is_ok(), "step-based failed: {result2:?}");
@@ -4302,12 +4741,16 @@ mod tests {
         use crate::value::{DiceExpr, RollResult};
         let mk_roll = || RollResult {
             expr: DiceExpr::single(1, 6, None, 0),
-            dice: vec![3], kept: vec![3], modifier: 0, total: 3, unmodified: 3,
+            dice: vec![3],
+            kept: vec![3],
+            modifier: 0,
+            total: 3,
+            unmodified: 3,
         };
         let mut handler1 = ScriptedHandler::new(vec![
-            Response::Acknowledged, // ActionStarted
+            Response::Acknowledged,      // ActionStarted
             Response::Rolled(mk_roll()), // RollDice for default
-            Response::Acknowledged, // ActionCompleted
+            Response::Acknowledged,      // ActionCompleted
         ]);
         let result1 = adapter1.run(&mut handler1, |state, handler| {
             interp.execute_action(state, handler, "Attack", a1, vec![])
@@ -4318,19 +4761,21 @@ mod tests {
         let mut game2 = GameState::new();
         let a2 = add_creature(&mut game2, 20);
         let adapter2 = StateAdapter::new(game2);
-        let exec = Execution::start_action(
-            core, adapter2, "Attack", a2, vec![], Span::dummy(),
-        ).unwrap();
+        let exec =
+            Execution::start_action(core, adapter2, "Attack", a2, vec![], Span::dummy()).unwrap();
         let mut handler2 = ScriptedHandler::new(vec![
-            Response::Acknowledged, // ActionStarted
+            Response::Acknowledged,      // ActionStarted
             Response::Rolled(mk_roll()), // RollDice for default
-            Response::Acknowledged, // ActionCompleted
+            Response::Acknowledged,      // ActionCompleted
         ]);
         let result2 = exec.run_with_handler(&mut handler2);
 
         let kinds1 = structural_kinds(&handler1.log);
         let kinds2 = structural_kinds(&handler2.log);
-        assert_eq!(kinds1, kinds2, "structural effect sequence mismatch for effectful default");
+        assert_eq!(
+            kinds1, kinds2,
+            "structural effect sequence mismatch for effectful default"
+        );
 
         assert!(result1.is_ok(), "recursive failed: {result1:?}");
         assert!(result2.is_ok(), "step-based failed: {result2:?}");
@@ -4374,15 +4819,17 @@ mod tests {
         f2.insert(Name::from("Armor"), Value::Int(5));
         let a2 = game2.add_entity("Creature", f2);
         let adapter2 = StateAdapter::new(game2);
-        let exec = Execution::start_action(
-            core, adapter2, "Fortify", a2, vec![], Span::dummy(),
-        ).unwrap();
+        let exec =
+            Execution::start_action(core, adapter2, "Fortify", a2, vec![], Span::dummy()).unwrap();
         let mut handler2 = ScriptedHandler::always_ack();
         let result2 = exec.run_with_handler(&mut handler2);
 
         let kinds1 = structural_kinds(&handler1.log);
         let kinds2 = structural_kinds(&handler2.log);
-        assert_eq!(kinds1, kinds2, "structural effect sequence mismatch for multiple mutations");
+        assert_eq!(
+            kinds1, kinds2,
+            "structural effect sequence mismatch for multiple mutations"
+        );
 
         assert!(result1.is_ok(), "recursive failed: {result1:?}");
         assert!(result2.is_ok(), "step-based failed: {result2:?}");
@@ -4422,15 +4869,17 @@ mod tests {
         let mut game2 = GameState::new();
         let a2 = add_creature(&mut game2, 20);
         let adapter2 = StateAdapter::new(game2);
-        let exec = Execution::start_action(
-            core, adapter2, "Heal", a2, vec![], Span::dummy(),
-        ).unwrap();
+        let exec =
+            Execution::start_action(core, adapter2, "Heal", a2, vec![], Span::dummy()).unwrap();
         let mut handler2 = ScriptedHandler::always_ack();
         let result2 = exec.run_with_handler(&mut handler2);
 
         let kinds1 = structural_kinds(&handler1.log);
         let kinds2 = structural_kinds(&handler2.log);
-        assert_eq!(kinds1, kinds2, "structural effect sequence mismatch for early return");
+        assert_eq!(
+            kinds1, kinds2,
+            "structural effect sequence mismatch for early return"
+        );
 
         assert!(result1.is_ok(), "recursive failed: {result1:?}");
         assert!(result2.is_ok(), "step-based failed: {result2:?}");
@@ -4462,9 +4911,7 @@ mod tests {
         let adapter1 = StateAdapter::new(game1);
         let mut handler1 = ScriptedHandler::always_ack();
         let result1 = adapter1.run(&mut handler1, |state, handler| {
-            interp.execute_action(
-                state, handler, "Attack", a1, vec![Value::Entity(t1)],
-            )
+            interp.execute_action(state, handler, "Attack", a1, vec![Value::Entity(t1)])
         });
 
         // Step-based path
@@ -4474,14 +4921,23 @@ mod tests {
         let t2 = add_creature(&mut game2, 10);
         let adapter2 = StateAdapter::new(game2);
         let exec = Execution::start_action(
-            core, adapter2, "Attack", a2, vec![Value::Entity(t2)], Span::dummy(),
-        ).unwrap();
+            core,
+            adapter2,
+            "Attack",
+            a2,
+            vec![Value::Entity(t2)],
+            Span::dummy(),
+        )
+        .unwrap();
         let mut handler2 = ScriptedHandler::always_ack();
         let result2 = exec.run_with_handler(&mut handler2);
 
         let kinds1 = structural_kinds(&handler1.log);
         let kinds2 = structural_kinds(&handler2.log);
-        assert_eq!(kinds1, kinds2, "structural effect sequence mismatch for failed requires");
+        assert_eq!(
+            kinds1, kinds2,
+            "structural effect sequence mismatch for failed requires"
+        );
 
         // Both should succeed (abort is Ok, not Err)
         assert!(result1.is_ok(), "recursive failed: {result1:?}");
@@ -4518,7 +4974,11 @@ mod tests {
         let mut handler1 = ScriptedHandler::always_ack();
         let result1 = adapter1.run(&mut handler1, |state, handler| {
             interp.execute_action(
-                state, handler, "Poison", a1, vec![Value::Entity(t1), Value::Int(3)],
+                state,
+                handler,
+                "Poison",
+                a1,
+                vec![Value::Entity(t1), Value::Int(3)],
             )
         });
 
@@ -4529,15 +4989,23 @@ mod tests {
         let t2 = add_creature(&mut game2, 15);
         let adapter2 = StateAdapter::new(game2);
         let exec = Execution::start_action(
-            core, adapter2, "Poison", a2,
-            vec![Value::Entity(t2), Value::Int(3)], Span::dummy(),
-        ).unwrap();
+            core,
+            adapter2,
+            "Poison",
+            a2,
+            vec![Value::Entity(t2), Value::Int(3)],
+            Span::dummy(),
+        )
+        .unwrap();
         let mut handler2 = ScriptedHandler::always_ack();
         let result2 = exec.run_with_handler(&mut handler2);
 
         let kinds1 = structural_kinds(&handler1.log);
         let kinds2 = structural_kinds(&handler2.log);
-        assert_eq!(kinds1, kinds2, "structural effect sequence mismatch for condition apply");
+        assert_eq!(
+            kinds1, kinds2,
+            "structural effect sequence mismatch for condition apply"
+        );
 
         assert!(result1.is_ok(), "recursive failed: {result1:?}");
         assert!(result2.is_ok(), "step-based failed: {result2:?}");
@@ -4571,14 +5039,12 @@ mod tests {
         let t1 = add_creature(&mut game1, 15);
         let adapter1 = StateAdapter::new(game1);
         let mut handler1 = ScriptedHandler::new(vec![
-            Response::Acknowledged,  // ActionStarted
-            Response::Vetoed,        // ConditionApplyGate → vetoed
-            Response::Acknowledged,  // ActionCompleted
+            Response::Acknowledged, // ActionStarted
+            Response::Vetoed,       // ConditionApplyGate → vetoed
+            Response::Acknowledged, // ActionCompleted
         ]);
         let result1 = adapter1.run(&mut handler1, |state, handler| {
-            interp.execute_action(
-                state, handler, "Poison", a1, vec![Value::Entity(t1)],
-            )
+            interp.execute_action(state, handler, "Poison", a1, vec![Value::Entity(t1)])
         });
 
         // Step-based path
@@ -4588,19 +5054,27 @@ mod tests {
         let t2 = add_creature(&mut game2, 15);
         let adapter2 = StateAdapter::new(game2);
         let exec = Execution::start_action(
-            core, adapter2, "Poison", a2,
-            vec![Value::Entity(t2)], Span::dummy(),
-        ).unwrap();
+            core,
+            adapter2,
+            "Poison",
+            a2,
+            vec![Value::Entity(t2)],
+            Span::dummy(),
+        )
+        .unwrap();
         let mut handler2 = ScriptedHandler::new(vec![
-            Response::Acknowledged,  // ActionStarted
-            Response::Vetoed,        // ConditionApplyGate → vetoed
-            Response::Acknowledged,  // ActionCompleted
+            Response::Acknowledged, // ActionStarted
+            Response::Vetoed,       // ConditionApplyGate → vetoed
+            Response::Acknowledged, // ActionCompleted
         ]);
         let result2 = exec.run_with_handler(&mut handler2);
 
         let kinds1 = structural_kinds(&handler1.log);
         let kinds2 = structural_kinds(&handler2.log);
-        assert_eq!(kinds1, kinds2, "structural effect sequence mismatch for condition veto");
+        assert_eq!(
+            kinds1, kinds2,
+            "structural effect sequence mismatch for condition veto"
+        );
 
         assert!(result1.is_ok(), "recursive failed: {result1:?}");
         assert!(result2.is_ok(), "step-based failed: {result2:?}");
@@ -4637,15 +5111,17 @@ mod tests {
         let mut game2 = GameState::new();
         let a2 = add_creature(&mut game2, 20);
         let adapter2 = StateAdapter::new(game2);
-        let exec = Execution::start_action(
-            core, adapter2, "Summon", a2, vec![], Span::dummy(),
-        ).unwrap();
+        let exec =
+            Execution::start_action(core, adapter2, "Summon", a2, vec![], Span::dummy()).unwrap();
         let mut handler2 = ScriptedHandler::always_ack();
         let result2 = exec.run_with_handler(&mut handler2);
 
         let kinds1 = structural_kinds(&handler1.log);
         let kinds2 = structural_kinds(&handler2.log);
-        assert_eq!(kinds1, kinds2, "structural effect sequence mismatch for spawn");
+        assert_eq!(
+            kinds1, kinds2,
+            "structural effect sequence mismatch for spawn"
+        );
 
         assert!(result1.is_ok(), "recursive failed: {result1:?}");
         assert!(result2.is_ok(), "step-based failed: {result2:?}");
@@ -4681,9 +5157,7 @@ mod tests {
         let adapter1 = StateAdapter::new(game1);
         let mut handler1 = ScriptedHandler::always_ack();
         let result1 = adapter1.run(&mut handler1, |state, handler| {
-            interp.execute_action(
-                state, handler, "Attack", a1, vec![Value::Entity(d1)],
-            )
+            interp.execute_action(state, handler, "Attack", a1, vec![Value::Entity(d1)])
         });
 
         // Step-based path
@@ -4693,23 +5167,36 @@ mod tests {
         let d2 = add_creature(&mut game2, 15);
         let adapter2 = StateAdapter::new(game2);
         let exec = Execution::start_action(
-            core, adapter2, "Attack", a2, vec![Value::Entity(d2)], Span::dummy(),
-        ).unwrap();
+            core,
+            adapter2,
+            "Attack",
+            a2,
+            vec![Value::Entity(d2)],
+            Span::dummy(),
+        )
+        .unwrap();
         let mut handler2 = ScriptedHandler::always_ack();
         let result2 = exec.run_with_handler(&mut handler2);
 
         let kinds1 = structural_kinds(&handler1.log);
         let kinds2 = structural_kinds(&handler2.log);
-        assert_eq!(kinds1, kinds2, "structural effect sequence mismatch for nested emit");
+        assert_eq!(
+            kinds1, kinds2,
+            "structural effect sequence mismatch for nested emit"
+        );
 
         assert!(result1.is_ok(), "recursive failed: {result1:?}");
         assert!(result2.is_ok(), "step-based failed: {result2:?}");
 
         // Should have inner ActionStarted/Completed for the hook
-        let action_started_count = kinds1.iter()
+        let action_started_count = kinds1
+            .iter()
             .filter(|k| **k == EffectKind::ActionStarted)
             .count();
-        assert!(action_started_count >= 2, "expected inner hook ActionStarted");
+        assert!(
+            action_started_count >= 2,
+            "expected inner hook ActionStarted"
+        );
     }
 
     #[test]
@@ -4739,7 +5226,11 @@ mod tests {
         let mut handler1 = ScriptedHandler::always_ack();
         let result1 = adapter1.run(&mut handler1, |state, handler| {
             interp.execute_action(
-                state, handler, "ConditionalHeal", a1, vec![Value::Entity(t1)],
+                state,
+                handler,
+                "ConditionalHeal",
+                a1,
+                vec![Value::Entity(t1)],
             )
         });
 
@@ -4749,15 +5240,23 @@ mod tests {
         let t2 = add_creature(&mut game2, 5);
         let adapter2 = StateAdapter::new(game2);
         let exec = Execution::start_action(
-            core, adapter2, "ConditionalHeal", a2,
-            vec![Value::Entity(t2)], Span::dummy(),
-        ).unwrap();
+            core,
+            adapter2,
+            "ConditionalHeal",
+            a2,
+            vec![Value::Entity(t2)],
+            Span::dummy(),
+        )
+        .unwrap();
         let mut handler2 = ScriptedHandler::always_ack();
         let result2 = exec.run_with_handler(&mut handler2);
 
         let kinds1 = structural_kinds(&handler1.log);
         let kinds2 = structural_kinds(&handler2.log);
-        assert_eq!(kinds1, kinds2, "structural effect sequence mismatch for conditional");
+        assert_eq!(
+            kinds1, kinds2,
+            "structural effect sequence mismatch for conditional"
+        );
 
         assert!(result1.is_ok(), "recursive failed: {result1:?}");
         assert!(result2.is_ok(), "step-based failed: {result2:?}");
@@ -4789,9 +5288,9 @@ mod tests {
         let a1 = add_creature(&mut game1, 20);
         let adapter1 = StateAdapter::new(game1);
         let mut handler1 = ScriptedHandler::new(vec![
-            Response::Acknowledged,                 // ActionStarted
-            Response::Override(Value::Entity(a1)),   // ResolvePrompt → override
-            Response::Acknowledged,                 // ActionCompleted
+            Response::Acknowledged,                // ActionStarted
+            Response::Override(Value::Entity(a1)), // ResolvePrompt → override
+            Response::Acknowledged,                // ActionCompleted
         ]);
         let result1 = adapter1.run(&mut handler1, |state, handler| {
             interp.execute_action(state, handler, "SelectTarget", a1, vec![])
@@ -4802,19 +5301,22 @@ mod tests {
         let mut game2 = GameState::new();
         let a2 = add_creature(&mut game2, 20);
         let adapter2 = StateAdapter::new(game2);
-        let exec = Execution::start_action(
-            core, adapter2, "SelectTarget", a2, vec![], Span::dummy(),
-        ).unwrap();
+        let exec =
+            Execution::start_action(core, adapter2, "SelectTarget", a2, vec![], Span::dummy())
+                .unwrap();
         let mut handler2 = ScriptedHandler::new(vec![
-            Response::Acknowledged,                 // ActionStarted
-            Response::Override(Value::Entity(a2)),   // ResolvePrompt → override
-            Response::Acknowledged,                 // ActionCompleted
+            Response::Acknowledged,                // ActionStarted
+            Response::Override(Value::Entity(a2)), // ResolvePrompt → override
+            Response::Acknowledged,                // ActionCompleted
         ]);
         let result2 = exec.run_with_handler(&mut handler2);
 
         let kinds1 = structural_kinds(&handler1.log);
         let kinds2 = structural_kinds(&handler2.log);
-        assert_eq!(kinds1, kinds2, "structural effect sequence mismatch for prompt override");
+        assert_eq!(
+            kinds1, kinds2,
+            "structural effect sequence mismatch for prompt override"
+        );
 
         assert!(result1.is_ok(), "recursive failed: {result1:?}");
         assert!(result2.is_ok(), "step-based failed: {result2:?}");
@@ -4849,9 +5351,9 @@ mod tests {
         let a1 = add_creature(&mut game1, 20);
         let adapter1 = StateAdapter::new(game1);
         let mut handler1 = ScriptedHandler::new(vec![
-            Response::Acknowledged,  // ActionStarted
-            Response::UseDefault,    // ResolvePrompt → use default
-            Response::Acknowledged,  // ActionCompleted
+            Response::Acknowledged, // ActionStarted
+            Response::UseDefault,   // ResolvePrompt → use default
+            Response::Acknowledged, // ActionCompleted
         ]);
         let result1 = adapter1.run(&mut handler1, |state, handler| {
             interp.execute_action(state, handler, "DoSomething", a1, vec![])
@@ -4862,19 +5364,22 @@ mod tests {
         let mut game2 = GameState::new();
         let a2 = add_creature(&mut game2, 20);
         let adapter2 = StateAdapter::new(game2);
-        let exec = Execution::start_action(
-            core, adapter2, "DoSomething", a2, vec![], Span::dummy(),
-        ).unwrap();
+        let exec =
+            Execution::start_action(core, adapter2, "DoSomething", a2, vec![], Span::dummy())
+                .unwrap();
         let mut handler2 = ScriptedHandler::new(vec![
-            Response::Acknowledged,  // ActionStarted
-            Response::UseDefault,    // ResolvePrompt → use default
-            Response::Acknowledged,  // ActionCompleted
+            Response::Acknowledged, // ActionStarted
+            Response::UseDefault,   // ResolvePrompt → use default
+            Response::Acknowledged, // ActionCompleted
         ]);
         let result2 = exec.run_with_handler(&mut handler2);
 
         let kinds1 = structural_kinds(&handler1.log);
         let kinds2 = structural_kinds(&handler2.log);
-        assert_eq!(kinds1, kinds2, "structural effect sequence mismatch for prompt UseDefault");
+        assert_eq!(
+            kinds1, kinds2,
+            "structural effect sequence mismatch for prompt UseDefault"
+        );
 
         assert!(result1.is_ok(), "recursive failed: {result1:?}");
         assert!(result2.is_ok(), "step-based failed: {result2:?}");
@@ -4904,9 +5409,7 @@ mod tests {
         let adapter1 = StateAdapter::new(game1);
         let mut handler1 = ScriptedHandler::always_ack();
         let result1 = adapter1.run(&mut handler1, |state, handler| {
-            interp.execute_action(
-                state, handler, "ComputeHeal", a1, vec![Value::Entity(t1)],
-            )
+            interp.execute_action(state, handler, "ComputeHeal", a1, vec![Value::Entity(t1)])
         });
 
         let core = RuntimeCore::new(Arc::clone(&program), Arc::clone(&type_env), 1, 1);
@@ -4915,15 +5418,23 @@ mod tests {
         let t2 = add_creature(&mut game2, 10);
         let adapter2 = StateAdapter::new(game2);
         let exec = Execution::start_action(
-            core, adapter2, "ComputeHeal", a2,
-            vec![Value::Entity(t2)], Span::dummy(),
-        ).unwrap();
+            core,
+            adapter2,
+            "ComputeHeal",
+            a2,
+            vec![Value::Entity(t2)],
+            Span::dummy(),
+        )
+        .unwrap();
         let mut handler2 = ScriptedHandler::always_ack();
         let result2 = exec.run_with_handler(&mut handler2);
 
         let kinds1 = structural_kinds(&handler1.log);
         let kinds2 = structural_kinds(&handler2.log);
-        assert_eq!(kinds1, kinds2, "structural effect sequence mismatch for let bindings");
+        assert_eq!(
+            kinds1, kinds2,
+            "structural effect sequence mismatch for let bindings"
+        );
 
         assert!(result1.is_ok(), "recursive failed: {result1:?}");
         assert!(result2.is_ok(), "step-based failed: {result2:?}");
@@ -4945,15 +5456,12 @@ mod tests {
         // Recursive path
         let interp = crate::Interpreter::new(&program, &type_env).unwrap();
         let mut game1 = GameState::new();
-        let a1 = game1.add_entity(
-            "Creature",
-            {
-                let mut f = FxHashMap::default();
-                f.insert(Name::from("HP"), Value::Int(15));
-                f.insert(Name::from("MaxHP"), Value::Int(20));
-                f
-            },
-        );
+        let a1 = game1.add_entity("Creature", {
+            let mut f = FxHashMap::default();
+            f.insert(Name::from("HP"), Value::Int(15));
+            f.insert(Name::from("MaxHP"), Value::Int(20));
+            f
+        });
         let adapter1 = StateAdapter::new(game1);
         let mut handler1 = ScriptedHandler::always_ack();
         let result1 = adapter1.run(&mut handler1, |state, handler| {
@@ -4963,19 +5471,15 @@ mod tests {
         // Step-based path
         let core = RuntimeCore::new(Arc::clone(&program), Arc::clone(&type_env), 1, 1);
         let mut game2 = GameState::new();
-        let a2 = game2.add_entity(
-            "Creature",
-            {
-                let mut f = FxHashMap::default();
-                f.insert(Name::from("HP"), Value::Int(15));
-                f.insert(Name::from("MaxHP"), Value::Int(20));
-                f
-            },
-        );
+        let a2 = game2.add_entity("Creature", {
+            let mut f = FxHashMap::default();
+            f.insert(Name::from("HP"), Value::Int(15));
+            f.insert(Name::from("MaxHP"), Value::Int(20));
+            f
+        });
         let adapter2 = StateAdapter::new(game2);
-        let exec = Execution::start_derive(
-            core, adapter2, "hp_ratio", vec![Value::Entity(a2)],
-        ).unwrap();
+        let exec =
+            Execution::start_derive(core, adapter2, "hp_ratio", vec![Value::Entity(a2)]).unwrap();
         let mut handler2 = ScriptedHandler::always_ack();
         let result2 = exec.run_with_handler(&mut handler2);
 
@@ -5004,7 +5508,10 @@ mod tests {
         let mut handler1 = ScriptedHandler::always_ack();
         let result1 = adapter1.run(&mut handler1, |state, handler| {
             interp.evaluate_function(
-                state, handler, "add_values", vec![Value::Int(3), Value::Int(7)],
+                state,
+                handler,
+                "add_values",
+                vec![Value::Int(3), Value::Int(7)],
             )
         });
 
@@ -5013,8 +5520,12 @@ mod tests {
         let game2 = GameState::new();
         let adapter2 = StateAdapter::new(game2);
         let exec = Execution::start_function(
-            core, adapter2, "add_values", vec![Value::Int(3), Value::Int(7)],
-        ).unwrap();
+            core,
+            adapter2,
+            "add_values",
+            vec![Value::Int(3), Value::Int(7)],
+        )
+        .unwrap();
         let mut handler2 = ScriptedHandler::always_ack();
         let result2 = exec.run_with_handler(&mut handler2);
 
@@ -5035,7 +5546,12 @@ mod tests {
         fn_name: &str,
         make_args: impl Fn(&mut GameState) -> Vec<Value>,
         responses: Vec<Response>,
-    ) -> (Vec<EffectKind>, Vec<EffectKind>, Result<Value, RuntimeError>, Result<Value, RuntimeError>) {
+    ) -> (
+        Vec<EffectKind>,
+        Vec<EffectKind>,
+        Result<Value, RuntimeError>,
+        Result<Value, RuntimeError>,
+    ) {
         let (program, type_env) = setup(source);
 
         // Recursive path
@@ -5053,9 +5569,7 @@ mod tests {
         let mut game2 = GameState::new();
         let args2 = make_args(&mut game2);
         let adapter2 = StateAdapter::new(game2);
-        let exec = Execution::start_function(
-            core, adapter2, fn_name, args2,
-        ).unwrap();
+        let exec = Execution::start_function(core, adapter2, fn_name, args2).unwrap();
         let mut handler2 = ScriptedHandler::new(responses);
         let result2 = exec.run_with_handler(&mut handler2);
 
@@ -5122,15 +5636,17 @@ mod tests {
         let mut game2 = GameState::new();
         let a2 = add_creature(&mut game2, 20);
         let adapter2 = StateAdapter::new(game2);
-        let exec = Execution::start_action(
-            core, adapter2, "Summon", a2, vec![], Span::dummy(),
-        ).unwrap();
+        let exec =
+            Execution::start_action(core, adapter2, "Summon", a2, vec![], Span::dummy()).unwrap();
         let mut handler2 = ScriptedHandler::always_ack();
         let result2 = exec.run_with_handler(&mut handler2);
 
         let kinds1 = structural_kinds(&handler1.log);
         let kinds2 = structural_kinds(&handler2.log);
-        assert_eq!(kinds1, kinds2, "structural effect sequence mismatch for spawn with defaults");
+        assert_eq!(
+            kinds1, kinds2,
+            "structural effect sequence mismatch for spawn with defaults"
+        );
 
         assert!(result1.is_ok(), "recursive failed: {result1:?}");
         assert!(result2.is_ok(), "step-based failed: {result2:?}");
@@ -5173,7 +5689,9 @@ mod tests {
         let mut handler1 = ScriptedHandler::always_ack();
         let result1 = adapter1.run(&mut handler1, |state, handler| {
             interp.evaluate_function(
-                state, handler, "try_attack",
+                state,
+                handler,
+                "try_attack",
                 vec![Value::Entity(a1), Value::Entity(t1)],
             )
         });
@@ -5185,17 +5703,26 @@ mod tests {
         let t2 = add_character(&mut game2, 15);
         let adapter2 = StateAdapter::new(game2);
         let exec = Execution::start_function(
-            core, adapter2, "try_attack",
+            core,
+            adapter2,
+            "try_attack",
             vec![Value::Entity(a2), Value::Entity(t2)],
-        ).unwrap();
+        )
+        .unwrap();
         let mut handler2 = ScriptedHandler::always_ack();
         let result2 = exec.run_with_handler(&mut handler2);
 
         let kinds1 = all_structural_kinds(&handler1.log);
         let kinds2 = all_structural_kinds(&handler2.log);
-        assert_eq!(kinds1, kinds2, "structural effect sequence mismatch for budget insufficient");
+        assert_eq!(
+            kinds1, kinds2,
+            "structural effect sequence mismatch for budget insufficient"
+        );
         // Should contain RequiresCheck for the budget check
-        assert!(kinds1.contains(&EffectKind::RequiresCheck) || kinds1.contains(&EffectKind::ActionStarted));
+        assert!(
+            kinds1.contains(&EffectKind::RequiresCheck)
+                || kinds1.contains(&EffectKind::ActionStarted)
+        );
         assert!(result1.is_ok(), "recursive failed: {result1:?}");
         assert!(result2.is_ok(), "step-based failed: {result2:?}");
     }
@@ -5230,20 +5757,25 @@ mod tests {
         let mut pre_handler = ScriptedHandler::always_ack();
         let _ = pre_adapter.run(&mut pre_handler, |state, handler| {
             pre_interp.evaluate_function(
-                state, handler, "budgeted_attack",
+                state,
+                handler,
+                "budgeted_attack",
                 vec![Value::Entity(pre_a), Value::Entity(pre_t)],
             )
         });
         let effect_order: Vec<_> = pre_handler.log.iter().map(EffectKind::of).collect();
 
         // Build a response script that vetoes the DeductCost
-        let responses: Vec<Response> = effect_order.iter().map(|k| {
-            if *k == EffectKind::DeductCost {
-                Response::Vetoed
-            } else {
-                Response::Acknowledged
-            }
-        }).collect();
+        let responses: Vec<Response> = effect_order
+            .iter()
+            .map(|k| {
+                if *k == EffectKind::DeductCost {
+                    Response::Vetoed
+                } else {
+                    Response::Acknowledged
+                }
+            })
+            .collect();
 
         // Recursive path
         let interp = crate::Interpreter::new(&program, &type_env).unwrap();
@@ -5254,7 +5786,9 @@ mod tests {
         let mut handler1 = ScriptedHandler::new(responses.clone());
         let result1 = adapter1.run(&mut handler1, |state, handler| {
             interp.evaluate_function(
-                state, handler, "budgeted_attack",
+                state,
+                handler,
+                "budgeted_attack",
                 vec![Value::Entity(a1), Value::Entity(t1)],
             )
         });
@@ -5266,15 +5800,21 @@ mod tests {
         let t2 = add_character(&mut game2, 15);
         let adapter2 = StateAdapter::new(game2);
         let exec = Execution::start_function(
-            core, adapter2, "budgeted_attack",
+            core,
+            adapter2,
+            "budgeted_attack",
             vec![Value::Entity(a2), Value::Entity(t2)],
-        ).unwrap();
+        )
+        .unwrap();
         let mut handler2 = ScriptedHandler::new(responses);
         let result2 = exec.run_with_handler(&mut handler2);
 
         let kinds1 = all_structural_kinds(&handler1.log);
         let kinds2 = all_structural_kinds(&handler2.log);
-        assert_eq!(kinds1, kinds2, "structural effect sequence mismatch for cost deduction vetoed");
+        assert_eq!(
+            kinds1, kinds2,
+            "structural effect sequence mismatch for cost deduction vetoed"
+        );
 
         // Should contain DeductCost
         assert!(kinds1.contains(&EffectKind::DeductCost));
@@ -5311,9 +5851,7 @@ mod tests {
         let adapter1 = StateAdapter::new(game1);
         let mut handler1 = ScriptedHandler::always_ack();
         let result1 = adapter1.run(&mut handler1, |state, handler| {
-            interp.execute_action(
-                state, handler, "Ignite", a1, vec![Value::Entity(t1)],
-            )
+            interp.execute_action(state, handler, "Ignite", a1, vec![Value::Entity(t1)])
         });
 
         // Step-based path
@@ -5323,14 +5861,23 @@ mod tests {
         let t2 = add_creature(&mut game2, 15);
         let adapter2 = StateAdapter::new(game2);
         let exec = Execution::start_action(
-            core, adapter2, "Ignite", a2, vec![Value::Entity(t2)], Span::dummy(),
-        ).unwrap();
+            core,
+            adapter2,
+            "Ignite",
+            a2,
+            vec![Value::Entity(t2)],
+            Span::dummy(),
+        )
+        .unwrap();
         let mut handler2 = ScriptedHandler::always_ack();
         let result2 = exec.run_with_handler(&mut handler2);
 
         let kinds1 = all_structural_kinds(&handler1.log);
         let kinds2 = all_structural_kinds(&handler2.log);
-        assert_eq!(kinds1, kinds2, "structural effect sequence mismatch for condition state default");
+        assert_eq!(
+            kinds1, kinds2,
+            "structural effect sequence mismatch for condition state default"
+        );
 
         // Should contain ConditionApplyGate
         assert!(kinds1.contains(&EffectKind::ConditionApplyGate));
@@ -5364,9 +5911,7 @@ mod tests {
         let adapter1 = StateAdapter::new(game1);
         let mut handler1 = ScriptedHandler::always_ack();
         let _result1 = adapter1.run(&mut handler1, |state, handler| {
-            interp.evaluate_function(
-                state, handler, "apply_and_remove", vec![Value::Entity(t1)],
-            )
+            interp.evaluate_function(state, handler, "apply_and_remove", vec![Value::Entity(t1)])
         });
 
         // Step-based path
@@ -5374,19 +5919,25 @@ mod tests {
         let mut game2 = GameState::new();
         let t2 = add_creature(&mut game2, 15);
         let adapter2 = StateAdapter::new(game2);
-        let exec = Execution::start_function(
-            core, adapter2, "apply_and_remove", vec![Value::Entity(t2)],
-        ).unwrap();
+        let exec =
+            Execution::start_function(core, adapter2, "apply_and_remove", vec![Value::Entity(t2)])
+                .unwrap();
         let mut handler2 = ScriptedHandler::always_ack();
         let _result2 = exec.run_with_handler(&mut handler2);
 
         let kinds1 = all_structural_kinds(&handler1.log);
         let kinds2 = all_structural_kinds(&handler2.log);
-        assert_eq!(kinds1, kinds2, "structural effect sequence mismatch for on_remove error");
+        assert_eq!(
+            kinds1, kinds2,
+            "structural effect sequence mismatch for on_remove error"
+        );
 
         // ConditionRemovalGate should appear (RemoveCondition is auto-applied by StateAdapter)
-        assert!(kinds1.contains(&EffectKind::ConditionRemovalGate),
-            "expected ConditionRemovalGate in recursive log: {:?}", kinds1);
+        assert!(
+            kinds1.contains(&EffectKind::ConditionRemovalGate),
+            "expected ConditionRemovalGate in recursive log: {:?}",
+            kinds1
+        );
     }
 
     #[test]
@@ -5418,7 +5969,11 @@ mod tests {
         let mut handler1 = ScriptedHandler::always_ack();
         let result1 = adapter1.run(&mut handler1, |state, handler| {
             interp.execute_action(
-                state, handler, "EmpowerAndDispel", a1, vec![Value::Entity(t1)],
+                state,
+                handler,
+                "EmpowerAndDispel",
+                a1,
+                vec![Value::Entity(t1)],
             )
         });
 
@@ -5429,23 +5984,38 @@ mod tests {
         let t2 = add_creature(&mut game2, 15);
         let adapter2 = StateAdapter::new(game2);
         let exec = Execution::start_action(
-            core, adapter2, "EmpowerAndDispel", a2, vec![Value::Entity(t2)], Span::dummy(),
-        ).unwrap();
+            core,
+            adapter2,
+            "EmpowerAndDispel",
+            a2,
+            vec![Value::Entity(t2)],
+            Span::dummy(),
+        )
+        .unwrap();
         let mut handler2 = ScriptedHandler::always_ack();
         let result2 = exec.run_with_handler(&mut handler2);
 
         let kinds1 = all_structural_kinds(&handler1.log);
         let kinds2 = all_structural_kinds(&handler2.log);
-        assert_eq!(kinds1, kinds2, "structural effect sequence mismatch for revoke multiple");
+        assert_eq!(
+            kinds1, kinds2,
+            "structural effect sequence mismatch for revoke multiple"
+        );
 
         // Should contain ConditionRemovalGate (from revoking the conditions)
         // RevokeInvocation is handled internally by StateAdapter
-        assert!(kinds1.contains(&EffectKind::ConditionRemovalGate),
-            "expected ConditionRemovalGate from revoke in log: {:?}", kinds1);
+        assert!(
+            kinds1.contains(&EffectKind::ConditionRemovalGate),
+            "expected ConditionRemovalGate from revoke in log: {:?}",
+            kinds1
+        );
 
         // Both should succeed (or fail identically)
-        assert_eq!(result1.is_ok(), result2.is_ok(),
-            "result divergence: recursive={result1:?}, step={result2:?}");
+        assert_eq!(
+            result1.is_ok(),
+            result2.is_ok(),
+            "result divergence: recursive={result1:?}, step={result2:?}"
+        );
     }
 
     #[test]
@@ -5482,9 +6052,7 @@ mod tests {
         let adapter1 = StateAdapter::new(game1);
         let mut handler1 = ScriptedHandler::always_ack();
         let result1 = adapter1.run(&mut handler1, |state, handler| {
-            interp.execute_action(
-                state, handler, "Ignite", a1, vec![Value::Entity(t1)],
-            )?;
+            interp.execute_action(state, handler, "Ignite", a1, vec![Value::Entity(t1)])?;
             interp.evaluate_function(state, handler, "tick_turn", vec![Value::Entity(t1)])
         });
 
@@ -5497,8 +6065,14 @@ mod tests {
 
         // Ignite
         let exec1 = Execution::start_action(
-            Rc::clone(&core), adapter2, "Ignite", a2, vec![Value::Entity(t2)], Span::dummy(),
-        ).unwrap();
+            Rc::clone(&core),
+            adapter2,
+            "Ignite",
+            a2,
+            vec![Value::Entity(t2)],
+            Span::dummy(),
+        )
+        .unwrap();
         let mut h2a = ScriptedHandler::always_ack();
         let _ = exec1.run_with_handler(&mut h2a);
 
@@ -5507,7 +6081,8 @@ mod tests {
         let _ = add_creature(&mut game2b, 20); // a2b
         let t2b = add_creature(&mut game2b, 15);
         game2b.apply_condition(
-            &t2b, "Burning",
+            &t2b,
+            "Burning",
             crate::state::ConditionArgs {
                 params: BTreeMap::new(),
                 state_fields: {
@@ -5525,18 +6100,29 @@ mod tests {
 
         // Tick
         let exec2 = Execution::start_function(
-            Rc::clone(&core), adapter2b, "tick_turn", vec![Value::Entity(t2b)],
-        ).unwrap();
+            Rc::clone(&core),
+            adapter2b,
+            "tick_turn",
+            vec![Value::Entity(t2b)],
+        )
+        .unwrap();
         let mut h2b = ScriptedHandler::always_ack();
         let result2 = exec2.run_with_handler(&mut h2b);
 
         // Compare tick_turn effect sequences
-        let tick_start = handler1.log.iter().position(|e| {
-            matches!(e, Effect::SetConditionState { .. })
-        });
+        let tick_start = handler1
+            .log
+            .iter()
+            .position(|e| matches!(e, Effect::SetConditionState { .. }));
         // Both paths should have SetConditionState somewhere
-        let has_scs_1 = handler1.log.iter().any(|e| matches!(e, Effect::SetConditionState { .. }));
-        let has_scs_2 = h2b.log.iter().any(|e| matches!(e, Effect::SetConditionState { .. }));
+        let has_scs_1 = handler1
+            .log
+            .iter()
+            .any(|e| matches!(e, Effect::SetConditionState { .. }));
+        let has_scs_2 = h2b
+            .log
+            .iter()
+            .any(|e| matches!(e, Effect::SetConditionState { .. }));
         assert_eq!(has_scs_1, has_scs_2, "SetConditionState presence mismatch");
 
         assert!(result1.is_ok(), "recursive failed: {result1:?}");
@@ -5569,7 +6155,10 @@ mod tests {
             vec![], // all acknowledged
         );
 
-        assert_eq!(kinds1, kinds2, "structural effect sequence mismatch for budget error");
+        assert_eq!(
+            kinds1, kinds2,
+            "structural effect sequence mismatch for budget error"
+        );
 
         // Both should error
         assert!(result1.is_err(), "recursive should have errored");
@@ -5607,7 +6196,9 @@ mod tests {
         let mut handler1 = ScriptedHandler::always_ack();
         let result1 = adapter1.run(&mut handler1, |state, handler| {
             interp.evaluate_function(
-                state, handler, "budgeted_strike",
+                state,
+                handler,
+                "budgeted_strike",
                 vec![Value::Entity(a1), Value::Entity(t1)],
             )
         });
@@ -5619,15 +6210,21 @@ mod tests {
         let t2 = add_character(&mut game2, 15);
         let adapter2 = StateAdapter::new(game2);
         let exec = Execution::start_function(
-            core, adapter2, "budgeted_strike",
+            core,
+            adapter2,
+            "budgeted_strike",
             vec![Value::Entity(a2), Value::Entity(t2)],
-        ).unwrap();
+        )
+        .unwrap();
         let mut handler2 = ScriptedHandler::always_ack();
         let result2 = exec.run_with_handler(&mut handler2);
 
         let kinds1 = all_structural_kinds(&handler1.log);
         let kinds2 = all_structural_kinds(&handler2.log);
-        assert_eq!(kinds1, kinds2, "structural effect sequence mismatch for budget field expr");
+        assert_eq!(
+            kinds1, kinds2,
+            "structural effect sequence mismatch for budget field expr"
+        );
 
         assert!(result1.is_ok(), "recursive failed: {result1:?}");
         assert!(result2.is_ok(), "step-based failed: {result2:?}");
@@ -5668,7 +6265,9 @@ mod tests {
         let mut handler1 = ScriptedHandler::always_ack();
         let result1 = adapter1.run(&mut handler1, |state, handler| {
             interp.evaluate_function(
-                state, handler, "multi_round",
+                state,
+                handler,
+                "multi_round",
                 vec![Value::Entity(a1), Value::Entity(b1), Value::Entity(t1)],
             )
         });
@@ -5681,15 +6280,21 @@ mod tests {
         let t2 = add_character(&mut game2, 15);
         let adapter2 = StateAdapter::new(game2);
         let exec = Execution::start_function(
-            core, adapter2, "multi_round",
+            core,
+            adapter2,
+            "multi_round",
             vec![Value::Entity(a2), Value::Entity(b2), Value::Entity(t2)],
-        ).unwrap();
+        )
+        .unwrap();
         let mut handler2 = ScriptedHandler::always_ack();
         let result2 = exec.run_with_handler(&mut handler2);
 
         let kinds1 = all_structural_kinds(&handler1.log);
         let kinds2 = all_structural_kinds(&handler2.log);
-        assert_eq!(kinds1, kinds2, "structural effect sequence mismatch for multi-entity budget");
+        assert_eq!(
+            kinds1, kinds2,
+            "structural effect sequence mismatch for multi-entity budget"
+        );
 
         assert!(result1.is_ok(), "recursive failed: {result1:?}");
         assert!(result2.is_ok(), "step-based failed: {result2:?}");
@@ -5724,9 +6329,7 @@ mod tests {
         let adapter1 = StateAdapter::new(game1);
         let mut handler1 = ScriptedHandler::always_ack();
         let result1 = adapter1.run(&mut handler1, |state, handler| {
-            interp.execute_action(
-                state, handler, "Hit", a1, vec![Value::Entity(t1)],
-            )
+            interp.execute_action(state, handler, "Hit", a1, vec![Value::Entity(t1)])
         });
 
         // Step-based path
@@ -5736,14 +6339,23 @@ mod tests {
         let t2 = add_creature(&mut game2, 15);
         let adapter2 = StateAdapter::new(game2);
         let exec = Execution::start_action(
-            core, adapter2, "Hit", a2, vec![Value::Entity(t2)], Span::dummy(),
-        ).unwrap();
+            core,
+            adapter2,
+            "Hit",
+            a2,
+            vec![Value::Entity(t2)],
+            Span::dummy(),
+        )
+        .unwrap();
         let mut handler2 = ScriptedHandler::always_ack();
         let result2 = exec.run_with_handler(&mut handler2);
 
         let kinds1 = structural_kinds(&handler1.log);
         let kinds2 = structural_kinds(&handler2.log);
-        assert_eq!(kinds1, kinds2, "structural effect sequence mismatch for emit default arg");
+        assert_eq!(
+            kinds1, kinds2,
+            "structural effect sequence mismatch for emit default arg"
+        );
 
         assert!(result1.is_ok(), "recursive failed: {result1:?}");
         assert!(result2.is_ok(), "step-based failed: {result2:?}");
@@ -5780,23 +6392,31 @@ mod tests {
         let mut game2 = GameState::new();
         let a2 = add_creature(&mut game2, 20);
         let adapter2 = StateAdapter::new(game2);
-        let exec = Execution::start_action(
-            core, adapter2, "BadMath", a2, vec![], Span::dummy(),
-        ).unwrap();
+        let exec =
+            Execution::start_action(core, adapter2, "BadMath", a2, vec![], Span::dummy()).unwrap();
         let mut handler2 = ScriptedHandler::always_ack();
         let _result2 = exec.run_with_handler(&mut handler2);
 
         let kinds1 = all_structural_kinds(&handler1.log);
         let kinds2 = all_structural_kinds(&handler2.log);
-        assert_eq!(kinds1, kinds2, "structural effect sequence mismatch for runtime error in body");
+        assert_eq!(
+            kinds1, kinds2,
+            "structural effect sequence mismatch for runtime error in body"
+        );
 
         // Should contain ActionStarted and ActionCompleted
         assert!(kinds1.contains(&EffectKind::ActionStarted));
         assert!(kinds1.contains(&EffectKind::ActionCompleted));
 
         // Verify ActionCompleted outcome is Failed
-        let completed1 = handler1.log.iter().find(|e| matches!(e, Effect::ActionCompleted { .. }));
-        let completed2 = handler2.log.iter().find(|e| matches!(e, Effect::ActionCompleted { .. }));
+        let completed1 = handler1
+            .log
+            .iter()
+            .find(|e| matches!(e, Effect::ActionCompleted { .. }));
+        let completed2 = handler2
+            .log
+            .iter()
+            .find(|e| matches!(e, Effect::ActionCompleted { .. }));
         if let (
             Some(Effect::ActionCompleted { outcome: o1, .. }),
             Some(Effect::ActionCompleted { outcome: o2, .. }),
@@ -5825,9 +6445,8 @@ mod tests {
 
         // Recursive path: start with invocation counter at u64::MAX
         // The recursive path pre-allocates via checked_add, which errors at overflow.
-        let interp = crate::Interpreter::new_with_counters(
-            &program, &type_env, u64::MAX, 1,
-        ).unwrap();
+        let interp =
+            crate::Interpreter::new_with_counters(&program, &type_env, u64::MAX, 1).unwrap();
         let mut game1 = GameState::new();
         let a1 = add_creature(&mut game1, 10);
         let adapter1 = StateAdapter::new(game1);
@@ -5837,15 +6456,12 @@ mod tests {
         });
 
         // Step-based path: wrapping_add wraps u64::MAX → 0, no error
-        let core = RuntimeCore::new(
-            Arc::clone(&program), Arc::clone(&type_env), u64::MAX, 1,
-        );
+        let core = RuntimeCore::new(Arc::clone(&program), Arc::clone(&type_env), u64::MAX, 1);
         let mut game2 = GameState::new();
         let a2 = add_creature(&mut game2, 10);
         let adapter2 = StateAdapter::new(game2);
-        let exec = Execution::start_action(
-            core, adapter2, "Noop", a2, vec![], Span::dummy(),
-        ).unwrap();
+        let exec =
+            Execution::start_action(core, adapter2, "Noop", a2, vec![], Span::dummy()).unwrap();
         let mut handler2 = ScriptedHandler::always_ack();
         let result2 = exec.run_with_handler(&mut handler2);
 
@@ -5857,13 +6473,20 @@ mod tests {
         assert_eq!(kinds2[1], EffectKind::ActionCompleted);
 
         // Verify invocation ID used is u64::MAX
-        if let Effect::ActionCompleted { invocation: Some(inv), .. } = &handler2.log[1] {
+        if let Effect::ActionCompleted {
+            invocation: Some(inv),
+            ..
+        } = &handler2.log[1]
+        {
             assert_eq!(inv.0, u64::MAX, "step-based should use u64::MAX");
         }
 
         // Recursive path: errors on overflow (checked_add returns Err)
         // This is a known divergence — the recursive path fails where step-based wraps.
-        assert!(result1.is_err(), "recursive path should error on u64::MAX overflow");
+        assert!(
+            result1.is_err(),
+            "recursive path should error on u64::MAX overflow"
+        );
     }
 
     #[test]
@@ -5894,9 +6517,9 @@ mod tests {
         let a1 = add_creature(&mut game1, 10);
         let adapter1 = StateAdapter::new(game1);
         let mut handler1 = ScriptedHandler::new(vec![
-            Response::Acknowledged,  // ActionStarted
-            Response::UseDefault,    // ResolvePrompt → use default
-            Response::Acknowledged,  // ActionCompleted
+            Response::Acknowledged, // ActionStarted
+            Response::UseDefault,   // ResolvePrompt → use default
+            Response::Acknowledged, // ActionCompleted
         ]);
         let result1 = adapter1.run(&mut handler1, |state, handler| {
             interp.execute_action(state, handler, "SmartHeal", a1, vec![])
@@ -5907,19 +6530,21 @@ mod tests {
         let mut game2 = GameState::new();
         let a2 = add_creature(&mut game2, 10);
         let adapter2 = StateAdapter::new(game2);
-        let exec = Execution::start_action(
-            core, adapter2, "SmartHeal", a2, vec![], Span::dummy(),
-        ).unwrap();
+        let exec = Execution::start_action(core, adapter2, "SmartHeal", a2, vec![], Span::dummy())
+            .unwrap();
         let mut handler2 = ScriptedHandler::new(vec![
-            Response::Acknowledged,  // ActionStarted
-            Response::UseDefault,    // ResolvePrompt → use default
-            Response::Acknowledged,  // ActionCompleted
+            Response::Acknowledged, // ActionStarted
+            Response::UseDefault,   // ResolvePrompt → use default
+            Response::Acknowledged, // ActionCompleted
         ]);
         let result2 = exec.run_with_handler(&mut handler2);
 
         let kinds1 = structural_kinds(&handler1.log);
         let kinds2 = structural_kinds(&handler2.log);
-        assert_eq!(kinds1, kinds2, "structural effect sequence mismatch for prompt effectful suggest");
+        assert_eq!(
+            kinds1, kinds2,
+            "structural effect sequence mismatch for prompt effectful suggest"
+        );
 
         assert!(kinds1.contains(&EffectKind::ResolvePrompt));
 
@@ -5927,8 +6552,14 @@ mod tests {
         assert!(result2.is_ok(), "step-based failed: {result2:?}");
 
         // Verify suggest value was computed from entity state
-        let prompt1 = handler1.log.iter().find(|e| matches!(e, Effect::ResolvePrompt { .. }));
-        let prompt2 = handler2.log.iter().find(|e| matches!(e, Effect::ResolvePrompt { .. }));
+        let prompt1 = handler1
+            .log
+            .iter()
+            .find(|e| matches!(e, Effect::ResolvePrompt { .. }));
+        let prompt2 = handler2
+            .log
+            .iter()
+            .find(|e| matches!(e, Effect::ResolvePrompt { .. }));
         if let (
             Some(Effect::ResolvePrompt { suggest: s1, .. }),
             Some(Effect::ResolvePrompt { suggest: s2, .. }),
@@ -6037,10 +6668,10 @@ mod tests {
         assert_eq!(result, Value::Void);
 
         // Verify effects: ActionStarted, ActionCompleted
-        assert_eq!(structural_kinds(&handler.log), vec![
-            EffectKind::ActionStarted,
-            EffectKind::ActionCompleted,
-        ]);
+        assert_eq!(
+            structural_kinds(&handler.log),
+            vec![EffectKind::ActionStarted, EffectKind::ActionCompleted,]
+        );
     }
 
     #[test]
@@ -6066,15 +6697,8 @@ mod tests {
         let actor = add_creature(&mut game, 20);
         let adapter = StateAdapter::new(game);
 
-        let exec = Execution::start_action(
-            core,
-            adapter,
-            "Check",
-            actor,
-            vec![],
-            Span::dummy(),
-        )
-        .unwrap();
+        let exec =
+            Execution::start_action(core, adapter, "Check", actor, vec![], Span::dummy()).unwrap();
 
         let mut exec = exec;
 
@@ -6174,24 +6798,17 @@ mod tests {
         let actor = add_creature(&mut game, 20);
         let adapter = StateAdapter::new(game);
 
-        let exec = Execution::start_action(
-            core,
-            adapter,
-            "Noop",
-            actor,
-            vec![],
-            Span::dummy(),
-        )
-        .unwrap();
+        let exec =
+            Execution::start_action(core, adapter, "Noop", actor, vec![], Span::dummy()).unwrap();
 
         let mut handler = ScriptedHandler::always_ack();
         let result = exec.run_with_handler(&mut handler).unwrap();
         assert_eq!(result, Value::Void);
 
-        assert_eq!(structural_kinds(&handler.log), vec![
-            EffectKind::ActionStarted,
-            EffectKind::ActionCompleted,
-        ]);
+        assert_eq!(
+            structural_kinds(&handler.log),
+            vec![EffectKind::ActionStarted, EffectKind::ActionCompleted,]
+        );
     }
 
     #[test]
@@ -6258,9 +6875,7 @@ mod tests {
         let adapter1 = StateAdapter::new(game1);
         let mut handler1 = ScriptedHandler::always_ack();
         let result1 = adapter1.run(&mut handler1, |state, handler| {
-            interp.execute_action(
-                state, handler, "Buff", a1, vec![Value::Entity(t1)],
-            )
+            interp.execute_action(state, handler, "Buff", a1, vec![Value::Entity(t1)])
         });
 
         // Step-based path
@@ -6270,7 +6885,12 @@ mod tests {
         let t2 = add_creature_with_ac(&mut game2, 15, 12);
         let adapter2 = StateAdapter::new(game2);
         let exec = Execution::start_action(
-            core, adapter2, "Buff", a2, vec![Value::Entity(t2)], Span::dummy(),
+            core,
+            adapter2,
+            "Buff",
+            a2,
+            vec![Value::Entity(t2)],
+            Span::dummy(),
         )
         .unwrap();
         let mut handler2 = ScriptedHandler::always_ack();
@@ -6531,7 +7151,9 @@ mod tests {
         let step = exec.poll().unwrap();
         match step {
             Step::Yielded(e) => {
-                assert!(matches!(&*e, Effect::RollDice { expr } if expr.groups[0].count == 2 && expr.groups[0].sides == 6));
+                assert!(
+                    matches!(&*e, Effect::RollDice { expr } if expr.groups[0].count == 2 && expr.groups[0].sides == 6)
+                );
             }
             Step::Done(_) => panic!("expected Yielded"),
         }
@@ -6665,8 +7287,7 @@ mod tests {
         });
 
         let _ = exec.poll().unwrap();
-        exec.respond(Response::PromptResult(Value::Int(7)))
-            .unwrap();
+        exec.respond(Response::PromptResult(Value::Int(7))).unwrap();
 
         let step = exec.poll().unwrap();
         assert!(matches!(step, Step::Done(Value::Int(7))));
@@ -6751,9 +7372,7 @@ mod tests {
     fn spawn_entity_no_groups() {
         let mut exec = exec_with_frame(Frame::SpawnEntity {
             entity_type: Name::from("Creature"),
-            base_fields: vec![
-                (Name::from("HP"), Value::Int(10)),
-            ],
+            base_fields: vec![(Name::from("HP"), Value::Int(10))],
             groups: vec![],
             phase: SpawnPhase::Defaults,
             pending: None,
@@ -6772,7 +7391,8 @@ mod tests {
         }
 
         // Respond with EntitySpawned
-        exec.respond(Response::EntitySpawned(EntityRef(42))).unwrap();
+        exec.respond(Response::EntitySpawned(EntityRef(42)))
+            .unwrap();
 
         // No groups → Done with Entity ref
         let step = exec.poll().unwrap();
@@ -6783,9 +7403,7 @@ mod tests {
     fn spawn_entity_with_groups() {
         let mut exec = exec_with_frame(Frame::SpawnEntity {
             entity_type: Name::from("Character"),
-            base_fields: vec![
-                (Name::from("HP"), Value::Int(20)),
-            ],
+            base_fields: vec![(Name::from("HP"), Value::Int(20))],
             groups: vec![
                 GroupInit {
                     group_name: Name::from("Stats"),
@@ -6904,10 +7522,8 @@ mod tests {
         let actor = add_creature(&mut game, 15);
         let adapter = StateAdapter::new(game);
 
-        let exec = Execution::start_derive(
-            core, adapter, "max_hp", vec![Value::Entity(actor)],
-        )
-        .unwrap();
+        let exec =
+            Execution::start_derive(core, adapter, "max_hp", vec![Value::Entity(actor)]).unwrap();
 
         let mut handler = ScriptedHandler::always_ack();
         let result = exec.run_with_handler(&mut handler).unwrap();
@@ -6933,10 +7549,8 @@ mod tests {
         let actor = add_creature(&mut game, 15);
         let adapter = StateAdapter::new(game);
 
-        let mut exec = Execution::start_derive(
-            core, adapter, "max_hp", vec![Value::Entity(actor)],
-        )
-        .unwrap();
+        let mut exec =
+            Execution::start_derive(core, adapter, "max_hp", vec![Value::Entity(actor)]).unwrap();
 
         let step = exec.poll().unwrap();
         assert!(matches!(step, Step::Done(Value::Int(25))));
@@ -6959,10 +7573,9 @@ mod tests {
         let actor = add_creature(&mut game, 20);
         let adapter = StateAdapter::new(game);
 
-        let exec = Execution::start_mechanic(
-            core, adapter, "compute_bonus", vec![Value::Entity(actor)],
-        )
-        .unwrap();
+        let exec =
+            Execution::start_mechanic(core, adapter, "compute_bonus", vec![Value::Entity(actor)])
+                .unwrap();
 
         let mut handler = ScriptedHandler::always_ack();
         let result = exec.run_with_handler(&mut handler).unwrap();
@@ -6985,10 +7598,9 @@ mod tests {
         let game = GameState::new();
         let adapter = StateAdapter::new(game);
 
-        let exec = Execution::start_function(
-            core, adapter, "add", vec![Value::Int(3), Value::Int(7)],
-        )
-        .unwrap();
+        let exec =
+            Execution::start_function(core, adapter, "add", vec![Value::Int(3), Value::Int(7)])
+                .unwrap();
 
         let mut handler = ScriptedHandler::always_ack();
         let result = exec.run_with_handler(&mut handler).unwrap();
@@ -7013,10 +7625,9 @@ mod tests {
         let game = GameState::new();
         let adapter = StateAdapter::new(game);
 
-        let mut exec = Execution::start_function(
-            core, adapter, "add", vec![Value::Int(3), Value::Int(7)],
-        )
-        .unwrap();
+        let mut exec =
+            Execution::start_function(core, adapter, "add", vec![Value::Int(3), Value::Int(7)])
+                .unwrap();
 
         let step = exec.poll().unwrap();
         assert!(matches!(step, Step::Done(Value::Int(10))));
@@ -7038,10 +7649,7 @@ mod tests {
         let game = GameState::new();
         let adapter = StateAdapter::new(game);
 
-        let exec = Execution::start_function(
-            core, adapter, "add", vec![Value::Int(3)],
-        )
-        .unwrap();
+        let exec = Execution::start_function(core, adapter, "add", vec![Value::Int(3)]).unwrap();
 
         let mut handler = ScriptedHandler::always_ack();
         let result = exec.run_with_handler(&mut handler).unwrap();
@@ -7249,11 +7857,14 @@ mod tests {
             ],
             saved_budgets: vec![
                 (EntityRef(1), None), // No previous budget for entity 1
-                (EntityRef(2), Some({
-                    let mut m = BTreeMap::new();
-                    m.insert(Name::from("actions"), Value::Int(5));
-                    m
-                })),
+                (
+                    EntityRef(2),
+                    Some({
+                        let mut m = BTreeMap::new();
+                        m.insert(Name::from("actions"), Value::Int(5));
+                        m
+                    }),
+                ),
             ],
             provision_index: 0,
             phase: MultiBudgetPhase::Provisioning,
@@ -7352,10 +7963,7 @@ mod tests {
 
         // Verify the mutation applied: 30 - 8 = 22
         exec.state().with_state_mut(|gs| {
-            assert_eq!(
-                gs.read_field(&defender, "HP").unwrap(),
-                Value::Int(22)
-            );
+            assert_eq!(gs.read_field(&defender, "HP").unwrap(), Value::Int(22));
         });
     }
 
@@ -7450,14 +8058,8 @@ mod tests {
 
         // Verify: HP = 30 - 5 = 25, AC = 15 - 2 = 13
         exec.state().with_state_mut(|gs| {
-            assert_eq!(
-                gs.read_field(&defender, "HP").unwrap(),
-                Value::Int(25)
-            );
-            assert_eq!(
-                gs.read_field(&defender, "AC").unwrap(),
-                Value::Int(13)
-            );
+            assert_eq!(gs.read_field(&defender, "HP").unwrap(), Value::Int(25));
+            assert_eq!(gs.read_field(&defender, "AC").unwrap(), Value::Int(13));
         });
     }
 
@@ -7495,27 +8097,16 @@ mod tests {
         let d1 = add_creature(&mut game1, 15);
         let adapter1 = StateAdapter::new(game1);
         let mut handler1 = ScriptedHandler::new(vec![
-            Response::Acknowledged,    // ActionStarted
+            Response::Acknowledged,         // ActionStarted
             Response::Rolled(roll.clone()), // RollDice
-            Response::Acknowledged,    // ActionCompleted
+            Response::Acknowledged,         // ActionCompleted
         ]);
         let result1 = adapter1.run(&mut handler1, |state, handler| {
-            interp.execute_action(
-                state,
-                handler,
-                "Hit",
-                a1,
-                vec![Value::Entity(d1)],
-            )
+            interp.execute_action(state, handler, "Hit", a1, vec![Value::Entity(d1)])
         });
 
         // Step-based path (async poll/respond)
-        let core = RuntimeCore::new(
-            Arc::clone(&program),
-            Arc::clone(&type_env),
-            1,
-            1,
-        );
+        let core = RuntimeCore::new(Arc::clone(&program), Arc::clone(&type_env), 1, 1);
         let mut game2 = GameState::new();
         let a2 = add_creature(&mut game2, 20);
         let d2 = add_creature(&mut game2, 15);
@@ -7536,12 +8127,8 @@ mod tests {
                 Ok(Step::Yielded(e)) => {
                     let response = match &*e {
                         Effect::ActionStarted { .. } => Response::Acknowledged,
-                        Effect::RollDice { .. } => {
-                            Response::Rolled(roll.clone())
-                        }
-                        Effect::ActionCompleted { .. } => {
-                            Response::Acknowledged
-                        }
+                        Effect::RollDice { .. } => Response::Rolled(roll.clone()),
+                        Effect::ActionCompleted { .. } => Response::Acknowledged,
                         _ => Response::Acknowledged,
                     };
                     step_effects.push(*e);
@@ -7597,10 +8184,7 @@ mod tests {
         assert_eq!(game.game_time(), 0);
         let adapter = StateAdapter::new(game);
 
-        let mut exec = Execution::start_function(
-            core, adapter, "caller", vec![],
-        )
-        .unwrap();
+        let mut exec = Execution::start_function(core, adapter, "caller", vec![]).unwrap();
 
         // Poll: tick_and_roll() dispatched via FunctionEval.
         // Inner Block: advance_time(1) completes as stmt 0,
@@ -7664,10 +8248,7 @@ mod tests {
         let game = GameState::new();
         let adapter = StateAdapter::new(game);
 
-        let mut exec = Execution::start_function(
-            core, adapter, "caller", vec![],
-        )
-        .unwrap();
+        let mut exec = Execution::start_function(core, adapter, "caller", vec![]).unwrap();
 
         let step = exec.poll().unwrap();
         assert!(
@@ -7718,13 +8299,9 @@ mod tests {
         let target = add_creature(&mut game, 20);
         let adapter = StateAdapter::new(game);
 
-        let mut exec = Execution::start_function(
-            core,
-            adapter,
-            "caller",
-            vec![Value::Entity(target)],
-        )
-        .unwrap();
+        let mut exec =
+            Execution::start_function(core, adapter, "caller", vec![Value::Entity(target)])
+                .unwrap();
 
         let step = exec.poll().unwrap();
         assert!(
@@ -7791,10 +8368,7 @@ mod tests {
         let game = GameState::new();
         let adapter = StateAdapter::new(game);
 
-        let mut exec = Execution::start_function(
-            core, adapter, "caller", vec![],
-        )
-        .unwrap();
+        let mut exec = Execution::start_function(core, adapter, "caller", vec![]).unwrap();
 
         // Should yield RollDice, not panic.
         let step = exec.poll().unwrap();
@@ -7845,22 +8419,18 @@ mod tests {
         let actor = add_creature(&mut game, 10);
         let adapter = StateAdapter::new(game);
 
-        let exec = Execution::start_action(
-            core, adapter, "Boom", actor, vec![], Span::dummy(),
-        )
-        .unwrap();
+        let exec =
+            Execution::start_action(core, adapter, "Boom", actor, vec![], Span::dummy()).unwrap();
 
         let mut handler = ScriptedHandler::always_ack();
         let _result = exec.run_with_handler(&mut handler);
 
         // Should have ActionCompleted(Failed).
-        let completed = handler.log.iter().find(|e| {
-            matches!(e, Effect::ActionCompleted { .. })
-        });
-        assert!(
-            completed.is_some(),
-            "expected ActionCompleted effect"
-        );
+        let completed = handler
+            .log
+            .iter()
+            .find(|e| matches!(e, Effect::ActionCompleted { .. }));
+        assert!(completed.is_some(), "expected ActionCompleted effect");
         if let Some(Effect::ActionCompleted { outcome, .. }) = completed {
             assert_eq!(
                 *outcome,
@@ -7891,10 +8461,7 @@ mod tests {
         let game = GameState::new();
         let adapter = StateAdapter::new(game);
 
-        let mut exec = Execution::start_function(
-            core, adapter, "caller", vec![],
-        )
-        .unwrap();
+        let mut exec = Execution::start_function(core, adapter, "caller", vec![]).unwrap();
 
         let step = exec.poll().unwrap();
         // a=3, b=7, so 3-7 = -4
@@ -7928,10 +8495,7 @@ mod tests {
         let game = GameState::new();
         let adapter = StateAdapter::new(game);
 
-        let mut exec = Execution::start_function(
-            core, adapter, "caller", vec![],
-        )
-        .unwrap();
+        let mut exec = Execution::start_function(core, adapter, "caller", vec![]).unwrap();
 
         let result = exec.poll();
         assert!(
@@ -7961,10 +8525,7 @@ mod tests {
         let game = GameState::new();
         let adapter = StateAdapter::new(game);
 
-        let mut exec = Execution::start_function(
-            core, adapter, "caller", vec![],
-        )
-        .unwrap();
+        let mut exec = Execution::start_function(core, adapter, "caller", vec![]).unwrap();
 
         let step = exec.poll().unwrap();
         // a=1, b=2, c=3 → 1*100 + 2*10 + 3 = 123
