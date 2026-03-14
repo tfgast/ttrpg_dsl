@@ -318,10 +318,21 @@ fn eval_ident(env: &mut Env, name: &str, expr: &Spanned<ExprKind>) -> Result<Val
 
     // 2. Check if it's a named const (lazy evaluation)
     if let Some(val) = env.interp.consts.borrow().get(name).cloned() {
+        // Void sentinel means we're in a cycle (const references itself)
+        if val == Value::Void {
+            return Err(RuntimeError::new(format!(
+                "circular const reference: '{name}'"
+            )));
+        }
         return Ok(val);
     }
     if let Some(const_decl) = env.interp.program.consts.get(name) {
         let const_decl = const_decl.clone();
+        // Insert sentinel to detect cycles
+        env.interp
+            .consts
+            .borrow_mut()
+            .insert(Name::from(name), Value::Void);
         let val = eval_expr(env, &const_decl.value)?;
         env.interp
             .consts
