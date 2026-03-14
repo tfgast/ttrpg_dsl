@@ -104,6 +104,90 @@ impl EffectHandler for NoYieldHandler {
     }
 }
 
+/// Handler that replays cached responses for previously-resolved
+/// host-decided effects and captures the first uncached one.
+///
+/// Used by the Block frame on the async path to support expressions
+/// that contain effectful builtins (roll, prompt, etc.). When a
+/// host-decided effect is captured, the handler returns `Vetoed`
+/// which causes the evaluator to error; the Block frame detects
+/// this via the `captured` field and pushes a yield frame instead
+/// of propagating the error.
+struct CachingHandler {
+    /// Cached responses to replay (converted from expr_cache values).
+    cache: Vec<Response>,
+    /// Index into cache for the next replay.
+    cache_idx: usize,
+    /// The first uncached host-decided effect, if captured.
+    captured: Option<Effect>,
+}
+
+impl CachingHandler {
+    fn from_expr_cache(cache: &[Value]) -> Self {
+        let responses = cache
+            .iter()
+            .map(|v| match v {
+                Value::RollResult(rr) => Response::Rolled(rr.clone()),
+                other => Response::Override(other.clone()),
+            })
+            .collect();
+        CachingHandler {
+            cache: responses,
+            cache_idx: 0,
+            captured: None,
+        }
+    }
+}
+
+impl EffectHandler for CachingHandler {
+    fn handle(&mut self, effect: Effect) -> Response {
+        if self.captured.is_some() {
+            // Already captured one effect — subsequent effects get
+            // a sentinel that will cause the evaluator to error.
+            return Response::Vetoed;
+        }
+        if self.cache_idx < self.cache.len() {
+            let response = self.cache[self.cache_idx].clone();
+            self.cache_idx += 1;
+            response
+        } else {
+            // First uncached host-decided effect — capture it.
+            self.captured = Some(effect);
+            Response::Vetoed
+        }
+    }
+}
+
+/// Convert a captured host-decided effect into the appropriate yield frame.
+fn effect_to_yield_frame(effect: Effect, span: Span) -> Option<Frame> {
+    match effect {
+        Effect::RollDice { expr } => Some(Frame::RollDiceWaiting {
+            dice_expr: expr,
+            span,
+            pending: None,
+        }),
+        Effect::ResolvePrompt {
+            name,
+            params,
+            return_type,
+            hint,
+            suggest,
+            has_default: _,
+        } => Some(Frame::PromptWaiting {
+            prompt_name: name,
+            params,
+            return_type,
+            hint,
+            suggest,
+            default_block: None, // Default block not available from effect
+            span,
+            pending: None,
+            result: None,
+        }),
+        _ => None,
+    }
+}
+
 /// Evaluate a block using the existing recursive evaluator.
 ///
 /// Creates a temporary `Interpreter` and `Env` backed by the step-based
@@ -900,7 +984,7 @@ impl Frame {
                 stmts,
                 index,
                 result,
-                expr_cache: _,
+                expr_cache,
             } => {
                 // Push scope on first entry (before first statement).
                 if *index == 0 {
@@ -922,27 +1006,70 @@ impl Frame {
 
                 // Evaluate the current statement via bridge.
                 let stmt = stmts[*index].clone();
-                let eval_result = if let Some(ref mut h) = handler {
-                    bridge_eval_stmt(core, env, state, &stmt, Some(*h))
-                } else {
-                    bridge_eval_stmt(core, env, state, &stmt, None)
-                };
 
-                match eval_result {
-                    Ok(val) => {
-                        *result = val;
-                        *index += 1;
-                        if env.return_value.is_some() {
-                            let ret = env.return_value.clone().unwrap();
+                if let Some(ref mut h) = handler {
+                    // Sync path: handler forwards host-decided effects.
+                    let eval_result =
+                        bridge_eval_stmt(core, env, state, &stmt, Some(*h));
+                    match eval_result {
+                        Ok(val) => {
+                            *result = val;
+                            *index += 1;
+                            if env.return_value.is_some() {
+                                let ret = env.return_value.clone().unwrap();
+                                env.pop_scope();
+                                Advance::Pop(ret)
+                            } else {
+                                Advance::Continue
+                            }
+                        }
+                        Err(e) => {
                             env.pop_scope();
-                            Advance::Pop(ret)
-                        } else {
-                            Advance::Continue
+                            Advance::Error(e)
                         }
                     }
-                    Err(e) => {
-                        env.pop_scope();
-                        Advance::Error(e)
+                } else {
+                    // Async path: use CachingHandler to capture
+                    // host-decided effects and push yield frames.
+                    let mut caching =
+                        CachingHandler::from_expr_cache(expr_cache);
+                    let eval_result = bridge_eval_with(
+                        core,
+                        env,
+                        state,
+                        &mut caching,
+                        |tmp_env| crate::eval::eval_stmt(tmp_env, &stmt),
+                    );
+
+                    if let Some(effect) = caching.captured {
+                        // Statement suspended on a host-decided effect.
+                        // Push a yield frame; don't advance index.
+                        if let Some(yield_frame) =
+                            effect_to_yield_frame(effect, stmt.span)
+                        {
+                            return Advance::Push(yield_frame);
+                        }
+                        // Unknown host-decided effect — fall through
+                        // to the error from the bridge evaluation.
+                    }
+
+                    match eval_result {
+                        Ok(val) => {
+                            expr_cache.clear();
+                            *result = val;
+                            *index += 1;
+                            if env.return_value.is_some() {
+                                let ret = env.return_value.clone().unwrap();
+                                env.pop_scope();
+                                Advance::Pop(ret)
+                            } else {
+                                Advance::Continue
+                            }
+                        }
+                        Err(e) => {
+                            env.pop_scope();
+                            Advance::Error(e)
+                        }
                     }
                 }
             }
@@ -1507,10 +1634,13 @@ impl Frame {
                     *step = ActionStep::EmitCompleted;
                 }
             }
-            Frame::Block { result, .. } => {
-                // Child frame (e.g., BudgetGuard body) completed.
-                // Store result; the next advance() will continue iteration.
-                *result = value;
+            Frame::Block { expr_cache, .. } => {
+                // Child yield frame completed (RollDiceWaiting, etc.).
+                // Cache the result for replay-with-cache on the next
+                // advance(). The statement index was not advanced, so
+                // the same statement will be retried with the cached
+                // value available.
+                expr_cache.push(value);
             }
             Frame::PromptWaiting { result, .. } => {
                 // UseDefault → Block child completed.
@@ -6810,5 +6940,306 @@ mod tests {
         // Poll → provisions (pass-through), body executes, restores → Done(77)
         let step = exec.poll().unwrap();
         assert!(matches!(step, Step::Done(Value::Int(77))));
+    }
+
+    // ── Replay-with-cache tests (Phase 4.7) ─────────────────
+
+    #[test]
+    fn async_action_with_roll_yields_roll_dice() {
+        // On the async poll/respond path, roll() in an action body
+        // should yield RollDice instead of panicking.
+        use crate::value::{DiceExpr, RollResult};
+
+        let (core, _) = make_core(
+            r#"
+            system Test {
+                entity Creature { HP: int }
+                action Smite on actor: Creature (target: Creature) {
+                    resolve {
+                        target.HP -= roll(2d6).total
+                    }
+                }
+            }
+            "#,
+        );
+
+        let mut game = GameState::new();
+        let attacker = add_creature(&mut game, 20);
+        let defender = add_creature(&mut game, 30);
+        let adapter = StateAdapter::new(game);
+
+        let mut exec = Execution::start_action(
+            core,
+            adapter,
+            "Smite",
+            attacker,
+            vec![Value::Entity(defender)],
+            Span::dummy(),
+        )
+        .unwrap();
+
+        // ActionStarted
+        let step = exec.poll().unwrap();
+        assert!(matches!(
+            &step,
+            Step::Yielded(e) if matches!(&**e, Effect::ActionStarted { .. })
+        ));
+        exec.respond(Response::Acknowledged).unwrap();
+
+        // RollDice — yielded from the resolve body
+        let step = exec.poll().unwrap();
+        match &step {
+            Step::Yielded(e) => {
+                assert!(
+                    matches!(&**e, Effect::RollDice { expr }
+                        if expr.groups[0].count == 2
+                        && expr.groups[0].sides == 6),
+                    "expected RollDice(2d6), got {e:?}"
+                );
+            }
+            Step::Done(_) => panic!("expected RollDice yield"),
+        }
+
+        // Respond with roll result
+        let rr = RollResult {
+            expr: DiceExpr::single(2, 6, None, 0),
+            dice: vec![3, 5],
+            kept: vec![3, 5],
+            modifier: 0,
+            total: 8,
+            unmodified: 8,
+        };
+        exec.respond(Response::Rolled(rr)).unwrap();
+
+        // ActionCompleted
+        let step = exec.poll().unwrap();
+        assert!(matches!(
+            &step,
+            Step::Yielded(e) if matches!(&**e, Effect::ActionCompleted {
+                outcome: ActionOutcome::Succeeded, ..
+            })
+        ));
+        exec.respond(Response::Acknowledged).unwrap();
+
+        // Done
+        let step = exec.poll().unwrap();
+        assert!(matches!(step, Step::Done(Value::Void)));
+
+        // Verify the mutation applied: 30 - 8 = 22
+        exec.state().with_state_mut(|gs| {
+            assert_eq!(
+                gs.read_field(&defender, "HP").unwrap(),
+                Value::Int(22)
+            );
+        });
+    }
+
+    #[test]
+    fn async_action_with_two_rolls() {
+        // Two roll() calls in the same resolve body — both should
+        // yield via the replay-with-cache mechanism.
+        use crate::value::{DiceExpr, RollResult};
+
+        let (core, _) = make_core(
+            r#"
+            system Test {
+                entity Creature { HP: int, AC: int }
+                action DoubleStrike on actor: Creature (target: Creature) {
+                    resolve {
+                        target.HP -= roll(1d8).total
+                        target.AC -= roll(1d4).total
+                    }
+                }
+            }
+            "#,
+        );
+
+        let mut game = GameState::new();
+        let attacker = add_creature_with_ac(&mut game, 20, 10);
+        let defender = add_creature_with_ac(&mut game, 30, 15);
+        let adapter = StateAdapter::new(game);
+
+        let mut exec = Execution::start_action(
+            core,
+            adapter,
+            "DoubleStrike",
+            attacker,
+            vec![Value::Entity(defender)],
+            Span::dummy(),
+        )
+        .unwrap();
+
+        // ActionStarted
+        let step = exec.poll().unwrap();
+        assert!(matches!(
+            &step,
+            Step::Yielded(e) if matches!(&**e, Effect::ActionStarted { .. })
+        ));
+        exec.respond(Response::Acknowledged).unwrap();
+
+        // First RollDice (1d8 from first statement)
+        let step = exec.poll().unwrap();
+        assert!(matches!(
+            &step,
+            Step::Yielded(e) if matches!(&**e, Effect::RollDice { .. })
+        ));
+        exec.respond(Response::Rolled(RollResult {
+            expr: DiceExpr::single(1, 8, None, 0),
+            dice: vec![5],
+            kept: vec![5],
+            modifier: 0,
+            total: 5,
+            unmodified: 5,
+        }))
+        .unwrap();
+
+        // Second RollDice (1d4 from second statement)
+        let step = exec.poll().unwrap();
+        assert!(matches!(
+            &step,
+            Step::Yielded(e) if matches!(&**e, Effect::RollDice { .. })
+        ));
+        exec.respond(Response::Rolled(RollResult {
+            expr: DiceExpr::single(1, 4, None, 0),
+            dice: vec![2],
+            kept: vec![2],
+            modifier: 0,
+            total: 2,
+            unmodified: 2,
+        }))
+        .unwrap();
+
+        // ActionCompleted
+        let step = exec.poll().unwrap();
+        assert!(matches!(
+            &step,
+            Step::Yielded(e) if matches!(&**e, Effect::ActionCompleted {
+                outcome: ActionOutcome::Succeeded, ..
+            })
+        ));
+        exec.respond(Response::Acknowledged).unwrap();
+
+        // Done
+        let step = exec.poll().unwrap();
+        assert!(matches!(step, Step::Done(Value::Void)));
+
+        // Verify: HP = 30 - 5 = 25, AC = 15 - 2 = 13
+        exec.state().with_state_mut(|gs| {
+            assert_eq!(
+                gs.read_field(&defender, "HP").unwrap(),
+                Value::Int(25)
+            );
+            assert_eq!(
+                gs.read_field(&defender, "AC").unwrap(),
+                Value::Int(13)
+            );
+        });
+    }
+
+    #[test]
+    fn async_differential_action_with_roll() {
+        // Differential test: action with roll() produces identical
+        // structural effects on both recursive and step-based paths.
+        use crate::value::{DiceExpr, RollResult};
+
+        let source = r#"
+            system Test {
+                entity Creature { HP: int }
+                action Hit on actor: Creature (target: Creature) {
+                    resolve {
+                        target.HP -= roll(1d6).total
+                    }
+                }
+            }
+        "#;
+        let (program, type_env) = setup(source);
+
+        let roll = RollResult {
+            expr: DiceExpr::single(1, 6, None, 0),
+            dice: vec![4],
+            kept: vec![4],
+            modifier: 0,
+            total: 4,
+            unmodified: 4,
+        };
+
+        // Recursive path
+        let interp = crate::Interpreter::new(&program, &type_env).unwrap();
+        let mut game1 = GameState::new();
+        let a1 = add_creature(&mut game1, 20);
+        let d1 = add_creature(&mut game1, 15);
+        let adapter1 = StateAdapter::new(game1);
+        let mut handler1 = ScriptedHandler::new(vec![
+            Response::Acknowledged,    // ActionStarted
+            Response::Rolled(roll.clone()), // RollDice
+            Response::Acknowledged,    // ActionCompleted
+        ]);
+        let result1 = adapter1.run(&mut handler1, |state, handler| {
+            interp.execute_action(
+                state,
+                handler,
+                "Hit",
+                a1,
+                vec![Value::Entity(d1)],
+            )
+        });
+
+        // Step-based path (async poll/respond)
+        let core = RuntimeCore::new(
+            Arc::clone(&program),
+            Arc::clone(&type_env),
+            1,
+            1,
+        );
+        let mut game2 = GameState::new();
+        let a2 = add_creature(&mut game2, 20);
+        let d2 = add_creature(&mut game2, 15);
+        let adapter2 = StateAdapter::new(game2);
+        let mut exec = Execution::start_action(
+            core,
+            adapter2,
+            "Hit",
+            a2,
+            vec![Value::Entity(d2)],
+            Span::dummy(),
+        )
+        .unwrap();
+
+        let mut step_effects = Vec::new();
+        loop {
+            match exec.poll() {
+                Ok(Step::Yielded(e)) => {
+                    let response = match &*e {
+                        Effect::ActionStarted { .. } => Response::Acknowledged,
+                        Effect::RollDice { .. } => {
+                            Response::Rolled(roll.clone())
+                        }
+                        Effect::ActionCompleted { .. } => {
+                            Response::Acknowledged
+                        }
+                        _ => Response::Acknowledged,
+                    };
+                    step_effects.push(*e);
+                    exec.respond(response).unwrap();
+                }
+                Ok(Step::Done(_)) => break,
+                Err(PollError::Runtime(e)) => {
+                    panic!("step-based runtime error: {e}")
+                }
+                Err(PollError::Protocol(e)) => {
+                    panic!("step-based protocol error: {e}")
+                }
+            }
+        }
+
+        // Compare structural effect sequences
+        let kinds1 = structural_kinds(&handler1.log);
+        let kinds2 = structural_kinds(&step_effects);
+        assert_eq!(
+            kinds1, kinds2,
+            "structural effect sequence mismatch for action with roll"
+        );
+
+        assert!(result1.is_ok(), "recursive failed: {result1:?}");
     }
 }
