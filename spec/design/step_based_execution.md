@@ -70,14 +70,14 @@ The second category is the problem. When the evaluator yields at an effect bound
 The principal recursive chains that cross effect boundaries:
 
 ```
-execute_action (action.rs:199)
+execute_action (action.rs:212)
   └─ bind_args (positional only)                  ← no defaults yet
-  └─ alloc_invocation_id()                        ← pre-allocate before gate (infallible pairing)
+  └─ alloc_invocation_id()                        ← pre-allocated before gate (infallible pairing)
   └─ emit ActionStarted                          ← EFFECT
   └─ [if vetoed: emit ActionCompleted(Vetoed, invocation: None) ← EFFECT, return]
-  └─ scoped_execute (action.rs:79)
+  └─ scoped_execute (action.rs:83)               ← receives pre-allocated inv_id
        └─ fill_defaults (args.rs:70)              ← eval_expr per default, may EFFECT
-       └─ execute_pipeline (action.rs:120)
+       └─ execute_pipeline (action.rs:126)
             ├─ eval_expr (requires clause)        ← may EFFECT (effectful builtins)
             ├─ emit RequiresCheck                 ← EFFECT
             ├─ collect_and_apply_cost_modifiers
@@ -1015,7 +1015,7 @@ Before implementation begins, define differential tests that run each scenario t
 
 **Note on `fire_hooks` / `fire_condition_handlers` return types:** These entry points return `Vec<(Name, EntityRef, Value)>` and `usize` respectively, which do not fit `Step::Done(Value)`. This spec defers step-based versions of these entry points to a future phase. The v1 scope (Phases 3-6) covers `execute_action`, `execute_reaction`, `execute_hook`, `evaluate_derive`, `evaluate_mechanic`, `evaluate_function`, and `evaluate_expr` — all of which return `Value`. A future extension can either wrap these results in `Value` encodings or parameterize `Execution` over its result type.
 
-**Note on invocation ID allocation:** `alloc_invocation_id()` can fail (u64 overflow) after `ActionStarted` has been acknowledged but before `ActionEpilogue` exists on the stack. This breaks the ActionStarted/ActionCompleted pairing guarantee in both the current recursive path and the proposed frame-based path. To close this gap, the frame-based design should **pre-allocate** the invocation ID before emitting `ActionStarted`. The `ActionGate` frame receives a pre-allocated `inv_id: InvocationId` at construction time. If allocation fails, no `ActionStarted` is emitted and no pairing is needed. This also fixes the existing gap in the recursive path (where `scoped_execute` calls `alloc_invocation_id()?` after ActionStarted). **Behavioral change:** pre-allocation means a vetoed action now consumes an invocation ID (the counter advances even though `ActionCompleted` reports `invocation: None`). In the current recursive path, allocation happens after the gate, so vetoed actions do not advance the counter. This change is acceptable — invocation IDs are not required to be dense, and the safety of the pairing guarantee outweighs the minor counter gap.
+**Note on invocation ID allocation:** The recursive path now pre-allocates the invocation ID before emitting `ActionStarted` (`action.rs:228`). If allocation fails (u64 overflow), no `ActionStarted` is emitted and no pairing is needed. This closes the previous gap where `scoped_execute` called `alloc_invocation_id()?` after `ActionStarted`, which could leave an unpaired `ActionStarted` on allocation failure. The `ActionGate` frame follows the same pattern: it receives a pre-allocated `inv_id: InvocationId` at construction time. A vetoed action consumes the invocation ID (the counter advances) but `ActionCompleted` reports `invocation: None`. Invocation IDs are not required to be dense.
 
 ## Alternatives Considered
 
