@@ -8,6 +8,10 @@
 //   3. Protection from Evil zone: enter → protected, exit → removed
 //   4. Overlapping PFE zones: exit one → still protected
 //   5. Non-matching zone: no conditions applied
+//   6. Darkness zone: enter → InMagicalDarkness, exit → removed
+//   7. Overlapping darkness zones: exit one → still in darkness
+//   8. Darkness/Continual Light cancellation: both zones despawned
+//   9. Non-matching zone: no InMagicalDarkness applied
 //
 // Barrier-crossing pattern (ZoneCrossed / condition-based per-round):
 //   6. Wall of Fire: crossing deals 2d6+level fire damage
@@ -141,6 +145,101 @@ place nm_zone 0 0
 emit ZoneEntered(target: nm_target, zone: nm_zone)
 assert_no_condition nm_target, Silenced
 assert_no_condition nm_target, ProtectedFromEvil10Zone
+
+
+// ══════════════════════════════════════════════════════════════════
+//  DARKNESS 15' RADIUS — OCCUPANT-CONDITION ZONE
+// ══════════════════════════════════════════════════════════════════
+
+
+// ── Basic enter / exit ───────────────────────────────────────────
+
+spawn Character dark_target { name: "Wizard Dark", classes: [ClassLevel { class: MagicUser, level: 5 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 15, hp: 15 }, Spellcasting { spell_slots: [4, 2, 1], slots_used: [0, 0, 0], memorised_spells: [] } }
+
+spawn Zone dark_zone_1 { name: "darkness-zone-1", source: EffectSource.Spell(name: "Darkness 15' Radius", caster_level: 5), shape: ZoneShape.Sphere(radius: 15ft) }
+place dark_zone_1 50 50
+
+// Before entering: no condition
+assert_no_condition dark_target, InMagicalDarkness
+
+// Host emits ZoneEntered
+emit ZoneEntered(target: dark_target, zone: dark_zone_1)
+assert_condition dark_target, InMagicalDarkness
+
+// Verify spellcasting is blocked
+assert_eq can_begin_casting(dark_target), false
+
+// Host emits ZoneExited
+emit ZoneExited(target: dark_target, zone: dark_zone_1)
+assert_no_condition dark_target, InMagicalDarkness
+
+// Spellcasting restored
+assert_eq can_begin_casting(dark_target), true
+
+
+// ── Overlapping darkness zones ────────────────────────────────────
+// Two darkness zones overlap. Target enters both. Exiting one zone
+// removes only that zone's condition; the other remains.
+
+spawn Character dark_overlap { name: "Wizard Overlap Dark", classes: [ClassLevel { class: MagicUser, level: 7 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 12, hp: 12 }, Spellcasting { spell_slots: [4, 3, 2, 1], slots_used: [0, 0, 0, 0], memorised_spells: [] } }
+
+spawn Zone dark_zone_2a { name: "darkness-zone-2a", source: EffectSource.Spell(name: "Darkness 15' Radius", caster_level: 5), shape: ZoneShape.Sphere(radius: 15ft) }
+place dark_zone_2a 60 60
+
+spawn Zone dark_zone_2b { name: "darkness-zone-2b", source: EffectSource.Spell(name: "Darkness 15' Radius", caster_level: 3), shape: ZoneShape.Sphere(radius: 15ft) }
+place dark_zone_2b 62 60
+
+// Enter both zones
+emit ZoneEntered(target: dark_overlap, zone: dark_zone_2a)
+emit ZoneEntered(target: dark_overlap, zone: dark_zone_2b)
+assert_condition dark_overlap, InMagicalDarkness
+assert_eq can_begin_casting(dark_overlap), false
+
+// Exit zone 2a — still in darkness from 2b
+emit ZoneExited(target: dark_overlap, zone: dark_zone_2a)
+assert_condition dark_overlap, InMagicalDarkness
+assert_eq can_begin_casting(dark_overlap), false
+
+// Exit zone 2b — fully clear
+emit ZoneExited(target: dark_overlap, zone: dark_zone_2b)
+assert_no_condition dark_overlap, InMagicalDarkness
+assert_eq can_begin_casting(dark_overlap), true
+
+
+// ── Darkness / Continual Light cancellation ───────────────────────
+// When the host detects a Darkness zone overlapping a Continual Light
+// zone, it emits DarknessCancelsLight. Both zones are despawned.
+
+spawn Character dark_light_target { name: "Bystander DL", classes: [ClassLevel { class: Fighter, level: 5 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 30, hp: 30 } }
+
+spawn Zone dark_cancel_zone { name: "darkness-cancel", source: EffectSource.Spell(name: "Darkness 15' Radius", caster_level: 5), shape: ZoneShape.Sphere(radius: 15ft) }
+place dark_cancel_zone 70 70
+
+spawn Zone light_cancel_zone { name: "continual-light", source: EffectSource.Spell(name: "Continual Light", caster_level: 7), shape: ZoneShape.Sphere(radius: 60ft) }
+place light_cancel_zone 72 70
+
+// Target enters darkness zone first
+emit ZoneEntered(target: dark_light_target, zone: dark_cancel_zone)
+assert_condition dark_light_target, InMagicalDarkness
+
+// Host detects overlap and emits ZoneExited for occupants before cancellation
+// (per spatial_zone_protocol.md: host emits ZoneExited before despawn)
+emit ZoneExited(target: dark_light_target, zone: dark_cancel_zone)
+assert_no_condition dark_light_target, InMagicalDarkness
+
+// Host then emits the cancellation event to despawn both zones
+emit DarknessCancelsLight(darkness_zone: dark_cancel_zone, light_zone: light_cancel_zone)
+
+
+// ── Non-matching zone does not apply InMagicalDarkness ────────────
+
+spawn Character dark_bystander { name: "Dark Bystander", classes: [ClassLevel { class: Fighter, level: 3 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 20, hp: 20 } }
+
+spawn Zone dark_wrong_zone { name: "silence-not-dark", source: EffectSource.Spell(name: "Silence 15' Radius", caster_level: 5), shape: ZoneShape.Radius(radius: 15ft) }
+place dark_wrong_zone 80 80
+
+emit ZoneEntered(target: dark_bystander, zone: dark_wrong_zone)
+assert_no_condition dark_bystander, InMagicalDarkness
 
 
 // ══════════════════════════════════════════════════════════════════

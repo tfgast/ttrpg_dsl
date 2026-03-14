@@ -9,6 +9,7 @@
 //  effects precisely.
 //    • Silence 15' Radius   (stationary area)
 //    • Protection from Evil 10' Radius (anchored to caster)
+//    • Darkness 15' Radius  (stationary or anchored; cancels light)
 //
 //  Barrier-crossing pattern: the host emits ZoneCrossed when a
 //  target's movement path contacts a barrier boundary. Per-round
@@ -229,6 +230,103 @@ system "OSRIC Zone Spells" {
                 remove_zone_keyed_condition(target, zone.name, "ProtectedFromEvil10Zone")
             }
         }
+    }
+
+
+    // ========================================================
+    //  DARKNESS 15' RADIUS
+    //
+    //  Creates a 15' sphere of magical darkness centred on a
+    //  target location, object, or creature. Infravision does
+    //  not function within. Spellcasting and ranged attacks
+    //  are blocked for occupants.
+    //
+    //  If cast on a creature's eyes, the creature may save
+    //  vs spells (applying DEX modifier). On a successful
+    //  save the darkness forms as a stationary point behind
+    //  the creature instead of blinding it.
+    //
+    //  Spell-specific interaction: if a Darkness zone overlaps
+    //  a Continual Light zone (or vice versa), both are
+    //  cancelled and despawned.
+    //
+    //  Zone type: stationary or anchored occupancy zone
+    //  (tracks_occupancy, no contact_mode).
+    // ========================================================
+
+    const DARKNESS_15_DEF: SpellDef = SpellDef {
+        name: "Darkness 15' Radius",
+        class_type: Arcane,
+        school: Transmutation,
+        level: 2,
+        range: SpellRange.Distance(distance: Feet { value: 0 }),  // 10ft/level, set at resolution
+        duration: SpellDuration.Rounds(count: 0),   // 1 turn + 1 round/level, set at resolution
+        area: [SpellArea { shape: AreaShape.Sphere(radius: 15ft), anchor_mode: AnchorMode.Either }],
+        components: SpellComponents { material: false },
+        casting_time: CastingTime.Segments(count: 2),
+        saving_throw: SpellSave.Special(description: "Save vs spells (DEX mod) if cast on creature's eyes"),
+        reversible: false,
+        description: "Creates a 15' sphere of magical darkness. Blocks vision, spellcasting, and ranged attacks within. Cancels continual light."
+    }
+
+    // Condition applied to occupants of a Darkness zone.
+    // Blocks spellcasting (most spells require sight) and imposes
+    // attack penalties identical to Blinded (-4 attack, -4 AC).
+    condition InMagicalDarkness on bearer: entity
+        stacking all
+    {
+        modify [#spellcasting_gate](caster: bearer) {
+            result = false
+        }
+        modify [#attack_resolution](attacker: bearer) {
+            attack_mod = attack_mod - 4
+        }
+        modify effective_target_ac(target: bearer) {
+            ac_mod = ac_mod - 4
+        }
+    }
+
+    // Apply InMagicalDarkness when a target enters a Darkness zone.
+    hook DarknessZoneApply on target: entity (
+        trigger: ZoneEntered(target: target)
+    ) {
+        let zone = trigger.zone
+        if let EffectSource.Spell(spell_name, cl) = zone.source {
+            if spell_name == "Darkness 15' Radius" {
+                apply_condition(target, InMagicalDarkness, Duration.Indefinite,
+                    EffectSource.Spell(name: zone.name, caster_level: cl))
+            }
+        }
+    }
+
+    // Remove InMagicalDarkness when a target exits a Darkness zone.
+    // Only removes the condition instance from *this* zone.
+    hook DarknessZoneRemove on target: entity (
+        trigger: ZoneExited(target: target)
+    ) {
+        let zone = trigger.zone
+        if let EffectSource.Spell(spell_name, cl) = zone.source {
+            if spell_name == "Darkness 15' Radius" {
+                remove_zone_keyed_condition(target, zone.name, "InMagicalDarkness")
+            }
+        }
+    }
+
+    // Light/Darkness cancellation: when a zone is entered by another
+    // zone's occupant, check for opposing zone overlap. If a Darkness
+    // zone and a Continual Light zone overlap, both are despawned.
+    //
+    // Implementation: when a Darkness zone is created, if the host
+    // detects it overlaps an existing Continual Light zone, it emits
+    // a DarknessCancelsLight event. The DSL handler despawns both.
+    event DarknessCancelsLight(darkness_zone: Zone, light_zone: Zone) {}
+
+    hook DarknessLightCancellation on zone: Zone (
+        trigger: DarknessCancelsLight(darkness_zone: zone)
+    ) {
+        let light_zone = trigger.light_zone
+        despawn(zone)
+        despawn(light_zone)
     }
 
 
@@ -537,6 +635,33 @@ system "OSRIC Zone Spells" {
             shape: ZoneShape.Sphere(radius: 10ft)
         }
         emit SpellApplied(caster: caster, target: zone, spell_name: "Protection from Evil 10' Radius")
+    }
+
+    // --- Darkness 15' Radius resolve ---
+    // Creates a stationary or entity-anchored 15' darkness sphere.
+    // Duration: 1 turn + 1 round per caster level.
+    // Range: 10ft per caster level.
+    function resolve_darkness_15(caster: entity, placement: Placement) {
+        let cl = caster_level(caster, Arcane)
+        let source = EffectSource.Spell(name: "Darkness 15' Radius", caster_level: cl)
+        let anchor_entity = match placement.anchor {
+            AnchorPoint.AtEntity(target) => some(target),
+            AnchorPoint.AtPosition(p)    => none
+        }
+        let moves = match placement.anchor {
+            AnchorPoint.AtEntity(target) => true,
+            AnchorPoint.AtPosition(p)    => false
+        }
+        let zone = Zone {
+            name: "Darkness 15' Radius",
+            source: source,
+            creator: some(caster),
+            anchor: anchor_entity,
+            moves_with_anchor: moves,
+            center: placement.position,
+            shape: ZoneShape.Sphere(radius: 15ft)
+        }
+        emit SpellApplied(caster: caster, target: zone, spell_name: "Darkness 15' Radius")
     }
 
     // --- Wall of Fire resolve ---
