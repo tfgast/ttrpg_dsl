@@ -1674,4 +1674,207 @@ mod tests {
         let err = exec.respond(Response::Acknowledged).unwrap_err();
         assert!(matches!(err, ProtocolError::NoPendingEffect));
     }
+
+    // ── Differential tests (Phase 7) ─────────────────────────
+
+    /// Extract structural effect kinds from an effect log (filtering
+    /// out locally-applied mutations that only appear in the recursive path).
+    fn structural_kinds(effects: &[Effect]) -> Vec<EffectKind> {
+        effects
+            .iter()
+            .map(EffectKind::of)
+            .filter(|k| {
+                matches!(
+                    k,
+                    EffectKind::ActionStarted
+                        | EffectKind::ActionCompleted
+                        | EffectKind::RequiresCheck
+                        | EffectKind::DeductCost
+                        | EffectKind::RollDice
+                        | EffectKind::ResolvePrompt
+                        | EffectKind::ConditionApplyGate
+                        | EffectKind::ConditionRemovalGate
+                        | EffectKind::ModifyApplied
+                        | EffectKind::RevokeInvocation
+                )
+            })
+            .collect()
+    }
+
+    #[test]
+    fn differential_simple_action() {
+        let source = r#"
+            system Test {
+                entity Creature { HP: int }
+                action Attack on actor: Creature (target: Creature) {
+                    resolve {
+                        target.HP -= 5
+                    }
+                }
+            }
+        "#;
+
+        // Inline the setup to get entity refs for args:
+        let (program, type_env) = setup(source);
+
+        // Recursive path
+        let interp = crate::Interpreter::new(&program, &type_env).unwrap();
+        let mut game1 = GameState::new();
+        let a1 = add_creature(&mut game1, 20);
+        let d1 = add_creature(&mut game1, 15);
+        let adapter1 = StateAdapter::new(game1);
+        let mut handler1 = ScriptedHandler::always_ack();
+        let result1 = adapter1.run(&mut handler1, |state, handler| {
+            interp.execute_action(
+                state, handler, "Attack", a1, vec![Value::Entity(d1)],
+            )
+        });
+
+        // Step-based path
+        let core = RuntimeCore::new(Arc::clone(&program), Arc::clone(&type_env), 1, 1);
+        let mut game2 = GameState::new();
+        let a2 = add_creature(&mut game2, 20);
+        let d2 = add_creature(&mut game2, 15);
+        let adapter2 = StateAdapter::new(game2);
+        let exec = Execution::start_action(
+            core, adapter2, "Attack", a2, vec![Value::Entity(d2)], Span::dummy(),
+        )
+        .unwrap();
+        let mut handler2 = ScriptedHandler::always_ack();
+        let result2 = exec.run_with_handler(&mut handler2);
+
+        // Compare structural effect sequences
+        let kinds1 = structural_kinds(&handler1.log);
+        let kinds2 = structural_kinds(&handler2.log);
+        assert_eq!(kinds1, kinds2, "structural effect sequence mismatch");
+
+        // Both should succeed
+        assert!(result1.is_ok(), "recursive path failed: {result1:?}");
+        assert!(result2.is_ok(), "step-based path failed: {result2:?}");
+
+        // Both should produce the same result type
+        assert_eq!(result1.unwrap(), result2.unwrap());
+    }
+
+    #[test]
+    fn differential_action_with_requires() {
+        let source = r#"
+            system Test {
+                entity Creature { HP: int }
+                action Heal on actor: Creature (target: Creature) {
+                    requires { target.HP > 0 }
+                    resolve {
+                        target.HP += 5
+                    }
+                }
+            }
+        "#;
+
+        let (program, type_env) = setup(source);
+
+        // Recursive path (requires passes: HP=10 > 0)
+        let interp = crate::Interpreter::new(&program, &type_env).unwrap();
+        let mut game1 = GameState::new();
+        let h1 = add_creature(&mut game1, 20);
+        let p1 = add_creature(&mut game1, 10);
+        let adapter1 = StateAdapter::new(game1);
+        let mut handler1 = ScriptedHandler::always_ack();
+        let _ = adapter1.run(&mut handler1, |state, handler| {
+            interp.execute_action(
+                state, handler, "Heal", h1, vec![Value::Entity(p1)],
+            )
+        });
+
+        // Step-based path
+        let core = RuntimeCore::new(Arc::clone(&program), Arc::clone(&type_env), 1, 1);
+        let mut game2 = GameState::new();
+        let h2 = add_creature(&mut game2, 20);
+        let p2 = add_creature(&mut game2, 10);
+        let adapter2 = StateAdapter::new(game2);
+        let exec = Execution::start_action(
+            core, adapter2, "Heal", h2, vec![Value::Entity(p2)], Span::dummy(),
+        )
+        .unwrap();
+        let mut handler2 = ScriptedHandler::always_ack();
+        let _ = exec.run_with_handler(&mut handler2);
+
+        let kinds1 = structural_kinds(&handler1.log);
+        let kinds2 = structural_kinds(&handler2.log);
+        assert_eq!(
+            kinds1, kinds2,
+            "structural effect sequence mismatch for requires-pass"
+        );
+        // Both should include: ActionStarted, RequiresCheck, ActionCompleted
+        assert_eq!(kinds1.len(), 3);
+        assert_eq!(kinds1[0], EffectKind::ActionStarted);
+        assert_eq!(kinds1[1], EffectKind::RequiresCheck);
+        assert_eq!(kinds1[2], EffectKind::ActionCompleted);
+    }
+
+    #[test]
+    fn differential_action_vetoed() {
+        let source = r#"
+            system Test {
+                entity Creature { HP: int }
+                action Attack on actor: Creature (target: Creature) {
+                    resolve {
+                        target.HP -= 5
+                    }
+                }
+            }
+        "#;
+
+        let (program, type_env) = setup(source);
+
+        // Recursive path with veto
+        let interp = crate::Interpreter::new(&program, &type_env).unwrap();
+        let mut game1 = GameState::new();
+        let a1 = add_creature(&mut game1, 20);
+        let d1 = add_creature(&mut game1, 15);
+        let adapter1 = StateAdapter::new(game1);
+        let mut handler1 = ScriptedHandler::new(vec![
+            Response::Vetoed,        // ActionStarted → Vetoed
+            Response::Acknowledged,  // ActionCompleted(Vetoed)
+        ]);
+        let _ = adapter1.run(&mut handler1, |state, handler| {
+            interp.execute_action(
+                state, handler, "Attack", a1, vec![Value::Entity(d1)],
+            )
+        });
+
+        // Step-based path with veto
+        let core = RuntimeCore::new(Arc::clone(&program), Arc::clone(&type_env), 1, 1);
+        let mut game2 = GameState::new();
+        let a2 = add_creature(&mut game2, 20);
+        let d2 = add_creature(&mut game2, 15);
+        let adapter2 = StateAdapter::new(game2);
+        let exec = Execution::start_action(
+            core, adapter2, "Attack", a2, vec![Value::Entity(d2)], Span::dummy(),
+        )
+        .unwrap();
+        let mut handler2 = ScriptedHandler::new(vec![
+            Response::Vetoed,        // ActionStarted → Vetoed
+            Response::Acknowledged,  // ActionCompleted(Vetoed)
+        ]);
+        let _ = exec.run_with_handler(&mut handler2);
+
+        let kinds1 = structural_kinds(&handler1.log);
+        let kinds2 = structural_kinds(&handler2.log);
+        assert_eq!(
+            kinds1, kinds2,
+            "structural effect sequence mismatch for vetoed action"
+        );
+        // Both should include: ActionStarted, ActionCompleted
+        assert_eq!(kinds1.len(), 2);
+        assert_eq!(kinds1[0], EffectKind::ActionStarted);
+        assert_eq!(kinds1[1], EffectKind::ActionCompleted);
+
+        // Verify the ActionCompleted outcome matches
+        if let Effect::ActionCompleted { outcome: o1, .. } = &handler1.log[1] {
+            if let Effect::ActionCompleted { outcome: o2, .. } = &handler2.log[1] {
+                assert_eq!(o1, o2, "ActionCompleted outcome mismatch");
+                assert_eq!(*o1, ActionOutcome::Vetoed);
+            }
+        }
+    }
 }
