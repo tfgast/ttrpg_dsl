@@ -339,11 +339,25 @@ system "OSRIC Equipment" {
         char.current_weight = char.current_weight + wielded_item_weight(item)
     }
 
-    // Simplified equip for monsters with EquipmentSlots.
-    // No weight tracking or off-hand/shield management.
+    // Monster equipment helpers — same current_weight invariant as
+    // Character helpers, but no off-hand/shield/two-handed management
+    // because monsters declare attacks directly rather than assembling
+    // a loadout.
+
+    function unequip_monster_main(mon: Monster) {
+        if mon has EquipmentSlots as eq {
+            if let some(old) = mon.eq.wielded_main {
+                mon.eq.current_weight = mon.eq.current_weight - wielded_item_weight(old)
+                mon.eq.wielded_main = none
+            }
+        }
+    }
+
     function equip_monster_main(mon: Monster, item: WieldedItem) {
         if mon has EquipmentSlots as eq {
+            unequip_monster_main(mon)
             mon.eq.wielded_main = some(item)
+            mon.eq.current_weight = mon.eq.current_weight + wielded_item_weight(item)
         }
     }
 
