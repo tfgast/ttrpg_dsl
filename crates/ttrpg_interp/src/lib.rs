@@ -6,9 +6,11 @@ pub mod coverage;
 pub mod effect;
 pub mod eval;
 pub mod event;
+pub mod execution;
 pub mod handle_registry;
 pub mod pipeline;
 pub mod reference_state;
+pub mod runtime_core;
 pub mod state;
 pub mod value;
 
@@ -21,7 +23,7 @@ use ttrpg_ast::ast::{ActionDecl, DeclKind, ExprKind, Program, TopLevel, TypeExpr
 use ttrpg_ast::{Name, Span, Spanned};
 use ttrpg_checker::env::TypeEnv;
 
-use crate::effect::{EffectHandler, FieldPathSegment};
+use crate::effect::{Effect, EffectHandler, FieldPathSegment, Response};
 use crate::event::{EventResult, HookResult};
 use crate::state::{ConditionToken, EntityRef, InvocationId, StateProvider};
 use crate::value::Value;
@@ -210,6 +212,32 @@ impl<'p> Interpreter<'p> {
     /// Read the current condition counter value (for host persistence).
     pub fn next_condition_id(&self) -> u64 {
         self.next_condition_id.get()
+    }
+
+    /// Create a lightweight bridge interpreter from RuntimeCore data.
+    ///
+    /// Used by the step-based `Execution` to delegate expression and block
+    /// evaluation to the existing recursive evaluator. The caller must sync
+    /// ID counters back to RuntimeCore via [`id_counters`] after use.
+    pub(crate) fn bridge(
+        program: &'p Program,
+        type_env: &'p TypeEnv,
+        invocation_id: u64,
+        condition_id: u64,
+    ) -> Self {
+        Interpreter {
+            program,
+            type_env,
+            next_invocation_id: Cell::new(invocation_id),
+            next_condition_id: Cell::new(condition_id),
+            coverage: None,
+            consts: RefCell::new(FxHashMap::default()),
+        }
+    }
+
+    /// Read the current ID counters (for syncing back to RuntimeCore).
+    pub(crate) fn id_counters(&self) -> (u64, u64) {
+        (self.next_invocation_id.get(), self.next_condition_id.get())
     }
 
     /// Attach shared coverage data to this interpreter.
@@ -641,6 +669,13 @@ impl<'a, 'p> Env<'a, 'p> {
         if let Some(scope) = self.scopes.last_mut() {
             scope.bindings.insert(name, value);
         }
+    }
+
+    /// Single interception point for all effect emissions.
+    /// Every effect the evaluator produces flows through this method.
+    #[inline]
+    pub fn emit(&mut self, effect: Effect) -> Response {
+        self.handler.handle(effect)
     }
 
     /// Look up a variable by name, searching from innermost to outermost scope.
