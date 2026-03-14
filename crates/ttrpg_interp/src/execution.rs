@@ -730,23 +730,37 @@ pub(crate) enum Frame {
     EmitHooks {
         event_name: Name,
         hooks: Vec<HookInfo>,
+        condition_handlers: Vec<ConditionHandlerInfo>,
         index: usize,
         payload: Value,
         saved_emit_depth: u32,
         saved_lifecycle: u32,
+        /// Whether emit_depth/lifecycle have been set up on first entry.
+        initialized: bool,
+        /// Result from child ActionLifecycle frame (hook execution).
+        child_result: Option<Result<Value, RuntimeError>>,
     },
 
     EmitConditionHandlers {
         handlers: Vec<ConditionHandlerInfo>,
         index: usize,
         payload: Value,
+        /// Result from child ConditionHandlerEpilogue frame.
+        child_result: Option<Result<Value, RuntimeError>>,
     },
 
+    /// After a condition handler body (Block) completes, read back mutated
+    /// state fields, compare against snapshot, and emit SetConditionState
+    /// if changed. Pushed by EmitConditionHandlers as a parent of Block.
     ConditionHandlerEpilogue {
         target: EntityRef,
         condition_name: Name,
         instance_id: u64,
         original_state: BTreeMap<Name, Value>,
+        /// The block body to execute (pushed as a child Block on first advance).
+        block_stmts: Option<Vec<Spanned<StmtKind>>>,
+        /// Result from child Block frame.
+        child_result: Option<Result<Value, RuntimeError>>,
     },
 
     ConditionApplyGate {
@@ -2336,10 +2350,13 @@ impl Frame {
                         Advance::Push(Frame::EmitHooks {
                             event_name: event_name.clone(),
                             hooks: exec_hooks,
+                            condition_handlers: exec_handlers,
                             index: 0,
                             payload,
                             saved_emit_depth: *saved_emit_depth,
                             saved_lifecycle: *saved_lifecycle,
+                            initialized: false,
+                            child_result: None,
                         })
                     }
                 }
@@ -2632,6 +2649,274 @@ impl Frame {
                 }
             }
 
+            // ── EmitHooks frame (Phase 5.2) ──────────────────────────
+
+            Frame::EmitHooks {
+                event_name: _,
+                hooks,
+                condition_handlers,
+                index,
+                payload,
+                saved_emit_depth: _,
+                saved_lifecycle: _,
+                initialized,
+                child_result,
+            } => {
+                // Handle completed child ActionLifecycle (hook execution).
+                if let Some(result) = child_result.take() {
+                    match result {
+                        Ok(_) => {
+                            *index += 1;
+                            // Fall through to dispatch next hook.
+                        }
+                        Err(e) => return Advance::Error(e),
+                    }
+                }
+
+                // First entry: set up emit_depth and clear in_lifecycle_block.
+                if !*initialized {
+                    *initialized = true;
+                    env.emit_depth += 1;
+                    env.in_lifecycle_block = 0;
+                }
+
+                // Dispatch hooks one at a time.
+                if *index < hooks.len() {
+                    let hook_info = &hooks[*index];
+                    let hook_decl = match core.program.hooks.get(&hook_info.hook_name) {
+                        Some(d) => d.clone(),
+                        None => {
+                            return Advance::Error(RuntimeError::new(format!(
+                                "undefined hook '{}'",
+                                hook_info.hook_name
+                            )));
+                        }
+                    };
+
+                    let inv_id = InvocationId(core.alloc_invocation_id());
+
+                    return Advance::Push(Frame::ActionLifecycle {
+                        name: hook_decl.name.clone(),
+                        actor: hook_info.actor,
+                        action_kind: ActionKind::Hook {
+                            event: hook_decl.trigger.event_name.clone(),
+                            trigger: payload.clone(),
+                        },
+                        call_span: Span::default(),
+                        has_return_type: false,
+                        inv_id,
+                        requires: None,
+                        cost: None,
+                        resolve: hook_decl.resolve.clone(),
+                        receiver_name: hook_decl.receiver_name.clone(),
+                        bindings: vec![(Name::from("trigger"), payload.clone())],
+                        default_params: Vec::new(),
+                        step: ActionStep::EmitStarted,
+                        pending: None,
+                        body_result: None,
+                        saved_turn_actor: None,
+                        saved_invocation: None,
+                    });
+                }
+
+                // All hooks dispatched. Push EmitConditionHandlers if any,
+                // otherwise complete.
+                let handlers = std::mem::take(condition_handlers);
+                if handlers.is_empty() {
+                    Advance::Pop(Value::Void)
+                } else {
+                    let p = payload.clone();
+                    Advance::Push(Frame::EmitConditionHandlers {
+                        handlers,
+                        index: 0,
+                        payload: p,
+                        child_result: None,
+                    })
+                }
+            }
+
+            // ── EmitConditionHandlers frame (Phase 5.2) ──────────────
+
+            Frame::EmitConditionHandlers {
+                handlers,
+                index,
+                payload,
+                child_result,
+            } => {
+                // Handle completed child ConditionHandlerEpilogue.
+                if let Some(result) = child_result.take() {
+                    match result {
+                        Ok(_) => {
+                            *index += 1;
+                            // Fall through to dispatch next handler.
+                        }
+                        Err(e) => return Advance::Error(e),
+                    }
+                }
+
+                // Dispatch handlers one at a time.
+                while *index < handlers.len() {
+                    let handler_info = &handlers[*index];
+                    let bearer = handler_info.target;
+
+                    // 1. Look up condition declaration.
+                    let decl = match core.program.conditions.get(handler_info.condition_name.as_str()) {
+                        Some(d) => d.clone(),
+                        None => {
+                            return Advance::Error(RuntimeError::new(format!(
+                                "undefined condition '{}' in event handler",
+                                handler_info.condition_name
+                            )));
+                        }
+                    };
+
+                    // 2. Verify condition still exists on bearer (snapshot safety).
+                    let cond_instance = {
+                        let conditions = state.read_conditions(&bearer).unwrap_or_default();
+                        match conditions.into_iter().find(|c| c.id == handler_info.instance_id) {
+                            Some(c) => c,
+                            None => {
+                                // Condition was removed — skip.
+                                *index += 1;
+                                continue;
+                            }
+                        }
+                    };
+
+                    // 3. Get the on-event clause body.
+                    let clause_body = match decl.clauses.get(handler_info.handler_index) {
+                        Some(ttrpg_ast::ast::ConditionClause::OnEvent(oe)) => oe.body.clone(),
+                        _ => {
+                            *index += 1;
+                            continue;
+                        }
+                    };
+
+                    // Snapshot current state for delta detection.
+                    let original_state = cond_instance.state_fields.clone();
+
+                    // 4. Push scope with proper bindings.
+                    env.push_scope();
+                    env.bind(decl.receiver_name.clone(), Value::Entity(bearer));
+                    env.bind("self".into(), cond_instance.to_value());
+                    for (pname, pval) in &cond_instance.params {
+                        env.bind(pname.clone(), pval.clone());
+                    }
+                    if !cond_instance.state_fields.is_empty() {
+                        env.bind(
+                            Name::from("state"),
+                            Value::Struct {
+                                name: Name::from("state"),
+                                fields: cond_instance.state_fields.clone(),
+                            },
+                        );
+                    }
+                    env.bind(Name::from("trigger"), payload.clone());
+
+                    // Push ConditionHandlerEpilogue as child. On its first
+                    // advance it pushes the Block; when the Block completes
+                    // it reads back state, pops scope, emits effects, and
+                    // pops itself. Its result then comes back here.
+                    return Advance::Push(Frame::ConditionHandlerEpilogue {
+                        target: bearer,
+                        condition_name: handler_info.condition_name.clone(),
+                        instance_id: handler_info.instance_id,
+                        original_state,
+                        block_stmts: Some(clause_body.node),
+                        child_result: None,
+                    });
+                }
+
+                // All handlers dispatched.
+                Advance::Pop(Value::Void)
+            }
+
+            // ── ConditionHandlerEpilogue frame (Phase 5.2) ──────────
+
+            Frame::ConditionHandlerEpilogue {
+                target,
+                condition_name: _,
+                instance_id,
+                original_state,
+                block_stmts,
+                child_result,
+            } => {
+                // Phase 1: push Block on first advance.
+                if let Some(stmts) = block_stmts.take() {
+                    return Advance::Push(Frame::Block {
+                        stmts,
+                        index: 0,
+                        result: Value::Void,
+                        expr_cache: Vec::new(),
+                        awaiting_fn: None,
+                        awaiting_error: None,
+                    });
+                }
+
+                // Phase 2: Block completed — do epilogue.
+                if let Some(result) = child_result.take() {
+                    if let Err(e) = result {
+                        env.pop_scope();
+                        return Advance::Error(e);
+                    }
+
+                    // Read back mutated state from scope before popping.
+                    // The scope was pushed by EmitConditionHandlers and is
+                    // still active (Block used its own inner scope).
+                    let mut final_state = None;
+                    if !original_state.is_empty()
+                        && let Some(Value::Struct { fields, .. }) = env
+                            .scopes
+                            .last()
+                            .and_then(|s| s.bindings.get(&Name::from("state")))
+                            .cloned()
+                    {
+                        final_state = Some(fields);
+                    }
+
+                    env.pop_scope();
+                    env.return_value = None;
+
+                    // Emit SetConditionState if state has fields (matching
+                    // recursive path which writes back unconditionally when
+                    // state is non-empty).
+                    if let Some(fields) = final_state
+                        && !fields.is_empty()
+                    {
+                        let effect = Effect::SetConditionState {
+                            target: *target,
+                            condition_id: *instance_id,
+                            fields,
+                        };
+                        if let Some(ref mut h) = handler {
+                            bridge_eval_with(core, env, state, *h, |tmp_env| {
+                                tmp_env.handler.handle(effect);
+                                Ok(Value::Void)
+                            })
+                            .ok();
+                        } else {
+                            bridge_eval_with(
+                                core,
+                                env,
+                                state,
+                                &mut NoYieldHandler,
+                                |tmp_env| {
+                                    tmp_env.handler.handle(effect);
+                                    Ok(Value::Void)
+                                },
+                            )
+                            .ok();
+                        }
+                    }
+
+                    return Advance::Pop(Value::Void);
+                }
+
+                // Should not reach here — block_stmts and child_result
+                // are the only two phases.
+                Advance::Pop(Value::Void)
+            }
+
             _ => Advance::Error(RuntimeError::new("frame type not yet implemented")),
         }
     }
@@ -2702,6 +2987,15 @@ impl Frame {
             Frame::ConditionOnApply { child_result, .. } => {
                 *child_result = Some(Ok(value));
             }
+            Frame::EmitHooks { child_result, .. } => {
+                *child_result = Some(Ok(value));
+            }
+            Frame::EmitConditionHandlers { child_result, .. } => {
+                *child_result = Some(Ok(value));
+            }
+            Frame::ConditionHandlerEpilogue { child_result, .. } => {
+                *child_result = Some(Ok(value));
+            }
             _ => {}
         }
     }
@@ -2739,7 +3033,10 @@ impl Frame {
             | Frame::MultiBudgetGuard { child_result, .. }
             | Frame::CostPayerGuard { child_result, .. }
             | Frame::EmitEval { child_result, .. }
-            | Frame::ConditionOnApply { child_result, .. } => {
+            | Frame::ConditionOnApply { child_result, .. }
+            | Frame::EmitHooks { child_result, .. }
+            | Frame::EmitConditionHandlers { child_result, .. }
+            | Frame::ConditionHandlerEpilogue { child_result, .. } => {
                 // Absorb the error so advance() can run cleanup
                 // (scope pop, budget restore) before propagating.
                 *child_result = Some(Err(error));
@@ -9183,6 +9480,292 @@ mod tests {
         assert!(
             matches!(&step, Step::Done(Value::Int(123))),
             "expected Done(123), got {step:?}"
+        );
+    }
+
+    // ── Phase 5.2 tests ────────────────────────────────────────
+
+    #[test]
+    fn differential_emit_with_hooks() {
+        // Emit an event that triggers a hook; verify the hook runs
+        // and modifies state identically in both paths.
+        let source = r#"
+            system Test {
+                entity Creature { HP: int }
+                event Healed(target: entity, amount: int)
+                action CastHeal on actor: Creature (target: Creature) {
+                    resolve {
+                        target.HP += 3
+                        emit Healed(target: target, amount: 3)
+                    }
+                }
+                hook BonusHeal on receiver: Creature (
+                    trigger: Healed(target: receiver)
+                ) {
+                    receiver.HP += 1
+                }
+            }
+        "#;
+        let (program, type_env) = setup(source);
+
+        // Recursive path
+        let interp = crate::Interpreter::new(&program, &type_env).unwrap();
+        let mut game1 = GameState::new();
+        let a1 = add_creature(&mut game1, 20);
+        let t1 = add_creature(&mut game1, 10);
+        let adapter1 = StateAdapter::new(game1);
+        let mut handler1 = ScriptedHandler::always_ack();
+        let result1 = adapter1.run(&mut handler1, |state, handler| {
+            interp.execute_action(
+                state,
+                handler,
+                "CastHeal",
+                a1,
+                vec![Value::Entity(t1)],
+            )
+        });
+
+        // Step-based path
+        let core = RuntimeCore::new(Arc::clone(&program), Arc::clone(&type_env), 1, 1);
+        let mut game2 = GameState::new();
+        let a2 = add_creature(&mut game2, 20);
+        let t2 = add_creature(&mut game2, 10);
+        let adapter2 = StateAdapter::new(game2);
+        let exec = Execution::start_action(
+            core,
+            adapter2,
+            "CastHeal",
+            a2,
+            vec![Value::Entity(t2)],
+            Span::dummy(),
+        )
+        .unwrap();
+        let mut handler2 = ScriptedHandler::always_ack();
+        let result2 = exec.run_with_handler(&mut handler2);
+
+        let kinds1 = structural_kinds(&handler1.log);
+        let kinds2 = structural_kinds(&handler2.log);
+        assert_eq!(
+            kinds1, kinds2,
+            "structural effect sequence mismatch for emit with hooks"
+        );
+
+        assert!(result1.is_ok(), "recursive failed: {result1:?}");
+        assert!(result2.is_ok(), "step-based failed: {result2:?}");
+
+        // Should have inner ActionStarted/Completed for the hook
+        let action_started_count = kinds1
+            .iter()
+            .filter(|k| **k == EffectKind::ActionStarted)
+            .count();
+        assert!(
+            action_started_count >= 2,
+            "expected hook ActionStarted (got {action_started_count})"
+        );
+    }
+
+    #[test]
+    fn differential_emit_condition_handler_state_mutation() {
+        // Condition with state fields and on-event handler that mutates state.
+        // Verifies SetConditionState is emitted correctly.
+        let source = r#"
+            system Test {
+                entity Creature { HP: int }
+                event TurnStarted(actor: entity)
+                condition Burning on bearer: Creature {
+                    state { ticks: int = 0 }
+                    on TurnStarted(actor: bearer) {
+                        state.ticks += 1
+                        bearer.HP -= 2
+                    }
+                }
+                action StartTurn on actor: Creature () {
+                    resolve {
+                        emit TurnStarted(actor: actor)
+                    }
+                }
+            }
+        "#;
+        let (program, type_env) = setup(source);
+
+        // Pre-apply the condition on the target. We need to use the
+        // recursive path to apply it, then compare event dispatch.
+
+        // Recursive path
+        let interp = crate::Interpreter::new(&program, &type_env).unwrap();
+        let mut game1 = GameState::new();
+        let a1 = add_creature(&mut game1, 20);
+        // Manually add a Burning condition
+        game1.add_condition(
+            &a1,
+            ActiveCondition {
+                id: 100,
+                name: Name::from("Burning"),
+                params: BTreeMap::new(),
+                bearer: a1,
+                gained_at: 1,
+                duration: Value::Str("Indefinite".into()),
+                invocation: None,
+                applied_at: 0,
+                source: Value::Str("Unknown".into()),
+                tags: BTreeSet::new(),
+                state_fields: {
+                    let mut m = BTreeMap::new();
+                    m.insert(Name::from("ticks"), Value::Int(0));
+                    m
+                },
+            },
+        );
+        let adapter1 = StateAdapter::new(game1);
+        let mut handler1 = ScriptedHandler::always_ack();
+        let result1 = adapter1.run(&mut handler1, |state, handler| {
+            interp.execute_action(state, handler, "StartTurn", a1, vec![])
+        });
+
+        // Step-based path
+        let core = RuntimeCore::new(Arc::clone(&program), Arc::clone(&type_env), 1, 1);
+        let mut game2 = GameState::new();
+        let a2 = add_creature(&mut game2, 20);
+        game2.add_condition(
+            &a2,
+            ActiveCondition {
+                id: 100,
+                name: Name::from("Burning"),
+                params: BTreeMap::new(),
+                bearer: a2,
+                gained_at: 1,
+                duration: Value::Str("Indefinite".into()),
+                invocation: None,
+                applied_at: 0,
+                source: Value::Str("Unknown".into()),
+                tags: BTreeSet::new(),
+                state_fields: {
+                    let mut m = BTreeMap::new();
+                    m.insert(Name::from("ticks"), Value::Int(0));
+                    m
+                },
+            },
+        );
+        let adapter2 = StateAdapter::new(game2);
+        let exec = Execution::start_action(
+            core,
+            adapter2,
+            "StartTurn",
+            a2,
+            vec![],
+            Span::dummy(),
+        )
+        .unwrap();
+        let mut handler2 = ScriptedHandler::always_ack();
+        let result2 = exec.run_with_handler(&mut handler2);
+
+        assert!(result1.is_ok(), "recursive failed: {result1:?}");
+        assert!(result2.is_ok(), "step-based failed: {result2:?}");
+
+        // Compare structural effect sequences
+        let kinds1 = structural_kinds(&handler1.log);
+        let kinds2 = structural_kinds(&handler2.log);
+        assert_eq!(
+            kinds1, kinds2,
+            "structural effect sequence mismatch for condition handler"
+        );
+
+        // Verify that the condition handler ran by checking state in the
+        // recursive path: ticks should be 1 (from 0), HP should be 18 (from 20).
+        let state1 = adapter1.into_inner();
+        let conds1 = state1.read_conditions(&a1).unwrap();
+        let burning1 = conds1.iter().find(|c| c.name.as_str() == "Burning").unwrap();
+        assert_eq!(
+            burning1.state_fields.get(&Name::from("ticks")),
+            Some(&Value::Int(1)),
+            "recursive path: condition state ticks should be 1"
+        );
+        let hp1 = state1.read_field(&a1, "HP").unwrap();
+        assert_eq!(hp1, Value::Int(18), "recursive path: HP should be 18");
+    }
+
+    #[test]
+    fn differential_emit_nested_hook_emits_event() {
+        // Hook body emits another event, which triggers another hook.
+        // Tests nested emit depth handling.
+        let source = r#"
+            system Test {
+                entity Creature { HP: int }
+                event DamageDealt(target: entity, amount: int)
+                event PainFelt(target: entity)
+                action Strike on actor: Creature (target: Creature) {
+                    resolve {
+                        target.HP -= 3
+                        emit DamageDealt(target: target, amount: 3)
+                    }
+                }
+                hook OnDamage on receiver: Creature (
+                    trigger: DamageDealt(target: receiver)
+                ) {
+                    emit PainFelt(target: receiver)
+                }
+                hook OnPain on receiver: Creature (
+                    trigger: PainFelt(target: receiver)
+                ) {
+                    receiver.HP -= 1
+                }
+            }
+        "#;
+        let (program, type_env) = setup(source);
+
+        // Recursive path
+        let interp = crate::Interpreter::new(&program, &type_env).unwrap();
+        let mut game1 = GameState::new();
+        let a1 = add_creature(&mut game1, 20);
+        let t1 = add_creature(&mut game1, 15);
+        let adapter1 = StateAdapter::new(game1);
+        let mut handler1 = ScriptedHandler::always_ack();
+        let result1 = adapter1.run(&mut handler1, |state, handler| {
+            interp.execute_action(
+                state,
+                handler,
+                "Strike",
+                a1,
+                vec![Value::Entity(t1)],
+            )
+        });
+
+        // Step-based path
+        let core = RuntimeCore::new(Arc::clone(&program), Arc::clone(&type_env), 1, 1);
+        let mut game2 = GameState::new();
+        let a2 = add_creature(&mut game2, 20);
+        let t2 = add_creature(&mut game2, 15);
+        let adapter2 = StateAdapter::new(game2);
+        let exec = Execution::start_action(
+            core,
+            adapter2,
+            "Strike",
+            a2,
+            vec![Value::Entity(t2)],
+            Span::dummy(),
+        )
+        .unwrap();
+        let mut handler2 = ScriptedHandler::always_ack();
+        let result2 = exec.run_with_handler(&mut handler2);
+
+        let kinds1 = structural_kinds(&handler1.log);
+        let kinds2 = structural_kinds(&handler2.log);
+        assert_eq!(
+            kinds1, kinds2,
+            "structural effect sequence mismatch for nested emit"
+        );
+
+        assert!(result1.is_ok(), "recursive failed: {result1:?}");
+        assert!(result2.is_ok(), "step-based failed: {result2:?}");
+
+        // Should have at least 3 ActionStarted: Strike + OnDamage + OnPain
+        let action_started_count = kinds1
+            .iter()
+            .filter(|k| **k == EffectKind::ActionStarted)
+            .count();
+        assert!(
+            action_started_count >= 3,
+            "expected 3 ActionStarted, got {action_started_count}"
         );
     }
 }
