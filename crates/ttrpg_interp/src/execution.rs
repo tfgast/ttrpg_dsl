@@ -91,6 +91,19 @@ impl ExecEnv {
 
 // ── Bridge evaluation ──────────────────────────────────────────
 
+/// Handler that panics on any forwarded (host-decided) effect.
+/// Used on the async path where bridge evaluation should only
+/// encounter locally-applied effects handled by the StateAdapter.
+struct NoYieldHandler;
+impl EffectHandler for NoYieldHandler {
+    fn handle(&mut self, effect: Effect) -> Response {
+        panic!(
+            "unexpected forwarded effect in bridge evaluation: {:?}",
+            EffectKind::of(&effect)
+        )
+    }
+}
+
 /// Evaluate a block using the existing recursive evaluator.
 ///
 /// Creates a temporary `Interpreter` and `Env` backed by the step-based
@@ -104,15 +117,6 @@ fn bridge_eval_block<S: WritableState>(
     state: &StateAdapter<S>,
     block: &Block,
 ) -> Result<Value, RuntimeError> {
-    struct NoYieldHandler;
-    impl EffectHandler for NoYieldHandler {
-        fn handle(&mut self, effect: Effect) -> Response {
-            panic!(
-                "unexpected forwarded effect in bridge evaluation: {:?}",
-                EffectKind::of(&effect)
-            )
-        }
-    }
     bridge_eval_with(core, env, state, &mut NoYieldHandler, |tmp_env| {
         crate::eval::eval_block(tmp_env, block)
     })
@@ -129,15 +133,6 @@ fn bridge_eval_stmt<S: WritableState>(
     stmt: &Spanned<StmtKind>,
     handler: Option<&mut dyn EffectHandler>,
 ) -> Result<Value, RuntimeError> {
-    struct NoYieldHandler;
-    impl EffectHandler for NoYieldHandler {
-        fn handle(&mut self, effect: Effect) -> Response {
-            panic!(
-                "unexpected forwarded effect in bridge statement evaluation: {:?}",
-                EffectKind::of(&effect)
-            )
-        }
-    }
     let stmt = stmt.clone();
     if let Some(h) = handler {
         bridge_eval_with(core, env, state, h, |tmp_env| {
@@ -157,15 +152,6 @@ fn bridge_eval_expr<S: WritableState>(
     state: &StateAdapter<S>,
     expr: &Spanned<ExprKind>,
 ) -> Result<Value, RuntimeError> {
-    struct NoYieldHandler;
-    impl EffectHandler for NoYieldHandler {
-        fn handle(&mut self, effect: Effect) -> Response {
-            panic!(
-                "unexpected forwarded effect in bridge evaluation: {:?}",
-                EffectKind::of(&effect)
-            )
-        }
-    }
     bridge_eval_with(core, env, state, &mut NoYieldHandler, |tmp_env| {
         crate::eval::eval_expr(tmp_env, expr)
     })
@@ -332,6 +318,9 @@ pub(crate) enum Frame {
 
     DeriveEval {
         name: Name,
+        args: Vec<Value>,
+        /// Whether this is a table (vs derive/mechanic).
+        is_table: bool,
         base_value: Option<Value>,
         modify_hooks: Vec<HookInfo>,
         hook_index: usize,
@@ -339,6 +328,13 @@ pub(crate) enum Frame {
 
     FunctionEval {
         name: Name,
+        args: Vec<(Name, Value)>,
+        /// Default expressions for missing optional params.
+        default_params: Vec<(Name, Spanned<ExprKind>)>,
+        body: Option<Block>,
+        /// Stores the child Block's result (Ok) or error (Err)
+        /// for scope cleanup in the next advance() call.
+        child_result: Option<Result<Value, RuntimeError>>,
     },
 
     EmitEval {
@@ -803,15 +799,27 @@ impl Frame {
                         Err(e) => Advance::Error(e),
                     };
                 }
-                // Execute the bridge call now (handler must be available).
+                // Execute the bridge call now.
                 if let Some(call_info) = env.bridge_call.take() {
-                    if let Some(h) = handler.as_mut() {
-                        let r = match call_info {
-                            BridgeCallInfo::Derive { ref name, ref args } => {
-                                let n = name.clone();
-                                let a = args.clone();
-                                let is_table = core.program.tables.contains_key(n.as_ref());
-                                bridge_eval_with(core, env, state, *h, |tmp_env| {
+                    let r = match call_info {
+                        BridgeCallInfo::Derive { ref name, ref args } => {
+                            let n = name.clone();
+                            let a = args.clone();
+                            let is_table = core.program.tables.contains_key(n.as_ref());
+                            if let Some(ref mut h) = handler {
+                                bridge_eval_with(core, env, state, *h, move |tmp_env| {
+                                    if is_table {
+                                        crate::call::dispatch_table_with_values(
+                                            tmp_env, &n, a, Span::dummy(),
+                                        )
+                                    } else {
+                                        crate::call::evaluate_fn_with_values(
+                                            tmp_env, &n, a, Span::dummy(),
+                                        )
+                                    }
+                                })
+                            } else {
+                                bridge_eval_with(core, env, state, &mut NoYieldHandler, move |tmp_env| {
                                     if is_table {
                                         crate::call::dispatch_table_with_values(
                                             tmp_env, &n, a, Span::dummy(),
@@ -823,39 +831,57 @@ impl Frame {
                                     }
                                 })
                             }
-                            BridgeCallInfo::Mechanic { ref name, ref args } => {
-                                let n = name.clone();
-                                let a = args.clone();
-                                bridge_eval_with(core, env, state, *h, |tmp_env| {
+                        }
+                        BridgeCallInfo::Mechanic { ref name, ref args } => {
+                            let n = name.clone();
+                            let a = args.clone();
+                            if let Some(ref mut h) = handler {
+                                bridge_eval_with(core, env, state, *h, move |tmp_env| {
+                                    crate::call::evaluate_fn_with_values(
+                                        tmp_env, &n, a, Span::dummy(),
+                                    )
+                                })
+                            } else {
+                                bridge_eval_with(core, env, state, &mut NoYieldHandler, move |tmp_env| {
                                     crate::call::evaluate_fn_with_values(
                                         tmp_env, &n, a, Span::dummy(),
                                     )
                                 })
                             }
-                            BridgeCallInfo::Function { ref name, ref args } => {
-                                let n = name.clone();
-                                let a = args.clone();
-                                bridge_eval_with(core, env, state, *h, |tmp_env| {
+                        }
+                        BridgeCallInfo::Function { ref name, ref args } => {
+                            let n = name.clone();
+                            let a = args.clone();
+                            if let Some(ref mut h) = handler {
+                                bridge_eval_with(core, env, state, *h, move |tmp_env| {
+                                    crate::call::evaluate_function_with_values(
+                                        tmp_env, &n, a, Span::dummy(),
+                                    )
+                                })
+                            } else {
+                                bridge_eval_with(core, env, state, &mut NoYieldHandler, move |tmp_env| {
                                     crate::call::evaluate_function_with_values(
                                         tmp_env, &n, a, Span::dummy(),
                                     )
                                 })
                             }
-                            BridgeCallInfo::Expr { ref expr } => {
-                                let e = expr.clone();
+                        }
+                        BridgeCallInfo::Expr { ref expr } => {
+                            let e = expr.clone();
+                            if let Some(ref mut h) = handler {
                                 bridge_eval_with(core, env, state, *h, |tmp_env| {
                                     crate::eval::eval_expr(tmp_env, &e)
                                 })
+                            } else {
+                                bridge_eval_with(core, env, state, &mut NoYieldHandler, |tmp_env| {
+                                    crate::eval::eval_expr(tmp_env, &e)
+                                })
                             }
-                        };
-                        match r {
-                            Ok(v) => Advance::Pop(v),
-                            Err(e) => Advance::Error(e),
                         }
-                    } else {
-                        Advance::Error(RuntimeError::new(
-                            "BridgeCall requires a handler (use run_with_handler)"
-                        ))
+                    };
+                    match r {
+                        Ok(v) => Advance::Pop(v),
+                        Err(e) => Advance::Error(e),
                     }
                 } else {
                     Advance::Error(RuntimeError::new("BridgeCall frame has no call info"))
@@ -955,6 +981,114 @@ impl Frame {
                         param.name
                     )))
                 }
+            }
+
+            Frame::DeriveEval {
+                name,
+                args,
+                is_table,
+                base_value,
+                modify_hooks: _,
+                hook_index: _,
+            } => {
+                if let Some(val) = base_value.take() {
+                    // Modify hooks deferred to Phase 5; return base value.
+                    return Advance::Pop(val);
+                }
+
+                // Bridge-evaluate the derive/table/mechanic body.
+                let n = name.clone();
+                let a = std::mem::take(args);
+                let is_tbl = *is_table;
+                let result = if let Some(ref mut h) = handler {
+                    bridge_eval_with(core, env, state, *h, move |tmp_env| {
+                        if is_tbl {
+                            crate::call::dispatch_table_with_values(
+                                tmp_env, &n, a, Span::dummy(),
+                            )
+                        } else {
+                            crate::call::evaluate_fn_with_values(
+                                tmp_env, &n, a, Span::dummy(),
+                            )
+                        }
+                    })
+                } else {
+                    bridge_eval_with(core, env, state, &mut NoYieldHandler, move |tmp_env| {
+                        if is_tbl {
+                            crate::call::dispatch_table_with_values(
+                                tmp_env, &n, a, Span::dummy(),
+                            )
+                        } else {
+                            crate::call::evaluate_fn_with_values(
+                                tmp_env, &n, a, Span::dummy(),
+                            )
+                        }
+                    })
+                };
+
+                match result {
+                    Ok(val) => Advance::Pop(val),
+                    Err(e) => Advance::Error(e),
+                }
+            }
+
+            Frame::FunctionEval {
+                name,
+                args,
+                default_params,
+                body,
+                child_result,
+            } => {
+                // Phase 2: child Block completed — clean up and return.
+                if let Some(result) = child_result.take() {
+                    env.pop_scope();
+                    env.return_value = None;
+                    return match result {
+                        Ok(val) => Advance::Pop(val),
+                        Err(e) => Advance::Error(e),
+                    };
+                }
+
+                // Phase 1: push scope, bind args, evaluate defaults,
+                // push Block for body.
+                if let Some(block) = body.take() {
+                    env.push_scope();
+                    for (pname, pval) in args.drain(..) {
+                        env.bind(pname, pval);
+                    }
+
+                    // Evaluate defaults via bridge (each bound immediately
+                    // so later defaults can reference earlier ones).
+                    for (dname, dexpr) in default_params.drain(..) {
+                        let result = if let Some(ref mut h) = handler {
+                            bridge_eval_with(
+                                core, env, state, *h,
+                                |tmp_env| crate::eval::eval_expr(tmp_env, &dexpr),
+                            )
+                        } else {
+                            bridge_eval_expr(core, env, state, &dexpr)
+                        };
+                        match result {
+                            Ok(val) => env.bind(dname, val),
+                            Err(e) => {
+                                env.pop_scope();
+                                return Advance::Error(e);
+                            }
+                        }
+                    }
+
+                    return Advance::Push(Frame::Block {
+                        stmts: block.node,
+                        index: 0,
+                        result: Value::Void,
+                        expr_cache: Vec::new(),
+                    });
+                }
+
+                // No body and no child result — shouldn't happen.
+                Advance::Error(RuntimeError::new(format!(
+                    "FunctionEval '{name}': no body and no result"
+                )))
             }
 
             Frame::RollDiceWaiting {
@@ -1161,6 +1295,10 @@ impl Frame {
                 // UseDefault → Block child completed.
                 *result = Some(value);
             }
+            Frame::FunctionEval { child_result, .. } => {
+                // Block child completed.
+                *child_result = Some(Ok(value));
+            }
             _ => {}
         }
     }
@@ -1184,6 +1322,12 @@ impl Frame {
             ) => {
                 *body_result = Some(Err(error));
                 *step = ActionStep::EmitCompleted;
+                Ok(())
+            }
+            Frame::FunctionEval { child_result, .. } => {
+                // Absorb the error so advance() can pop scope before
+                // propagating.
+                *child_result = Some(Err(error));
                 Ok(())
             }
             _ => Err(error),
@@ -1594,28 +1738,30 @@ impl<S: WritableState> Execution<S> {
 
     /// Start evaluating a derive or table.
     ///
-    /// Only works with `run_with_handler` — the bridge evaluation requires
-    /// a synchronous handler. `poll()/respond()` will panic if the derive
-    /// triggers host-decided effects.
+    /// Works on both sync (`run_with_handler`) and async (`poll/respond`)
+    /// paths. On the async path, host-decided effects within the derive
+    /// body (e.g., `roll()`) will panic — those require Phase 4.7
+    /// (replay-with-cache) for proper yielding.
     pub fn start_derive(
         core: Rc<RuntimeCore>,
         state: StateAdapter<S>,
         name: &str,
         args: Vec<Value>,
     ) -> Result<Self, RuntimeError> {
-        if !core.program.derives.contains_key(name) && !core.program.tables.contains_key(name) {
+        let is_table = core.program.tables.contains_key(name);
+        if !core.program.derives.contains_key(name) && !is_table {
             return Err(RuntimeError::new(format!(
                 "undefined derive or table '{name}'"
             )));
         }
         let mut exec = Self::new(core, state);
-        exec.frames.push(Frame::BridgeCall {
-            result: None,
-        });
-        // Store call info for run_with_handler to execute
-        exec.env.bridge_call = Some(BridgeCallInfo::Derive {
+        exec.frames.push(Frame::DeriveEval {
             name: Name::from(name),
             args,
+            is_table,
+            base_value: None,
+            modify_hooks: Vec::new(),
+            hook_index: 0,
         });
         Ok(exec)
     }
@@ -1633,35 +1779,88 @@ impl<S: WritableState> Execution<S> {
             )));
         }
         let mut exec = Self::new(core, state);
-        exec.frames.push(Frame::BridgeCall {
-            result: None,
-        });
-        exec.env.bridge_call = Some(BridgeCallInfo::Mechanic {
+        exec.frames.push(Frame::DeriveEval {
             name: Name::from(name),
             args,
+            is_table: false,
+            base_value: None,
+            modify_hooks: Vec::new(),
+            hook_index: 0,
         });
         Ok(exec)
     }
 
     /// Start evaluating a function.
+    ///
+    /// Looks up the function declaration, maps positional args, collects
+    /// default expressions, and pushes a `FunctionEval` frame that pushes
+    /// a `Block` frame for the body.
     pub fn start_function(
         core: Rc<RuntimeCore>,
         state: StateAdapter<S>,
         name: &str,
         args: Vec<Value>,
     ) -> Result<Self, RuntimeError> {
-        if !core.program.functions.contains_key(name) {
+        let fn_decl = core
+            .program
+            .functions
+            .get(name)
+            .ok_or_else(|| RuntimeError::new(format!("undefined function '{name}'")))?
+            .clone();
+
+        let fn_info = core
+            .type_env
+            .lookup_fn(name)
+            .ok_or_else(|| {
+                RuntimeError::new(format!(
+                    "internal error: no type info for function '{name}'"
+                ))
+            })?
+            .clone();
+
+        if args.len() > fn_info.params.len() {
             return Err(RuntimeError::new(format!(
-                "undefined function '{name}'"
+                "too many arguments: '{}' takes {} params, got {}",
+                name,
+                fn_info.params.len(),
+                args.len()
             )));
         }
+
+        // Map positional args to param names
+        let mut bound: Vec<(Name, Value)> = Vec::new();
+        for (i, val) in args.into_iter().enumerate() {
+            bound.push((fn_info.params[i].name.clone(), val));
+        }
+
+        // Collect default expressions for missing optional params.
+        // They'll be evaluated in FunctionEval's advance method via bridge.
+        let mut default_params = Vec::new();
+        for i in bound.len()..fn_info.params.len() {
+            if fn_info.params[i].has_default {
+                if let Some(default_expr) =
+                    fn_decl.params.get(i).and_then(|p| p.default.as_ref())
+                {
+                    default_params.push((
+                        fn_info.params[i].name.clone(),
+                        default_expr.clone(),
+                    ));
+                }
+            } else {
+                return Err(RuntimeError::new(format!(
+                    "missing required argument '{}' for '{}'",
+                    fn_info.params[i].name, name
+                )));
+            }
+        }
+
         let mut exec = Self::new(core, state);
-        exec.frames.push(Frame::BridgeCall {
-            result: None,
-        });
-        exec.env.bridge_call = Some(BridgeCallInfo::Function {
+        exec.frames.push(Frame::FunctionEval {
             name: Name::from(name),
-            args,
+            args: bound,
+            default_params,
+            body: Some(fn_decl.body.clone()),
+            child_result: None,
         });
         Ok(exec)
     }
@@ -5996,5 +6195,223 @@ mod tests {
         // Acknowledged is not valid for SpawnEntity
         let result = exec.poll();
         assert!(matches!(result, Err(PollError::Runtime(_))));
+    }
+
+    // ── DeriveEval / FunctionEval tests (Phase 4.5) ─────────
+
+    #[test]
+    fn derive_eval_simple() {
+        let (core, _) = make_core(
+            r#"
+            system Test {
+                entity Creature { HP: int }
+                derive max_hp(actor: Creature) -> int {
+                    actor.HP * 2
+                }
+            }
+            "#,
+        );
+
+        let mut game = GameState::new();
+        let actor = add_creature(&mut game, 15);
+        let adapter = StateAdapter::new(game);
+
+        let exec = Execution::start_derive(
+            core, adapter, "max_hp", vec![Value::Entity(actor)],
+        )
+        .unwrap();
+
+        let mut handler = ScriptedHandler::always_ack();
+        let result = exec.run_with_handler(&mut handler).unwrap();
+        assert_eq!(result, Value::Int(30));
+    }
+
+    #[test]
+    fn derive_eval_poll_path() {
+        // DeriveEval should work on the async poll/respond path
+        // (for derives without host-decided effects).
+        let (core, _) = make_core(
+            r#"
+            system Test {
+                entity Creature { HP: int }
+                derive max_hp(actor: Creature) -> int {
+                    actor.HP + 10
+                }
+            }
+            "#,
+        );
+
+        let mut game = GameState::new();
+        let actor = add_creature(&mut game, 15);
+        let adapter = StateAdapter::new(game);
+
+        let mut exec = Execution::start_derive(
+            core, adapter, "max_hp", vec![Value::Entity(actor)],
+        )
+        .unwrap();
+
+        let step = exec.poll().unwrap();
+        assert!(matches!(step, Step::Done(Value::Int(25))));
+    }
+
+    #[test]
+    fn mechanic_eval_simple() {
+        let (core, _) = make_core(
+            r#"
+            system Test {
+                entity Creature { HP: int }
+                mechanic compute_bonus(actor: Creature) -> int {
+                    actor.HP - 10
+                }
+            }
+            "#,
+        );
+
+        let mut game = GameState::new();
+        let actor = add_creature(&mut game, 20);
+        let adapter = StateAdapter::new(game);
+
+        let exec = Execution::start_mechanic(
+            core, adapter, "compute_bonus", vec![Value::Entity(actor)],
+        )
+        .unwrap();
+
+        let mut handler = ScriptedHandler::always_ack();
+        let result = exec.run_with_handler(&mut handler).unwrap();
+        assert_eq!(result, Value::Int(10)); // 20 - 10
+    }
+
+    #[test]
+    fn function_eval_simple() {
+        let (core, _) = make_core(
+            r#"
+            system Test {
+                entity Creature { HP: int }
+                function add(a: int, b: int) -> int {
+                    a + b
+                }
+            }
+            "#,
+        );
+
+        let game = GameState::new();
+        let adapter = StateAdapter::new(game);
+
+        let exec = Execution::start_function(
+            core, adapter, "add", vec![Value::Int(3), Value::Int(7)],
+        )
+        .unwrap();
+
+        let mut handler = ScriptedHandler::always_ack();
+        let result = exec.run_with_handler(&mut handler).unwrap();
+        assert_eq!(result, Value::Int(10));
+    }
+
+    #[test]
+    fn function_eval_poll_path() {
+        // FunctionEval pushes a Block frame, so it works on the
+        // async path for non-effectful function bodies.
+        let (core, _) = make_core(
+            r#"
+            system Test {
+                entity Creature { HP: int }
+                function add(a: int, b: int) -> int {
+                    a + b
+                }
+            }
+            "#,
+        );
+
+        let game = GameState::new();
+        let adapter = StateAdapter::new(game);
+
+        let mut exec = Execution::start_function(
+            core, adapter, "add", vec![Value::Int(3), Value::Int(7)],
+        )
+        .unwrap();
+
+        let step = exec.poll().unwrap();
+        assert!(matches!(step, Step::Done(Value::Int(10))));
+    }
+
+    #[test]
+    fn function_eval_with_default() {
+        let (core, _) = make_core(
+            r#"
+            system Test {
+                entity Creature { HP: int }
+                function add(a: int, b: int = 5) -> int {
+                    a + b
+                }
+            }
+            "#,
+        );
+
+        let game = GameState::new();
+        let adapter = StateAdapter::new(game);
+
+        let exec = Execution::start_function(
+            core, adapter, "add", vec![Value::Int(3)],
+        )
+        .unwrap();
+
+        let mut handler = ScriptedHandler::always_ack();
+        let result = exec.run_with_handler(&mut handler).unwrap();
+        assert_eq!(result, Value::Int(8));
+    }
+
+    #[test]
+    fn function_eval_with_mutations() {
+        // Function body that mutates entity state.
+        let (core, _) = make_core(
+            r#"
+            system Test {
+                entity Creature { HP: int }
+                function heal(target: Creature, amount: int) {
+                    target.HP += amount
+                }
+            }
+            "#,
+        );
+
+        let mut game = GameState::new();
+        let target = add_creature(&mut game, 10);
+        let adapter = StateAdapter::new(game);
+
+        let exec = Execution::start_function(
+            core,
+            adapter,
+            "heal",
+            vec![Value::Entity(target), Value::Int(5)],
+        )
+        .unwrap();
+
+        let mut handler = ScriptedHandler::always_ack();
+        exec.run_with_handler(&mut handler).unwrap();
+    }
+
+    #[test]
+    fn expr_eval_poll_path() {
+        // BridgeCall now works on async path for expressions
+        // without host-decided effects.
+        let (core, _) = make_core(
+            r#"
+            system Test {
+                entity Creature { HP: int }
+            }
+            "#,
+        );
+
+        let game = GameState::new();
+        let adapter = StateAdapter::new(game);
+
+        let expr = Spanned {
+            node: ExprKind::IntLit(42),
+            span: Span::dummy(),
+        };
+        let mut exec = Execution::start_expr(core, adapter, expr);
+
+        let step = exec.poll().unwrap();
+        assert!(matches!(step, Step::Done(Value::Int(42))));
     }
 }
