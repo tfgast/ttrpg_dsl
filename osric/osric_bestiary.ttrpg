@@ -41,7 +41,7 @@ system "OSRIC Bestiary" {
             attacks: [MonsterAttack { name: "Short sword", damage: 1d4 }],
             size: Size.Small,
             special: ["Infravision"]
-        } with [Infravision(range: 60ft)]
+        } with [Humanoid, Infravision(range: 60ft)]
     }
 
     function create_goblin() -> Monster {
@@ -59,7 +59,7 @@ system "OSRIC Bestiary" {
             attacks: [MonsterAttack { name: "Short sword", damage: 1d6 }],
             size: Size.Small,
             special: ["Infravision"]
-        } with [Infravision(range: 60ft)]
+        } with [Humanoid, Infravision(range: 60ft)]
     }
 
     function create_orc() -> Monster {
@@ -77,7 +77,7 @@ system "OSRIC Bestiary" {
             attacks: [MonsterAttack { name: "Scimitar", damage: 1d8 }],
             size: Size.Medium,
             special: ["Infravision"]
-        } with [Infravision(range: 60ft)]
+        } with [Humanoid, Infravision(range: 60ft)]
     }
 
     function create_gnoll() -> Monster {
@@ -95,7 +95,7 @@ system "OSRIC Bestiary" {
             attacks: [MonsterAttack { name: "Battle axe", damage: 2d4 }],
             size: Size.Large,
             special: ["Infravision"]
-        } with [Infravision(range: 60ft)]
+        } with [Humanoid, Infravision(range: 60ft)]
     }
 
     function create_bugbear() -> Monster {
@@ -113,7 +113,7 @@ system "OSRIC Bestiary" {
             attacks: [MonsterAttack { name: "Morning star", damage: 2d4 }],
             size: Size.Large,
             special: ["Infravision", "Surprise"]
-        } with [Infravision(range: 60ft)]
+        } with [Humanoid, Infravision(range: 60ft)]
     }
 
     function create_ogre() -> Monster {
@@ -131,7 +131,7 @@ system "OSRIC Bestiary" {
             attacks: [MonsterAttack { name: "Club", damage: 1d10 }],
             size: Size.Large,
             special: []
-        }
+        } with [Humanoid]
     }
 
 
@@ -305,7 +305,7 @@ system "OSRIC Bestiary" {
             attacks: [MonsterAttack { name: "Bite", damage: 1d3 }],
             size: Size.Tiny,
             special: ["Disease"]
-        }
+        } with [Animal]
     }
 
     function create_giant_spider() -> Monster {
@@ -324,7 +324,7 @@ system "OSRIC Bestiary" {
             attacks: [MonsterAttack { name: "Bite", damage: 1d8 }],
             size: Size.Large,
             special: ["VenomousBite", "Webs"]
-        } with [ImmuneToPoison]
+        } with [Vermin, ImmuneToPoison]
     }
 
     function create_dire_wolf() -> Monster {
@@ -342,7 +342,7 @@ system "OSRIC Bestiary" {
             attacks: [MonsterAttack { name: "Bite", damage: 2d4 }],
             size: Size.Medium,
             special: []
-        }
+        } with [Animal]
     }
 
     function create_owlbear() -> Monster {
@@ -364,7 +364,7 @@ system "OSRIC Bestiary" {
             ],
             size: Size.Large,
             special: ["HugAttack"]
-        }
+        } with [MagicalBeast]
     }
 
 
@@ -387,7 +387,7 @@ system "OSRIC Bestiary" {
             attacks: [MonsterAttack { name: "Bite", damage: 1d10 }],
             size: Size.Medium,
             special: ["PetrifyingGaze"]
-        } with [PetrifyingGaze]
+        } with [MagicalBeast, PetrifyingGaze]
     }
 
     function create_troll() -> Monster {
@@ -410,6 +410,7 @@ system "OSRIC Bestiary" {
             size: Size.Large,
             special: ["Regeneration", "VulnerableToFire", "VulnerableToAcid"]
         } with [
+            Giant,
             Regeneration(hp_per_round: 3),
             VulnerableToFire(extra_damage: 0),
             VulnerableToAcid(extra_damage: 0),
@@ -431,7 +432,7 @@ system "OSRIC Bestiary" {
             attacks: [MonsterAttack { name: "Snakebite", damage: 1d6 }],
             size: Size.Medium,
             special: ["PetrifyingGaze", "PoisonSnakebite"]
-        } with [PetrifyingGaze]
+        } with [MagicalBeast, PetrifyingGaze]
     }
 
     function create_gelatinous_cube() -> Monster {
@@ -450,7 +451,7 @@ system "OSRIC Bestiary" {
             size: Size.Large,
             special: ["ParalysingTouch", "Surprise", "Ooze"]
         } with [
-            Construct,
+            Ooze,
             ImmuneToLightning,
             ImmuneToMindControl,
         ]
@@ -474,7 +475,7 @@ system "OSRIC Bestiary" {
             ],
             size: Size.Medium,
             special: ["RustTouch"]
-        }
+        } with [MagicalBeast]
     }
 
 
@@ -497,7 +498,7 @@ system "OSRIC Bestiary" {
             attacks: [MonsterAttack { name: "Club", damage: 2d8 }],
             size: Size.Large,
             special: ["RockThrowing"]
-        }
+        } with [Giant]
     }
 
     function create_fire_giant() -> Monster {
@@ -515,7 +516,7 @@ system "OSRIC Bestiary" {
             attacks: [MonsterAttack { name: "Sword", damage: 5d6 }],
             size: Size.Large,
             special: ["RockThrowing", "ImmuneToFire"]
-        } with [ImmuneToFire]
+        } with [Giant, ImmuneToFire]
     }
 
 
@@ -557,6 +558,7 @@ system "OSRIC Bestiary" {
                 breath_charges: 3
             }
         } with [
+            Dragon,
             Infravision(range: 60ft),
             FearAura(range: 30ft),
             ImmuneToCold,
@@ -594,6 +596,7 @@ system "OSRIC Bestiary" {
                 breath_charges: 3
             }
         } with [
+            Dragon,
             Infravision(range: 60ft),
             FearAura(range: 30ft),
             ImmuneToAcid,
@@ -630,6 +633,7 @@ system "OSRIC Bestiary" {
                 breath_charges: 3
             }
         } with [
+            Dragon,
             Infravision(range: 60ft),
             FearAura(range: 60ft),
             ImmuneToFire,
@@ -667,7 +671,7 @@ system "OSRIC Bestiary" {
             ],
             size: Size.Medium,
             special: ["Stench", "ChameleonSkin", "Infravision"]
-        } with [Stench, Infravision(range: 60ft)]
+        } with [Humanoid, Stench, Infravision(range: 60ft)]
     }
 
     function create_lizard_man() -> Monster {
@@ -689,7 +693,7 @@ system "OSRIC Bestiary" {
             ],
             size: Size.Medium,
             special: ["Aquatic", "Swim120ft"]
-        }
+        } with [Humanoid]
     }
 
     function create_shrieker() -> Monster {
@@ -726,7 +730,7 @@ system "OSRIC Bestiary" {
             attacks: [MonsterAttack { name: "Bite", damage: 1d1 }],
             size: Size.Small,
             special: ["WeakPoison"]
-        } with [WeakPoison, ImmuneToMindControl]
+        } with [Vermin, WeakPoison, ImmuneToMindControl]
     }
 
     function create_giant_ant_worker() -> Monster {
@@ -744,7 +748,7 @@ system "OSRIC Bestiary" {
             attacks: [MonsterAttack { name: "Bite", damage: 1d6 }],
             size: Size.Small,
             special: ["Climber"]
-        } with [ImmuneToMindControl]
+        } with [Vermin, ImmuneToMindControl]
     }
 
     function create_giant_ant_soldier() -> Monster {
@@ -762,7 +766,7 @@ system "OSRIC Bestiary" {
             attacks: [MonsterAttack { name: "Bite", damage: 2d4 }],
             size: Size.Medium,
             special: ["VenomousSting", "Climber"]
-        } with [VenomousSting, ImmuneToMindControl]
+        } with [Vermin, VenomousSting, ImmuneToMindControl]
     }
 
     function create_stirge() -> Monster {
@@ -780,7 +784,7 @@ system "OSRIC Bestiary" {
             attacks: [MonsterAttack { name: "Proboscis", damage: 1d3 }],
             size: Size.Small,
             special: ["BloodDrain", "Fly180ft"]
-        } with [BloodDrain]
+        } with [MagicalBeast, BloodDrain]
     }
 
     function create_harpy() -> Monster {
@@ -802,7 +806,7 @@ system "OSRIC Bestiary" {
             ],
             size: Size.Medium,
             special: ["CharmSong", "Fly150ft"]
-        } with [CharmSong]
+        } with [Humanoid, CharmSong]
     }
 
     function create_piercer(hd: int) -> Monster {
@@ -826,7 +830,7 @@ system "OSRIC Bestiary" {
             attacks: [MonsterAttack { name: "Drop", damage: dmg }],
             size: sz,
             special: ["CeilingDrop"]
-        } with [CeilingDrop, ImmuneToMindControl]
+        } with [Vermin, CeilingDrop, ImmuneToMindControl]
     }
 
     // ── Oozes and Fungi ─────────────────────────────────────
@@ -917,6 +921,7 @@ system "OSRIC Bestiary" {
                 ]
             }
         } with [
+            Outsider,
             ImmuneToFire,
             Infravision(range: 60ft),
         ]

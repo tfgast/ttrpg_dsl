@@ -77,7 +77,7 @@ assert any([c.name == "PetrifyingGaze" for c in conditions(basilisk)])
 
 let cube = create_gelatinous_cube()
 assert_eq cube.intelligence, 0
-assert any([c.name == "Construct" for c in conditions(cube)])
+assert any([c.name == "Ooze" for c in conditions(cube)])
 assert any([c.name == "ImmuneToLightning" for c in conditions(cube)])
 assert any([c.name == "ImmuneToMindControl" for c in conditions(cube)])
 
@@ -298,3 +298,133 @@ assert_condition stench_overlap, StenchNauseated
 // Exit second zone — fully clear
 emit ZoneExited(target: stench_overlap, zone: stench_zone2)
 assert_no_condition stench_overlap, StenchNauseated
+
+// ── Creature taxonomy markers ──────────────────────────────
+// Every bestiary monster should have exactly one primary type condition.
+
+// Humanoids
+let tx_kobold = create_kobold()
+let tx_goblin = create_goblin()
+let tx_orc = create_orc()
+let tx_gnoll = create_gnoll()
+let tx_bugbear = create_bugbear()
+let tx_ogre = create_ogre()
+let tx_trog = create_troglodyte()
+let tx_lizard = create_lizard_man()
+let tx_harpy = create_harpy()
+assert_condition tx_kobold, Humanoid
+assert_condition tx_goblin, Humanoid
+assert_condition tx_orc, Humanoid
+assert_condition tx_gnoll, Humanoid
+assert_condition tx_bugbear, Humanoid
+assert_condition tx_ogre, Humanoid
+assert_condition tx_trog, Humanoid
+assert_condition tx_lizard, Humanoid
+assert_condition tx_harpy, Humanoid
+
+// Animals
+let tx_rat = create_giant_rat()
+let tx_wolf = create_dire_wolf()
+assert_condition tx_rat, Animal
+assert_condition tx_wolf, Animal
+
+// Magical beasts
+let tx_owlbear = create_owlbear()
+let tx_basilisk = create_basilisk()
+let tx_medusa = create_medusa()
+let tx_rustmon = create_rust_monster()
+let tx_stirge = create_stirge()
+assert_condition tx_owlbear, MagicalBeast
+assert_condition tx_basilisk, MagicalBeast
+assert_condition tx_medusa, MagicalBeast
+assert_condition tx_rustmon, MagicalBeast
+assert_condition tx_stirge, MagicalBeast
+
+// Vermin
+let tx_spider = create_giant_spider()
+let tx_centipede = create_giant_centipede()
+let tx_ant_w = create_giant_ant_worker()
+let tx_ant_s = create_giant_ant_soldier()
+let tx_piercer = create_piercer(2)
+assert_condition tx_spider, Vermin
+assert_condition tx_centipede, Vermin
+assert_condition tx_ant_w, Vermin
+assert_condition tx_ant_s, Vermin
+assert_condition tx_piercer, Vermin
+
+// Giants
+let tx_hill = create_hill_giant()
+let tx_fire = create_fire_giant()
+let tx_troll = create_troll()
+assert_condition tx_hill, Giant
+assert_condition tx_fire, Giant
+assert_condition tx_troll, Giant
+
+// Dragons
+let tx_white = create_white_dragon(3)
+let tx_black = create_black_dragon(4)
+let tx_red = create_red_dragon(5)
+assert_condition tx_white, Dragon
+assert_condition tx_black, Dragon
+assert_condition tx_red, Dragon
+
+// Oozes (primary type, not Construct)
+let tx_cube = create_gelatinous_cube()
+let tx_gslime = create_green_slime()
+let tx_gooze = create_grey_ooze()
+assert_condition tx_cube, Ooze
+assert_condition tx_gslime, Ooze
+assert_condition tx_gooze, Ooze
+assert_no_condition tx_cube, Construct
+
+// Fungi
+let tx_shrieker = create_shrieker()
+let tx_ymold = create_yellow_mold()
+assert_condition tx_shrieker, Fungus
+assert_condition tx_ymold, Fungus
+
+// Outsider
+let tx_efreet = create_efreet()
+assert_condition tx_efreet, Outsider
+
+// ── Creature type query derives ────────────────────────────
+
+// is_person — Characters are always persons
+spawn Character test_pc { name: "Test PC", classes: [ClassLevel { class: Fighter, level: 1 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 10, hp: 10 } }
+assert is_person(test_pc)
+
+// is_person — Humanoid monsters are persons
+let test_orc = create_orc()
+assert is_person(test_orc)
+
+// is_person — Non-humanoid monsters are not persons
+let test_rat = create_giant_rat()
+assert !is_person(test_rat)
+let test_skel = create_skeleton()
+assert !is_person(test_skel)
+
+// is_living — living creatures
+assert is_living(test_orc)
+assert is_living(test_rat)
+assert is_living(create_troll())
+
+// is_living — undead and constructs are not living
+assert !is_living(test_skel)
+assert !is_living(create_vampire())
+
+// is_animal
+assert is_animal(test_rat)
+assert is_animal(create_dire_wolf())
+assert !is_animal(test_orc)
+assert !is_animal(create_owlbear())
+
+// is_undead
+assert is_undead(test_skel)
+assert is_undead(create_vampire())
+assert !is_undead(test_orc)
+assert !is_undead(test_rat)
+
+// is_extraplanar
+assert is_extraplanar(create_efreet())
+assert !is_extraplanar(test_orc)
+assert !is_extraplanar(test_skel)

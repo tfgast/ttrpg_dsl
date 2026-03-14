@@ -244,8 +244,57 @@ system "OSRIC Monster Traits" {
     // ========================================================
     //  CREATURE TYPE MARKERS
     //
-    //  Used by game logic (e.g., turn undead, hold person).
+    //  Primary taxonomy conditions for spell targeting and
+    //  game logic (turn undead, charm person, hold monster,
+    //  protection from evil, etc.).
+    //
+    //  Every monster should have exactly one primary type.
+    //  Characters are implicitly Humanoid.
     // ========================================================
+
+    // Humanoid — bipedal, roughly human-shaped creatures.
+    // Includes humans, demi-humans, and humanoid monsters
+    // (kobolds, orcs, gnolls, ogres, etc.).
+    // Targeted by: Charm Person, Hold Person, Command.
+    condition Humanoid on bearer: entity
+        stacking first
+    {}
+
+    // Animal — mundane beasts with animal-level intelligence.
+    // Targeted by: Speak with Animals, Animal Friendship.
+    condition Animal on bearer: entity
+        stacking first
+    {}
+
+    // MagicalBeast — creatures with animal bodies but magical
+    // abilities or above-animal intelligence (owlbears,
+    // basilisks, stirges, medusae).
+    condition MagicalBeast on bearer: entity
+        stacking first
+    {}
+
+    // Vermin — giant insects, arachnids, and similar mindless
+    // invertebrates (giant centipedes, giant ants, piercers).
+    condition Vermin on bearer: entity
+        stacking first
+    {}
+
+    // Giant — large humanoid creatures of great size and strength
+    // (hill giants, fire giants, trolls).
+    condition Giant on bearer: entity
+        stacking first
+    {}
+
+    // Dragon — true dragons of all colours and ages.
+    condition Dragon on bearer: entity
+        stacking first
+    {}
+
+    // Outsider — extraplanar beings (efreet, djinn, genies).
+    // See also Demon, Devil, Elemental for specific subtypes.
+    condition Outsider on bearer: entity
+        stacking first
+    {}
 
     // Undead creature — affected by turning, immune to sleep/charm/hold.
     condition Undead on bearer: entity
@@ -257,7 +306,17 @@ system "OSRIC Monster Traits" {
         stacking first
     {}
 
-    // Taxonomy markers used by scroll wardings and other creature-type logic.
+    // Ooze — mindless, amorphous creatures (slimes, jellies, oozes).
+    condition Ooze on bearer: entity
+        stacking first
+    {}
+
+    // Fungus — fungal organisms (shriekers, yellow mold).
+    condition Fungus on bearer: entity
+        stacking first
+    {}
+
+    // ── Outsider subtypes ─────────────────────────────────
     condition Demon on bearer: entity
         stacking first
     {}
@@ -286,6 +345,7 @@ system "OSRIC Monster Traits" {
         stacking first
     {}
 
+    // ── Lycanthrope subtypes ──────────────────────────────
     condition Lycanthrope on bearer: entity
         stacking first
     {}
@@ -322,18 +382,44 @@ system "OSRIC Monster Traits" {
 
 
     // ========================================================
-    //  CREATURE TYPE MARKERS (continued)
+    //  CREATURE TYPE QUERIES
+    //
+    //  Convenience derives for spell targeting guards.
+    //  These check condition markers on the target entity.
     // ========================================================
 
-    // Ooze — mindless, amorphous creatures (slimes, jellies, oozes).
-    condition Ooze on bearer: entity
-        stacking first
-    {}
+    // True if target has any of the primary creature type markers
+    // that indicate it is a living, biological creature (not
+    // undead, construct, or elemental).
+    derive is_living(target: entity) -> bool {
+        !has_condition(target, Undead) &&
+        !has_condition(target, Construct)
+    }
 
-    // Fungus — fungal organisms (shriekers, yellow mold).
-    condition Fungus on bearer: entity
-        stacking first
-    {}
+    // True if target is a "person" for Charm Person / Hold Person.
+    // In OSRIC, this means humanoids (including Characters).
+    derive is_person(target: entity) -> bool {
+        if target is Character { true }
+        else { has_condition(target, Humanoid) }
+    }
+
+    // True if target is an animal (for Speak with Animals, etc.).
+    derive is_animal(target: entity) -> bool {
+        has_condition(target, Animal)
+    }
+
+    // True if target is undead (for Turn Undead, immunities).
+    derive is_undead(target: entity) -> bool {
+        has_condition(target, Undead)
+    }
+
+    // True if target is extraplanar (for Protection from Evil, Exorcise).
+    derive is_extraplanar(target: entity) -> bool {
+        has_condition(target, Outsider) ||
+        has_condition(target, Demon) ||
+        has_condition(target, Devil) ||
+        has_condition(target, Elemental)
+    }
 
 
     // ========================================================
