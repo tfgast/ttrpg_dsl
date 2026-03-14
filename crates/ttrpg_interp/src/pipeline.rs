@@ -719,7 +719,7 @@ pub(crate) fn run_phase1(
         // Collect changes for ModifyApplied effect
         let changes = collect_param_changes(&old_params, &params);
         if !changes.is_empty() {
-            let response = env.handler.handle(Effect::ModifyApplied {
+            let response = env.emit(Effect::ModifyApplied {
                 source: modifier.source.clone(),
                 target_fn: Name::from(fn_name),
                 phase: Phase::Phase1,
@@ -807,7 +807,7 @@ pub(crate) fn run_phase2(
         // Collect changes for ModifyApplied effect
         let changes = collect_result_changes(&old_result, &result, fn_info);
         if !changes.is_empty() {
-            let response = env.handler.handle(Effect::ModifyApplied {
+            let response = env.emit(Effect::ModifyApplied {
                 source: modifier.source.clone(),
                 target_fn: Name::from(fn_name),
                 phase: Phase::Phase2,

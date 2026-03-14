@@ -27,7 +27,7 @@ fn emit_action_started(
     actor: EntityRef,
     call_span: Span,
 ) -> Result<LifecycleStart, RuntimeError> {
-    let response = env.handler.handle(effect);
+    let response = env.emit(effect);
     match response {
         Response::Acknowledged => Ok(LifecycleStart::Proceed),
         Response::Vetoed => {
@@ -56,7 +56,7 @@ fn emit_action_completed(
     invocation: Option<InvocationId>,
     call_span: Span,
 ) -> Result<(), RuntimeError> {
-    let response = env.handler.handle(Effect::ActionCompleted {
+    let response = env.emit(Effect::ActionCompleted {
         name: Name::from(name),
         actor,
         outcome,
@@ -123,7 +123,7 @@ fn scoped_execute(
 
 /// Inner pipeline shared by actions and reactions: optional requires → optional
 /// cost → resolve block.
-fn execute_pipeline(
+pub(crate) fn execute_pipeline(
     env: &mut Env,
     actor: &EntityRef,
     action_name: &str,
@@ -151,7 +151,7 @@ fn execute_pipeline(
             }
         };
 
-        let response = env.handler.handle(Effect::RequiresCheck {
+        let response = env.emit(Effect::RequiresCheck {
             action: Name::from(action_name),
             passed,
             reason: None,
@@ -604,7 +604,7 @@ fn collect_and_apply_cost_modifiers(
                 old: Value::Str(old_desc),
                 new: Value::Str(new_desc),
             }];
-            let response = env.handler.handle(Effect::ModifyApplied {
+            let response = env.emit(Effect::ModifyApplied {
                 source: modifier.source.clone(),
                 target_fn: Name::from(action_name),
                 phase: Phase::Phase1,
@@ -780,7 +780,7 @@ fn deduct_costs(
                 let required = 1; // 1 per bare token
 
                 if current_int < required {
-                    let response = env.handler.handle(Effect::RequiresCheck {
+                    let response = env.emit(Effect::RequiresCheck {
                         action: Name::from(action_name),
                         passed: false,
                         reason: Some(format!(
@@ -828,7 +828,7 @@ fn deduct_costs(
                 )
             })?;
 
-        let response = env.handler.handle(Effect::DeductCost {
+        let response = env.emit(Effect::DeductCost {
             actor: payer,
             token: token.node.clone(),
             budget_field: budget_field.clone(),

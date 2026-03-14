@@ -110,7 +110,7 @@ fn eval_assign_turn(
         op,
         value: rhs,
     };
-    env.handler.handle(effect);
+    env.emit(effect);
 
     Ok(())
 }
@@ -178,7 +178,7 @@ fn eval_assign_entity(
         value: rhs,
         bounds,
     };
-    env.handler.handle(effect);
+    env.emit(effect);
 
     Ok(())
 }
@@ -270,7 +270,7 @@ fn eval_assign_local(
             value: rhs,
             bounds,
         };
-        env.handler.handle(effect);
+        env.emit(effect);
         return Ok(());
     }
 

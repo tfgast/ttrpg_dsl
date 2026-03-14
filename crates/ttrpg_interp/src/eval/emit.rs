@@ -255,7 +255,7 @@ pub(crate) fn execute_condition_event_handler(
             condition_id: cond_instance.id,
             fields: final_state,
         };
-        env.handler.handle(effect);
+        env.emit(effect);
     }
 
     Ok(())

@@ -524,7 +524,7 @@ pub(super) fn dispatch_prompt(
         suggest,
         has_default: default_body.is_some(),
     };
-    let response = env.handler.handle(effect);
+    let response = env.emit(effect);
 
     match response {
         Response::PromptResult(val) | Response::Override(val) => {

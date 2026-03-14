@@ -70,7 +70,7 @@ impl<S: WritableState> StateAdapter<S> {
     ///
     /// `&self` serves as `&dyn StateProvider` (per-call borrows via RefCell).
     /// An `AdaptedHandler` serves as `&mut dyn EffectHandler`.
-    pub fn run<H: EffectHandler, R>(
+    pub fn run<H: EffectHandler + ?Sized, R>(
         &self,
         inner: &mut H,
         f: impl FnOnce(&dyn StateProvider, &mut dyn EffectHandler) -> R,
@@ -169,7 +169,7 @@ impl<S: WritableState> StateProvider for StateAdapter<S> {
 ///
 /// Holds a shared `&StateAdapter<S>` reference for mutations via
 /// `borrow_mut()`. Each mutation does one short-lived mutable borrow.
-pub struct AdaptedHandler<'a, S: WritableState, H: EffectHandler> {
+pub struct AdaptedHandler<'a, S: WritableState, H: EffectHandler + ?Sized> {
     adapter: &'a StateAdapter<S>,
     inner: &'a mut H,
 }
@@ -198,7 +198,7 @@ fn is_mutation(kind: EffectKind) -> bool {
     MUTATION_KINDS.contains(&kind)
 }
 
-impl<S: WritableState, H: EffectHandler> EffectHandler for AdaptedHandler<'_, S, H> {
+impl<S: WritableState, H: EffectHandler + ?Sized> EffectHandler for AdaptedHandler<'_, S, H> {
     fn handle(&mut self, effect: Effect) -> Response {
         let kind = EffectKind::of(&effect);
 
@@ -266,7 +266,7 @@ impl<S: WritableState, H: EffectHandler> EffectHandler for AdaptedHandler<'_, S,
     }
 }
 
-impl<S: WritableState, H: EffectHandler> AdaptedHandler<'_, S, H> {
+impl<S: WritableState, H: EffectHandler + ?Sized> AdaptedHandler<'_, S, H> {
     /// Handle DeductCost: always passed through; adapter applies
     /// the state mutation based on the host's response.
     fn handle_deduct_cost(&mut self, effect: Effect) -> Response {

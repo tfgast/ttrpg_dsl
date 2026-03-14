@@ -366,7 +366,7 @@ pub(super) fn eval_stmt(
                 group_name: group_name.clone(),
                 fields: struct_val,
             };
-            let response = env.handler.handle(effect);
+            let response = env.emit(effect);
             if let Response::Vetoed = response {
                 return Err(RuntimeError::with_span(
                     format!("grant {group_name} was vetoed by host"),
@@ -391,7 +391,7 @@ pub(super) fn eval_stmt(
                 entity: entity_ref,
                 group_name: group_name.clone(),
             };
-            let response = env.handler.handle(effect);
+            let response = env.emit(effect);
             if let Response::Vetoed = response {
                 return Err(RuntimeError::with_span(
                     format!("revoke {group_name} was vetoed by host"),
@@ -534,7 +534,7 @@ where
     let prev_budget = env.state.read_turn_budget(&actor);
 
     // 2. Emit ProvisionBudget
-    let response = env.handler.handle(Effect::ProvisionBudget {
+    let response = env.emit(Effect::ProvisionBudget {
         actor,
         budget: budget.clone(),
     });
@@ -551,7 +551,7 @@ where
     // 4. Restore or clear budget (always runs)
     let cleanup_result = match prev_budget {
         Some(old_budget) => {
-            let resp = env.handler.handle(Effect::ProvisionBudget {
+            let resp = env.emit(Effect::ProvisionBudget {
                 actor,
                 budget: old_budget,
             });
@@ -565,7 +565,7 @@ where
             }
         }
         None => {
-            let resp = env.handler.handle(Effect::ClearBudget { actor });
+            let resp = env.emit(Effect::ClearBudget { actor });
             if let Response::Vetoed = resp {
                 Err(RuntimeError::with_span(
                     "with_budget: budget clear was vetoed by host",
@@ -604,7 +604,7 @@ where
 
     for (actor, budget) in &entries {
         snapshots.push((*actor, env.state.read_turn_budget(actor)));
-        let response = env.handler.handle(Effect::ProvisionBudget {
+        let response = env.emit(Effect::ProvisionBudget {
             actor: *actor,
             budget: budget.clone(),
         });
@@ -652,7 +652,7 @@ fn restore_budget(
 ) -> Result<(), RuntimeError> {
     match prev {
         Some(old_budget) => {
-            let resp = env.handler.handle(Effect::ProvisionBudget {
+            let resp = env.emit(Effect::ProvisionBudget {
                 actor,
                 budget: old_budget,
             });
@@ -666,7 +666,7 @@ fn restore_budget(
             }
         }
         None => {
-            let resp = env.handler.handle(Effect::ClearBudget { actor });
+            let resp = env.emit(Effect::ClearBudget { actor });
             if let Response::Vetoed = resp {
                 Err(RuntimeError::with_span(
                     "with_budgets: budget clear was vetoed by host",

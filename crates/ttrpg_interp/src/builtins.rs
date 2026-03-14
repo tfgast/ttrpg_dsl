@@ -478,7 +478,7 @@ fn builtin_roll(env: &mut Env, args: &[Value], span: Span) -> Result<Value, Runt
     match args.first() {
         Some(Value::DiceExpr(expr)) => {
             let effect = Effect::RollDice { expr: expr.clone() };
-            let response = env.handler.handle(effect);
+            let response = env.emit(effect);
             match response {
                 Response::Rolled(rr) => Ok(Value::RollResult(rr)),
                 Response::Override(Value::RollResult(rr)) => Ok(Value::RollResult(rr)),
@@ -624,7 +624,7 @@ fn builtin_apply_condition(
         source: source.clone(),
         tags: tags.clone(),
     };
-    match env.handler.handle(gate) {
+    match env.emit(gate) {
         Response::Vetoed => return Ok(Value::Option(None)),
         Response::Acknowledged => {}
         other => {
@@ -686,7 +686,7 @@ fn builtin_apply_condition(
         condition_id: token.0,
         state_fields,
     };
-    match env.handler.handle(effect) {
+    match env.emit(effect) {
         Response::Acknowledged | Response::Override(_) => {
             Ok(Value::Option(Some(Box::new(Value::Int(token.0 as i64)))))
         }
@@ -812,7 +812,7 @@ fn remove_condition_instances(
             condition: instance.name.clone(),
             id: instance.id,
         };
-        match env.handler.handle(gate) {
+        match env.emit(gate) {
             Response::Vetoed => continue,
             Response::Acknowledged => {}
             _ => {} // Treat unexpected responses as acknowledged
@@ -841,7 +841,7 @@ fn remove_condition_instances(
                     condition_id: instance.id,
                     fields: final_state,
                 };
-                env.handler.handle(effect);
+                env.emit(effect);
             }
             Err(e) if first_error.is_none() => {
                 first_error = Some(e);
@@ -857,7 +857,7 @@ fn remove_condition_instances(
             id: Some(instance.id),
         };
         if let Err(e) =
-            validate_mutation_response(env.handler.handle(effect), "RemoveCondition", span)
+            validate_mutation_response(env.emit(effect), "RemoveCondition", span)
             && first_error.is_none()
         {
             first_error = Some(e);
@@ -869,7 +869,7 @@ fn remove_condition_instances(
             entity: target,
             source_id: instance.id,
         };
-        let _ = env.handler.handle(suspension_effect);
+        let _ = env.emit(suspension_effect);
     }
 
     if let Some(err) = first_error {
@@ -971,7 +971,7 @@ fn builtin_revoke(env: &mut Env, args: &[Value], span: Span) -> Result<Value, Ru
             condition: instance.name.clone(),
             id: instance.id,
         };
-        if let Response::Vetoed = env.handler.handle(gate) {
+        if let Response::Vetoed = env.emit(gate) {
             continue;
         }
 
@@ -997,7 +997,7 @@ fn builtin_revoke(env: &mut Env, args: &[Value], span: Span) -> Result<Value, Ru
                     condition_id: instance.id,
                     fields: final_state,
                 };
-                env.handler.handle(effect);
+                env.emit(effect);
             }
             Err(e) if first_error.is_none() => {
                 first_error = Some(e);
@@ -1012,12 +1012,12 @@ fn builtin_revoke(env: &mut Env, args: &[Value], span: Span) -> Result<Value, Ru
             params: None,
             id: Some(instance.id),
         };
-        let _ = validate_mutation_response(env.handler.handle(effect), "RemoveCondition", span);
+        let _ = validate_mutation_response(env.emit(effect), "RemoveCondition", span);
     }
 
     // Also emit RevokeInvocation for the host to do any cleanup
     let effect = Effect::RevokeInvocation { invocation: inv_id };
-    let _ = validate_mutation_response(env.handler.handle(effect), "RevokeInvocation", span);
+    let _ = validate_mutation_response(env.emit(effect), "RevokeInvocation", span);
 
     if let Some(err) = first_error {
         Err(err)
@@ -1059,7 +1059,7 @@ fn builtin_advance_time(env: &mut Env, args: &[Value], span: Span) -> Result<Val
             let effect = Effect::AdvanceTime {
                 amount: *amount as u64,
             };
-            validate_mutation_response(env.handler.handle(effect), "AdvanceTime", span)?;
+            validate_mutation_response(env.emit(effect), "AdvanceTime", span)?;
             Ok(Value::Void)
         }
         Some(Value::Int(amount)) if *amount == 0 => Err(RuntimeError::with_span(
@@ -1125,7 +1125,7 @@ fn builtin_despawn(env: &mut Env, args: &[Value], span: Span) -> Result<Value, R
     match args.first() {
         Some(Value::Entity(entity)) => {
             let effect = Effect::RemoveEntity { entity: *entity };
-            validate_mutation_response(env.handler.handle(effect), "RemoveEntity", span)?;
+            validate_mutation_response(env.emit(effect), "RemoveEntity", span)?;
             Ok(Value::Void)
         }
         Some(other) => Err(RuntimeError::with_span(
@@ -1196,7 +1196,7 @@ fn builtin_suspend(env: &mut Env, args: &[Value], span: Span) -> Result<Value, R
                 freeze_turns: *freeze_turns,
                 freeze_durations: *freeze_durations,
             };
-            validate_mutation_response(env.handler.handle(effect), "AddSuspension", span)?;
+            validate_mutation_response(env.emit(effect), "AddSuspension", span)?;
             Ok(Value::Void)
         }
         _ => Err(RuntimeError::with_span(
@@ -1236,7 +1236,7 @@ fn builtin_suspend_with_source(
                 freeze_turns: *freeze_turns,
                 freeze_durations: *freeze_durations,
             };
-            validate_mutation_response(env.handler.handle(effect), "AddSuspension", span)?;
+            validate_mutation_response(env.emit(effect), "AddSuspension", span)?;
             Ok(Value::Void)
         }
         _ => Err(RuntimeError::with_span(
@@ -1258,7 +1258,7 @@ fn builtin_remove_suspension_source(
                 entity: *entity,
                 source_id: *source_id as u64,
             };
-            validate_mutation_response(env.handler.handle(effect), "RemoveSuspensionSource", span)?;
+            validate_mutation_response(env.emit(effect), "RemoveSuspensionSource", span)?;
             Ok(Value::Void)
         }
         _ => Err(RuntimeError::with_span(
@@ -1465,7 +1465,7 @@ fn builtin_transfer_conditions(
         tag: Name::from(tag.as_str()),
         exclude_instance,
     };
-    validate_mutation_response(env.handler.handle(effect), "TransferConditions", span)?;
+    validate_mutation_response(env.emit(effect), "TransferConditions", span)?;
     Ok(Value::Void)
 }
 

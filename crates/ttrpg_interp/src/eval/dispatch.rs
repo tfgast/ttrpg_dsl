@@ -469,7 +469,7 @@ fn eval_entity_construction(
         entity_type: name.clone(),
         fields: field_map,
     };
-    let response = env.handler.handle(effect);
+    let response = env.emit(effect);
     let entity_ref = match response {
         Response::EntitySpawned(r) => r,
         Response::Vetoed => {
@@ -521,7 +521,7 @@ fn eval_entity_construction(
             group_name: group.name.clone(),
             fields: struct_val,
         };
-        env.handler.handle(grant_effect);
+        env.emit(grant_effect);
     }
 
     // 5. Auto-materialize required include groups not already provided
@@ -554,7 +554,7 @@ fn eval_entity_construction(
             group_name: group_name.clone(),
             fields: struct_val,
         };
-        env.handler.handle(grant_effect);
+        env.emit(grant_effect);
     }
 
     // 6. Apply `with [...]` conditions as Indefinite
