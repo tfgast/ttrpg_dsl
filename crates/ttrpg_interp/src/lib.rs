@@ -224,13 +224,14 @@ impl<'p> Interpreter<'p> {
         type_env: &'p TypeEnv,
         invocation_id: u64,
         condition_id: u64,
+        coverage: Option<Rc<RefCell<coverage::CoverageData>>>,
     ) -> Self {
         Interpreter {
             program,
             type_env,
             next_invocation_id: Cell::new(invocation_id),
             next_condition_id: Cell::new(condition_id),
-            coverage: None,
+            coverage,
             consts: RefCell::new(FxHashMap::default()),
         }
     }

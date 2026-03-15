@@ -395,7 +395,7 @@ pub(crate) fn execute_hook(
 ///
 /// Cost modifiers are `modify ActionName.cost(...)` clauses in conditions.
 /// They can replace the cost tokens or make the cost free.
-fn collect_and_apply_cost_modifiers(
+pub(crate) fn collect_and_apply_cost_modifiers(
     env: &mut Env,
     actor: &EntityRef,
     action_name: &str,

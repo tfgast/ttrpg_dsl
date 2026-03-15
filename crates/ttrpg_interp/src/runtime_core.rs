@@ -17,6 +17,7 @@ use ttrpg_ast::ast::Program;
 use ttrpg_checker::env::TypeEnv;
 
 use crate::coverage::CoverageData;
+use crate::RuntimeError;
 use crate::value::Value;
 
 /// Shared across executions. Immutable program data + mutable caches.
@@ -25,7 +26,7 @@ pub struct RuntimeCore {
     pub(crate) program: Arc<Program>,
     pub(crate) type_env: Arc<TypeEnv>,
     pub(crate) consts: RefCell<FxHashMap<Name, Value>>,
-    pub(crate) coverage: Option<RefCell<CoverageData>>,
+    pub(crate) coverage: Option<Rc<RefCell<CoverageData>>>,
     next_invocation_id: Cell<u64>,
     next_condition_id: Cell<u64>,
 }
@@ -70,24 +71,32 @@ impl RuntimeCore {
             program: Arc::clone(&self.program),
             type_env: Arc::clone(&self.type_env),
             consts: RefCell::new(FxHashMap::default()),
-            coverage: Some(RefCell::new(CoverageData::default())),
+            coverage: Some(Rc::new(RefCell::new(CoverageData::default()))),
             next_invocation_id: Cell::new(self.next_invocation_id.get()),
             next_condition_id: Cell::new(self.next_condition_id.get()),
         })
     }
 
     /// Allocate the next invocation ID.
-    pub(crate) fn alloc_invocation_id(&self) -> u64 {
+    pub(crate) fn alloc_invocation_id(&self) -> Result<u64, RuntimeError> {
         let id = self.next_invocation_id.get();
-        self.next_invocation_id.set(id.wrapping_add(1));
-        id
+        self.next_invocation_id.set(
+            id.checked_add(1).ok_or_else(|| {
+                RuntimeError::new("invocation ID counter overflow (u64 exhausted)")
+            })?,
+        );
+        Ok(id)
     }
 
     /// Allocate the next condition ID.
-    pub(crate) fn alloc_condition_id(&self) -> u64 {
+    pub(crate) fn alloc_condition_id(&self) -> Result<u64, RuntimeError> {
         let id = self.next_condition_id.get();
-        self.next_condition_id.set(id.wrapping_add(1));
-        id
+        self.next_condition_id.set(
+            id.checked_add(1).ok_or_else(|| {
+                RuntimeError::new("condition ID counter overflow (u64 exhausted)")
+            })?,
+        );
+        Ok(id)
     }
 
     /// Current ID counter values. Call after completion to persist.

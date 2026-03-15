@@ -180,7 +180,7 @@ impl EffectHandler for TryEvalHandler {
 fn effect_to_yield_frame(
     effect: Effect,
     span: Span,
-    _core: &RuntimeCore,
+    core: &RuntimeCore,
     _env: &ExecEnv,
 ) -> Option<Frame> {
     match effect {
@@ -196,17 +196,27 @@ fn effect_to_yield_frame(
             hint,
             suggest,
             has_default: _,
-        } => Some(Frame::PromptWaiting {
-            prompt_name: name,
-            params,
-            return_type,
-            hint,
-            suggest,
-            default_block: None, // Default block not available from effect
-            span,
-            pending: None,
-            result: None,
-        }),
+        } => {
+            // Look up the prompt declaration to recover the default block,
+            // which isn't carried in the Effect.
+            let default_block = core
+                .program
+                .prompts
+                .get(name.as_str())
+                .and_then(|decl| decl.default.clone());
+
+            Some(Frame::PromptWaiting {
+                prompt_name: name,
+                params,
+                return_type,
+                hint,
+                suggest,
+                default_block,
+                span,
+                pending: None,
+                result: None,
+            })
+        }
         _ => None,
     }
 }
@@ -290,7 +300,7 @@ fn try_dispatch_apply_condition<S: WritableState>(
         .unwrap_or_default();
 
     // Allocate condition ID
-    let token = ConditionToken(core.alloc_condition_id());
+    let token = ConditionToken(core.alloc_condition_id()?);
 
     // Convert params from BTreeMap to Vec
     let params: Vec<(Name, Value)> = cond_args.into_iter().collect();
@@ -753,6 +763,7 @@ where
         &core.type_env,
         core.counters().0,
         core.counters().1,
+        core.coverage.clone(),
     );
 
     // Snapshot all ExecEnv state so the closure doesn't need &mut env.
@@ -818,10 +829,16 @@ pub(crate) enum ActionStep {
     EmitVetoedCompleted,
     /// Vetoed completion ack received: pop with abort value.
     AwaitVetoedAck,
-    /// Evaluate requires clause (if present), emit RequiresCheck.
+    /// Evaluate requires clause (if present) via ResumableBridge child frame.
     EvalRequires,
+    /// Requires expression evaluated; emit RequiresCheck with result.
+    AwaitRequiresEval,
     /// Requires response received: check pass/fail.
     AwaitRequires,
+    /// Evaluate cost (async path): push CostEval child frame if cost exists.
+    EvalCost,
+    /// Cost evaluation child frame completed.
+    AwaitCostEval,
     /// Run the resolve body via bridge.
     RunResolve,
     /// Run the full pipeline (requires → cost → resolve) via bridge.
@@ -830,6 +847,21 @@ pub(crate) enum ActionStep {
     EmitCompleted,
     /// Completion ack received: restore context, pop with result.
     AwaitCompletedAck,
+}
+
+/// Phase within the CostEval frame's cost pipeline.
+#[derive(Debug)]
+pub(crate) enum CostEvalPhase {
+    /// Run collect_and_apply_cost_modifiers via bridge.
+    ModifierCollection,
+    /// Budget pre-check: iterate tokens, check budget sufficiency.
+    BudgetPreCheck(usize),
+    /// Await budget pre-check host response.
+    AwaitBudgetCheck(usize),
+    /// Cost deduction: iterate tokens, yield DeductCost.
+    Deduction(usize),
+    /// Await deduction host response.
+    AwaitDeduction(usize),
 }
 
 // ── Frame enum ─────────────────────────────────────────────────
@@ -1112,6 +1144,29 @@ pub(crate) enum Frame {
         child_result: Option<Result<Value, RuntimeError>>,
     },
 
+    /// Cost evaluation frame for the async action lifecycle.
+    /// Handles the full cost pipeline: modifier collection → budget pre-check → deduction.
+    CostEval {
+        cost: CostClause,
+        actor: EntityRef,
+        action_name: Name,
+        call_span: Span,
+        phase: CostEvalPhase,
+        effective_cost: Option<CostClause>,
+        pending: Option<Response>,
+        abort_value: Value,
+    },
+
+    /// Resumable bridge evaluation frame. Evaluates an expression through
+    /// the recursive evaluator with CachingHandler replay support. Pushes
+    /// yield frames (RollDiceWaiting, PromptWaiting) when host-decided
+    /// effects are captured, and retries with cached responses.
+    ResumableBridge {
+        expr: Spanned<ExprKind>,
+        expr_cache: Vec<Value>,
+        span: Span,
+    },
+
     /// Bridge call frame for non-action entry points (derive, mechanic,
     /// function, expr). The result is computed synchronously during
     /// `run_with_handler` and stored here; advance() just pops it.
@@ -1300,27 +1355,75 @@ impl Frame {
 
                     ActionStep::EvalRequires => {
                         if let Some(req_expr) = requires.as_ref() {
-                            match bridge_eval_expr(core, env, state, req_expr) {
-                                Ok(Value::Bool(passed)) => {
-                                    let effect = Effect::RequiresCheck {
-                                        action: name.clone(),
-                                        passed,
-                                        reason: None,
-                                    };
-                                    *body_result = Some(Ok(Value::Bool(passed)));
-                                    *step = ActionStep::AwaitRequires;
-                                    Advance::Yield(effect)
+                            if handler.is_some() {
+                                // Sync path — evaluate directly with handler.
+                                match bridge_eval_expr(core, env, state, req_expr) {
+                                    Ok(Value::Bool(passed)) => {
+                                        let effect = Effect::RequiresCheck {
+                                            action: name.clone(),
+                                            passed,
+                                            reason: None,
+                                        };
+                                        *body_result = Some(Ok(Value::Bool(passed)));
+                                        *step = ActionStep::AwaitRequires;
+                                        Advance::Yield(effect)
+                                    }
+                                    Ok(other) => Advance::Error(RuntimeError::with_span(
+                                        format!(
+                                            "requires clause must evaluate to Bool, got {other:?}"
+                                        ),
+                                        req_expr.span,
+                                    )),
+                                    Err(e) => Advance::Error(e),
                                 }
-                                Ok(other) => Advance::Error(RuntimeError::with_span(
-                                    format!("requires clause must evaluate to Bool, got {other:?}"),
-                                    req_expr.span,
-                                )),
-                                Err(e) => Advance::Error(e),
+                            } else {
+                                // Async path — push ResumableBridge for the
+                                // requires expression. AwaitRequiresEval will
+                                // receive the result.
+                                *step = ActionStep::AwaitRequiresEval;
+                                Advance::Push(Frame::ResumableBridge {
+                                    expr: req_expr.clone(),
+                                    expr_cache: Vec::new(),
+                                    span: req_expr.span,
+                                })
                             }
                         } else {
-                            // No requires clause, skip to resolve
-                            *step = ActionStep::RunResolve;
+                            // No requires clause, skip to cost evaluation
+                            *step = ActionStep::EvalCost;
                             Advance::Continue
+                        }
+                    }
+
+                    ActionStep::AwaitRequiresEval => {
+                        // ResumableBridge child completed with the requires
+                        // expression result.
+                        let val = body_result
+                            .take()
+                            .unwrap_or(Ok(Value::Bool(true)));
+                        match val {
+                            Ok(Value::Bool(passed)) => {
+                                let effect = Effect::RequiresCheck {
+                                    action: name.clone(),
+                                    passed,
+                                    reason: None,
+                                };
+                                *body_result = Some(Ok(Value::Bool(passed)));
+                                *step = ActionStep::AwaitRequires;
+                                Advance::Yield(effect)
+                            }
+                            Ok(other) => {
+                                let req_span = requires
+                                    .as_ref()
+                                    .map(|r| r.span)
+                                    .unwrap_or(*call_span);
+                                Advance::Error(RuntimeError::with_span(
+                                    format!(
+                                        "requires clause must evaluate to Bool, got {other:?}"
+                                    ),
+                                    req_span,
+                                ))
+                            }
+                            Err(e) => Advance::Error(e),
                         }
                     }
 
@@ -1349,13 +1452,56 @@ impl Frame {
                         };
 
                         if effective_passed {
-                            *step = ActionStep::RunResolve;
+                            *step = ActionStep::EvalCost;
                             Advance::Continue
                         } else {
                             *body_result = Some(Ok(abort_value));
                             *step = ActionStep::EmitCompleted;
                             Advance::Continue
                         }
+                    }
+
+                    ActionStep::EvalCost => {
+                        // Check if cost exists and is not free.
+                        if let Some(c) = cost.as_ref() {
+                            if !c.free {
+                                let abort = if *has_return_type {
+                                    Value::Option(None)
+                                } else {
+                                    Value::Void
+                                };
+                                *step = ActionStep::AwaitCostEval;
+                                return Advance::Push(Frame::CostEval {
+                                    cost: c.clone(),
+                                    actor: *actor,
+                                    action_name: name.clone(),
+                                    call_span: *call_span,
+                                    phase: CostEvalPhase::BudgetPreCheck(0),
+                                    effective_cost: Some(c.clone()),
+                                    pending: None,
+                                    abort_value: abort,
+                                });
+                            }
+                        }
+                        // No cost or cost is free — skip to resolve.
+                        *step = ActionStep::RunResolve;
+                        Advance::Continue
+                    }
+
+                    ActionStep::AwaitCostEval => {
+                        // CostEval child completed. Check if it aborted.
+                        match body_result.take() {
+                            Some(Ok(ref v)) if *v != Value::Void => {
+                                // Abort value — cost check failed.
+                                *body_result = Some(Ok(v.clone()));
+                                *step = ActionStep::EmitCompleted;
+                            }
+                            _ => {
+                                // Cost succeeded — proceed to resolve.
+                                *step = ActionStep::RunResolve;
+                            }
+                        }
+                        Advance::Continue
                     }
 
                     ActionStep::RunResolve => {
@@ -1434,6 +1580,256 @@ impl Frame {
                             Some(Ok(val)) => Advance::Pop(val),
                             Some(Err(e)) => Advance::Error(e),
                             None => Advance::Pop(Value::Void),
+                        }
+                    }
+                }
+            }
+
+            Frame::ResumableBridge {
+                expr,
+                expr_cache,
+                span,
+            } => {
+                let e = expr.clone();
+
+                if let Some(ref mut h) = handler {
+                    // Sync path — use the real handler directly.
+                    let eval_result =
+                        bridge_eval_with(core, env, state, *h, |tmp_env| {
+                            crate::eval::eval_expr(tmp_env, &e)
+                        });
+                    return match eval_result {
+                        Ok(val) => Advance::Pop(val),
+                        Err(err) => Advance::Error(err),
+                    };
+                }
+
+                // Async path — CachingHandler with replay support.
+                // Follows the same pattern as Block's CachingHandler path
+                // (mutation-before-yield containment guard).
+                state.reset_mutation_flag();
+                let mut caching = CachingHandler::from_expr_cache(expr_cache);
+                let eval_result =
+                    bridge_eval_with(core, env, state, &mut caching, |tmp_env| {
+                        crate::eval::eval_expr(tmp_env, &e)
+                    });
+
+                if let Some(effect) = caching.captured {
+                    // Containment guard: if a local mutation was applied
+                    // during this bridge run AND the handler captured a
+                    // host-decided effect, replaying would re-apply the
+                    // mutation. Fail fast.
+                    if state.local_mutation_applied() {
+                        return Advance::Error(RuntimeError::new(format!(
+                            "async replay unsound: local mutation applied \
+                             before host-decided effect {:?} in ResumableBridge \
+                             at {:?}; cannot safely replay",
+                            EffectKind::of(&effect),
+                            *span,
+                        )));
+                    }
+
+                    // Push a yield frame; don't pop — retry on next advance.
+                    if let Some(yield_frame) =
+                        effect_to_yield_frame(effect, *span, core, env)
+                    {
+                        return Advance::Push(yield_frame);
+                    }
+                    // Unknown host-decided effect — fall through to error.
+                }
+
+                match eval_result {
+                    Ok(val) => {
+                        expr_cache.clear();
+                        Advance::Pop(val)
+                    }
+                    Err(err) => Advance::Error(err),
+                }
+            }
+
+            Frame::CostEval {
+                cost,
+                actor,
+                action_name,
+                call_span,
+                phase,
+                effective_cost,
+                pending,
+                abort_value,
+            } => {
+                let tokens = effective_cost
+                    .as_ref()
+                    .map(|c| &c.tokens)
+                    .unwrap_or(&cost.tokens);
+                let expected_tokens: Vec<String> = core
+                    .type_env
+                    .valid_cost_tokens()
+                    .into_iter()
+                    .map(|n| n.to_string())
+                    .collect();
+
+                match phase {
+                    CostEvalPhase::ModifierCollection => {
+                        // For now, skip modifier collection (it requires full
+                        // bridge eval with InformationalAckHandler which is not
+                        // yet implemented). Use the original cost directly.
+                        // TODO: implement modifier collection with
+                        // collect_and_apply_cost_modifiers via bridge.
+                        *phase = CostEvalPhase::BudgetPreCheck(0);
+                        Advance::Continue
+                    }
+
+                    CostEvalPhase::BudgetPreCheck(idx) => {
+                        if *idx >= tokens.len() {
+                            // All tokens checked — proceed to deduction.
+                            *phase = CostEvalPhase::Deduction(0);
+                            return Advance::Continue;
+                        }
+
+                        let payer = env.cost_payer.unwrap_or(
+                            env.turn_actor.unwrap_or(*actor),
+                        );
+
+                        if let Some(budget) = state.read_turn_budget(&payer) {
+                            let token = &tokens[*idx];
+                            let budget_field = match core
+                                .type_env
+                                .resolve_cost_token(&token.node)
+                            {
+                                Some(f) => f,
+                                None => {
+                                    return Advance::Error(RuntimeError::with_span(
+                                        format!(
+                                            "internal error: unknown cost token '{}'; \
+                                             expected one of: {}",
+                                            token.node,
+                                            expected_tokens.join(", ")
+                                        ),
+                                        token.span,
+                                    ));
+                                }
+                            };
+
+                            if let Some(Value::Int(current)) = budget.get(&budget_field) {
+                                if *current < 1 {
+                                    // Insufficient budget — yield RequiresCheck
+                                    let effect = Effect::RequiresCheck {
+                                        action: action_name.clone(),
+                                        passed: false,
+                                        reason: Some(format!(
+                                            "insufficient budget: {budget_field} requires 1 \
+                                             but {budget_field} has {current}",
+                                        )),
+                                    };
+                                    *phase = CostEvalPhase::AwaitBudgetCheck(*idx);
+                                    return Advance::Yield(effect);
+                                }
+                            }
+                        }
+                        // Budget OK for this token or no budget provisioned
+                        *phase = CostEvalPhase::BudgetPreCheck(*idx + 1);
+                        Advance::Continue
+                    }
+
+                    CostEvalPhase::AwaitBudgetCheck(idx) => {
+                        let response = match pending.take() {
+                            Some(r) => r,
+                            None => return Advance::Continue,
+                        };
+                        match response {
+                            Response::Acknowledged | Response::Override(Value::Bool(false)) => {
+                                // Budget check failed — abort action.
+                                Advance::Pop(abort_value.clone())
+                            }
+                            Response::Override(Value::Bool(true)) => {
+                                // Host allows overdraft — continue pre-check.
+                                *phase = CostEvalPhase::BudgetPreCheck(*idx + 1);
+                                Advance::Continue
+                            }
+                            other => Advance::Error(RuntimeError::with_span(
+                                format!(
+                                    "protocol error: expected Acknowledged or \
+                                     Override(Bool) for RequiresCheck, got {other:?}"
+                                ),
+                                *call_span,
+                            )),
+                        }
+                    }
+
+                    CostEvalPhase::Deduction(idx) => {
+                        if *idx >= tokens.len() {
+                            // All tokens deducted — cost succeeded.
+                            return Advance::Pop(Value::Void);
+                        }
+
+                        let payer = env.cost_payer.unwrap_or(
+                            env.turn_actor.unwrap_or(*actor),
+                        );
+                        let token = &tokens[*idx];
+                        let budget_field = match core
+                            .type_env
+                            .resolve_cost_token(&token.node)
+                        {
+                            Some(f) => f,
+                            None => {
+                                return Advance::Error(RuntimeError::with_span(
+                                    format!(
+                                        "internal error: unknown cost token '{}'; \
+                                         expected one of: {}",
+                                        token.node,
+                                        expected_tokens.join(", ")
+                                    ),
+                                    token.span,
+                                ));
+                            }
+                        };
+
+                        let effect = Effect::DeductCost {
+                            actor: payer,
+                            token: token.node.clone(),
+                            budget_field,
+                        };
+                        *phase = CostEvalPhase::AwaitDeduction(*idx);
+                        Advance::Yield(effect)
+                    }
+
+                    CostEvalPhase::AwaitDeduction(idx) => {
+                        let response = match pending.take() {
+                            Some(r) => r,
+                            None => return Advance::Continue,
+                        };
+                        match response {
+                            Response::Acknowledged | Response::Vetoed => {
+                                // Proceed to next token.
+                                *phase = CostEvalPhase::Deduction(*idx + 1);
+                                Advance::Continue
+                            }
+                            Response::Override(Value::Str(ref replacement)) => {
+                                // Validate replacement token.
+                                if core
+                                    .type_env
+                                    .resolve_cost_token(replacement)
+                                    .is_none()
+                                {
+                                    return Advance::Error(RuntimeError::with_span(
+                                        format!(
+                                            "invalid cost override '{}'; expected one of: {}",
+                                            replacement,
+                                            expected_tokens.join(", ")
+                                        ),
+                                        *call_span,
+                                    ));
+                                }
+                                *phase = CostEvalPhase::Deduction(*idx + 1);
+                                Advance::Continue
+                            }
+                            other => Advance::Error(RuntimeError::with_span(
+                                format!(
+                                    "protocol error: expected Acknowledged, Override(Str), \
+                                     or Vetoed for DeductCost, got {other:?}"
+                                ),
+                                *call_span,
+                            )),
                         }
                     }
                 }
@@ -2511,6 +2907,7 @@ impl Frame {
                             &core.type_env,
                             core.counters().0,
                             core.counters().1,
+                            core.coverage.clone(),
                         );
 
                         // StateAdapter implements StateProvider directly.
@@ -2925,7 +3322,10 @@ impl Frame {
                         }
                     };
 
-                    let inv_id = InvocationId(core.alloc_invocation_id());
+                    let inv_id = match core.alloc_invocation_id() {
+                        Ok(id) => InvocationId(id),
+                        Err(e) => return Advance::Error(e),
+                    };
 
                     return Advance::Push(Frame::ActionLifecycle {
                         name: hook_decl.name.clone(),
@@ -3462,6 +3862,7 @@ impl Frame {
             Frame::SpawnEntity { pending, .. } => *pending = Some(response),
             Frame::ConditionApplyGate { pending, .. } => *pending = Some(response),
             Frame::ConditionRemovalGate { pending, .. } => *pending = Some(response),
+            Frame::CostEval { pending, .. } => *pending = Some(response),
             _ => {}
         }
     }
@@ -3472,9 +3873,20 @@ impl Frame {
             Frame::ActionLifecycle {
                 step, body_result, ..
             } => {
-                if matches!(step, ActionStep::RunResolve) {
-                    *body_result = Some(Ok(value));
-                    *step = ActionStep::EmitCompleted;
+                match step {
+                    ActionStep::RunResolve => {
+                        *body_result = Some(Ok(value));
+                        *step = ActionStep::EmitCompleted;
+                    }
+                    ActionStep::AwaitRequiresEval => {
+                        // ResumableBridge child completed with requires result.
+                        *body_result = Some(Ok(value));
+                    }
+                    ActionStep::AwaitCostEval => {
+                        // CostEval child completed.
+                        *body_result = Some(Ok(value));
+                    }
+                    _ => {}
                 }
             }
             Frame::Block {
@@ -3534,6 +3946,10 @@ impl Frame {
             }
             Frame::ConditionHandlerEpilogue { child_result, .. } => {
                 *child_result = Some(Ok(value));
+            }
+            Frame::ResumableBridge { expr_cache, .. } => {
+                // Yield frame child completed — cache for replay.
+                expr_cache.push(value);
             }
             _ => {}
         }
@@ -3884,7 +4300,7 @@ impl<S: WritableState> Execution<S> {
         }
 
         // Pre-allocate invocation ID
-        let inv_id = InvocationId(core.alloc_invocation_id());
+        let inv_id = InvocationId(core.alloc_invocation_id()?);
 
         let mut exec = Self::new(core, state);
 
@@ -3927,7 +4343,7 @@ impl<S: WritableState> Execution<S> {
             .ok_or_else(|| RuntimeError::new(format!("undefined reaction '{reaction_name}'")))?
             .clone();
 
-        let inv_id = InvocationId(core.alloc_invocation_id());
+        let inv_id = InvocationId(core.alloc_invocation_id()?);
 
         let mut exec = Self::new(core, state);
 
@@ -3973,7 +4389,7 @@ impl<S: WritableState> Execution<S> {
             .ok_or_else(|| RuntimeError::new(format!("undefined hook '{hook_name}'")))?
             .clone();
 
-        let inv_id = InvocationId(core.alloc_invocation_id());
+        let inv_id = InvocationId(core.alloc_invocation_id()?);
 
         let mut exec = Self::new(core, state);
 
@@ -7873,10 +8289,7 @@ mod tests {
 
     #[test]
     fn differential_alloc_invocation_id_overflow() {
-        // Invocation ID allocation at u64::MAX: recursive path uses checked_add
-        // (returns RuntimeError), step-based path uses wrapping_add (wraps to 0).
-        // This test documents the known divergence. Both should at least use u64::MAX
-        // as the pre-allocated ID, and the step-based path should succeed.
+        // Both paths now use checked_add and should error at u64::MAX.
         let source = r#"
             system Test {
                 entity Creature { HP: int }
@@ -7887,8 +8300,7 @@ mod tests {
         "#;
         let (program, type_env) = setup(source);
 
-        // Recursive path: start with invocation counter at u64::MAX
-        // The recursive path pre-allocates via checked_add, which errors at overflow.
+        // Recursive path: errors on overflow (checked_add returns Err)
         let interp =
             crate::Interpreter::new_with_counters(&program, &type_env, u64::MAX, 1).unwrap();
         let mut game1 = GameState::new();
@@ -7898,38 +8310,21 @@ mod tests {
         let result1 = adapter1.run(&mut handler1, |state, handler| {
             interp.execute_action(state, handler, "Noop", a1, vec![])
         });
+        assert!(
+            result1.is_err(),
+            "recursive path should error on u64::MAX overflow"
+        );
 
-        // Step-based path: wrapping_add wraps u64::MAX → 0, no error
+        // Step-based path: also errors on overflow (checked_add returns Err)
         let core = RuntimeCore::new(Arc::clone(&program), Arc::clone(&type_env), u64::MAX, 1);
         let mut game2 = GameState::new();
         let a2 = add_creature(&mut game2, 10);
         let adapter2 = StateAdapter::new(game2);
         let exec =
-            Execution::start_action(core, adapter2, "Noop", a2, vec![], Span::dummy()).unwrap();
-        let mut handler2 = ScriptedHandler::always_ack();
-        let result2 = exec.run_with_handler(&mut handler2);
-
-        // Step-based path should succeed with u64::MAX as invocation ID
-        assert!(result2.is_ok(), "step-based should succeed: {result2:?}");
-        let kinds2 = structural_kinds(&handler2.log);
-        assert_eq!(kinds2.len(), 2);
-        assert_eq!(kinds2[0], EffectKind::ActionStarted);
-        assert_eq!(kinds2[1], EffectKind::ActionCompleted);
-
-        // Verify invocation ID used is u64::MAX
-        if let Effect::ActionCompleted {
-            invocation: Some(inv),
-            ..
-        } = &handler2.log[1]
-        {
-            assert_eq!(inv.0, u64::MAX, "step-based should use u64::MAX");
-        }
-
-        // Recursive path: errors on overflow (checked_add returns Err)
-        // This is a known divergence — the recursive path fails where step-based wraps.
+            Execution::start_action(core, adapter2, "Noop", a2, vec![], Span::dummy());
         assert!(
-            result1.is_err(),
-            "recursive path should error on u64::MAX overflow"
+            exec.is_err(),
+            "step-based path should error on u64::MAX overflow"
         );
     }
 
@@ -10953,6 +11348,414 @@ mod tests {
         assert!(
             conditions.iter().all(|c| c.name != "Marked"),
             "all Marked conditions should have been removed despite on_remove error"
+        );
+    }
+
+    // ── Phase 0: Failing tests for step-based execution gaps ──
+
+    #[test]
+    fn alloc_invocation_id_overflow_returns_error() {
+        // Phase 1 target: alloc_invocation_id at u64::MAX should return Err,
+        // not wrap to 0.
+        let (core, _) = make_core(
+            r#"
+            system Test {
+                entity Creature { HP: int }
+                action Noop on actor: Creature () {
+                    resolve { }
+                }
+            }
+        "#,
+        );
+
+        // Create a core with invocation counter at u64::MAX
+        let core = RuntimeCore::new(
+            core.program.clone(),
+            core.type_env.clone(),
+            u64::MAX,
+            1,
+        );
+
+        let mut game = GameState::new();
+        let actor = add_creature(&mut game, 10);
+        let adapter = StateAdapter::new(game);
+
+        // Starting an action allocates an invocation ID.
+        // With counter at u64::MAX, checked_add(1) overflows → Err.
+        let exec = Execution::start_action(
+            core,
+            adapter,
+            "Noop",
+            actor,
+            vec![],
+            Span::dummy(),
+        );
+        assert!(
+            exec.is_err(),
+            "alloc at u64::MAX should return Err (checked_add overflow)"
+        );
+    }
+
+    #[test]
+    fn alloc_condition_id_overflow_returns_error() {
+        // alloc_condition_id at u64::MAX should return Err because
+        // checked_add(u64::MAX, 1) overflows when setting the next value.
+        let core = RuntimeCore::new(
+            Arc::new(ttrpg_ast::ast::Program::default()),
+            Arc::new(TypeEnv::new()),
+            1,
+            u64::MAX,
+        );
+
+        // Alloc at u64::MAX fails: can't set next = MAX+1.
+        let result = core.alloc_condition_id();
+        assert!(
+            result.is_err(),
+            "condition ID alloc at u64::MAX should return Err (checked_add overflow)"
+        );
+    }
+
+    #[test]
+    fn step_based_bridge_records_coverage() {
+        // Phase 2 target: bridge eval in step mode should record coverage hits.
+        let source = r#"
+            system Test {
+                entity Creature { HP: int }
+                function add_one(x: int) -> int { x + 1 }
+            }
+        "#;
+        let (program, type_env) = setup(source);
+
+        let base_core = Rc::new(RuntimeCore::new(program, type_env, 1, 1));
+        let core = base_core.with_coverage();
+
+        let game = GameState::new();
+        let adapter = StateAdapter::new(game);
+
+        let exec = Execution::start_function(
+            Rc::clone(&core),
+            adapter,
+            "add_one",
+            vec![Value::Int(5)],
+        )
+        .unwrap();
+        let mut handler = ScriptedHandler::always_ack();
+        let result = exec.run_with_handler(&mut handler);
+        assert!(result.is_ok(), "function should succeed: {result:?}");
+        assert_eq!(result.unwrap(), Value::Int(6));
+
+        // Check that coverage was recorded
+        let cov = core.coverage.as_ref().expect("coverage should be enabled");
+        let data = cov.borrow();
+        // BUG: bridge interpreters have coverage: None, so no hits recorded
+        assert!(
+            !data.hit_spans.is_empty() || !data.hit_functions.is_empty(),
+            "EXPECTED FAILURE: step-based bridge should record coverage hits, \
+             but coverage is None on bridge interpreters"
+        );
+    }
+
+    #[test]
+    fn prompt_use_default_via_caching_handler_path() {
+        // Phase 3 target: when a prompt with default block is captured by
+        // CachingHandler and turned into PromptWaiting via effect_to_yield_frame,
+        // UseDefault should work (not error "no default block").
+        let source = r#"
+            system Test {
+                entity Creature { HP: int }
+                prompt ask_damage(actor: Creature) -> int {
+                    hint: "How much damage?"
+                    suggest: 0
+                    default { 5 }
+                }
+                action Strike on actor: Creature () {
+                    resolve {
+                        let dmg = ask_damage(actor)
+                        actor.HP -= dmg
+                    }
+                }
+            }
+        "#;
+        let (program, type_env) = setup(source);
+
+        // Verify the prompt declaration has a default block
+        let prompt_decl = program.prompts.get("ask_damage")
+            .expect("ask_damage prompt should exist in program");
+        assert!(
+            prompt_decl.default.is_some(),
+            "ask_damage prompt should have a default block in the parsed AST, got None"
+        );
+
+        let core = RuntimeCore::new(program, type_env, 1, 1);
+
+        let mut game = GameState::new();
+        let actor = add_creature(&mut game, 20);
+        let adapter = StateAdapter::new(game);
+
+        let mut exec = Execution::start_action(
+            core,
+            adapter,
+            "Strike",
+            actor,
+            vec![],
+            Span::dummy(),
+        )
+        .unwrap();
+
+        // Poll → ActionStarted
+        let step = exec.poll().unwrap();
+        assert!(matches!(&step, Step::Yielded(e) if matches!(&**e, Effect::ActionStarted { .. })));
+        exec.respond(Response::Acknowledged).unwrap();
+
+        // Poll → ResolvePrompt (from ask_damage)
+        let step = exec.poll().unwrap();
+        match &step {
+            Step::Yielded(e) => {
+                assert!(
+                    matches!(&**e, Effect::ResolvePrompt { has_default: true, .. }),
+                    "expected ResolvePrompt with has_default=true, got {e:?}"
+                );
+            }
+            other => panic!("expected Yielded(ResolvePrompt), got {other:?}"),
+        }
+
+        // Respond with UseDefault
+        exec.respond(Response::UseDefault).unwrap();
+
+        // Poll → should evaluate default block (5), not error
+        // Then → ActionCompleted
+        let mut completed = false;
+        loop {
+            let step = exec.poll();
+            match step {
+                Ok(Step::Yielded(e)) => {
+                    if matches!(&*e, Effect::ActionCompleted { .. }) {
+                        completed = true;
+                        exec.respond(Response::Acknowledged).unwrap();
+                    } else {
+                        exec.respond(Response::Acknowledged).unwrap();
+                    }
+                }
+                Ok(Step::Done(_)) => break,
+                Err(PollError::Runtime(e)) => {
+                    // BUG: currently errors with "no default block"
+                    panic!(
+                        "EXPECTED FAILURE: prompt UseDefault should work via \
+                         effect_to_yield_frame, but default_block is None: {e}"
+                    );
+                }
+                Err(e) => panic!("unexpected error: {e:?}"),
+            }
+        }
+        assert!(completed, "should have seen ActionCompleted");
+
+        // Verify the default was applied: HP should be 20 - 5 = 15
+        let hp = exec.state().read_field(&actor, "HP").unwrap();
+        assert_eq!(hp, Value::Int(15), "default damage of 5 should be applied");
+    }
+
+    #[test]
+    fn effectful_requires_yields_instead_of_panicking() {
+        // Phase 4 target: requires clause containing roll() should yield
+        // RollDice instead of panicking via NoYieldHandler.
+        let source = r#"
+            system Test {
+                entity Creature { HP: int }
+                action RiskyAttack on actor: Creature () {
+                    requires { roll(1d20) >= 10 }
+                    resolve { actor.HP += 1 }
+                }
+            }
+        "#;
+        let (program, type_env) = setup(source);
+        let core = RuntimeCore::new(
+            Arc::clone(&program),
+            Arc::clone(&type_env),
+            1,
+            1,
+        );
+
+        let mut game = GameState::new();
+        let actor = add_creature(&mut game, 10);
+        let adapter = StateAdapter::new(game);
+
+        let mut exec = Execution::start_action(
+            core,
+            adapter,
+            "RiskyAttack",
+            actor,
+            vec![],
+            Span::dummy(),
+        )
+        .unwrap();
+
+        // Poll → ActionStarted
+        let step = exec.poll().unwrap();
+        assert!(matches!(&step, Step::Yielded(e) if matches!(&**e, Effect::ActionStarted { .. })));
+        exec.respond(Response::Acknowledged).unwrap();
+
+        // Poll → should yield RollDice for the requires clause, not panic
+        // BUG: currently panics with "unexpected forwarded effect in bridge evaluation"
+        let step = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| exec.poll()));
+        match step {
+            Ok(Ok(Step::Yielded(e))) => {
+                assert!(
+                    matches!(&*e, Effect::RollDice { .. }),
+                    "expected RollDice from requires clause, got {e:?}"
+                );
+            }
+            Ok(other) => {
+                panic!("expected Yielded(RollDice), got {other:?}");
+            }
+            Err(_) => {
+                panic!(
+                    "EXPECTED FAILURE: NoYieldHandler panicked on RollDice in requires clause; \
+                     should yield instead"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn action_with_cost_emits_deduct_cost_in_step_mode() {
+        // Phase 5 target: action with cost clause should emit DeductCost
+        // in poll/respond mode, not skip cost entirely.
+        // Uses start_action directly with pre-provisioned budget to avoid
+        // the with_budget containment guard issue in Block frames.
+        let source = r#"
+            system Test {
+                struct TurnBudget { action: int }
+                entity Character { HP: int }
+                action Strike on attacker: Character (target: Character) {
+                    cost { action }
+                    resolve { target.HP -= 1 }
+                }
+            }
+        "#;
+        let (program, type_env) = setup(source);
+
+        // Step-based path via poll/respond with budget pre-provisioned
+        let core = RuntimeCore::new(
+            Arc::clone(&program),
+            Arc::clone(&type_env),
+            1,
+            1,
+        );
+        let mut game = GameState::new();
+        let attacker = add_character(&mut game, 20);
+        let target = add_character(&mut game, 15);
+        // Pre-provision a budget with sufficient action tokens
+        let mut budget = BTreeMap::new();
+        budget.insert(Name::from("action"), Value::Int(2));
+        game.set_turn_budget(&attacker, budget);
+
+        let adapter = StateAdapter::new(game);
+
+        let mut exec = Execution::start_action(
+            core,
+            adapter,
+            "Strike",
+            attacker,
+            vec![Value::Entity(target)],
+            Span::dummy(),
+        )
+        .unwrap();
+
+        // Drive poll/respond manually, collecting effects
+        let mut effects: Vec<Effect> = Vec::new();
+        loop {
+            match exec.poll() {
+                Ok(Step::Yielded(e)) => {
+                    effects.push((*e).clone());
+                    exec.respond(Response::Acknowledged).unwrap();
+                }
+                Ok(Step::Done(_)) => break,
+                Err(PollError::Runtime(e)) => {
+                    panic!("runtime error during step-based execution: {e}");
+                }
+                Err(e) => panic!("unexpected error: {e:?}"),
+            }
+        }
+
+        let kinds: Vec<_> = effects.iter().map(EffectKind::of).collect();
+        // BUG: step-based path skips cost — DeductCost never emitted
+        assert!(
+            kinds.contains(&EffectKind::DeductCost),
+            "EXPECTED FAILURE: step-based poll/respond should emit DeductCost, \
+             but async path skips cost entirely. Got: {kinds:?}"
+        );
+    }
+
+    #[test]
+    fn action_with_insufficient_budget_emits_requires_check_in_step_mode() {
+        // Phase 5 target: action with cost + insufficient budget should yield
+        // RequiresCheck(passed=false) in poll/respond mode.
+        // Uses start_action directly with pre-provisioned empty budget.
+        let source = r#"
+            system Test {
+                struct TurnBudget { action: int }
+                entity Character { HP: int }
+                action Strike on attacker: Character (target: Character) {
+                    cost { action }
+                    resolve { target.HP -= 1 }
+                }
+            }
+        "#;
+        let (program, type_env) = setup(source);
+
+        // Step-based path via poll/respond with insufficient budget
+        let core = RuntimeCore::new(
+            Arc::clone(&program),
+            Arc::clone(&type_env),
+            1,
+            1,
+        );
+        let mut game = GameState::new();
+        let attacker = add_character(&mut game, 20);
+        let target = add_character(&mut game, 15);
+        // Pre-provision a budget with 0 action tokens (insufficient)
+        let mut budget = BTreeMap::new();
+        budget.insert(Name::from("action"), Value::Int(0));
+        game.set_turn_budget(&attacker, budget);
+
+        let adapter = StateAdapter::new(game);
+
+        let mut exec = Execution::start_action(
+            core,
+            adapter,
+            "Strike",
+            attacker,
+            vec![Value::Entity(target)],
+            Span::dummy(),
+        )
+        .unwrap();
+
+        // Drive poll/respond manually
+        let mut effects: Vec<Effect> = Vec::new();
+        loop {
+            match exec.poll() {
+                Ok(Step::Yielded(e)) => {
+                    effects.push((*e).clone());
+                    exec.respond(Response::Acknowledged).unwrap();
+                }
+                Ok(Step::Done(_)) => break,
+                Err(PollError::Runtime(e)) => {
+                    panic!("runtime error during step-based execution: {e}");
+                }
+                Err(e) => panic!("unexpected error: {e:?}"),
+            }
+        }
+
+        // Check for budget RequiresCheck in step-based path
+        let has_budget_check = effects.iter().any(|e| {
+            matches!(e, Effect::RequiresCheck { passed: false, reason: Some(_), .. })
+        });
+        // BUG: step-based path skips cost pipeline, so no budget check emitted
+        assert!(
+            has_budget_check,
+            "EXPECTED FAILURE: step-based poll/respond should emit RequiresCheck for \
+             insufficient budget, but async path skips cost entirely. Got: {:?}",
+            effects.iter().map(EffectKind::of).collect::<Vec<_>>()
         );
     }
 }
