@@ -96,6 +96,14 @@ impl BridgeStats {
         );
     }
 
+    /// Panics if any Dispatch bridges were used.
+    /// All dispatch operations (derive/mechanic/function/table) now use
+    /// native child frames (DeriveEval/FunctionEval) instead of bridging.
+    pub fn assert_no_dispatch_bridges(&self) {
+        let count = self.count(BridgeCategory::Dispatch);
+        assert!(count == 0, "expected no dispatch bridges, got: {count}");
+    }
+
     /// Format counts as a single-line summary string.
     pub fn summary(&self) -> String {
         format!(

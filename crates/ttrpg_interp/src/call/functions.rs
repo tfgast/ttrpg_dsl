@@ -1,13 +1,13 @@
-use ttrpg_ast::ast::Arg;
+use ttrpg_ast::ast::{Arg, Block, FnDecl};
 use ttrpg_ast::{Name, Span, Spanned};
-use ttrpg_checker::env::ParamInfo;
+use ttrpg_checker::env::{FnInfo, ParamInfo};
 
 use crate::Env;
 use crate::RuntimeError;
 use crate::effect::{Effect, Response};
 use crate::eval::{eval_block, eval_expr};
 use crate::pipeline::{
-    collect_modifiers_owned, emit_modify_applied_events, run_phase1, run_phase2,
+    OwnedModifier, collect_modifiers_owned, emit_modify_applied_events, run_phase1, run_phase2,
 };
 use crate::value::{Value, value_matches_ty, value_type_display};
 
@@ -575,4 +575,92 @@ pub(super) fn dispatch_prompt(
             call_span,
         )),
     }
+}
+
+// ── Derive setup/teardown for step-based execution ─────────────
+
+/// Setup phase: map args, fill defaults, collect modifiers, run Phase 1.
+/// Returns (bound_args, body, modifiers) for use by the step-based engine.
+pub(crate) fn derive_setup(
+    env: &mut Env,
+    name: &str,
+    fn_info: &FnInfo,
+    fn_decl: &FnDecl,
+    args: Vec<Value>,
+    call_span: Span,
+) -> Result<(Vec<(Name, Value)>, Block, Vec<OwnedModifier>), RuntimeError> {
+    env.record_function_entry(name);
+
+    if args.len() > fn_info.params.len() {
+        return Err(RuntimeError::with_span(
+            format!(
+                "too many arguments: '{}' takes {} params, got {}",
+                name,
+                fn_info.params.len(),
+                args.len()
+            ),
+            call_span,
+        ));
+    }
+
+    let mut bound: Vec<(Name, Value)> = Vec::new();
+    for (i, val) in args.into_iter().enumerate() {
+        bound.push((fn_info.params[i].name.clone(), val));
+    }
+
+    // Fill defaults for missing optional params
+    for i in bound.len()..fn_info.params.len() {
+        if fn_info.params[i].has_default {
+            if let Some(default_expr) = fn_decl.params.get(i).and_then(|p| p.default.as_ref()) {
+                env.push_scope();
+                for (pname, pval) in &bound {
+                    env.bind(pname.clone(), pval.clone());
+                }
+                let result = eval_expr(env, default_expr);
+                env.pop_scope();
+                bound.push((fn_info.params[i].name.clone(), result?));
+            }
+        } else {
+            return Err(RuntimeError::with_span(
+                format!(
+                    "missing required argument '{}' for '{}'",
+                    fn_info.params[i].name, name
+                ),
+                call_span,
+            ));
+        }
+    }
+
+    // Collect modifiers, run Phase 1
+    let modifiers = collect_modifiers_owned(env, name, fn_info, &bound)?;
+    let bound = if modifiers.is_empty() {
+        bound
+    } else {
+        run_phase1(env, name, fn_info, bound, &modifiers)?
+    };
+
+    Ok((bound, fn_decl.body.clone(), modifiers))
+}
+
+/// Teardown phase: run Phase 2 modifiers and emit modify_applied events.
+pub(crate) fn derive_teardown(
+    env: &mut Env,
+    name: &str,
+    fn_info: &FnInfo,
+    bound: &[(Name, Value)],
+    body_val: Value,
+    modifiers: &[OwnedModifier],
+    call_span: Span,
+) -> Result<Value, RuntimeError> {
+    let val = if modifiers.is_empty() {
+        body_val
+    } else {
+        run_phase2(env, name, fn_info, bound, body_val, modifiers)?
+    };
+
+    if !modifiers.is_empty() {
+        emit_modify_applied_events(env, modifiers, name, call_span)?;
+    }
+
+    Ok(val)
 }

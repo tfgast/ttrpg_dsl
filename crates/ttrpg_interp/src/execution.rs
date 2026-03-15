@@ -17,6 +17,7 @@ use ttrpg_ast::{Name, Span, Spanned};
 
 use crate::adapter::StateAdapter;
 use crate::effect::{ActionKind, ActionOutcome, Effect, EffectHandler, EffectKind, Response, Step};
+use crate::pipeline::OwnedModifier;
 use crate::runtime_core::{BridgeCategory, RuntimeCore};
 use crate::select_action_overload;
 use crate::state::{
@@ -356,6 +357,7 @@ fn try_dispatch_apply_condition<S: WritableState>(
             state_defaults_idx: 0,
             state_fields_acc: BTreeMap::new(),
             state_expr_cache: Vec::new(),
+            default_scope_pushed: false,
         },
         awaiting,
     )))
@@ -731,6 +733,7 @@ fn try_frame_dispatch_stmt<S: WritableState>(
             args: evaluated_args,
             default_params,
             body: Some(fn_decl.body.clone()),
+            defaults_done: false,
             child_result: None,
         },
         awaiting,
@@ -880,69 +883,76 @@ where
     result
 }
 
-/// Dispatch a bridge call (Derive/Mechanic/Function/Expr) through the
-/// given handler. Clones name/args from `BridgeCallInfo` so the info
-/// can be retained in the frame for replay.
-fn bridge_call_dispatch<S: WritableState>(
+/// Generic bridge setup that returns an arbitrary type `R` instead of just `Value`.
+/// Used for operations that need `Env` access but return non-Value results
+/// (e.g., modifier collection).
+fn bridge_run<S, H, F, R>(
     core: &RuntimeCore,
     env: &mut ExecEnv,
     state: &StateAdapter<S>,
-    handler: &mut dyn EffectHandler,
-    ci: &BridgeCallInfo,
-) -> Result<Value, RuntimeError> {
-    match ci {
-        BridgeCallInfo::Derive { name, args } => {
-            let n = name.clone();
-            let a = args.clone();
-            let is_table = core.program.tables.contains_key(n.as_ref());
-            bridge_eval_with(
-                core,
-                env,
-                state,
-                handler,
-                BridgeCategory::Dispatch,
-                move |tmp_env| {
-                    if is_table {
-                        crate::call::dispatch_table_with_values(tmp_env, &n, a, Span::dummy())
-                    } else {
-                        crate::call::evaluate_fn_with_values(tmp_env, &n, a, Span::dummy())
-                    }
-                },
+    handler: &mut H,
+    category: BridgeCategory,
+    f: F,
+) -> Result<R, RuntimeError>
+where
+    S: WritableState,
+    H: EffectHandler + ?Sized,
+    F: FnOnce(&mut Env) -> Result<R, RuntimeError>,
+{
+    core.bridge_stats().increment(category);
+    let interp = Interpreter::bridge(
+        &core.program,
+        &core.type_env,
+        core.counters().0,
+        core.counters().1,
+        core.coverage.clone(),
+    );
+
+    let scopes = std::mem::take(&mut env.scopes);
+    let lc_stack = std::mem::take(&mut env.lifecycle_condition_stack);
+    let ret_val = env.return_value.take();
+    let turn_actor = env.turn_actor;
+    let cost_payer = env.cost_payer;
+    let invocation_id = env.current_invocation_id;
+    let emit_depth = env.emit_depth;
+    let in_lifecycle = env.in_lifecycle_block;
+    let condition_token = env.current_condition_token;
+
+    let (result, out_scopes, out_lc_stack, out_ret_val) =
+        state.run(handler, |state_provider, effect_handler| {
+            let mut tmp_env = Env {
+                state: state_provider,
+                handler: effect_handler,
+                interp: &interp,
+                scopes,
+                turn_actor,
+                cost_payer,
+                current_invocation_id: invocation_id,
+                emit_depth,
+                in_lifecycle_block: in_lifecycle,
+                lifecycle_condition_stack: lc_stack,
+                current_condition_token: condition_token,
+                return_value: ret_val,
+            };
+
+            let result = f(&mut tmp_env);
+
+            (
+                result,
+                std::mem::take(&mut tmp_env.scopes),
+                std::mem::take(&mut tmp_env.lifecycle_condition_stack),
+                tmp_env.return_value.take(),
             )
-        }
-        BridgeCallInfo::Mechanic { name, args } => {
-            let n = name.clone();
-            let a = args.clone();
-            bridge_eval_with(
-                core,
-                env,
-                state,
-                handler,
-                BridgeCategory::Dispatch,
-                move |tmp_env| crate::call::evaluate_fn_with_values(tmp_env, &n, a, Span::dummy()),
-            )
-        }
-        BridgeCallInfo::Function { name, args } => {
-            let n = name.clone();
-            let a = args.clone();
-            bridge_eval_with(
-                core,
-                env,
-                state,
-                handler,
-                BridgeCategory::Dispatch,
-                move |tmp_env| {
-                    crate::call::evaluate_function_with_values(tmp_env, &n, a, Span::dummy())
-                },
-            )
-        }
-        BridgeCallInfo::Expr { expr } => {
-            let e = expr.clone();
-            bridge_eval_with(core, env, state, handler, BridgeCategory::Eval, |tmp_env| {
-                crate::eval::eval_expr(tmp_env, &e)
-            })
-        }
-    }
+        });
+
+    env.scopes = out_scopes;
+    env.lifecycle_condition_stack = out_lc_stack;
+    env.return_value = out_ret_val;
+
+    let (inv, cond) = interp.id_counters();
+    core.sync_counters(inv, cond);
+
+    result
 }
 
 // ── Action lifecycle step machine ──────────────────────────────
@@ -1060,6 +1070,8 @@ pub(crate) enum Frame {
         params: Vec<DefaultParam>,
         resolved: Vec<(Name, Value)>,
         index: usize,
+        /// Result from a ResumableBridge child evaluating a default expression.
+        child_result: Option<Value>,
     },
 
     DeriveEval {
@@ -1072,6 +1084,12 @@ pub(crate) enum Frame {
         hook_index: usize,
         /// Cache for replaying host-decided effects (async path).
         expr_cache: Vec<Value>,
+        /// Phase of derive evaluation.
+        phase: DeriveEvalPhase,
+        /// Bound args (name→value) after mapping positional args.
+        bound_args: Option<Vec<(Name, Value)>>,
+        /// Modifiers collected during setup (for Phase 2 teardown).
+        modifiers: Vec<OwnedModifier>,
     },
 
     FunctionEval {
@@ -1080,6 +1098,8 @@ pub(crate) enum Frame {
         /// Default expressions for missing optional params.
         default_params: Vec<(Name, Spanned<ExprKind>)>,
         body: Option<Block>,
+        /// Whether defaults have been evaluated (via FillDefaults child).
+        defaults_done: bool,
         /// Stores the child Block's result (Ok) or error (Err)
         /// for scope cleanup in the next advance() call.
         child_result: Option<Result<Value, RuntimeError>>,
@@ -1089,6 +1109,8 @@ pub(crate) enum Frame {
         event_name: Name,
         /// Argument expressions from the emit statement.
         args: Vec<Arg>,
+        /// Index into args for per-arg evaluation via child frames.
+        arg_index: usize,
         span: Span,
         phase: EmitEvalPhase,
         /// Accumulated param → value map from evaluated args.
@@ -1107,7 +1129,7 @@ pub(crate) enum Frame {
         saved_lifecycle: u32,
         /// Whether a scope was pushed for field default evaluation.
         scope_pushed: bool,
-        /// Result from child EmitHooks/EmitConditionHandlers frame.
+        /// Result from child frame (EmitHooks/ResumableBridge/etc.).
         child_result: Option<Result<Value, RuntimeError>>,
     },
 
@@ -1164,6 +1186,8 @@ pub(crate) enum Frame {
         state_fields_acc: BTreeMap<Name, Value>,
         /// CachingHandler cache for the current state field default.
         state_expr_cache: Vec<Value>,
+        /// Whether a scope was pushed for the current default evaluation.
+        default_scope_pushed: bool,
     },
 
     ConditionOnApply {
@@ -1445,6 +1469,7 @@ impl Frame {
                                         params: fill_params,
                                         resolved: Vec::new(),
                                         index: 0,
+                                        child_result: None,
                                     });
                                 }
 
@@ -2051,7 +2076,7 @@ impl Frame {
             Frame::BridgeCall {
                 result,
                 call_info,
-                expr_cache,
+                expr_cache: _,
             } => {
                 if let Some(r) = result.take() {
                     return match r {
@@ -2065,7 +2090,7 @@ impl Frame {
                         *call_info = Some(ci);
                     }
                 }
-                let ci = match call_info {
+                let ci = match call_info.take() {
                     Some(ci) => ci,
                     None => {
                         return Advance::Error(RuntimeError::new(
@@ -2074,42 +2099,97 @@ impl Frame {
                     }
                 };
 
-                if let Some(ref mut h) = handler {
-                    // Sync path — forward effects to real handler.
-                    let r = bridge_call_dispatch(core, env, state, *h, ci);
-                    match r {
-                        Ok(v) => Advance::Pop(v),
-                        Err(e) => Advance::Error(e),
+                // Push appropriate child frame based on call type.
+                match ci {
+                    BridgeCallInfo::Derive { name, args } => {
+                        let is_table = core.program.tables.contains_key(name.as_ref());
+                        Advance::Push(Frame::DeriveEval {
+                            name,
+                            args,
+                            is_table,
+                            base_value: None,
+                            modify_hooks: Vec::new(),
+                            hook_index: 0,
+                            expr_cache: Vec::new(),
+                            phase: DeriveEvalPhase::Init,
+                            bound_args: None,
+                            modifiers: Vec::new(),
+                        })
                     }
-                } else {
-                    // Async path — CachingHandler with replay support.
-                    state.reset_mutation_flag();
-                    let mut caching = CachingHandler::from_expr_cache(expr_cache);
-                    let eval_result = bridge_call_dispatch(core, env, state, &mut caching, ci);
-
-                    if let Some(effect) = caching.captured {
-                        if state.local_mutation_applied() {
+                    BridgeCallInfo::Mechanic { name, args } => Advance::Push(Frame::DeriveEval {
+                        name,
+                        args,
+                        is_table: false,
+                        base_value: None,
+                        modify_hooks: Vec::new(),
+                        hook_index: 0,
+                        expr_cache: Vec::new(),
+                        phase: DeriveEvalPhase::Init,
+                        bound_args: None,
+                        modifiers: Vec::new(),
+                    }),
+                    BridgeCallInfo::Function { name, args } => {
+                        // Look up function decl and construct FunctionEval.
+                        let fn_decl = match core.program.functions.get(name.as_ref()) {
+                            Some(d) => d.clone(),
+                            None => {
+                                return Advance::Error(RuntimeError::new(format!(
+                                    "undefined function '{name}'"
+                                )));
+                            }
+                        };
+                        let fn_info = match core.type_env.lookup_fn(name.as_ref()) {
+                            Some(fi) => fi.clone(),
+                            None => {
+                                return Advance::Error(RuntimeError::new(format!(
+                                    "internal error: no type info for function '{name}'"
+                                )));
+                            }
+                        };
+                        if args.len() > fn_info.params.len() {
                             return Advance::Error(RuntimeError::new(format!(
-                                "async replay unsound: local mutation applied \
-                                 before host-decided effect {:?} in BridgeCall; \
-                                 cannot safely replay",
-                                EffectKind::of(&effect),
+                                "too many arguments: '{}' takes {} params, got {}",
+                                name,
+                                fn_info.params.len(),
+                                args.len()
                             )));
                         }
-                        if let Some(yield_frame) =
-                            effect_to_yield_frame(effect, Span::dummy(), core, env)
-                        {
-                            return Advance::Push(yield_frame);
+                        let mut bound: Vec<(Name, Value)> = Vec::new();
+                        for (i, val) in args.into_iter().enumerate() {
+                            bound.push((fn_info.params[i].name.clone(), val));
                         }
-                    }
-
-                    match eval_result {
-                        Ok(v) => {
-                            expr_cache.clear();
-                            Advance::Pop(v)
+                        let mut default_params = Vec::new();
+                        for i in bound.len()..fn_info.params.len() {
+                            if fn_info.params[i].has_default {
+                                if let Some(default_expr) =
+                                    fn_decl.params.get(i).and_then(|p| p.default.as_ref())
+                                {
+                                    default_params.push((
+                                        fn_info.params[i].name.clone(),
+                                        default_expr.clone(),
+                                    ));
+                                }
+                            } else {
+                                return Advance::Error(RuntimeError::new(format!(
+                                    "missing required argument '{}' for '{}'",
+                                    fn_info.params[i].name, name
+                                )));
+                            }
                         }
-                        Err(e) => Advance::Error(e),
+                        Advance::Push(Frame::FunctionEval {
+                            name,
+                            args: bound,
+                            default_params,
+                            body: Some(fn_decl.body.clone()),
+                            defaults_done: false,
+                            child_result: None,
+                        })
                     }
+                    BridgeCallInfo::Expr { expr } => Advance::Push(Frame::ResumableBridge {
+                        expr,
+                        expr_cache: Vec::new(),
+                        span: Span::dummy(),
+                    }),
                 }
             }
 
@@ -2246,6 +2326,7 @@ impl Frame {
                         let emit_frame = Frame::EmitEval {
                             event_name: ev_name.clone(),
                             args: emit_args.clone(),
+                            arg_index: 0,
                             span: emit_span,
                             phase: EmitEvalPhase::Args,
                             param_map: BTreeMap::new(),
@@ -2331,7 +2412,16 @@ impl Frame {
                 params,
                 resolved: _,
                 index,
+                child_result,
             } => {
+                // Handle child ResumableBridge result (default expr evaluated).
+                if let Some(val) = child_result.take() {
+                    let param = &params[*index];
+                    env.bind(param.name.clone(), val);
+                    *index += 1;
+                    return Advance::Continue;
+                }
+
                 // All defaults resolved — pop.
                 if *index >= params.len() {
                     return Advance::Pop(Value::Void);
@@ -2345,23 +2435,13 @@ impl Frame {
                     *index += 1;
                     Advance::Continue
                 } else if let Some(ref default_expr) = param.default_expr {
-                    // Evaluate default expression via bridge.
+                    // Push ResumableBridge child to evaluate the default expression.
                     let expr = default_expr.clone();
-                    let eval_result = if let Some(ref mut h) = handler {
-                        bridge_eval_with(core, env, state, *h, BridgeCategory::Eval, |tmp_env| {
-                            crate::eval::eval_expr(tmp_env, &expr)
-                        })
-                    } else {
-                        bridge_eval_expr(core, env, state, &expr)
-                    };
-                    match eval_result {
-                        Ok(val) => {
-                            env.bind(param.name.clone(), val);
-                            *index += 1;
-                            Advance::Continue
-                        }
-                        Err(e) => Advance::Error(e),
-                    }
+                    Advance::Push(Frame::ResumableBridge {
+                        expr,
+                        expr_cache: Vec::new(),
+                        span: Span::dummy(),
+                    })
                 } else {
                     // Missing required parameter.
                     Advance::Error(RuntimeError::new(format!(
@@ -2378,89 +2458,167 @@ impl Frame {
                 base_value,
                 modify_hooks: _,
                 hook_index: _,
-                expr_cache,
+                expr_cache: _,
+                phase,
+                bound_args,
+                modifiers,
             } => {
-                if let Some(val) = base_value.take() {
-                    // Modify hooks deferred to Phase 5; return base value.
-                    return Advance::Pop(val);
-                }
-
-                // Bridge-evaluate the derive/table/mechanic body.
-                let n = name.clone();
-                let a = args.clone();
-                let is_tbl = *is_table;
-
-                if let Some(ref mut h) = handler {
-                    // Sync path — forward effects to real handler.
-                    let result = bridge_eval_with(
-                        core,
-                        env,
-                        state,
-                        *h,
-                        BridgeCategory::Dispatch,
-                        move |tmp_env| {
-                            if is_tbl {
-                                crate::call::dispatch_table_with_values(
-                                    tmp_env,
-                                    &n,
-                                    a,
-                                    Span::dummy(),
+                match phase {
+                    DeriveEvalPhase::Init => {
+                        if *is_table {
+                            // Tables are pure lookups — bridge as Eval.
+                            let n = name.clone();
+                            let a = args.clone();
+                            let result = if let Some(ref mut h) = handler {
+                                bridge_eval_with(
+                                    core,
+                                    env,
+                                    state,
+                                    *h,
+                                    BridgeCategory::Eval,
+                                    move |tmp_env| {
+                                        crate::call::dispatch_table_with_values(
+                                            tmp_env,
+                                            &n,
+                                            a,
+                                            Span::dummy(),
+                                        )
+                                    },
                                 )
                             } else {
-                                crate::call::evaluate_fn_with_values(tmp_env, &n, a, Span::dummy())
-                            }
-                        },
-                    );
-                    match result {
-                        Ok(val) => Advance::Pop(val),
-                        Err(e) => Advance::Error(e),
-                    }
-                } else {
-                    // Async path — CachingHandler with replay support.
-                    state.reset_mutation_flag();
-                    let mut caching = CachingHandler::from_expr_cache(expr_cache);
-                    let result = bridge_eval_with(
-                        core,
-                        env,
-                        state,
-                        &mut caching,
-                        BridgeCategory::Dispatch,
-                        move |tmp_env| {
-                            if is_tbl {
-                                crate::call::dispatch_table_with_values(
-                                    tmp_env,
-                                    &n,
-                                    a,
-                                    Span::dummy(),
+                                let n2 = name.clone();
+                                let a2 = args.clone();
+                                bridge_eval_with(
+                                    core,
+                                    env,
+                                    state,
+                                    &mut NoYieldHandler,
+                                    BridgeCategory::Eval,
+                                    move |tmp_env| {
+                                        crate::call::dispatch_table_with_values(
+                                            tmp_env,
+                                            &n2,
+                                            a2,
+                                            Span::dummy(),
+                                        )
+                                    },
                                 )
-                            } else {
-                                crate::call::evaluate_fn_with_values(tmp_env, &n, a, Span::dummy())
-                            }
-                        },
-                    );
-
-                    if let Some(effect) = caching.captured {
-                        if state.local_mutation_applied() {
-                            return Advance::Error(RuntimeError::new(format!(
-                                "async replay unsound: local mutation applied \
-                                 before host-decided effect {:?} in DeriveEval; \
-                                 cannot safely replay",
-                                EffectKind::of(&effect),
-                            )));
+                            };
+                            return match result {
+                                Ok(val) => Advance::Pop(val),
+                                Err(e) => Advance::Error(e),
+                            };
                         }
-                        if let Some(yield_frame) =
-                            effect_to_yield_frame(effect, Span::dummy(), core, env)
+
+                        // Derive/mechanic: look up decl and type info.
+                        let fn_decl = match core
+                            .program
+                            .derives
+                            .get(name.as_ref())
+                            .or_else(|| core.program.mechanics.get(name.as_ref()))
                         {
-                            return Advance::Push(yield_frame);
+                            Some(d) => d.clone(),
+                            None => {
+                                return Advance::Error(RuntimeError::new(format!(
+                                    "undefined derive/mechanic '{name}'"
+                                )));
+                            }
+                        };
+
+                        let fn_info = match core.type_env.lookup_fn(name.as_ref()) {
+                            Some(fi) => fi.clone(),
+                            None => {
+                                return Advance::Error(RuntimeError::new(format!(
+                                    "internal error: no type info for '{name}'"
+                                )));
+                            }
+                        };
+
+                        // Map positional args, fill defaults, collect modifiers, run Phase 1.
+                        // All via bridge_run (Eval category — pure, no yields).
+                        let n = name.clone();
+                        let a = args.clone();
+                        let setup_result = bridge_run(
+                            core,
+                            env,
+                            state,
+                            &mut NoYieldHandler,
+                            BridgeCategory::Eval,
+                            move |tmp_env| {
+                                crate::call::derive_setup(
+                                    tmp_env,
+                                    &n,
+                                    &fn_info,
+                                    &fn_decl,
+                                    a,
+                                    Span::dummy(),
+                                )
+                            },
+                        );
+
+                        match setup_result {
+                            Ok((final_bound, body, mods)) => {
+                                *bound_args = Some(final_bound.clone());
+                                *modifiers = mods;
+                                *phase = DeriveEvalPhase::BodyDone;
+                                // Push FunctionEval child for body execution.
+                                Advance::Push(Frame::FunctionEval {
+                                    name: name.clone(),
+                                    args: final_bound,
+                                    default_params: Vec::new(), // already resolved
+                                    body: Some(body),
+                                    defaults_done: false,
+                                    child_result: None,
+                                })
+                            }
+                            Err(e) => Advance::Error(e),
                         }
                     }
 
-                    match result {
-                        Ok(val) => {
-                            expr_cache.clear();
-                            Advance::Pop(val)
+                    DeriveEvalPhase::BodyDone => {
+                        if let Some(body_val) = base_value.take() {
+                            if modifiers.is_empty() {
+                                // No modifiers — return body value directly.
+                                return Advance::Pop(body_val);
+                            }
+                            // Run Phase 2 modifiers and emit events (via bridge — pure).
+                            let n = name.clone();
+                            let ba = bound_args.take().unwrap_or_default();
+                            let mods = std::mem::take(modifiers);
+                            let fn_info = match core.type_env.lookup_fn(name.as_ref()) {
+                                Some(fi) => fi.clone(),
+                                None => {
+                                    return Advance::Error(RuntimeError::new(format!(
+                                        "internal error: no type info for '{name}'"
+                                    )));
+                                }
+                            };
+                            let result = bridge_run(
+                                core,
+                                env,
+                                state,
+                                &mut NoYieldHandler,
+                                BridgeCategory::Eval,
+                                move |tmp_env| {
+                                    crate::call::derive_teardown(
+                                        tmp_env,
+                                        &n,
+                                        &fn_info,
+                                        &ba,
+                                        body_val,
+                                        &mods,
+                                        Span::dummy(),
+                                    )
+                                },
+                            );
+                            return match result {
+                                Ok(val) => Advance::Pop(val),
+                                Err(e) => Advance::Error(e),
+                            };
                         }
-                        Err(e) => Advance::Error(e),
+                        Advance::Error(RuntimeError::new(format!(
+                            "DeriveEval '{name}': BodyDone but no base_value"
+                        )))
                     }
                 }
             }
@@ -2470,57 +2628,75 @@ impl Frame {
                 args,
                 default_params,
                 body,
+                defaults_done,
                 child_result,
             } => {
-                // Phase 2: child Block completed — clean up and return.
+                // Phase 3: child Block completed — clean up and return.
+                // (body is None when Block was already pushed)
                 if let Some(result) = child_result.take() {
-                    env.pop_scope();
-                    env.return_value = None;
-                    return match result {
-                        Ok(val) => Advance::Pop(val),
-                        Err(e) => Advance::Error(e),
-                    };
+                    if body.is_none() {
+                        // Block child completed.
+                        env.pop_scope();
+                        env.return_value = None;
+                        return match result {
+                            Ok(val) => Advance::Pop(val),
+                            Err(e) => Advance::Error(e),
+                        };
+                    }
+                    // FillDefaults child completed (body still present).
+                    // Fall through to Phase 2.
+                    if let Err(e) = result {
+                        env.pop_scope();
+                        return Advance::Error(e);
+                    }
                 }
 
-                // Phase 1: push scope, bind args, evaluate defaults,
-                // push Block for body.
-                if let Some(block) = body.take() {
+                // Phase 2: defaults done — push Block for body.
+                if *defaults_done {
+                    if let Some(block) = body.take() {
+                        return Advance::Push(Frame::Block {
+                            stmts: block.node,
+                            index: 0,
+                            result: Value::Void,
+                            expr_cache: Vec::new(),
+                            awaiting_fn: None,
+                            awaiting_error: None,
+                        });
+                    }
+                    return Advance::Error(RuntimeError::new(format!(
+                        "FunctionEval '{name}': no body after defaults"
+                    )));
+                }
+
+                // Phase 1: push scope, bind args, then evaluate defaults.
+                if body.is_some() {
                     env.push_scope();
                     for (pname, pval) in args.drain(..) {
                         env.bind(pname, pval);
                     }
 
-                    // Evaluate defaults via bridge (each bound immediately
-                    // so later defaults can reference earlier ones).
-                    for (dname, dexpr) in default_params.drain(..) {
-                        let result = if let Some(ref mut h) = handler {
-                            bridge_eval_with(
-                                core,
-                                env,
-                                state,
-                                *h,
-                                BridgeCategory::Eval,
-                                |tmp_env| crate::eval::eval_expr(tmp_env, &dexpr),
-                            )
-                        } else {
-                            bridge_eval_expr(core, env, state, &dexpr)
-                        };
-                        match result {
-                            Ok(val) => env.bind(dname, val),
-                            Err(e) => {
-                                env.pop_scope();
-                                return Advance::Error(e);
-                            }
-                        }
+                    if default_params.is_empty() {
+                        // No defaults to evaluate — go straight to body.
+                        *defaults_done = true;
+                        return Advance::Continue;
                     }
 
-                    return Advance::Push(Frame::Block {
-                        stmts: block.node,
+                    // Build FillDefaults params from default_params.
+                    let fill_params: Vec<DefaultParam> = default_params
+                        .drain(..)
+                        .map(|(dname, dexpr)| DefaultParam {
+                            name: dname,
+                            provided_value: None,
+                            default_expr: Some(dexpr),
+                        })
+                        .collect();
+
+                    *defaults_done = true;
+                    return Advance::Push(Frame::FillDefaults {
+                        params: fill_params,
+                        resolved: Vec::new(),
                         index: 0,
-                        result: Value::Void,
-                        expr_cache: Vec::new(),
-                        awaiting_fn: None,
-                        awaiting_error: None,
+                        child_result: None,
                     });
                 }
 
@@ -2868,6 +3044,7 @@ impl Frame {
             Frame::EmitEval {
                 event_name,
                 args,
+                arg_index,
                 span,
                 phase,
                 param_map,
@@ -2880,21 +3057,67 @@ impl Frame {
                 scope_pushed,
                 child_result,
             } => {
-                // Phase 2+: child frame (EmitHooks or EmitConditionHandlers)
-                // returned — restore emit_depth/lifecycle and propagate.
+                // Handle child results based on phase.
                 if let Some(result) = child_result.take() {
-                    env.emit_depth = *saved_emit_depth;
-                    env.in_lifecycle_block = *saved_lifecycle;
-                    return match result {
-                        Ok(_) => Advance::Pop(Value::Void),
-                        Err(e) => Advance::Error(e),
-                    };
+                    match phase {
+                        EmitEvalPhase::Args => {
+                            // ResumableBridge child completed for arg evaluation.
+                            match result {
+                                Ok(val) => {
+                                    let arg = &args[*arg_index];
+                                    if let Some(ref name) = arg.name {
+                                        param_map.insert(name.clone(), val);
+                                    }
+                                    *arg_index += 1;
+                                    // Continue to evaluate next arg or transition.
+                                }
+                                Err(e) => return Advance::Error(e),
+                            }
+                        }
+                        EmitEvalPhase::ParamDefaults => {
+                            // ResumableBridge child completed for param default.
+                            match result {
+                                Ok(val) => {
+                                    let (ref pname, _) = param_defaults[*default_index];
+                                    param_map.insert(pname.clone(), val);
+                                    *default_index += 1;
+                                }
+                                Err(e) => return Advance::Error(e),
+                            }
+                        }
+                        EmitEvalPhase::FieldDefaults => {
+                            // ResumableBridge child completed for field default.
+                            match result {
+                                Ok(val) => {
+                                    let (ref fname, _) = field_defaults[*default_index];
+                                    all_fields.insert(fname.clone(), val);
+                                    *default_index += 1;
+                                }
+                                Err(e) => {
+                                    if *scope_pushed {
+                                        env.pop_scope();
+                                        *scope_pushed = false;
+                                    }
+                                    return Advance::Error(e);
+                                }
+                            }
+                        }
+                        EmitEvalPhase::Ready => {
+                            // EmitHooks/EmitConditionHandlers child returned.
+                            env.emit_depth = *saved_emit_depth;
+                            env.in_lifecycle_block = *saved_lifecycle;
+                            return match result {
+                                Ok(_) => Advance::Pop(Value::Void),
+                                Err(e) => Advance::Error(e),
+                            };
+                        }
+                    }
                 }
 
                 match phase {
                     EmitEvalPhase::Args => {
-                        // 1. Check emit depth limit
-                        if env.emit_depth >= crate::MAX_EMIT_DEPTH {
+                        // 1. Check emit depth limit (only on first entry).
+                        if *arg_index == 0 && env.emit_depth >= crate::MAX_EMIT_DEPTH {
                             return Advance::Error(RuntimeError::with_span(
                                 format!(
                                     "emit depth limit ({}) exceeded — possible \
@@ -2905,6 +3128,17 @@ impl Frame {
                             ));
                         }
 
+                        // 3. Evaluate arg expressions one at a time via child frames.
+                        if *arg_index < args.len() {
+                            let expr = args[*arg_index].value.clone();
+                            return Advance::Push(Frame::ResumableBridge {
+                                expr,
+                                expr_cache: Vec::new(),
+                                span: Span::dummy(),
+                            });
+                        }
+
+                        // All args evaluated — look up EventDecl and collect defaults.
                         // 2. Look up EventDecl
                         let event_decl = match core.program.events.get(event_name) {
                             Some(d) => d.clone(),
@@ -2915,31 +3149,6 @@ impl Frame {
                                 ));
                             }
                         };
-
-                        // 3. Evaluate arg expressions via bridge
-                        for arg in args.drain(..) {
-                            let expr = arg.value.clone();
-                            let val = if let Some(ref mut h) = handler {
-                                bridge_eval_with(
-                                    core,
-                                    env,
-                                    state,
-                                    *h,
-                                    BridgeCategory::Eval,
-                                    |tmp_env| crate::eval::eval_expr(tmp_env, &expr),
-                                )
-                            } else {
-                                bridge_eval_expr(core, env, state, &expr)
-                            };
-                            match val {
-                                Ok(v) => {
-                                    if let Some(name) = arg.name {
-                                        param_map.insert(name, v);
-                                    }
-                                }
-                                Err(e) => return Advance::Error(e),
-                            }
-                        }
 
                         // 4. Collect defaults for missing params
                         *param_defaults = event_decl
@@ -2982,29 +3191,13 @@ impl Frame {
                             return Advance::Continue;
                         }
 
-                        let (ref name, ref default_expr) = param_defaults[*default_index];
+                        let (_, ref default_expr) = param_defaults[*default_index];
                         let expr = default_expr.clone();
-                        let pname = name.clone();
-                        let val = if let Some(ref mut h) = handler {
-                            bridge_eval_with(
-                                core,
-                                env,
-                                state,
-                                *h,
-                                BridgeCategory::Eval,
-                                |tmp_env| crate::eval::eval_expr(tmp_env, &expr),
-                            )
-                        } else {
-                            bridge_eval_expr(core, env, state, &expr)
-                        };
-                        match val {
-                            Ok(v) => {
-                                param_map.insert(pname, v);
-                                *default_index += 1;
-                                Advance::Continue
-                            }
-                            Err(e) => Advance::Error(e),
-                        }
+                        Advance::Push(Frame::ResumableBridge {
+                            expr,
+                            expr_cache: Vec::new(),
+                            span: Span::dummy(),
+                        })
                     }
 
                     EmitEvalPhase::FieldDefaults => {
@@ -3027,33 +3220,11 @@ impl Frame {
                         }
 
                         let expr = default_expr.clone();
-                        let field_name = fname.clone();
-                        let val = if let Some(ref mut h) = handler {
-                            bridge_eval_with(
-                                core,
-                                env,
-                                state,
-                                *h,
-                                BridgeCategory::Eval,
-                                |tmp_env| crate::eval::eval_expr(tmp_env, &expr),
-                            )
-                        } else {
-                            bridge_eval_expr(core, env, state, &expr)
-                        };
-                        match val {
-                            Ok(v) => {
-                                all_fields.insert(field_name, v);
-                                *default_index += 1;
-                                Advance::Continue
-                            }
-                            Err(e) => {
-                                if *scope_pushed {
-                                    env.pop_scope();
-                                    *scope_pushed = false;
-                                }
-                                Advance::Error(e)
-                            }
-                        }
+                        Advance::Push(Frame::ResumableBridge {
+                            expr,
+                            expr_cache: Vec::new(),
+                            span: Span::dummy(),
+                        })
                     }
 
                     EmitEvalPhase::Ready => {
@@ -3171,7 +3342,24 @@ impl Frame {
                 state_defaults_idx,
                 state_fields_acc,
                 state_expr_cache,
+                default_scope_pushed,
             } => {
+                // Handle ResumableBridge child result for state default.
+                if *default_scope_pushed {
+                    if let Some(val) = state_expr_cache.pop() {
+                        env.pop_scope();
+                        *default_scope_pushed = false;
+                        if let Some(defaults) = state_defaults {
+                            if *state_defaults_idx < defaults.len() {
+                                let (ref field_name, _) = defaults[*state_defaults_idx];
+                                state_fields_acc.insert(field_name.clone(), val);
+                                *state_defaults_idx += 1;
+                            }
+                        }
+                        // Continue to check if more defaults need evaluation.
+                    }
+                }
+
                 // Phase 2: evaluate state field defaults one at a time.
                 if let Some(defaults) = state_defaults {
                     if *state_defaults_idx >= defaults.len() {
@@ -3201,75 +3389,21 @@ impl Frame {
                         return Advance::Continue;
                     }
 
-                    let (field_name, field_expr) = defaults[*state_defaults_idx].clone();
-                    let cond_params = params.clone();
+                    let (_, ref field_expr) = defaults[*state_defaults_idx];
+                    let expr = field_expr.clone();
 
                     // Push scope with condition params for default evaluation.
                     env.push_scope();
-                    for (pname, pval) in &cond_params {
+                    for (pname, pval) in params.iter() {
                         env.bind(pname.clone(), pval.clone());
                     }
+                    *default_scope_pushed = true;
 
-                    if let Some(ref mut h) = handler {
-                        // Sync path — evaluate directly.
-                        let val = bridge_eval_with(
-                            core,
-                            env,
-                            state,
-                            *h,
-                            BridgeCategory::Eval,
-                            |tmp_env| crate::eval::eval_expr(tmp_env, &field_expr),
-                        );
-                        env.pop_scope();
-                        match val {
-                            Ok(v) => {
-                                state_fields_acc.insert(field_name, v);
-                                *state_defaults_idx += 1;
-                                return Advance::Continue;
-                            }
-                            Err(e) => return Advance::Error(e),
-                        }
-                    } else {
-                        // Async path — CachingHandler with replay.
-                        state.reset_mutation_flag();
-                        let mut caching = CachingHandler::from_expr_cache(state_expr_cache);
-                        let val = bridge_eval_with(
-                            core,
-                            env,
-                            state,
-                            &mut caching,
-                            BridgeCategory::Eval,
-                            |tmp_env| crate::eval::eval_expr(tmp_env, &field_expr),
-                        );
-                        env.pop_scope();
-
-                        if let Some(effect) = caching.captured {
-                            if state.local_mutation_applied() {
-                                return Advance::Error(RuntimeError::new(format!(
-                                    "async replay unsound: local mutation applied \
-                                     before host-decided effect {:?} in \
-                                     ConditionApplyGate state defaults; \
-                                     cannot safely replay",
-                                    EffectKind::of(&effect),
-                                )));
-                            }
-                            if let Some(yield_frame) =
-                                effect_to_yield_frame(effect, Span::dummy(), core, env)
-                            {
-                                return Advance::Push(yield_frame);
-                            }
-                        }
-
-                        match val {
-                            Ok(v) => {
-                                state_expr_cache.clear();
-                                state_fields_acc.insert(field_name, v);
-                                *state_defaults_idx += 1;
-                                return Advance::Continue;
-                            }
-                            Err(e) => return Advance::Error(e),
-                        }
-                    }
+                    return Advance::Push(Frame::ResumableBridge {
+                        expr,
+                        expr_cache: Vec::new(),
+                        span: Span::dummy(),
+                    });
                 }
 
                 // Phase 1: gate response handling.
@@ -4067,6 +4201,10 @@ impl Frame {
                 // UseDefault → Block child completed.
                 *result = Some(value);
             }
+            Frame::FillDefaults { child_result, .. } => {
+                // ResumableBridge child completed with default value.
+                *child_result = Some(value);
+            }
             Frame::FunctionEval { child_result, .. } => {
                 // Block child completed.
                 *child_result = Some(Ok(value));
@@ -4105,18 +4243,19 @@ impl Frame {
                 // Yield frame child completed — cache for replay.
                 expr_cache.push(value);
             }
-            Frame::BridgeCall { expr_cache, .. } => {
-                // Yield frame child completed — cache for replay.
-                expr_cache.push(value);
+            Frame::BridgeCall { result, .. } => {
+                // Child frame (DeriveEval/FunctionEval/ResumableBridge) completed.
+                *result = Some(Ok(value));
             }
-            Frame::DeriveEval { expr_cache, .. } => {
-                // Yield frame child completed — cache for replay.
-                expr_cache.push(value);
+            Frame::DeriveEval { base_value, .. } => {
+                // FunctionEval child completed with body result.
+                *base_value = Some(value);
             }
             Frame::ConditionApplyGate {
                 state_expr_cache, ..
             } => {
-                // Yield frame child completed — cache for state default replay.
+                // ResumableBridge child completed for state default evaluation.
+                // Store result; advance() will pop scope and process.
                 state_expr_cache.push(value);
             }
             _ => {}
@@ -4171,6 +4310,11 @@ impl Frame {
                 // can stash them in first_error and continue processing
                 // remaining instances.
                 *child_result = Some(Err(error));
+                Ok(())
+            }
+            Frame::BridgeCall { result, .. } => {
+                // Child frame errored — store for advance() to return.
+                *result = Some(Err(error));
                 Ok(())
             }
             _ => Err(error),
@@ -4278,6 +4422,15 @@ pub(crate) enum EmitEvalPhase {
     ParamDefaults,
     FieldDefaults,
     Ready,
+}
+
+/// Phase within derive/mechanic evaluation.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum DeriveEvalPhase {
+    /// Initial: look up decl, map args, collect modifiers, push FunctionEval child.
+    Init,
+    /// FunctionEval child completed with body result.
+    BodyDone,
 }
 
 /// Group initialization data for entity construction.
@@ -4615,6 +4768,9 @@ impl<S: WritableState> Execution<S> {
             modify_hooks: Vec::new(),
             hook_index: 0,
             expr_cache: Vec::new(),
+            phase: DeriveEvalPhase::Init,
+            bound_args: None,
+            modifiers: Vec::new(),
         });
         Ok(exec)
     }
@@ -4638,6 +4794,9 @@ impl<S: WritableState> Execution<S> {
             modify_hooks: Vec::new(),
             hook_index: 0,
             expr_cache: Vec::new(),
+            phase: DeriveEvalPhase::Init,
+            bound_args: None,
+            modifiers: Vec::new(),
         });
         Ok(exec)
     }
@@ -4707,6 +4866,7 @@ impl<S: WritableState> Execution<S> {
             args: bound,
             default_params,
             body: Some(fn_decl.body.clone()),
+            defaults_done: false,
             child_result: None,
         });
         Ok(exec)
@@ -12076,5 +12236,98 @@ mod tests {
              insufficient budget, but async path skips cost entirely. Got: {:?}",
             effects.iter().map(EffectKind::of).collect::<Vec<_>>()
         );
+    }
+
+    // ── Bridge category assertions ────────────────────────────
+
+    #[test]
+    fn assert_no_dispatch_bridges_derive() {
+        let (core, _) = make_core(
+            r#"
+            system Test {
+                entity Creature { HP: int }
+                derive doubled_hp(target: Creature) -> int {
+                    target.HP * 2
+                }
+            }
+            "#,
+        );
+
+        let mut game = GameState::new();
+        let actor = add_creature(&mut game, 10);
+        let adapter = StateAdapter::new(game);
+
+        let exec = Execution::start_derive(
+            Rc::clone(&core),
+            adapter,
+            "doubled_hp",
+            vec![Value::Entity(actor)],
+        )
+        .unwrap();
+        let mut handler = ScriptedHandler::always_ack();
+        let result = exec.run_with_handler(&mut handler).unwrap();
+        assert_eq!(result, Value::Int(20));
+        core.bridge_stats().assert_no_dispatch_bridges();
+        core.bridge_stats().assert_no_effect_emission_bridges();
+    }
+
+    #[test]
+    fn assert_no_dispatch_bridges_function() {
+        let (core, _) = make_core(
+            r#"
+            system Test {
+                entity Creature { HP: int }
+                function add(a: int, b: int) -> int {
+                    a + b
+                }
+            }
+            "#,
+        );
+
+        let game = GameState::new();
+        let adapter = StateAdapter::new(game);
+
+        let exec = Execution::start_function(
+            Rc::clone(&core),
+            adapter,
+            "add",
+            vec![Value::Int(5), Value::Int(3)],
+        )
+        .unwrap();
+        let mut handler = ScriptedHandler::always_ack();
+        let result = exec.run_with_handler(&mut handler).unwrap();
+        assert_eq!(result, Value::Int(8));
+        core.bridge_stats().assert_no_dispatch_bridges();
+    }
+
+    #[test]
+    fn assert_no_dispatch_bridges_table() {
+        let (core, _) = make_core(
+            r#"
+            system Test {
+                entity Creature { HP: int }
+                table size_category(level: int) -> string {
+                    1..=4 => "small"
+                    5..=8 => "medium"
+                    _ => "large"
+                }
+            }
+            "#,
+        );
+
+        let game = GameState::new();
+        let adapter = StateAdapter::new(game);
+
+        let exec = Execution::start_derive(
+            Rc::clone(&core),
+            adapter,
+            "size_category",
+            vec![Value::Int(6)],
+        )
+        .unwrap();
+        let mut handler = ScriptedHandler::always_ack();
+        let result = exec.run_with_handler(&mut handler).unwrap();
+        assert_eq!(result, Value::Str("medium".into()));
+        core.bridge_stats().assert_no_dispatch_bridges();
     }
 }
