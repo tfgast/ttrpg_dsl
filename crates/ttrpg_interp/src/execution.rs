@@ -148,7 +148,7 @@ impl<S: WritableState> crate::eval::AssignContext for FrameAssignCtx<'_, S> {
         // bound expressions. Falls back to a temporary Env for complex cases.
         match &expr.node {
             ExprKind::IntLit(n) => return Ok(Value::Int(*n)),
-            ExprKind::StringLit(s) => return Ok(Value::Str(s.clone().into())),
+            ExprKind::StringLit(s) => return Ok(Value::Str(s.clone())),
             ExprKind::BoolLit(b) => return Ok(Value::Bool(*b)),
             ExprKind::NoneLit => return Ok(Value::Option(None)),
             ExprKind::Ident(name) => {
@@ -241,8 +241,7 @@ impl EffectHandler for InformationalAckHandler {
                 Response::Acknowledged
             }
             other => panic!(
-                "unexpected forwarded effect in cost modifier bridge evaluation: {:?}",
-                other
+                "unexpected forwarded effect in cost modifier bridge evaluation: {other:?}",
             ),
         }
     }
@@ -2059,7 +2058,7 @@ impl Frame {
                             }
                             Ok(other) => {
                                 let req_span =
-                                    requires.as_ref().map(|r| r.span).unwrap_or(*call_span);
+                                    requires.as_ref().map_or(*call_span, |r| r.span);
                                 Advance::Error(RuntimeError::with_span(
                                     format!("requires clause must evaluate to Bool, got {other:?}"),
                                     req_span,
@@ -2105,25 +2104,25 @@ impl Frame {
 
                     ActionStep::EvalCost => {
                         // Check if cost exists and is not free.
-                        if let Some(c) = cost.as_ref() {
-                            if !c.free {
-                                let abort = if *has_return_type {
-                                    Value::Option(None)
-                                } else {
-                                    Value::Void
-                                };
-                                *step = ActionStep::AwaitCostEval;
-                                return Advance::Push(Frame::CostEval {
-                                    cost: c.clone(),
-                                    actor: *actor,
-                                    action_name: name.clone(),
-                                    call_span: *call_span,
-                                    phase: CostEvalPhase::ModifierCollection,
-                                    effective_cost: Some(c.clone()),
-                                    pending: None,
-                                    abort_value: abort,
-                                });
-                            }
+                        if let Some(c) = cost.as_ref()
+                            && !c.free
+                        {
+                            let abort = if *has_return_type {
+                                Value::Option(None)
+                            } else {
+                                Value::Void
+                            };
+                            *step = ActionStep::AwaitCostEval;
+                            return Advance::Push(Frame::CostEval {
+                                cost: c.clone(),
+                                actor: *actor,
+                                action_name: name.clone(),
+                                call_span: *call_span,
+                                phase: CostEvalPhase::ModifierCollection,
+                                effective_cost: Some(c.clone()),
+                                pending: None,
+                                abort_value: abort,
+                            });
                         }
                         // No cost or cost is free — skip to resolve.
                         *step = ActionStep::RunResolve;
@@ -2270,8 +2269,7 @@ impl Frame {
             } => {
                 let tokens = effective_cost
                     .as_ref()
-                    .map(|c| &c.tokens)
-                    .unwrap_or(&cost.tokens);
+                    .map_or(&cost.tokens, |c| &c.tokens);
                 let expected_tokens: Vec<String> = core
                     .type_env
                     .valid_cost_tokens()
@@ -2338,7 +2336,7 @@ impl Frame {
                         if *idx >= effects.len() {
                             // All ModifyApplied effects yielded.
                             // Check if cost was made free.
-                            if effective_cost.as_ref().map_or(false, |c| c.free) {
+                            if effective_cost.as_ref().is_some_and(|c| c.free) {
                                 return Advance::Pop(Value::Void);
                             }
                             *phase = CostEvalPhase::BudgetPreCheck(0);
@@ -2522,10 +2520,10 @@ impl Frame {
                     };
                 }
                 // Take call_info from env on first advance, then keep in frame.
-                if call_info.is_none() {
-                    if let Some(ci) = env.bridge_call.take() {
-                        *call_info = Some(ci);
-                    }
+                if call_info.is_none()
+                    && let Some(ci) = env.bridge_call.take()
+                {
+                    *call_info = Some(ci);
                 }
                 let ci = match call_info.take() {
                     Some(ci) => ci,
@@ -3230,8 +3228,7 @@ impl Frame {
                             Some(b) => b,
                             None => {
                                 return Advance::Error(RuntimeError::new(format!(
-                                    "DeriveEval '{}': body missing in DefaultsDone",
-                                    name
+                                    "DeriveEval '{name}': body missing in DefaultsDone",
                                 )));
                             }
                         };
@@ -3706,7 +3703,7 @@ impl Frame {
                             None => {
                                 state.emit_effect(h, Effect::ClearBudget { actor });
                             }
-                        };
+                        }
 
                         *index += 1;
                         Advance::Continue
@@ -4037,19 +4034,19 @@ impl Frame {
                 default_scope_pushed,
             } => {
                 // Handle ResumableBridge child result for state default.
-                if *default_scope_pushed {
-                    if let Some(val) = state_expr_cache.pop() {
-                        env.pop_scope();
-                        *default_scope_pushed = false;
-                        if let Some(defaults) = state_defaults {
-                            if *state_defaults_idx < defaults.len() {
-                                let (ref field_name, _) = defaults[*state_defaults_idx];
-                                state_fields_acc.insert(field_name.clone(), val);
-                                *state_defaults_idx += 1;
-                            }
-                        }
-                        // Continue to check if more defaults need evaluation.
+                if *default_scope_pushed
+                    && let Some(val) = state_expr_cache.pop()
+                {
+                    env.pop_scope();
+                    *default_scope_pushed = false;
+                    if let Some(defaults) = state_defaults
+                        && *state_defaults_idx < defaults.len()
+                    {
+                        let (ref field_name, _) = defaults[*state_defaults_idx];
+                        state_fields_acc.insert(field_name.clone(), val);
+                        *state_defaults_idx += 1;
                     }
+                    // Continue to check if more defaults need evaluation.
                 }
 
                 // Phase 2: evaluate state field defaults one at a time.
@@ -4814,7 +4811,7 @@ impl Frame {
                         source_id: *instance_id,
                     };
                     let mut noyield = NoYieldHandler;
-                    let h: &mut dyn EffectHandler = match handler.as_deref_mut() {
+                    let h: &mut dyn EffectHandler = match handler {
                         Some(h) => h,
                         None => &mut noyield,
                     };
