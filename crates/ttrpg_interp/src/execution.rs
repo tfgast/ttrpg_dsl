@@ -16,7 +16,9 @@ use ttrpg_ast::ast::{Arg, AssignOp, Block, CostClause, ExprKind, LValue, StmtKin
 use ttrpg_ast::{Name, Span, Spanned};
 
 use crate::adapter::{MutationTracker, StateAdapter, is_mutation};
-use crate::effect::{ActionKind, ActionOutcome, Effect, EffectHandler, EffectKind, Response, Step};
+use crate::effect::{
+    ActionKind, ActionOutcome, Effect, EffectHandler, EffectKind, Phase, Response, Step,
+};
 use crate::pipeline::OwnedModifier;
 use crate::runtime_core::{BridgeCategory, RuntimeCore};
 use crate::select_action_overload;
@@ -26,6 +28,7 @@ use crate::state::{
 use crate::value::DiceExpr;
 use crate::value::Value;
 use crate::{Env, Interpreter, RuntimeError, Scope};
+use ttrpg_checker::env::FnInfo;
 use ttrpg_checker::ty::Ty;
 
 // ── ExecEnv ────────────────────────────────────────────────────
@@ -1534,6 +1537,16 @@ pub(crate) enum Frame {
         modifiers: Vec<OwnedModifier>,
         /// Function body, stored across phases for pushing FunctionEval.
         body: Option<Block>,
+        /// Staged ModifyApplied effect for yield (Phase 1 or Phase 2).
+        pending_modify_effect: Option<Effect>,
+        /// Pending host response for yield/ack cycles.
+        pending: Option<Response>,
+        /// Accumulated params during Phase 1 modifier loop.
+        phase1_params: Option<Vec<(Name, Value)>>,
+        /// Accumulated result during Phase 2 modifier loop.
+        phase2_result: Option<Value>,
+        /// Cached FnInfo to avoid re-lookup across phase transitions.
+        fn_info_cache: Option<FnInfo>,
     },
 
     FunctionEval {
@@ -2561,6 +2574,11 @@ impl Frame {
                             bound_args: None,
                             modifiers: Vec::new(),
                             body: None,
+                            pending_modify_effect: None,
+                            phase1_params: None,
+                            phase2_result: None,
+                            fn_info_cache: None,
+                            pending: None,
                         })
                     }
                     BridgeCallInfo::Mechanic { name, args } => Advance::Push(Frame::DeriveEval {
@@ -2575,6 +2593,11 @@ impl Frame {
                         bound_args: None,
                         modifiers: Vec::new(),
                         body: None,
+                        pending_modify_effect: None,
+                        phase1_params: None,
+                        phase2_result: None,
+                        fn_info_cache: None,
+                        pending: None,
                     }),
                     BridgeCallInfo::Function { name, args } => {
                         // Look up function decl and construct FunctionEval.
@@ -3110,6 +3133,11 @@ impl Frame {
                 bound_args,
                 modifiers,
                 body,
+                pending_modify_effect,
+                phase1_params,
+                phase2_result,
+                fn_info_cache,
+                pending,
             } => {
                 match phase {
                     DeriveEvalPhase::Init => {
@@ -3148,7 +3176,7 @@ impl Frame {
                             }
                         };
 
-                        let fn_info = match core.type_env.lookup_fn(name.as_ref()) {
+                        let fi = match core.type_env.lookup_fn(name.as_ref()) {
                             Some(fi) => fi.clone(),
                             None => {
                                 return Advance::Error(RuntimeError::new(format!(
@@ -3158,11 +3186,11 @@ impl Frame {
                         };
 
                         // ── Inline arg mapping (pure data transform) ────
-                        if args.len() > fn_info.params.len() {
+                        if args.len() > fi.params.len() {
                             return Advance::Error(RuntimeError::new(format!(
                                 "too many arguments: '{}' takes {} params, got {}",
                                 name,
-                                fn_info.params.len(),
+                                fi.params.len(),
                                 args.len()
                             )));
                         }
@@ -3170,7 +3198,7 @@ impl Frame {
                         // Build FillDefaults params: provided args + defaults.
                         let mut fill_params: Vec<DefaultParam> = Vec::new();
                         let arg_count = args.len();
-                        for (i, param) in fn_info.params.iter().enumerate() {
+                        for (i, param) in fi.params.iter().enumerate() {
                             if i < arg_count {
                                 fill_params.push(DefaultParam {
                                     name: param.name.clone(),
@@ -3198,6 +3226,7 @@ impl Frame {
                         args.clear();
 
                         *body = Some(fn_decl.body.clone());
+                        *fn_info_cache = Some(fi);
                         *phase = DeriveEvalPhase::DefaultsDone;
 
                         // Push FillDefaults to resolve all params (provided +
@@ -3223,20 +3252,15 @@ impl Frame {
                     DeriveEvalPhase::DefaultsDone => {
                         // FillDefaults completed (or skipped). Collect bound
                         // args from scope bindings if FillDefaults ran.
-                        let fn_info = match core.type_env.lookup_fn(name.as_ref()) {
-                            Some(fi) => fi.clone(),
-                            None => {
-                                return Advance::Error(RuntimeError::new(format!(
-                                    "internal error: no type info for '{name}'"
-                                )));
-                            }
-                        };
+                        let fi = fn_info_cache
+                            .as_ref()
+                            .expect("DeriveEval: fn_info_cache must be set by Init");
 
                         // If bound_args isn't set, FillDefaults ran and bindings
                         // are in the current scope. Collect them by param name.
                         if bound_args.is_none() {
                             let mut mapped = Vec::new();
-                            for param in &fn_info.params {
+                            for param in &fi.params {
                                 if let Some(val) =
                                     env.scopes.last().and_then(|s| s.bindings.get(&param.name))
                                 {
@@ -3246,54 +3270,123 @@ impl Frame {
                             *bound_args = Some(mapped);
                         }
 
-                        let fn_body = match body.take() {
-                            Some(b) => b,
-                            None => {
-                                return Advance::Error(RuntimeError::new(format!(
-                                    "DeriveEval '{name}': body missing in DefaultsDone",
-                                )));
-                            }
-                        };
-                        let n = name.clone();
-                        let ba = bound_args.take().unwrap_or_default();
+                        *phase = DeriveEvalPhase::CollectModifiers;
+                        Advance::Continue
+                    }
 
-                        // Collect modifiers + run Phase 1 via bridge (still
-                        // needs eval_expr for condition matching & modify exprs).
-                        let setup_result = bridge_run(
+                    DeriveEvalPhase::CollectModifiers => {
+                        let fi = fn_info_cache
+                            .clone()
+                            .expect("DeriveEval: fn_info_cache must be set");
+                        let n = name.clone();
+                        let ba = bound_args.clone().unwrap_or_default();
+
+                        let collect_result = bridge_run(
+                            core,
+                            env,
+                            sp,
+                            &mut *eh,
+                            BridgeCategory::Probe,
+                            move |tmp_env| {
+                                crate::pipeline::collect_modifiers_owned(tmp_env, &n, &fi, &ba)
+                            },
+                        );
+
+                        match collect_result {
+                            Ok(mods) => {
+                                if mods.is_empty() {
+                                    *modifiers = mods;
+                                    *phase = DeriveEvalPhase::PushBody;
+                                } else {
+                                    // Initialize phase1_params for the modifier loop.
+                                    *phase1_params = bound_args.clone();
+                                    *modifiers = mods;
+                                    *phase = DeriveEvalPhase::ApplyPhase1(0);
+                                }
+                                Advance::Continue
+                            }
+                            Err(e) => Advance::Error(e),
+                        }
+                    }
+
+                    DeriveEvalPhase::ApplyPhase1(idx) => {
+                        if *idx >= modifiers.len() {
+                            // All Phase 1 modifiers applied — update bound_args.
+                            *bound_args = phase1_params.take();
+                            *phase = DeriveEvalPhase::PushBody;
+                            return Advance::Continue;
+                        }
+
+                        let modifier = modifiers[*idx].clone();
+                        let params = phase1_params.take().unwrap_or_default();
+                        let fn_name = name.as_str().to_owned();
+
+                        let apply_result = bridge_run(
                             core,
                             env,
                             sp,
                             &mut *eh,
                             BridgeCategory::Eval,
                             move |tmp_env| {
-                                let mods = crate::pipeline::collect_modifiers_owned(
-                                    tmp_env, &n, &fn_info, &ba,
-                                )?;
-                                let final_bound = if mods.is_empty() {
-                                    ba
-                                } else {
-                                    crate::pipeline::run_phase1(tmp_env, &n, &fn_info, ba, &mods)?
-                                };
-                                Ok((final_bound, mods))
+                                crate::pipeline::apply_phase1_modifier(tmp_env, &modifier, params)
                             },
                         );
 
-                        match setup_result {
-                            Ok((final_bound, mods)) => {
-                                *bound_args = Some(final_bound.clone());
-                                *modifiers = mods;
-                                *phase = DeriveEvalPhase::BodyDone;
-                                Advance::Push(Frame::FunctionEval {
-                                    name: name.clone(),
-                                    args: final_bound,
-                                    default_params: Vec::new(),
-                                    body: Some(fn_body),
-                                    defaults_done: false,
-                                    child_result: None,
-                                })
+                        match apply_result {
+                            Ok((updated_params, changes)) => {
+                                *phase1_params = Some(updated_params);
+                                if !changes.is_empty() {
+                                    *pending_modify_effect = Some(Effect::ModifyApplied {
+                                        source: modifiers[*idx].source.clone(),
+                                        target_fn: Name::from(fn_name.as_str()),
+                                        phase: Phase::Phase1,
+                                        changes,
+                                        tags: modifiers[*idx].clause.tags.clone(),
+                                    });
+                                    *phase = DeriveEvalPhase::YieldPhase1(*idx);
+                                } else {
+                                    *phase = DeriveEvalPhase::ApplyPhase1(*idx + 1);
+                                }
+                                Advance::Continue
                             }
                             Err(e) => Advance::Error(e),
                         }
+                    }
+
+                    DeriveEvalPhase::YieldPhase1(idx) => {
+                        let effect = pending_modify_effect
+                            .take()
+                            .expect("YieldPhase1 entered without pending effect");
+                        *phase = DeriveEvalPhase::AwaitPhase1Ack(*idx);
+                        Advance::Yield(effect)
+                    }
+
+                    DeriveEvalPhase::AwaitPhase1Ack(idx) => {
+                        // ModifyApplied is informational — discard the response.
+                        let _ = pending.take();
+                        *phase = DeriveEvalPhase::ApplyPhase1(*idx + 1);
+                        Advance::Continue
+                    }
+
+                    DeriveEvalPhase::PushBody => {
+                        let fn_body = match body.take() {
+                            Some(b) => b,
+                            None => {
+                                return Advance::Error(RuntimeError::new(format!(
+                                    "DeriveEval '{name}': body missing in PushBody",
+                                )));
+                            }
+                        };
+                        let final_bound = bound_args.clone().unwrap_or_default();
+                        *phase = DeriveEvalPhase::BodyDone;
+                        Advance::Push(Frame::FunctionEval {
+                            name: name.clone(),
+                            args: final_bound,
+                            default_params: Vec::new(),
+                            body: Some(fn_body),
+                            defaults_done: false,
+                            child_result: None,
+                        })
                     }
 
                     DeriveEvalPhase::BodyDone => {
@@ -3302,44 +3395,107 @@ impl Frame {
                                 // No modifiers — return body value directly.
                                 return Advance::Pop(body_val);
                             }
-                            // Run Phase 2 modifiers and emit events (via bridge — pure).
-                            let n = name.clone();
-                            let ba = bound_args.take().unwrap_or_default();
-                            let mods = std::mem::take(modifiers);
-                            let fn_info = match core.type_env.lookup_fn(name.as_ref()) {
-                                Some(fi) => fi.clone(),
-                                None => {
-                                    return Advance::Error(RuntimeError::new(format!(
-                                        "internal error: no type info for '{name}'"
-                                    )));
-                                }
-                            };
-                            let result = bridge_run(
-                                core,
-                                env,
-                                sp,
-                                &mut *eh,
-                                BridgeCategory::Eval,
-                                move |tmp_env| {
-                                    crate::call::derive_teardown(
-                                        tmp_env,
-                                        &n,
-                                        &fn_info,
-                                        &ba,
-                                        body_val,
-                                        &mods,
-                                        Span::dummy(),
-                                    )
-                                },
-                            );
-                            return match result {
-                                Ok(val) => Advance::Pop(val),
-                                Err(e) => Advance::Error(e),
-                            };
+                            // Start Phase 2 modifier loop.
+                            *phase2_result = Some(body_val);
+                            *phase = DeriveEvalPhase::ApplyPhase2(0);
+                            return Advance::Continue;
                         }
                         Advance::Error(RuntimeError::new(format!(
                             "DeriveEval '{name}': BodyDone but no base_value"
                         )))
+                    }
+
+                    DeriveEvalPhase::ApplyPhase2(idx) => {
+                        if *idx >= modifiers.len() {
+                            // All Phase 2 modifiers applied — emit events.
+                            *phase = DeriveEvalPhase::EmitModifyEvents;
+                            return Advance::Continue;
+                        }
+
+                        let modifier = modifiers[*idx].clone();
+                        let fi = fn_info_cache
+                            .clone()
+                            .expect("DeriveEval: fn_info_cache must be set");
+                        let params = bound_args.clone().unwrap_or_default();
+                        let result_val = phase2_result.take().unwrap_or(Value::Void);
+                        let fn_name = name.as_str().to_owned();
+
+                        let apply_result = bridge_run(
+                            core,
+                            env,
+                            sp,
+                            &mut *eh,
+                            BridgeCategory::Eval,
+                            move |tmp_env| {
+                                crate::pipeline::apply_phase2_modifier(
+                                    tmp_env, &fi, &modifier, &params, result_val,
+                                )
+                            },
+                        );
+
+                        match apply_result {
+                            Ok((updated_result, changes)) => {
+                                *phase2_result = Some(updated_result);
+                                if !changes.is_empty() {
+                                    *pending_modify_effect = Some(Effect::ModifyApplied {
+                                        source: modifiers[*idx].source.clone(),
+                                        target_fn: Name::from(fn_name.as_str()),
+                                        phase: Phase::Phase2,
+                                        changes,
+                                        tags: modifiers[*idx].clause.tags.clone(),
+                                    });
+                                    *phase = DeriveEvalPhase::YieldPhase2(*idx);
+                                } else {
+                                    *phase = DeriveEvalPhase::ApplyPhase2(*idx + 1);
+                                }
+                                Advance::Continue
+                            }
+                            Err(e) => Advance::Error(e),
+                        }
+                    }
+
+                    DeriveEvalPhase::YieldPhase2(idx) => {
+                        let effect = pending_modify_effect
+                            .take()
+                            .expect("YieldPhase2 entered without pending effect");
+                        *phase = DeriveEvalPhase::AwaitPhase2Ack(*idx);
+                        Advance::Yield(effect)
+                    }
+
+                    DeriveEvalPhase::AwaitPhase2Ack(idx) => {
+                        // ModifyApplied is informational — discard the response.
+                        let _ = pending.take();
+                        *phase = DeriveEvalPhase::ApplyPhase2(*idx + 1);
+                        Advance::Continue
+                    }
+
+                    DeriveEvalPhase::EmitModifyEvents => {
+                        let mods = std::mem::take(modifiers);
+                        let n = name.clone();
+
+                        let emit_result = bridge_run(
+                            core,
+                            env,
+                            sp,
+                            &mut *eh,
+                            BridgeCategory::Probe,
+                            move |tmp_env| {
+                                crate::pipeline::emit_modify_applied_events(
+                                    tmp_env,
+                                    &mods,
+                                    &n,
+                                    Span::dummy(),
+                                )
+                            },
+                        );
+
+                        match emit_result {
+                            Ok(()) => {
+                                let val = phase2_result.take().unwrap_or(Value::Void);
+                                Advance::Pop(val)
+                            }
+                            Err(e) => Advance::Error(e),
+                        }
                     }
                 }
             }
@@ -4813,6 +4969,7 @@ impl Frame {
             Frame::ConditionApplyGate { pending, .. } => *pending = Some(response),
             Frame::ConditionRemovalGate { pending, .. } => *pending = Some(response),
             Frame::CostEval { pending, .. } => *pending = Some(response),
+            Frame::DeriveEval { pending, .. } => *pending = Some(response),
             _ => {}
         }
     }
@@ -5096,14 +5253,32 @@ pub(crate) enum EmitEvalPhase {
 }
 
 /// Phase within derive/mechanic evaluation.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug)]
 pub(crate) enum DeriveEvalPhase {
     /// Initial: look up decl, map positional args, push FillDefaults if needed.
     Init,
-    /// Defaults filled: collect modifiers, run Phase 1, push FunctionEval child.
+    /// Defaults filled: store bound_args and body, transition to CollectModifiers.
     DefaultsDone,
+    /// Collect matching modifiers via bridge_run(collect_modifiers_owned).
+    CollectModifiers,
+    /// Apply Phase 1 modifier at index via bridge_run(apply_phase1_modifier).
+    ApplyPhase1(usize),
+    /// Yield the pending ModifyApplied effect for Phase 1.
+    YieldPhase1(usize),
+    /// Await host ack for Phase 1 ModifyApplied.
+    AwaitPhase1Ack(usize),
+    /// Push FunctionEval child for body evaluation.
+    PushBody,
     /// FunctionEval child completed with body result.
     BodyDone,
+    /// Apply Phase 2 modifier at index via bridge_run(apply_phase2_modifier).
+    ApplyPhase2(usize),
+    /// Yield the pending ModifyApplied effect for Phase 2.
+    YieldPhase2(usize),
+    /// Await host ack for Phase 2 ModifyApplied.
+    AwaitPhase2Ack(usize),
+    /// Emit modify_applied events (fire hooks) via bridge_run.
+    EmitModifyEvents,
 }
 
 /// Group initialization data for entity construction.
@@ -5445,6 +5620,11 @@ impl<S: WritableState> Execution<S> {
             bound_args: None,
             modifiers: Vec::new(),
             body: None,
+            pending_modify_effect: None,
+            phase1_params: None,
+            phase2_result: None,
+            fn_info_cache: None,
+            pending: None,
         });
         Ok(exec)
     }
@@ -5472,6 +5652,11 @@ impl<S: WritableState> Execution<S> {
             bound_args: None,
             modifiers: Vec::new(),
             body: None,
+            pending_modify_effect: None,
+            phase1_params: None,
+            phase2_result: None,
+            fn_info_cache: None,
+            pending: None,
         });
         Ok(exec)
     }

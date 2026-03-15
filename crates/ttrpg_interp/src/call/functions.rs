@@ -1,13 +1,13 @@
 use ttrpg_ast::ast::Arg;
 use ttrpg_ast::{Name, Span, Spanned};
-use ttrpg_checker::env::{FnInfo, ParamInfo};
+use ttrpg_checker::env::ParamInfo;
 
 use crate::Env;
 use crate::RuntimeError;
 use crate::effect::{Effect, Response};
 use crate::eval::{AssignContext, eval_block, eval_expr};
 use crate::pipeline::{
-    OwnedModifier, collect_modifiers_owned, emit_modify_applied_events, run_phase1, run_phase2,
+    collect_modifiers_owned, emit_modify_applied_events, run_phase1, run_phase2,
 };
 use crate::value::{Value, value_matches_ty, value_type_display};
 
@@ -666,29 +666,4 @@ pub(super) fn dispatch_prompt(
             call_span,
         )),
     }
-}
-
-// ── Derive teardown for step-based execution ───────────────────
-
-/// Teardown phase: run Phase 2 modifiers and emit modify_applied events.
-pub(crate) fn derive_teardown(
-    env: &mut Env,
-    name: &str,
-    fn_info: &FnInfo,
-    bound: &[(Name, Value)],
-    body_val: Value,
-    modifiers: &[OwnedModifier],
-    call_span: Span,
-) -> Result<Value, RuntimeError> {
-    let val = if modifiers.is_empty() {
-        body_val
-    } else {
-        run_phase2(env, name, fn_info, bound, body_val, modifiers)?
-    };
-
-    if !modifiers.is_empty() {
-        emit_modify_applied_events(env, modifiers, name, call_span)?;
-    }
-
-    Ok(val)
 }
