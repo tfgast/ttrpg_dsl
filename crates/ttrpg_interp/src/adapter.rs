@@ -13,6 +13,43 @@ use crate::effect::{Effect, EffectHandler, EffectKind, Response};
 use crate::state::{ActiveCondition, EntityRef, StateProvider, WritableState};
 use crate::value::Value;
 
+// ── MutationTracker ──────────────────────────────────────────────
+
+/// Tracks whether a local mutation was applied during the current
+/// bridge_eval_with call. Used by the Block frame's async path
+/// to detect when CachingHandler replay would be unsound (because
+/// mutations already applied would be re-applied on replay).
+/// Reset before each bridge call, checked after.
+pub struct MutationTracker(Cell<bool>);
+
+impl MutationTracker {
+    /// Create a new tracker with the flag unset.
+    pub fn new() -> Self {
+        MutationTracker(Cell::new(false))
+    }
+
+    /// Reset the flag. Call before a bridge_eval_with run to start tracking fresh.
+    pub fn reset(&self) {
+        self.0.set(false);
+    }
+
+    /// Check whether any local mutation was applied since the last reset.
+    pub fn applied(&self) -> bool {
+        self.0.get()
+    }
+
+    /// Mark that a local mutation was applied.
+    pub fn set(&self) {
+        self.0.set(true);
+    }
+}
+
+impl Default for MutationTracker {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 // ── StateAdapter ───────────────────────────────────────────────
 
 /// Layer 2 adapter that wraps a `WritableState` and auto-applies
@@ -40,12 +77,7 @@ pub struct StateAdapter<S: WritableState> {
     /// type compatibility checks. Maps condition name → receiver Ty.
     /// Empty means skip bearer type checking.
     condition_receiver_types: FxHashMap<Name, Ty>,
-    /// Tracks whether a local mutation was applied during the current
-    /// bridge_eval_with call. Used by the Block frame's async path
-    /// to detect when CachingHandler replay would be unsound (because
-    /// mutations already applied would be re-applied on replay).
-    /// Reset before each bridge call, checked after.
-    local_mutation_applied: Cell<bool>,
+    mutation_tracker: MutationTracker,
 }
 
 impl<S: WritableState> StateAdapter<S> {
@@ -55,7 +87,7 @@ impl<S: WritableState> StateAdapter<S> {
             state: RefCell::new(state),
             pass_through: HashSet::new(),
             condition_receiver_types: FxHashMap::default(),
-            local_mutation_applied: Cell::new(false),
+            mutation_tracker: MutationTracker::new(),
         }
     }
 
@@ -102,31 +134,12 @@ impl<S: WritableState> StateAdapter<S> {
         self.state.into_inner()
     }
 
-    /// Reset the local-mutation-applied flag. Call before a bridge_eval_with
-    /// run to start tracking fresh.
-    pub fn reset_mutation_flag(&self) {
-        self.local_mutation_applied.set(false);
+    /// Access the mutation tracker (for passing to execution functions).
+    pub fn mutation_tracker(&self) -> &MutationTracker {
+        &self.mutation_tracker
     }
 
-    /// Check whether any local mutation was applied since the last reset.
-    pub fn local_mutation_applied(&self) -> bool {
-        self.local_mutation_applied.get()
-    }
-
-    /// Emit an effect through the adapter's interception logic.
-    ///
-    /// Mutations are intercepted/applied locally per the same rules as `run()`.
-    /// Non-mutation effects are forwarded to `handler`. Uses the same routing
-    /// as `AdaptedHandler::handle()` without needing an Env or Interpreter.
-    pub fn emit_effect<H: EffectHandler + ?Sized>(
-        &self,
-        handler: &mut H,
-        effect: Effect,
-    ) -> Response {
-        self.route_effect(handler, effect)
-    }
-
-    /// Core effect routing shared by `AdaptedHandler::handle()` and `emit_effect()`.
+    /// Core effect routing used by `AdaptedHandler::handle()`.
     fn route_effect<H: EffectHandler + ?Sized>(&self, inner: &mut H, effect: Effect) -> Response {
         let kind = EffectKind::of(&effect);
 
@@ -141,12 +154,12 @@ impl<S: WritableState> StateAdapter<S> {
                 let response = inner.handle(effect.clone());
                 if let Response::EntitySpawned(_) = &response {
                     apply_spawn(&mut *self.state.borrow_mut(), &effect);
-                    self.local_mutation_applied.set(true);
+                    self.mutation_tracker.set();
                 }
                 return response;
             }
             let entity_ref = apply_spawn(&mut *self.state.borrow_mut(), &effect);
-            self.local_mutation_applied.set(true);
+            self.mutation_tracker.set();
             return Response::EntitySpawned(entity_ref);
         }
 
@@ -160,7 +173,7 @@ impl<S: WritableState> StateAdapter<S> {
                             &effect,
                             &self.condition_receiver_types,
                         );
-                        self.local_mutation_applied.set(true);
+                        self.mutation_tracker.set();
                     }
                     Response::Override(override_val) => {
                         apply_mutation_with_override(
@@ -168,7 +181,7 @@ impl<S: WritableState> StateAdapter<S> {
                             &effect,
                             override_val,
                         );
-                        self.local_mutation_applied.set(true);
+                        self.mutation_tracker.set();
                     }
                     Response::Vetoed => {}
                     _ => {}
@@ -180,7 +193,7 @@ impl<S: WritableState> StateAdapter<S> {
                     &effect,
                     &self.condition_receiver_types,
                 );
-                self.local_mutation_applied.set(true);
+                self.mutation_tracker.set();
                 Response::Acknowledged
             }
         } else {
@@ -209,12 +222,12 @@ impl<S: WritableState> StateAdapter<S> {
         match &response {
             Response::Acknowledged => {
                 deduct_budget_field(&mut *self.state.borrow_mut(), &actor, &budget_field);
-                self.local_mutation_applied.set(true);
+                self.mutation_tracker.set();
             }
             Response::Override(Value::Str(replacement)) => {
                 let replacement_field = token_to_budget_field(replacement).unwrap_or(replacement);
                 deduct_budget_field(&mut *self.state.borrow_mut(), &actor, replacement_field);
-                self.local_mutation_applied.set(true);
+                self.mutation_tracker.set();
             }
             Response::Vetoed => {}
             _ => {}
@@ -322,7 +335,7 @@ const MUTATION_KINDS: [EffectKind; 16] = [
     EffectKind::TransferConditions,
 ];
 
-fn is_mutation(kind: EffectKind) -> bool {
+pub(crate) fn is_mutation(kind: EffectKind) -> bool {
     MUTATION_KINDS.contains(&kind)
 }
 

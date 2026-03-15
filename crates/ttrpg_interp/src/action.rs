@@ -200,9 +200,7 @@ pub(crate) fn execute_pipeline(
             }
         }
         if !modifiers.is_empty() {
-            crate::pipeline::emit_modify_applied_events(
-                env, &modifiers, action_name, call_span,
-            )?;
+            crate::pipeline::emit_modify_applied_events(env, &modifiers, action_name, call_span)?;
         }
         if !effective.free {
             match deduct_costs(env, action_name, &effective, call_span)? {
@@ -573,9 +571,7 @@ pub(crate) fn apply_single_cost_modifier(
     env.push_scope();
 
     // Bind condition receiver (bearer)
-    if let (Some(receiver_name), Some(bearer)) =
-        (&modifier.receiver_name, &modifier.bearer)
-    {
+    if let (Some(receiver_name), Some(bearer)) = (&modifier.receiver_name, &modifier.bearer) {
         env.bind(receiver_name.clone(), bearer.clone());
     }
 
