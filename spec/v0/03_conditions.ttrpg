@@ -773,7 +773,7 @@ condition PoisonAura on bearer: Character stacking first {
 //   let token = condition_token()  // ERROR — only in lifecycle blocks
 //   // Instead, use suspend_with_source():
 //   suspend_with_source(target, source_id: 42,
-//       Presence.OffBoard, freeze_turns: true, freeze_durations: true)
+//       presence: Presence.OffBoard, freeze_turns: true, freeze_durations: true)
 //   // Later:
 //   remove_suspension_source(target, source_id: 42)
 //
