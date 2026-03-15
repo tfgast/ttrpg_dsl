@@ -20,6 +20,80 @@ use crate::coverage::CoverageData;
 use crate::RuntimeError;
 use crate::value::Value;
 
+/// Category of bridge fallback call, for instrumentation.
+#[derive(Debug, Clone, Copy)]
+pub enum BridgeCategory {
+    /// eval_expr, eval_stmt, eval_block, eval_assign_with_rhs
+    Eval,
+    /// dispatch_table_with_values, evaluate_fn_with_values, evaluate_function_with_values
+    Dispatch,
+    /// execute_pipeline, collect_and_apply_cost_modifiers
+    Pipeline,
+    /// Thin wrappers that only call emit() (budget, condition, revoke effects)
+    EffectEmission,
+    /// TryEvalHandler probing (checking whether an expression yields)
+    Probe,
+}
+
+const BRIDGE_CATEGORY_COUNT: usize = 5;
+
+/// Counts of bridge fallback calls by category.
+#[derive(Debug)]
+pub struct BridgeStats {
+    counts: [Cell<u64>; BRIDGE_CATEGORY_COUNT],
+}
+
+impl Default for BridgeStats {
+    fn default() -> Self {
+        BridgeStats {
+            counts: [Cell::new(0), Cell::new(0), Cell::new(0), Cell::new(0), Cell::new(0)],
+        }
+    }
+}
+
+impl BridgeStats {
+    /// Increment the counter for the given category.
+    pub fn increment(&self, category: BridgeCategory) {
+        let idx = category as usize;
+        self.counts[idx].set(self.counts[idx].get() + 1);
+    }
+
+    /// Get the count for a given category.
+    pub fn count(&self, category: BridgeCategory) -> u64 {
+        self.counts[category as usize].get()
+    }
+
+    /// Total bridge calls across all categories.
+    pub fn total(&self) -> u64 {
+        self.counts.iter().map(|c| c.get()).sum()
+    }
+
+    /// Panics if any Eval, Dispatch, or Pipeline bridges were used.
+    /// Call in tests that expect fully native step-based execution.
+    pub fn assert_no_eval_bridges(&self) {
+        let eval = self.count(BridgeCategory::Eval);
+        let dispatch = self.count(BridgeCategory::Dispatch);
+        let pipeline = self.count(BridgeCategory::Pipeline);
+        assert!(
+            eval + dispatch + pipeline == 0,
+            "expected no eval/dispatch/pipeline bridges, got: eval={eval}, dispatch={dispatch}, pipeline={pipeline}"
+        );
+    }
+
+    /// Format counts as a single-line summary string.
+    pub fn summary(&self) -> String {
+        format!(
+            "bridge_stats: eval={}, dispatch={}, pipeline={}, effect_emission={}, probe={}, total={}",
+            self.count(BridgeCategory::Eval),
+            self.count(BridgeCategory::Dispatch),
+            self.count(BridgeCategory::Pipeline),
+            self.count(BridgeCategory::EffectEmission),
+            self.count(BridgeCategory::Probe),
+            self.total(),
+        )
+    }
+}
+
 /// Shared across executions. Immutable program data + mutable caches.
 /// Single-threaded: not Send/Sync. One RuntimeCore per host thread.
 pub struct RuntimeCore {
@@ -27,6 +101,7 @@ pub struct RuntimeCore {
     pub(crate) type_env: Arc<TypeEnv>,
     pub(crate) consts: RefCell<FxHashMap<Name, Value>>,
     pub(crate) coverage: Option<Rc<RefCell<CoverageData>>>,
+    bridge_stats: BridgeStats,
     next_invocation_id: Cell<u64>,
     next_condition_id: Cell<u64>,
 }
@@ -44,6 +119,7 @@ impl RuntimeCore {
             type_env,
             consts: RefCell::new(FxHashMap::default()),
             coverage: None,
+            bridge_stats: BridgeStats::default(),
             next_invocation_id: Cell::new(invocation_start),
             next_condition_id: Cell::new(condition_start),
         })
@@ -81,6 +157,7 @@ impl RuntimeCore {
             type_env: Arc::clone(&self.type_env),
             consts: RefCell::new(FxHashMap::default()),
             coverage: Some(cov),
+            bridge_stats: BridgeStats::default(),
             next_invocation_id: Cell::new(self.next_invocation_id.get()),
             next_condition_id: Cell::new(self.next_condition_id.get()),
         })
@@ -117,5 +194,10 @@ impl RuntimeCore {
     pub(crate) fn sync_counters(&self, invocation: u64, condition: u64) {
         self.next_invocation_id.set(invocation);
         self.next_condition_id.set(condition);
+    }
+
+    /// Bridge call statistics accumulated during step-based execution.
+    pub fn bridge_stats(&self) -> &BridgeStats {
+        &self.bridge_stats
     }
 }

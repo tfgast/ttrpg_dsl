@@ -17,7 +17,7 @@ use ttrpg_ast::{Name, Span, Spanned};
 
 use crate::adapter::StateAdapter;
 use crate::effect::{ActionKind, ActionOutcome, Effect, EffectHandler, EffectKind, Response, Step};
-use crate::runtime_core::RuntimeCore;
+use crate::runtime_core::{BridgeCategory, RuntimeCore};
 use crate::select_action_overload;
 use crate::state::{
     ActiveCondition, ConditionToken, EntityRef, InvocationId, StateProvider, WritableState,
@@ -271,7 +271,7 @@ fn try_dispatch_apply_condition<S: WritableState>(
     let mut values = Vec::new();
     for arg in args {
         let mut probe = TryEvalHandler::new();
-        let eval_result = bridge_eval_with(core, env, state, &mut probe, |tmp_env| {
+        let eval_result = bridge_eval_with(core, env, state, &mut probe, BridgeCategory::Probe, |tmp_env| {
             crate::eval::eval_expr(tmp_env, &arg.value)
         });
         if probe.captured {
@@ -372,7 +372,7 @@ fn try_dispatch_remove_condition<S: WritableState>(
     let mut values = Vec::new();
     for arg in args {
         let mut probe = TryEvalHandler::new();
-        let eval_result = bridge_eval_with(core, env, state, &mut probe, |tmp_env| {
+        let eval_result = bridge_eval_with(core, env, state, &mut probe, BridgeCategory::Probe, |tmp_env| {
             crate::eval::eval_expr(tmp_env, &arg.value)
         });
         if probe.captured {
@@ -478,7 +478,7 @@ fn try_dispatch_revoke<S: WritableState>(
     let mut values = Vec::new();
     for arg in args {
         let mut probe = TryEvalHandler::new();
-        let eval_result = bridge_eval_with(core, env, state, &mut probe, |tmp_env| {
+        let eval_result = bridge_eval_with(core, env, state, &mut probe, BridgeCategory::Probe, |tmp_env| {
             crate::eval::eval_expr(tmp_env, &arg.value)
         });
         if probe.captured {
@@ -668,7 +668,7 @@ fn try_frame_dispatch_stmt<S: WritableState>(
 
         state.reset_mutation_flag();
         let mut probe = TryEvalHandler::new();
-        let eval_result = bridge_eval_with(core, env, state, &mut probe, |tmp_env| {
+        let eval_result = bridge_eval_with(core, env, state, &mut probe, BridgeCategory::Probe, |tmp_env| {
             crate::eval::eval_expr(tmp_env, &arg.value)
         });
 
@@ -737,7 +737,7 @@ fn bridge_eval_block<S: WritableState>(
     state: &StateAdapter<S>,
     block: &Block,
 ) -> Result<Value, RuntimeError> {
-    bridge_eval_with(core, env, state, &mut NoYieldHandler, |tmp_env| {
+    bridge_eval_with(core, env, state, &mut NoYieldHandler, BridgeCategory::Eval, |tmp_env| {
         crate::eval::eval_block(tmp_env, block)
     })
 }
@@ -755,11 +755,11 @@ fn bridge_eval_stmt<S: WritableState>(
 ) -> Result<Value, RuntimeError> {
     let stmt = stmt.clone();
     if let Some(h) = handler {
-        bridge_eval_with(core, env, state, h, |tmp_env| {
+        bridge_eval_with(core, env, state, h, BridgeCategory::Eval, |tmp_env| {
             crate::eval::eval_stmt(tmp_env, &stmt)
         })
     } else {
-        bridge_eval_with(core, env, state, &mut NoYieldHandler, |tmp_env| {
+        bridge_eval_with(core, env, state, &mut NoYieldHandler, BridgeCategory::Eval, |tmp_env| {
             crate::eval::eval_stmt(tmp_env, &stmt)
         })
     }
@@ -772,7 +772,7 @@ fn bridge_eval_expr<S: WritableState>(
     state: &StateAdapter<S>,
     expr: &Spanned<ExprKind>,
 ) -> Result<Value, RuntimeError> {
-    bridge_eval_with(core, env, state, &mut NoYieldHandler, |tmp_env| {
+    bridge_eval_with(core, env, state, &mut NoYieldHandler, BridgeCategory::Eval, |tmp_env| {
         crate::eval::eval_expr(tmp_env, expr)
     })
 }
@@ -787,6 +787,7 @@ fn bridge_eval_with<S, H, F>(
     env: &mut ExecEnv,
     state: &StateAdapter<S>,
     handler: &mut H,
+    category: BridgeCategory,
     f: F,
 ) -> Result<Value, RuntimeError>
 where
@@ -794,6 +795,7 @@ where
     H: EffectHandler + ?Sized,
     F: FnOnce(&mut Env) -> Result<Value, RuntimeError>,
 {
+    core.bridge_stats().increment(category);
     let interp = Interpreter::bridge(
         &core.program,
         &core.type_env,
@@ -867,7 +869,7 @@ fn bridge_call_dispatch<S: WritableState>(
             let n = name.clone();
             let a = args.clone();
             let is_table = core.program.tables.contains_key(n.as_ref());
-            bridge_eval_with(core, env, state, handler, move |tmp_env| {
+            bridge_eval_with(core, env, state, handler, BridgeCategory::Dispatch, move |tmp_env| {
                 if is_table {
                     crate::call::dispatch_table_with_values(tmp_env, &n, a, Span::dummy())
                 } else {
@@ -878,20 +880,20 @@ fn bridge_call_dispatch<S: WritableState>(
         BridgeCallInfo::Mechanic { name, args } => {
             let n = name.clone();
             let a = args.clone();
-            bridge_eval_with(core, env, state, handler, move |tmp_env| {
+            bridge_eval_with(core, env, state, handler, BridgeCategory::Dispatch, move |tmp_env| {
                 crate::call::evaluate_fn_with_values(tmp_env, &n, a, Span::dummy())
             })
         }
         BridgeCallInfo::Function { name, args } => {
             let n = name.clone();
             let a = args.clone();
-            bridge_eval_with(core, env, state, handler, move |tmp_env| {
+            bridge_eval_with(core, env, state, handler, BridgeCategory::Dispatch, move |tmp_env| {
                 crate::call::evaluate_function_with_values(tmp_env, &n, a, Span::dummy())
             })
         }
         BridgeCallInfo::Expr { expr } => {
             let e = expr.clone();
-            bridge_eval_with(core, env, state, handler, |tmp_env| {
+            bridge_eval_with(core, env, state, handler, BridgeCategory::Eval, |tmp_env| {
                 crate::eval::eval_expr(tmp_env, &e)
             })
         }
@@ -1632,7 +1634,7 @@ impl Frame {
                         let hrt = *has_return_type;
                         let span = *call_span;
 
-                        let result = bridge_eval_with(core, env, state, *h, move |tmp_env| {
+                        let result = bridge_eval_with(core, env, state, *h, BridgeCategory::Pipeline, move |tmp_env| {
                             crate::action::execute_pipeline(
                                 tmp_env,
                                 &actor_val,
@@ -1694,7 +1696,7 @@ impl Frame {
                 if let Some(ref mut h) = handler {
                     // Sync path — use the real handler directly.
                     let eval_result =
-                        bridge_eval_with(core, env, state, *h, |tmp_env| {
+                        bridge_eval_with(core, env, state, *h, BridgeCategory::Eval, |tmp_env| {
                             crate::eval::eval_expr(tmp_env, &e)
                         });
                     return match eval_result {
@@ -1709,7 +1711,7 @@ impl Frame {
                 state.reset_mutation_flag();
                 let mut caching = CachingHandler::from_expr_cache(expr_cache);
                 let eval_result =
-                    bridge_eval_with(core, env, state, &mut caching, |tmp_env| {
+                    bridge_eval_with(core, env, state, &mut caching, BridgeCategory::Eval, |tmp_env| {
                         crate::eval::eval_expr(tmp_env, &e)
                     });
 
@@ -1787,7 +1789,7 @@ impl Frame {
                             env,
                             state,
                             &mut handler,
-                            move |tmp_env| {
+                            BridgeCategory::Pipeline, move |tmp_env| {
                                 let eff = crate::action::collect_and_apply_cost_modifiers(
                                     tmp_env,
                                     &actor_ref,
@@ -2119,7 +2121,7 @@ impl Frame {
                                 env,
                                 state,
                                 &mut NoYieldHandler,
-                                |tmp_env| {
+                                BridgeCategory::Eval, |tmp_env| {
                                     crate::eval::eval_assign_with_rhs(
                                         tmp_env, &target, op, rhs, span,
                                     )?;
@@ -2236,7 +2238,7 @@ impl Frame {
                     // that aren't function calls (or can't be resolved).
                     state.reset_mutation_flag();
                     let mut caching = CachingHandler::from_expr_cache(expr_cache);
-                    let eval_result = bridge_eval_with(core, env, state, &mut caching, |tmp_env| {
+                    let eval_result = bridge_eval_with(core, env, state, &mut caching, BridgeCategory::Eval, |tmp_env| {
                         crate::eval::eval_stmt(tmp_env, &stmt)
                     });
 
@@ -2310,7 +2312,7 @@ impl Frame {
                     // Evaluate default expression via bridge.
                     let expr = default_expr.clone();
                     let eval_result = if let Some(ref mut h) = handler {
-                        bridge_eval_with(core, env, state, *h, |tmp_env| {
+                        bridge_eval_with(core, env, state, *h, BridgeCategory::Eval, |tmp_env| {
                             crate::eval::eval_expr(tmp_env, &expr)
                         })
                     } else {
@@ -2354,7 +2356,7 @@ impl Frame {
 
                 if let Some(ref mut h) = handler {
                     // Sync path — forward effects to real handler.
-                    let result = bridge_eval_with(core, env, state, *h, move |tmp_env| {
+                    let result = bridge_eval_with(core, env, state, *h, BridgeCategory::Dispatch, move |tmp_env| {
                         if is_tbl {
                             crate::call::dispatch_table_with_values(tmp_env, &n, a, Span::dummy())
                         } else {
@@ -2369,7 +2371,7 @@ impl Frame {
                     // Async path — CachingHandler with replay support.
                     state.reset_mutation_flag();
                     let mut caching = CachingHandler::from_expr_cache(expr_cache);
-                    let result = bridge_eval_with(core, env, state, &mut caching, move |tmp_env| {
+                    let result = bridge_eval_with(core, env, state, &mut caching, BridgeCategory::Dispatch, move |tmp_env| {
                         if is_tbl {
                             crate::call::dispatch_table_with_values(tmp_env, &n, a, Span::dummy())
                         } else {
@@ -2432,7 +2434,7 @@ impl Frame {
                     // so later defaults can reference earlier ones).
                     for (dname, dexpr) in default_params.drain(..) {
                         let result = if let Some(ref mut h) = handler {
-                            bridge_eval_with(core, env, state, *h, |tmp_env| {
+                            bridge_eval_with(core, env, state, *h, BridgeCategory::Eval, |tmp_env| {
                                 crate::eval::eval_expr(tmp_env, &dexpr)
                             })
                         } else {
@@ -2641,7 +2643,7 @@ impl Frame {
                             let a = *actor;
                             let b = old.clone();
                             if let Some(ref mut h) = handler {
-                                bridge_eval_with(core, env, state, *h, move |tmp_env| {
+                                bridge_eval_with(core, env, state, *h, BridgeCategory::EffectEmission, move |tmp_env| {
                                     tmp_env.emit(Effect::ProvisionBudget {
                                         actor: a,
                                         budget: b,
@@ -2654,6 +2656,7 @@ impl Frame {
                                     env,
                                     state,
                                     &mut NoYieldHandler,
+                                    BridgeCategory::EffectEmission,
                                     move |tmp_env| {
                                         tmp_env.emit(Effect::ProvisionBudget {
                                             actor: a,
@@ -2667,7 +2670,7 @@ impl Frame {
                         None => {
                             let a = *actor;
                             if let Some(ref mut h) = handler {
-                                bridge_eval_with(core, env, state, *h, move |tmp_env| {
+                                bridge_eval_with(core, env, state, *h, BridgeCategory::EffectEmission, move |tmp_env| {
                                     tmp_env.emit(Effect::ClearBudget { actor: a });
                                     Ok(Value::Void)
                                 })
@@ -2677,6 +2680,7 @@ impl Frame {
                                     env,
                                     state,
                                     &mut NoYieldHandler,
+                                    BridgeCategory::EffectEmission,
                                     move |tmp_env| {
                                         tmp_env.emit(Effect::ClearBudget { actor: a });
                                         Ok(Value::Void)
@@ -2776,7 +2780,7 @@ impl Frame {
                             Some(old) => {
                                 let b = old.clone();
                                 if let Some(ref mut h) = handler {
-                                    bridge_eval_with(core, env, state, *h, move |tmp_env| {
+                                    bridge_eval_with(core, env, state, *h, BridgeCategory::EffectEmission, move |tmp_env| {
                                         tmp_env.emit(Effect::ProvisionBudget {
                                             actor: a,
                                             budget: b,
@@ -2789,6 +2793,7 @@ impl Frame {
                                         env,
                                         state,
                                         &mut NoYieldHandler,
+                                        BridgeCategory::EffectEmission,
                                         move |tmp_env| {
                                             tmp_env.emit(Effect::ProvisionBudget {
                                                 actor: a,
@@ -2801,7 +2806,7 @@ impl Frame {
                             }
                             None => {
                                 if let Some(ref mut h) = handler {
-                                    bridge_eval_with(core, env, state, *h, move |tmp_env| {
+                                    bridge_eval_with(core, env, state, *h, BridgeCategory::EffectEmission, move |tmp_env| {
                                         tmp_env.emit(Effect::ClearBudget { actor: a });
                                         Ok(Value::Void)
                                     })
@@ -2811,6 +2816,7 @@ impl Frame {
                                         env,
                                         state,
                                         &mut NoYieldHandler,
+                                        BridgeCategory::EffectEmission,
                                         move |tmp_env| {
                                             tmp_env.emit(Effect::ClearBudget { actor: a });
                                             Ok(Value::Void)
@@ -2910,7 +2916,7 @@ impl Frame {
                         for arg in args.drain(..) {
                             let expr = arg.value.clone();
                             let val = if let Some(ref mut h) = handler {
-                                bridge_eval_with(core, env, state, *h, |tmp_env| {
+                                bridge_eval_with(core, env, state, *h, BridgeCategory::Eval, |tmp_env| {
                                     crate::eval::eval_expr(tmp_env, &expr)
                                 })
                             } else {
@@ -2971,7 +2977,7 @@ impl Frame {
                         let expr = default_expr.clone();
                         let pname = name.clone();
                         let val = if let Some(ref mut h) = handler {
-                            bridge_eval_with(core, env, state, *h, |tmp_env| {
+                            bridge_eval_with(core, env, state, *h, BridgeCategory::Eval, |tmp_env| {
                                 crate::eval::eval_expr(tmp_env, &expr)
                             })
                         } else {
@@ -3009,7 +3015,7 @@ impl Frame {
                         let expr = default_expr.clone();
                         let field_name = fname.clone();
                         let val = if let Some(ref mut h) = handler {
-                            bridge_eval_with(core, env, state, *h, |tmp_env| {
+                            bridge_eval_with(core, env, state, *h, BridgeCategory::Eval, |tmp_env| {
                                 crate::eval::eval_expr(tmp_env, &expr)
                             })
                         } else {
@@ -3188,7 +3194,7 @@ impl Frame {
 
                     if let Some(ref mut h) = handler {
                         // Sync path — evaluate directly.
-                        let val = bridge_eval_with(core, env, state, *h, |tmp_env| {
+                        let val = bridge_eval_with(core, env, state, *h, BridgeCategory::Eval, |tmp_env| {
                             crate::eval::eval_expr(tmp_env, &field_expr)
                         });
                         env.pop_scope();
@@ -3204,7 +3210,7 @@ impl Frame {
                         // Async path — CachingHandler with replay.
                         state.reset_mutation_flag();
                         let mut caching = CachingHandler::from_expr_cache(state_expr_cache);
-                        let val = bridge_eval_with(core, env, state, &mut caching, |tmp_env| {
+                        let val = bridge_eval_with(core, env, state, &mut caching, BridgeCategory::Eval, |tmp_env| {
                             crate::eval::eval_expr(tmp_env, &field_expr)
                         });
                         env.pop_scope();
@@ -3435,7 +3441,7 @@ impl Frame {
 
                 // Emit via bridge (locally-applied, not yielded to host).
                 let emit_result = if let Some(ref mut h) = handler {
-                    bridge_eval_with(core, env, state, *h, |tmp_env| {
+                    bridge_eval_with(core, env, state, *h, BridgeCategory::EffectEmission, |tmp_env| {
                         let resp = tmp_env.emit(effect);
                         match resp {
                             Response::Acknowledged | Response::Override(_) => {
@@ -3453,6 +3459,7 @@ impl Frame {
                 } else {
                     bridge_eval_with(
                         core, env, state, &mut NoYieldHandler,
+                        BridgeCategory::EffectEmission,
                         |tmp_env| {
                             let resp = tmp_env.emit(effect);
                             match resp {
@@ -3720,7 +3727,7 @@ impl Frame {
                             fields,
                         };
                         if let Some(ref mut h) = handler {
-                            bridge_eval_with(core, env, state, *h, |tmp_env| {
+                            bridge_eval_with(core, env, state, *h, BridgeCategory::EffectEmission, |tmp_env| {
                                 tmp_env.handler.handle(effect);
                                 Ok(Value::Void)
                             })
@@ -3731,7 +3738,7 @@ impl Frame {
                                 env,
                                 state,
                                 &mut NoYieldHandler,
-                                |tmp_env| {
+                                BridgeCategory::EffectEmission, |tmp_env| {
                                     tmp_env.handler.handle(effect);
                                     Ok(Value::Void)
                                 },
@@ -3794,12 +3801,12 @@ impl Frame {
                 if let Some(inv_id) = revoke_invocation.take() {
                     let effect = Effect::RevokeInvocation { invocation: inv_id };
                     let emit_result = if let Some(ref mut h) = handler {
-                        bridge_eval_with(core, env, state, *h, |tmp_env| {
+                        bridge_eval_with(core, env, state, *h, BridgeCategory::EffectEmission, |tmp_env| {
                             let _ = tmp_env.emit(effect);
                             Ok(Value::Void)
                         })
                     } else {
-                        bridge_eval_with(core, env, state, &mut NoYieldHandler, |tmp_env| {
+                        bridge_eval_with(core, env, state, &mut NoYieldHandler, BridgeCategory::EffectEmission, |tmp_env| {
                             let _ = tmp_env.emit(effect);
                             Ok(Value::Void)
                         })
@@ -3982,12 +3989,12 @@ impl Frame {
                         fields: std::mem::take(state_fields),
                     };
                     let emit_result = if let Some(ref mut h) = handler {
-                        bridge_eval_with(core, env, state, *h, |tmp_env| {
+                        bridge_eval_with(core, env, state, *h, BridgeCategory::EffectEmission, |tmp_env| {
                             tmp_env.emit(set_state_effect);
                             Ok(Value::Void)
                         })
                     } else {
-                        bridge_eval_with(core, env, state, &mut NoYieldHandler, |tmp_env| {
+                        bridge_eval_with(core, env, state, &mut NoYieldHandler, BridgeCategory::EffectEmission, |tmp_env| {
                             tmp_env.emit(set_state_effect);
                             Ok(Value::Void)
                         })
@@ -4007,12 +4014,12 @@ impl Frame {
                     id: Some(*instance_id),
                 };
                 let remove_result = if let Some(ref mut h) = handler {
-                    bridge_eval_with(core, env, state, *h, |tmp_env| {
+                    bridge_eval_with(core, env, state, *h, BridgeCategory::EffectEmission, |tmp_env| {
                         let _ = tmp_env.emit(remove_effect);
                         Ok(Value::Void)
                     })
                 } else {
-                    bridge_eval_with(core, env, state, &mut NoYieldHandler, |tmp_env| {
+                    bridge_eval_with(core, env, state, &mut NoYieldHandler, BridgeCategory::EffectEmission, |tmp_env| {
                         let _ = tmp_env.emit(remove_effect);
                         Ok(Value::Void)
                     })
@@ -4029,12 +4036,12 @@ impl Frame {
                     source_id: *instance_id,
                 };
                 let _ = if let Some(ref mut h) = handler {
-                    bridge_eval_with(core, env, state, *h, |tmp_env| {
+                    bridge_eval_with(core, env, state, *h, BridgeCategory::EffectEmission, |tmp_env| {
                         let _ = tmp_env.emit(suspension_effect);
                         Ok(Value::Void)
                     })
                 } else {
-                    bridge_eval_with(core, env, state, &mut NoYieldHandler, |tmp_env| {
+                    bridge_eval_with(core, env, state, &mut NoYieldHandler, BridgeCategory::EffectEmission, |tmp_env| {
                         let _ = tmp_env.emit(suspension_effect);
                         Ok(Value::Void)
                     })

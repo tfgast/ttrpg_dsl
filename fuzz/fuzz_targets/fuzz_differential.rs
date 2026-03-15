@@ -128,6 +128,11 @@ fuzz_target!(|data: &[u8]| {
 
         let result_b = exec.run_with_handler(&mut handler_b);
 
+        // ── Bridge stats ──
+        if std::env::var("TTRPG_BRIDGE_VERBOSE").as_deref() == Ok("1") {
+            eprintln!("[bridge] {name}: {}", core.bridge_stats().summary());
+        }
+
         // ── Compare ──
         match (&result_a, &result_b) {
             (Ok(va), Ok(vb)) => {
