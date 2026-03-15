@@ -50,8 +50,7 @@ pub(super) fn bind_args(
                     arg.span,
                 ));
             }
-            let val =
-                try_eval_with_hint(env, &arg.value, &params[next_positional].ty)?;
+            let val = try_eval_with_hint(env, &arg.value, &params[next_positional].ty)?;
             result[next_positional] = Some(val);
             next_positional += 1;
         }

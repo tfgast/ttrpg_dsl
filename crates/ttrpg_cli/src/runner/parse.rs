@@ -65,7 +65,9 @@ impl Runner {
                 });
         if has_variant {
             let span = expr_head_span(parsed);
-            Arc::make_mut(&mut self.type_env).resolved_variants.insert(span, enum_name);
+            Arc::make_mut(&mut self.type_env)
+                .resolved_variants
+                .insert(span, enum_name);
             Some(span)
         } else {
             None
@@ -216,7 +218,9 @@ impl Runner {
                     // Clean up injected hint — SYNTH spans overlap across
                     // parse_expr calls and could poison later evaluations.
                     if let Some(span) = hint_span {
-                        Arc::make_mut(&mut self.type_env).resolved_variants.remove(&span);
+                        Arc::make_mut(&mut self.type_env)
+                            .resolved_variants
+                            .remove(&span);
                     }
 
                     result
@@ -312,7 +316,9 @@ impl Runner {
 
                 // Clean up injected hint — SYNTH spans overlap.
                 if let Some(span) = hint_span {
-                    Arc::make_mut(&mut self.type_env).resolved_variants.remove(&span);
+                    Arc::make_mut(&mut self.type_env)
+                        .resolved_variants
+                        .remove(&span);
                 }
 
                 result

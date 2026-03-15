@@ -16,8 +16,8 @@ use ttrpg_ast::Name;
 use ttrpg_ast::ast::Program;
 use ttrpg_checker::env::TypeEnv;
 
-use crate::coverage::CoverageData;
 use crate::RuntimeError;
+use crate::coverage::CoverageData;
 use crate::value::Value;
 
 /// Category of bridge fallback call, for instrumentation.
@@ -46,7 +46,13 @@ pub struct BridgeStats {
 impl Default for BridgeStats {
     fn default() -> Self {
         BridgeStats {
-            counts: [Cell::new(0), Cell::new(0), Cell::new(0), Cell::new(0), Cell::new(0)],
+            counts: [
+                Cell::new(0),
+                Cell::new(0),
+                Cell::new(0),
+                Cell::new(0),
+                Cell::new(0),
+            ],
         }
     }
 }
@@ -77,6 +83,16 @@ impl BridgeStats {
         assert!(
             eval + dispatch + pipeline == 0,
             "expected no eval/dispatch/pipeline bridges, got: eval={eval}, dispatch={dispatch}, pipeline={pipeline}"
+        );
+    }
+
+    /// Panics if any EffectEmission bridges were used.
+    /// All effect emissions now go through `StateAdapter::emit_effect()`.
+    pub fn assert_no_effect_emission_bridges(&self) {
+        let count = self.count(BridgeCategory::EffectEmission);
+        assert!(
+            count == 0,
+            "expected no effect emission bridges, got: {count}"
         );
     }
 
@@ -148,10 +164,7 @@ impl RuntimeCore {
     ///
     /// Use this when the caller already owns a `CoverageData` (e.g. the CLI
     /// runner) so that coverage hits flow into the same data the caller reads.
-    pub fn with_shared_coverage(
-        self: &Rc<Self>,
-        cov: Rc<RefCell<CoverageData>>,
-    ) -> Rc<Self> {
+    pub fn with_shared_coverage(self: &Rc<Self>, cov: Rc<RefCell<CoverageData>>) -> Rc<Self> {
         Rc::new(RuntimeCore {
             program: Arc::clone(&self.program),
             type_env: Arc::clone(&self.type_env),

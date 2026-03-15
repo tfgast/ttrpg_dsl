@@ -112,6 +112,116 @@ impl<S: WritableState> StateAdapter<S> {
     pub fn local_mutation_applied(&self) -> bool {
         self.local_mutation_applied.get()
     }
+
+    /// Emit an effect through the adapter's interception logic.
+    ///
+    /// Mutations are intercepted/applied locally per the same rules as `run()`.
+    /// Non-mutation effects are forwarded to `handler`. Uses the same routing
+    /// as `AdaptedHandler::handle()` without needing an Env or Interpreter.
+    pub fn emit_effect<H: EffectHandler + ?Sized>(
+        &self,
+        handler: &mut H,
+        effect: Effect,
+    ) -> Response {
+        self.route_effect(handler, effect)
+    }
+
+    /// Core effect routing shared by `AdaptedHandler::handle()` and `emit_effect()`.
+    fn route_effect<H: EffectHandler + ?Sized>(&self, inner: &mut H, effect: Effect) -> Response {
+        let kind = EffectKind::of(&effect);
+
+        // DeductCost: always passed through, adapter applies mutation based on response
+        if kind == EffectKind::DeductCost {
+            return self.route_deduct_cost(inner, effect);
+        }
+
+        // SpawnEntity: special handling — must return EntitySpawned with the ref
+        if kind == EffectKind::SpawnEntity {
+            if self.pass_through.contains(&kind) {
+                let response = inner.handle(effect.clone());
+                if let Response::EntitySpawned(_) = &response {
+                    apply_spawn(&mut *self.state.borrow_mut(), &effect);
+                    self.local_mutation_applied.set(true);
+                }
+                return response;
+            }
+            let entity_ref = apply_spawn(&mut *self.state.borrow_mut(), &effect);
+            self.local_mutation_applied.set(true);
+            return Response::EntitySpawned(entity_ref);
+        }
+
+        if is_mutation(kind) {
+            if self.pass_through.contains(&kind) {
+                let response = inner.handle(effect.clone());
+                match &response {
+                    Response::Acknowledged => {
+                        apply_mutation(
+                            &mut *self.state.borrow_mut(),
+                            &effect,
+                            &self.condition_receiver_types,
+                        );
+                        self.local_mutation_applied.set(true);
+                    }
+                    Response::Override(override_val) => {
+                        apply_mutation_with_override(
+                            &mut *self.state.borrow_mut(),
+                            &effect,
+                            override_val,
+                        );
+                        self.local_mutation_applied.set(true);
+                    }
+                    Response::Vetoed => {}
+                    _ => {}
+                }
+                response
+            } else {
+                apply_mutation(
+                    &mut *self.state.borrow_mut(),
+                    &effect,
+                    &self.condition_receiver_types,
+                );
+                self.local_mutation_applied.set(true);
+                Response::Acknowledged
+            }
+        } else {
+            inner.handle(effect)
+        }
+    }
+
+    /// Route DeductCost: always passed through; adapter applies the state
+    /// mutation based on the host's response.
+    fn route_deduct_cost<H: EffectHandler + ?Sized>(
+        &self,
+        inner: &mut H,
+        effect: Effect,
+    ) -> Response {
+        let (actor, budget_field) = match &effect {
+            Effect::DeductCost {
+                actor,
+                budget_field,
+                ..
+            } => (*actor, budget_field.clone()),
+            _ => unreachable!(),
+        };
+
+        let response = inner.handle(effect);
+
+        match &response {
+            Response::Acknowledged => {
+                deduct_budget_field(&mut *self.state.borrow_mut(), &actor, &budget_field);
+                self.local_mutation_applied.set(true);
+            }
+            Response::Override(Value::Str(replacement)) => {
+                let replacement_field = token_to_budget_field(replacement).unwrap_or(replacement);
+                deduct_budget_field(&mut *self.state.borrow_mut(), &actor, replacement_field);
+                self.local_mutation_applied.set(true);
+            }
+            Response::Vetoed => {}
+            _ => {}
+        }
+
+        response
+    }
 }
 
 // ── StateProvider impl ─────────────────────────────────────────
@@ -218,120 +328,7 @@ fn is_mutation(kind: EffectKind) -> bool {
 
 impl<S: WritableState, H: EffectHandler + ?Sized> EffectHandler for AdaptedHandler<'_, S, H> {
     fn handle(&mut self, effect: Effect) -> Response {
-        let kind = EffectKind::of(&effect);
-
-        // DeductCost: always passed through, adapter applies mutation based on response
-        if kind == EffectKind::DeductCost {
-            return self.handle_deduct_cost(effect);
-        }
-
-        // SpawnEntity: special handling — must return EntitySpawned with the ref
-        if kind == EffectKind::SpawnEntity {
-            if self.adapter.pass_through.contains(&kind) {
-                let response = self.inner.handle(effect.clone());
-                if let Response::EntitySpawned(_) = &response {
-                    // Host handled spawning; sync locally too
-                    apply_spawn(&mut *self.adapter.state.borrow_mut(), &effect);
-                    self.adapter.local_mutation_applied.set(true);
-                }
-                return response;
-            }
-            let entity_ref = apply_spawn(&mut *self.adapter.state.borrow_mut(), &effect);
-            self.adapter.local_mutation_applied.set(true);
-            return Response::EntitySpawned(entity_ref);
-        }
-
-        if is_mutation(kind) {
-            if self.adapter.pass_through.contains(&kind) {
-                // Pass-through: forward to inner, then sync locally
-                let response = self.inner.handle(effect.clone());
-                match &response {
-                    Response::Acknowledged => {
-                        apply_mutation(
-                            &mut *self.adapter.state.borrow_mut(),
-                            &effect,
-                            &self.adapter.condition_receiver_types,
-                        );
-                        self.adapter.local_mutation_applied.set(true);
-                    }
-                    Response::Override(override_val) => {
-                        apply_mutation_with_override(
-                            &mut *self.adapter.state.borrow_mut(),
-                            &effect,
-                            override_val,
-                        );
-                        self.adapter.local_mutation_applied.set(true);
-                    }
-                    Response::Vetoed => {
-                        // No local mutation
-                    }
-                    _ => {
-                        // Unexpected response type — do not mutate state.
-                        // The interpreter will surface a protocol error for this response,
-                        // so state must remain unchanged to preserve consistency.
-                    }
-                }
-                response
-            } else {
-                // Intercepted: apply locally, return Acknowledged
-                apply_mutation(
-                    &mut *self.adapter.state.borrow_mut(),
-                    &effect,
-                    &self.adapter.condition_receiver_types,
-                );
-                self.adapter.local_mutation_applied.set(true);
-                Response::Acknowledged
-            }
-        } else {
-            // Non-mutation: always forward
-            self.inner.handle(effect)
-        }
-    }
-}
-
-impl<S: WritableState, H: EffectHandler + ?Sized> AdaptedHandler<'_, S, H> {
-    /// Handle DeductCost: always passed through; adapter applies
-    /// the state mutation based on the host's response.
-    fn handle_deduct_cost(&mut self, effect: Effect) -> Response {
-        let (actor, budget_field) = match &effect {
-            Effect::DeductCost {
-                actor,
-                budget_field,
-                ..
-            } => (*actor, budget_field.clone()),
-            _ => unreachable!(),
-        };
-
-        let response = self.inner.handle(effect);
-
-        match &response {
-            Response::Acknowledged => {
-                // Decrement the original budget field by 1
-                deduct_budget_field(&mut *self.adapter.state.borrow_mut(), &actor, &budget_field);
-                self.adapter.local_mutation_applied.set(true);
-            }
-            Response::Override(Value::Str(replacement)) => {
-                // Legacy aliases map to TurnBudget field names; custom tokens are
-                // direct field names validated by the interpreter.
-                let replacement_field = token_to_budget_field(replacement).unwrap_or(replacement);
-                deduct_budget_field(
-                    &mut *self.adapter.state.borrow_mut(),
-                    &actor,
-                    replacement_field,
-                );
-                self.adapter.local_mutation_applied.set(true);
-            }
-            Response::Vetoed => {
-                // Cost waived — no mutation
-            }
-            _ => {
-                // Unexpected response — do not mutate state.
-                // The interpreter will surface a protocol error for this response,
-                // so state must remain unchanged to preserve consistency.
-            }
-        }
-
-        response
+        self.adapter.route_effect(self.inner, effect)
     }
 }
 

@@ -271,9 +271,14 @@ fn try_dispatch_apply_condition<S: WritableState>(
     let mut values = Vec::new();
     for arg in args {
         let mut probe = TryEvalHandler::new();
-        let eval_result = bridge_eval_with(core, env, state, &mut probe, BridgeCategory::Probe, |tmp_env| {
-            crate::eval::eval_expr(tmp_env, &arg.value)
-        });
+        let eval_result = bridge_eval_with(
+            core,
+            env,
+            state,
+            &mut probe,
+            BridgeCategory::Probe,
+            |tmp_env| crate::eval::eval_expr(tmp_env, &arg.value),
+        );
         if probe.captured {
             return Ok(None); // arg yields — fall back to bridge
         }
@@ -372,9 +377,14 @@ fn try_dispatch_remove_condition<S: WritableState>(
     let mut values = Vec::new();
     for arg in args {
         let mut probe = TryEvalHandler::new();
-        let eval_result = bridge_eval_with(core, env, state, &mut probe, BridgeCategory::Probe, |tmp_env| {
-            crate::eval::eval_expr(tmp_env, &arg.value)
-        });
+        let eval_result = bridge_eval_with(
+            core,
+            env,
+            state,
+            &mut probe,
+            BridgeCategory::Probe,
+            |tmp_env| crate::eval::eval_expr(tmp_env, &arg.value),
+        );
         if probe.captured {
             return Ok(None);
         }
@@ -440,16 +450,17 @@ fn try_dispatch_remove_condition<S: WritableState>(
     };
 
     // Sort by gained_at and pair with target
-    let mut sorted: Vec<(EntityRef, ActiveCondition)> = instances
-        .into_iter()
-        .map(|c| (target, c))
-        .collect();
+    let mut sorted: Vec<(EntityRef, ActiveCondition)> =
+        instances.into_iter().map(|c| (target, c)).collect();
     sorted.sort_by_key(|(_, c)| c.gained_at);
 
     Ok(Some((
         Frame::ConditionRemovalLoop {
             target,
-            condition_name: sorted.first().map(|(_, c)| c.name.clone()).unwrap_or_default(),
+            condition_name: sorted
+                .first()
+                .map(|(_, c)| c.name.clone())
+                .unwrap_or_default(),
             instances: sorted,
             index: 0,
             first_error: None,
@@ -478,9 +489,14 @@ fn try_dispatch_revoke<S: WritableState>(
     let mut values = Vec::new();
     for arg in args {
         let mut probe = TryEvalHandler::new();
-        let eval_result = bridge_eval_with(core, env, state, &mut probe, BridgeCategory::Probe, |tmp_env| {
-            crate::eval::eval_expr(tmp_env, &arg.value)
-        });
+        let eval_result = bridge_eval_with(
+            core,
+            env,
+            state,
+            &mut probe,
+            BridgeCategory::Probe,
+            |tmp_env| crate::eval::eval_expr(tmp_env, &arg.value),
+        );
         if probe.captured {
             return Ok(None);
         }
@@ -658,9 +674,14 @@ fn try_frame_dispatch_stmt<S: WritableState>(
 
         state.reset_mutation_flag();
         let mut probe = TryEvalHandler::new();
-        let eval_result = bridge_eval_with(core, env, state, &mut probe, BridgeCategory::Probe, |tmp_env| {
-            crate::eval::eval_expr(tmp_env, &arg.value)
-        });
+        let eval_result = bridge_eval_with(
+            core,
+            env,
+            state,
+            &mut probe,
+            BridgeCategory::Probe,
+            |tmp_env| crate::eval::eval_expr(tmp_env, &arg.value),
+        );
 
         if probe.captured {
             // The arg expression yielded a host-decided effect.
@@ -727,9 +748,14 @@ fn bridge_eval_block<S: WritableState>(
     state: &StateAdapter<S>,
     block: &Block,
 ) -> Result<Value, RuntimeError> {
-    bridge_eval_with(core, env, state, &mut NoYieldHandler, BridgeCategory::Eval, |tmp_env| {
-        crate::eval::eval_block(tmp_env, block)
-    })
+    bridge_eval_with(
+        core,
+        env,
+        state,
+        &mut NoYieldHandler,
+        BridgeCategory::Eval,
+        |tmp_env| crate::eval::eval_block(tmp_env, block),
+    )
 }
 
 /// Evaluate a single statement using the existing recursive evaluator.
@@ -749,9 +775,14 @@ fn bridge_eval_stmt<S: WritableState>(
             crate::eval::eval_stmt(tmp_env, &stmt)
         })
     } else {
-        bridge_eval_with(core, env, state, &mut NoYieldHandler, BridgeCategory::Eval, |tmp_env| {
-            crate::eval::eval_stmt(tmp_env, &stmt)
-        })
+        bridge_eval_with(
+            core,
+            env,
+            state,
+            &mut NoYieldHandler,
+            BridgeCategory::Eval,
+            |tmp_env| crate::eval::eval_stmt(tmp_env, &stmt),
+        )
     }
 }
 
@@ -762,9 +793,14 @@ fn bridge_eval_expr<S: WritableState>(
     state: &StateAdapter<S>,
     expr: &Spanned<ExprKind>,
 ) -> Result<Value, RuntimeError> {
-    bridge_eval_with(core, env, state, &mut NoYieldHandler, BridgeCategory::Eval, |tmp_env| {
-        crate::eval::eval_expr(tmp_env, expr)
-    })
+    bridge_eval_with(
+        core,
+        env,
+        state,
+        &mut NoYieldHandler,
+        BridgeCategory::Eval,
+        |tmp_env| crate::eval::eval_expr(tmp_env, expr),
+    )
 }
 
 /// Common bridge setup with an explicit handler.
@@ -859,27 +895,46 @@ fn bridge_call_dispatch<S: WritableState>(
             let n = name.clone();
             let a = args.clone();
             let is_table = core.program.tables.contains_key(n.as_ref());
-            bridge_eval_with(core, env, state, handler, BridgeCategory::Dispatch, move |tmp_env| {
-                if is_table {
-                    crate::call::dispatch_table_with_values(tmp_env, &n, a, Span::dummy())
-                } else {
-                    crate::call::evaluate_fn_with_values(tmp_env, &n, a, Span::dummy())
-                }
-            })
+            bridge_eval_with(
+                core,
+                env,
+                state,
+                handler,
+                BridgeCategory::Dispatch,
+                move |tmp_env| {
+                    if is_table {
+                        crate::call::dispatch_table_with_values(tmp_env, &n, a, Span::dummy())
+                    } else {
+                        crate::call::evaluate_fn_with_values(tmp_env, &n, a, Span::dummy())
+                    }
+                },
+            )
         }
         BridgeCallInfo::Mechanic { name, args } => {
             let n = name.clone();
             let a = args.clone();
-            bridge_eval_with(core, env, state, handler, BridgeCategory::Dispatch, move |tmp_env| {
-                crate::call::evaluate_fn_with_values(tmp_env, &n, a, Span::dummy())
-            })
+            bridge_eval_with(
+                core,
+                env,
+                state,
+                handler,
+                BridgeCategory::Dispatch,
+                move |tmp_env| crate::call::evaluate_fn_with_values(tmp_env, &n, a, Span::dummy()),
+            )
         }
         BridgeCallInfo::Function { name, args } => {
             let n = name.clone();
             let a = args.clone();
-            bridge_eval_with(core, env, state, handler, BridgeCategory::Dispatch, move |tmp_env| {
-                crate::call::evaluate_function_with_values(tmp_env, &n, a, Span::dummy())
-            })
+            bridge_eval_with(
+                core,
+                env,
+                state,
+                handler,
+                BridgeCategory::Dispatch,
+                move |tmp_env| {
+                    crate::call::evaluate_function_with_values(tmp_env, &n, a, Span::dummy())
+                },
+            )
         }
         BridgeCallInfo::Expr { expr } => {
             let e = expr.clone();
@@ -1488,9 +1543,7 @@ impl Frame {
                     ActionStep::AwaitRequiresEval => {
                         // ResumableBridge child completed with the requires
                         // expression result.
-                        let val = body_result
-                            .take()
-                            .unwrap_or(Ok(Value::Bool(true)));
+                        let val = body_result.take().unwrap_or(Ok(Value::Bool(true)));
                         match val {
                             Ok(Value::Bool(passed)) => {
                                 let effect = Effect::RequiresCheck {
@@ -1503,14 +1556,10 @@ impl Frame {
                                 Advance::Yield(effect)
                             }
                             Ok(other) => {
-                                let req_span = requires
-                                    .as_ref()
-                                    .map(|r| r.span)
-                                    .unwrap_or(*call_span);
+                                let req_span =
+                                    requires.as_ref().map(|r| r.span).unwrap_or(*call_span);
                                 Advance::Error(RuntimeError::with_span(
-                                    format!(
-                                        "requires clause must evaluate to Bool, got {other:?}"
-                                    ),
+                                    format!("requires clause must evaluate to Bool, got {other:?}"),
                                     req_span,
                                 ))
                             }
@@ -1624,18 +1673,25 @@ impl Frame {
                         let hrt = *has_return_type;
                         let span = *call_span;
 
-                        let result = bridge_eval_with(core, env, state, *h, BridgeCategory::Pipeline, move |tmp_env| {
-                            crate::action::execute_pipeline(
-                                tmp_env,
-                                &actor_val,
-                                &name_val,
-                                requires_val.as_ref(),
-                                cost_val.as_ref(),
-                                &resolve_val,
-                                hrt,
-                                span,
-                            )
-                        });
+                        let result = bridge_eval_with(
+                            core,
+                            env,
+                            state,
+                            *h,
+                            BridgeCategory::Pipeline,
+                            move |tmp_env| {
+                                crate::action::execute_pipeline(
+                                    tmp_env,
+                                    &actor_val,
+                                    &name_val,
+                                    requires_val.as_ref(),
+                                    cost_val.as_ref(),
+                                    &resolve_val,
+                                    hrt,
+                                    span,
+                                )
+                            },
+                        );
                         env.return_value = None;
                         *body_result = Some(result);
                         *step = ActionStep::EmitCompleted;
@@ -1700,10 +1756,14 @@ impl Frame {
                 // (mutation-before-yield containment guard).
                 state.reset_mutation_flag();
                 let mut caching = CachingHandler::from_expr_cache(expr_cache);
-                let eval_result =
-                    bridge_eval_with(core, env, state, &mut caching, BridgeCategory::Eval, |tmp_env| {
-                        crate::eval::eval_expr(tmp_env, &e)
-                    });
+                let eval_result = bridge_eval_with(
+                    core,
+                    env,
+                    state,
+                    &mut caching,
+                    BridgeCategory::Eval,
+                    |tmp_env| crate::eval::eval_expr(tmp_env, &e),
+                );
 
                 if let Some(effect) = caching.captured {
                     // Containment guard: if a local mutation was applied
@@ -1721,9 +1781,7 @@ impl Frame {
                     }
 
                     // Push a yield frame; don't pop — retry on next advance.
-                    if let Some(yield_frame) =
-                        effect_to_yield_frame(effect, *span, core, env)
-                    {
+                    if let Some(yield_frame) = effect_to_yield_frame(effect, *span, core, env) {
                         return Advance::Push(yield_frame);
                     }
                     // Unknown host-decided effect — fall through to error.
@@ -1779,13 +1837,10 @@ impl Frame {
                             env,
                             state,
                             &mut handler,
-                            BridgeCategory::Pipeline, move |tmp_env| {
+                            BridgeCategory::Pipeline,
+                            move |tmp_env| {
                                 let eff = crate::action::collect_and_apply_cost_modifiers(
-                                    tmp_env,
-                                    &actor_ref,
-                                    &action,
-                                    &original,
-                                    span,
+                                    tmp_env, &actor_ref, &action, &original, span,
                                 )?;
                                 *cell_clone.borrow_mut() = eff;
                                 Ok(Value::Void)
@@ -1829,20 +1884,14 @@ impl Frame {
                         }
                         let effect = effects[*idx].clone();
                         let next_idx = *idx + 1;
-                        *phase = CostEvalPhase::AwaitModifyAck(
-                            std::mem::take(effects),
-                            next_idx,
-                        );
+                        *phase = CostEvalPhase::AwaitModifyAck(std::mem::take(effects), next_idx);
                         Advance::Yield(effect)
                     }
 
                     CostEvalPhase::AwaitModifyAck(effects, idx) => {
                         // ModifyApplied is informational — we don't check the response.
                         let _ = pending.take();
-                        *phase = CostEvalPhase::YieldModifyApplied(
-                            std::mem::take(effects),
-                            *idx,
-                        );
+                        *phase = CostEvalPhase::YieldModifyApplied(std::mem::take(effects), *idx);
                         Advance::Continue
                     }
 
@@ -1853,16 +1902,11 @@ impl Frame {
                             return Advance::Continue;
                         }
 
-                        let payer = env.cost_payer.unwrap_or(
-                            env.turn_actor.unwrap_or(*actor),
-                        );
+                        let payer = env.cost_payer.unwrap_or(env.turn_actor.unwrap_or(*actor));
 
                         if let Some(budget) = state.read_turn_budget(&payer) {
                             let token = &tokens[*idx];
-                            let budget_field = match core
-                                .type_env
-                                .resolve_cost_token(&token.node)
-                            {
+                            let budget_field = match core.type_env.resolve_cost_token(&token.node) {
                                 Some(f) => f,
                                 None => {
                                     return Advance::Error(RuntimeError::with_span(
@@ -1940,14 +1984,9 @@ impl Frame {
                             return Advance::Pop(Value::Void);
                         }
 
-                        let payer = env.cost_payer.unwrap_or(
-                            env.turn_actor.unwrap_or(*actor),
-                        );
+                        let payer = env.cost_payer.unwrap_or(env.turn_actor.unwrap_or(*actor));
                         let token = &tokens[*idx];
-                        let budget_field = match core
-                            .type_env
-                            .resolve_cost_token(&token.node)
-                        {
+                        let budget_field = match core.type_env.resolve_cost_token(&token.node) {
                             Some(f) => f,
                             None => {
                                 return Advance::Error(RuntimeError::with_span(
@@ -1984,11 +2023,7 @@ impl Frame {
                             }
                             Response::Override(Value::Str(ref replacement)) => {
                                 // Validate replacement token.
-                                if core
-                                    .type_env
-                                    .resolve_cost_token(replacement)
-                                    .is_none()
-                                {
+                                if core.type_env.resolve_cost_token(replacement).is_none() {
                                     return Advance::Error(RuntimeError::with_span(
                                         format!(
                                             "invalid cost override '{}'; expected one of: {}",
@@ -2013,7 +2048,11 @@ impl Frame {
                 }
             }
 
-            Frame::BridgeCall { result, call_info, expr_cache } => {
+            Frame::BridgeCall {
+                result,
+                call_info,
+                expr_cache,
+            } => {
                 if let Some(r) = result.take() {
                     return match r {
                         Ok(v) => Advance::Pop(v),
@@ -2046,8 +2085,7 @@ impl Frame {
                     // Async path — CachingHandler with replay support.
                     state.reset_mutation_flag();
                     let mut caching = CachingHandler::from_expr_cache(expr_cache);
-                    let eval_result =
-                        bridge_call_dispatch(core, env, state, &mut caching, ci);
+                    let eval_result = bridge_call_dispatch(core, env, state, &mut caching, ci);
 
                     if let Some(effect) = caching.captured {
                         if state.local_mutation_applied() {
@@ -2111,7 +2149,8 @@ impl Frame {
                                 env,
                                 state,
                                 &mut NoYieldHandler,
-                                BridgeCategory::Eval, |tmp_env| {
+                                BridgeCategory::Eval,
+                                |tmp_env| {
                                     crate::eval::eval_assign_with_rhs(
                                         tmp_env, &target, op, rhs, span,
                                     )?;
@@ -2228,9 +2267,14 @@ impl Frame {
                     // that aren't function calls (or can't be resolved).
                     state.reset_mutation_flag();
                     let mut caching = CachingHandler::from_expr_cache(expr_cache);
-                    let eval_result = bridge_eval_with(core, env, state, &mut caching, BridgeCategory::Eval, |tmp_env| {
-                        crate::eval::eval_stmt(tmp_env, &stmt)
-                    });
+                    let eval_result = bridge_eval_with(
+                        core,
+                        env,
+                        state,
+                        &mut caching,
+                        BridgeCategory::Eval,
+                        |tmp_env| crate::eval::eval_stmt(tmp_env, &stmt),
+                    );
 
                     if let Some(effect) = caching.captured {
                         // Containment guard: if a local mutation was
@@ -2253,7 +2297,9 @@ impl Frame {
 
                         // Statement suspended on a host-decided effect.
                         // Push a yield frame; don't advance index.
-                        if let Some(yield_frame) = effect_to_yield_frame(effect, stmt.span, core, env) {
+                        if let Some(yield_frame) =
+                            effect_to_yield_frame(effect, stmt.span, core, env)
+                        {
                             return Advance::Push(yield_frame);
                         }
                         // Unknown host-decided effect — fall through
@@ -2346,13 +2392,25 @@ impl Frame {
 
                 if let Some(ref mut h) = handler {
                     // Sync path — forward effects to real handler.
-                    let result = bridge_eval_with(core, env, state, *h, BridgeCategory::Dispatch, move |tmp_env| {
-                        if is_tbl {
-                            crate::call::dispatch_table_with_values(tmp_env, &n, a, Span::dummy())
-                        } else {
-                            crate::call::evaluate_fn_with_values(tmp_env, &n, a, Span::dummy())
-                        }
-                    });
+                    let result = bridge_eval_with(
+                        core,
+                        env,
+                        state,
+                        *h,
+                        BridgeCategory::Dispatch,
+                        move |tmp_env| {
+                            if is_tbl {
+                                crate::call::dispatch_table_with_values(
+                                    tmp_env,
+                                    &n,
+                                    a,
+                                    Span::dummy(),
+                                )
+                            } else {
+                                crate::call::evaluate_fn_with_values(tmp_env, &n, a, Span::dummy())
+                            }
+                        },
+                    );
                     match result {
                         Ok(val) => Advance::Pop(val),
                         Err(e) => Advance::Error(e),
@@ -2361,13 +2419,25 @@ impl Frame {
                     // Async path — CachingHandler with replay support.
                     state.reset_mutation_flag();
                     let mut caching = CachingHandler::from_expr_cache(expr_cache);
-                    let result = bridge_eval_with(core, env, state, &mut caching, BridgeCategory::Dispatch, move |tmp_env| {
-                        if is_tbl {
-                            crate::call::dispatch_table_with_values(tmp_env, &n, a, Span::dummy())
-                        } else {
-                            crate::call::evaluate_fn_with_values(tmp_env, &n, a, Span::dummy())
-                        }
-                    });
+                    let result = bridge_eval_with(
+                        core,
+                        env,
+                        state,
+                        &mut caching,
+                        BridgeCategory::Dispatch,
+                        move |tmp_env| {
+                            if is_tbl {
+                                crate::call::dispatch_table_with_values(
+                                    tmp_env,
+                                    &n,
+                                    a,
+                                    Span::dummy(),
+                                )
+                            } else {
+                                crate::call::evaluate_fn_with_values(tmp_env, &n, a, Span::dummy())
+                            }
+                        },
+                    );
 
                     if let Some(effect) = caching.captured {
                         if state.local_mutation_applied() {
@@ -2424,9 +2494,14 @@ impl Frame {
                     // so later defaults can reference earlier ones).
                     for (dname, dexpr) in default_params.drain(..) {
                         let result = if let Some(ref mut h) = handler {
-                            bridge_eval_with(core, env, state, *h, BridgeCategory::Eval, |tmp_env| {
-                                crate::eval::eval_expr(tmp_env, &dexpr)
-                            })
+                            bridge_eval_with(
+                                core,
+                                env,
+                                state,
+                                *h,
+                                BridgeCategory::Eval,
+                                |tmp_env| crate::eval::eval_expr(tmp_env, &dexpr),
+                            )
                         } else {
                             bridge_eval_expr(core, env, state, &dexpr)
                         };
@@ -2627,56 +2702,26 @@ impl Frame {
             } => {
                 // Phase 2: body completed — restore budget and return.
                 if let Some(result) = child_result.take() {
-                    // Restore budget via bridge (locally-applied).
-                    let restore_result = match saved_budget {
+                    // Restore budget (locally-applied).
+                    let mut noyield = NoYieldHandler;
+                    let h: &mut dyn EffectHandler = match handler.as_deref_mut() {
+                        Some(h) => h,
+                        None => &mut noyield,
+                    };
+                    let restore_result: Result<Value, RuntimeError> = match saved_budget {
                         Some(old) => {
-                            let a = *actor;
-                            let b = old.clone();
-                            if let Some(ref mut h) = handler {
-                                bridge_eval_with(core, env, state, *h, BridgeCategory::EffectEmission, move |tmp_env| {
-                                    tmp_env.emit(Effect::ProvisionBudget {
-                                        actor: a,
-                                        budget: b,
-                                    });
-                                    Ok(Value::Void)
-                                })
-                            } else {
-                                bridge_eval_with(
-                                    core,
-                                    env,
-                                    state,
-                                    &mut NoYieldHandler,
-                                    BridgeCategory::EffectEmission,
-                                    move |tmp_env| {
-                                        tmp_env.emit(Effect::ProvisionBudget {
-                                            actor: a,
-                                            budget: b,
-                                        });
-                                        Ok(Value::Void)
-                                    },
-                                )
-                            }
+                            state.emit_effect(
+                                h,
+                                Effect::ProvisionBudget {
+                                    actor: *actor,
+                                    budget: old.clone(),
+                                },
+                            );
+                            Ok(Value::Void)
                         }
                         None => {
-                            let a = *actor;
-                            if let Some(ref mut h) = handler {
-                                bridge_eval_with(core, env, state, *h, BridgeCategory::EffectEmission, move |tmp_env| {
-                                    tmp_env.emit(Effect::ClearBudget { actor: a });
-                                    Ok(Value::Void)
-                                })
-                            } else {
-                                bridge_eval_with(
-                                    core,
-                                    env,
-                                    state,
-                                    &mut NoYieldHandler,
-                                    BridgeCategory::EffectEmission,
-                                    move |tmp_env| {
-                                        tmp_env.emit(Effect::ClearBudget { actor: a });
-                                        Ok(Value::Void)
-                                    },
-                                )
-                            }
+                            state.emit_effect(h, Effect::ClearBudget { actor: *actor });
+                            Ok(Value::Void)
                         }
                     };
 
@@ -2765,54 +2810,23 @@ impl Frame {
                         // Restore in reverse order.
                         let restore_idx = saved_budgets.len() - 1 - *index;
                         let (actor, ref prev) = saved_budgets[restore_idx];
-                        let a = actor;
-                        let _ = match prev {
+                        let mut noyield = NoYieldHandler;
+                        let h: &mut dyn EffectHandler = match handler.as_deref_mut() {
+                            Some(h) => h,
+                            None => &mut noyield,
+                        };
+                        match prev {
                             Some(old) => {
-                                let b = old.clone();
-                                if let Some(ref mut h) = handler {
-                                    bridge_eval_with(core, env, state, *h, BridgeCategory::EffectEmission, move |tmp_env| {
-                                        tmp_env.emit(Effect::ProvisionBudget {
-                                            actor: a,
-                                            budget: b,
-                                        });
-                                        Ok(Value::Void)
-                                    })
-                                } else {
-                                    bridge_eval_with(
-                                        core,
-                                        env,
-                                        state,
-                                        &mut NoYieldHandler,
-                                        BridgeCategory::EffectEmission,
-                                        move |tmp_env| {
-                                            tmp_env.emit(Effect::ProvisionBudget {
-                                                actor: a,
-                                                budget: b,
-                                            });
-                                            Ok(Value::Void)
-                                        },
-                                    )
-                                }
+                                state.emit_effect(
+                                    h,
+                                    Effect::ProvisionBudget {
+                                        actor,
+                                        budget: old.clone(),
+                                    },
+                                );
                             }
                             None => {
-                                if let Some(ref mut h) = handler {
-                                    bridge_eval_with(core, env, state, *h, BridgeCategory::EffectEmission, move |tmp_env| {
-                                        tmp_env.emit(Effect::ClearBudget { actor: a });
-                                        Ok(Value::Void)
-                                    })
-                                } else {
-                                    bridge_eval_with(
-                                        core,
-                                        env,
-                                        state,
-                                        &mut NoYieldHandler,
-                                        BridgeCategory::EffectEmission,
-                                        move |tmp_env| {
-                                            tmp_env.emit(Effect::ClearBudget { actor: a });
-                                            Ok(Value::Void)
-                                        },
-                                    )
-                                }
+                                state.emit_effect(h, Effect::ClearBudget { actor });
                             }
                         };
 
@@ -2906,9 +2920,14 @@ impl Frame {
                         for arg in args.drain(..) {
                             let expr = arg.value.clone();
                             let val = if let Some(ref mut h) = handler {
-                                bridge_eval_with(core, env, state, *h, BridgeCategory::Eval, |tmp_env| {
-                                    crate::eval::eval_expr(tmp_env, &expr)
-                                })
+                                bridge_eval_with(
+                                    core,
+                                    env,
+                                    state,
+                                    *h,
+                                    BridgeCategory::Eval,
+                                    |tmp_env| crate::eval::eval_expr(tmp_env, &expr),
+                                )
                             } else {
                                 bridge_eval_expr(core, env, state, &expr)
                             };
@@ -2967,9 +2986,14 @@ impl Frame {
                         let expr = default_expr.clone();
                         let pname = name.clone();
                         let val = if let Some(ref mut h) = handler {
-                            bridge_eval_with(core, env, state, *h, BridgeCategory::Eval, |tmp_env| {
-                                crate::eval::eval_expr(tmp_env, &expr)
-                            })
+                            bridge_eval_with(
+                                core,
+                                env,
+                                state,
+                                *h,
+                                BridgeCategory::Eval,
+                                |tmp_env| crate::eval::eval_expr(tmp_env, &expr),
+                            )
                         } else {
                             bridge_eval_expr(core, env, state, &expr)
                         };
@@ -3005,9 +3029,14 @@ impl Frame {
                         let expr = default_expr.clone();
                         let field_name = fname.clone();
                         let val = if let Some(ref mut h) = handler {
-                            bridge_eval_with(core, env, state, *h, BridgeCategory::Eval, |tmp_env| {
-                                crate::eval::eval_expr(tmp_env, &expr)
-                            })
+                            bridge_eval_with(
+                                core,
+                                env,
+                                state,
+                                *h,
+                                BridgeCategory::Eval,
+                                |tmp_env| crate::eval::eval_expr(tmp_env, &expr),
+                            )
                         } else {
                             bridge_eval_expr(core, env, state, &expr)
                         };
@@ -3129,7 +3158,6 @@ impl Frame {
             Frame::ScopeGuard => Advance::Pop(Value::Void),
 
             // ── Condition apply frames (Phase 5.3) ──────────────
-
             Frame::ConditionApplyGate {
                 target,
                 condition_name,
@@ -3184,9 +3212,14 @@ impl Frame {
 
                     if let Some(ref mut h) = handler {
                         // Sync path — evaluate directly.
-                        let val = bridge_eval_with(core, env, state, *h, BridgeCategory::Eval, |tmp_env| {
-                            crate::eval::eval_expr(tmp_env, &field_expr)
-                        });
+                        let val = bridge_eval_with(
+                            core,
+                            env,
+                            state,
+                            *h,
+                            BridgeCategory::Eval,
+                            |tmp_env| crate::eval::eval_expr(tmp_env, &field_expr),
+                        );
                         env.pop_scope();
                         match val {
                             Ok(v) => {
@@ -3200,9 +3233,14 @@ impl Frame {
                         // Async path — CachingHandler with replay.
                         state.reset_mutation_flag();
                         let mut caching = CachingHandler::from_expr_cache(state_expr_cache);
-                        let val = bridge_eval_with(core, env, state, &mut caching, BridgeCategory::Eval, |tmp_env| {
-                            crate::eval::eval_expr(tmp_env, &field_expr)
-                        });
+                        let val = bridge_eval_with(
+                            core,
+                            env,
+                            state,
+                            &mut caching,
+                            BridgeCategory::Eval,
+                            |tmp_env| crate::eval::eval_expr(tmp_env, &field_expr),
+                        );
                         env.pop_scope();
 
                         if let Some(effect) = caching.captured {
@@ -3237,9 +3275,7 @@ impl Frame {
                 // Phase 1: gate response handling.
                 if let Some(response) = pending.take() {
                     match response {
-                        Response::Vetoed => {
-                            Advance::Pop(Value::Option(None))
-                        }
+                        Response::Vetoed => Advance::Pop(Value::Option(None)),
                         Response::Acknowledged => {
                             // Gate passed — collect state field defaults to
                             // evaluate, then advance to Phase 2.
@@ -3257,19 +3293,15 @@ impl Frame {
                             *state_defaults_idx = 0;
                             Advance::Continue
                         }
-                        other => Advance::Error(RuntimeError::new(
-                            format!(
-                                "protocol error: unexpected response \
+                        other => Advance::Error(RuntimeError::new(format!(
+                            "protocol error: unexpected response \
                                  for ConditionApplyGate: {other:?}"
-                            ),
-                        )),
+                        ))),
                     }
                 } else {
                     // First advance — emit the gate effect.
-                    let params_map: BTreeMap<Name, Value> =
-                        params.iter().cloned().collect();
-                    let tags_set: BTreeSet<Name> =
-                        tags.iter().cloned().collect();
+                    let params_map: BTreeMap<Name, Value> = params.iter().cloned().collect();
+                    let tags_set: BTreeSet<Name> = tags.iter().cloned().collect();
                     Advance::Yield(Effect::ConditionApplyGate {
                         target: *target,
                         condition: condition_name.clone(),
@@ -3302,10 +3334,11 @@ impl Frame {
                             // Read back mutated state from scope before
                             // we pop it (the Block already popped its own
                             // scope, but we bound state in OUR scope).
-                            if let Some(Value::Struct { fields, .. }) =
-                                env.scopes.last()
-                                    .and_then(|s| s.bindings.get(&Name::from("state")))
-                                    .cloned()
+                            if let Some(Value::Struct { fields, .. }) = env
+                                .scopes
+                                .last()
+                                .and_then(|s| s.bindings.get(&Name::from("state")))
+                                .cloned()
                             {
                                 *state_fields = fields;
                             }
@@ -3341,10 +3374,7 @@ impl Frame {
                         {
                             // Set up scope for this on_apply block.
                             env.push_scope();
-                            env.bind(
-                                decl.receiver_name.clone(),
-                                Value::Entity(*target),
-                            );
+                            env.bind(decl.receiver_name.clone(), Value::Entity(*target));
                             for (pname, pval) in params.iter() {
                                 env.bind(pname.clone(), pval.clone());
                             }
@@ -3411,10 +3441,8 @@ impl Frame {
                 state_fields,
             } => {
                 // Emit ApplyCondition effect (locally applied by StateAdapter).
-                let params_map: BTreeMap<Name, Value> =
-                    params.iter().cloned().collect();
-                let tags_set: BTreeSet<Name> =
-                    tags.iter().cloned().collect();
+                let params_map: BTreeMap<Name, Value> = params.iter().cloned().collect();
+                let tags_set: BTreeSet<Name> = tags.iter().cloned().collect();
                 let final_state = std::mem::take(state_fields);
                 let token_val = *token;
                 let effect = Effect::ApplyCondition {
@@ -3429,53 +3457,26 @@ impl Frame {
                     state_fields: final_state,
                 };
 
-                // Emit via bridge (locally-applied, not yielded to host).
-                let emit_result = if let Some(ref mut h) = handler {
-                    bridge_eval_with(core, env, state, *h, BridgeCategory::EffectEmission, |tmp_env| {
-                        let resp = tmp_env.emit(effect);
-                        match resp {
-                            Response::Acknowledged | Response::Override(_) => {
-                                Ok(Value::Option(Some(Box::new(
-                                    Value::Int(token_val.0 as i64),
-                                ))))
-                            }
-                            Response::Vetoed => Ok(Value::Option(None)),
-                            other => Err(RuntimeError::new(format!(
-                                "protocol error: unsupported response \
-                                 for ApplyCondition: {other:?}"
-                            ))),
-                        }
-                    })
-                } else {
-                    bridge_eval_with(
-                        core, env, state, &mut NoYieldHandler,
-                        BridgeCategory::EffectEmission,
-                        |tmp_env| {
-                            let resp = tmp_env.emit(effect);
-                            match resp {
-                                Response::Acknowledged | Response::Override(_) => {
-                                    Ok(Value::Option(Some(Box::new(
-                                        Value::Int(token_val.0 as i64),
-                                    ))))
-                                }
-                                Response::Vetoed => Ok(Value::Option(None)),
-                                other => Err(RuntimeError::new(format!(
-                                    "protocol error: unsupported response \
-                                     for ApplyCondition: {other:?}"
-                                ))),
-                            }
-                        },
-                    )
+                // Emit directly (locally-applied, not yielded to host).
+                let mut noyield = NoYieldHandler;
+                let h: &mut dyn EffectHandler = match handler.as_deref_mut() {
+                    Some(h) => h,
+                    None => &mut noyield,
                 };
-
-                match emit_result {
-                    Ok(val) => Advance::Pop(val),
-                    Err(e) => Advance::Error(e),
+                let resp = state.emit_effect(h, effect);
+                match resp {
+                    Response::Acknowledged | Response::Override(_) => Advance::Pop(Value::Option(
+                        Some(Box::new(Value::Int(token_val.0 as i64))),
+                    )),
+                    Response::Vetoed => Advance::Pop(Value::Option(None)),
+                    other => Advance::Error(RuntimeError::new(format!(
+                        "protocol error: unsupported response \
+                         for ApplyCondition: {other:?}"
+                    ))),
                 }
             }
 
             // ── EmitHooks frame (Phase 5.2) ──────────────────────────
-
             Frame::EmitHooks {
                 event_name: _,
                 hooks,
@@ -3564,7 +3565,6 @@ impl Frame {
             }
 
             // ── EmitConditionHandlers frame (Phase 5.2) ──────────────
-
             Frame::EmitConditionHandlers {
                 handlers,
                 index,
@@ -3588,7 +3588,11 @@ impl Frame {
                     let bearer = handler_info.target;
 
                     // 1. Look up condition declaration.
-                    let decl = match core.program.conditions.get(handler_info.condition_name.as_str()) {
+                    let decl = match core
+                        .program
+                        .conditions
+                        .get(handler_info.condition_name.as_str())
+                    {
                         Some(d) => d.clone(),
                         None => {
                             return Advance::Error(RuntimeError::new(format!(
@@ -3601,7 +3605,10 @@ impl Frame {
                     // 2. Verify condition still exists on bearer (snapshot safety).
                     let cond_instance = {
                         let conditions = state.read_conditions(&bearer).unwrap_or_default();
-                        match conditions.into_iter().find(|c| c.id == handler_info.instance_id) {
+                        match conditions
+                            .into_iter()
+                            .find(|c| c.id == handler_info.instance_id)
+                        {
                             Some(c) => c,
                             None => {
                                 // Condition was removed — skip.
@@ -3660,7 +3667,6 @@ impl Frame {
             }
 
             // ── ConditionHandlerEpilogue frame (Phase 5.2) ──────────
-
             Frame::ConditionHandlerEpilogue {
                 target,
                 condition_name: _,
@@ -3716,25 +3722,12 @@ impl Frame {
                             condition_id: *instance_id,
                             fields,
                         };
-                        if let Some(ref mut h) = handler {
-                            bridge_eval_with(core, env, state, *h, BridgeCategory::EffectEmission, |tmp_env| {
-                                tmp_env.handler.handle(effect);
-                                Ok(Value::Void)
-                            })
-                            .ok();
-                        } else {
-                            bridge_eval_with(
-                                core,
-                                env,
-                                state,
-                                &mut NoYieldHandler,
-                                BridgeCategory::EffectEmission, |tmp_env| {
-                                    tmp_env.handler.handle(effect);
-                                    Ok(Value::Void)
-                                },
-                            )
-                            .ok();
-                        }
+                        let mut noyield = NoYieldHandler;
+                        let h: &mut dyn EffectHandler = match handler.as_deref_mut() {
+                            Some(h) => h,
+                            None => &mut noyield,
+                        };
+                        state.emit_effect(h, effect);
                     }
 
                     return Advance::Pop(Value::Void);
@@ -3746,7 +3739,6 @@ impl Frame {
             }
 
             // ── Condition removal frames (Phase 5.4) ──────────────
-
             Frame::ConditionRemovalLoop {
                 target: _,
                 condition_name: _,
@@ -3790,22 +3782,12 @@ impl Frame {
                 // All instances processed. Emit RevokeInvocation if needed.
                 if let Some(inv_id) = revoke_invocation.take() {
                     let effect = Effect::RevokeInvocation { invocation: inv_id };
-                    let emit_result = if let Some(ref mut h) = handler {
-                        bridge_eval_with(core, env, state, *h, BridgeCategory::EffectEmission, |tmp_env| {
-                            let _ = tmp_env.emit(effect);
-                            Ok(Value::Void)
-                        })
-                    } else {
-                        bridge_eval_with(core, env, state, &mut NoYieldHandler, BridgeCategory::EffectEmission, |tmp_env| {
-                            let _ = tmp_env.emit(effect);
-                            Ok(Value::Void)
-                        })
+                    let mut noyield = NoYieldHandler;
+                    let h: &mut dyn EffectHandler = match handler.as_deref_mut() {
+                        Some(h) => h,
+                        None => &mut noyield,
                     };
-                    if let Err(e) = emit_result
-                        && first_error.is_none()
-                    {
-                        *first_error = Some(e);
-                    }
+                    state.emit_effect(h, effect);
                 }
 
                 // Return deferred error or success.
@@ -3834,7 +3816,8 @@ impl Frame {
                             let inst_target = *target;
                             let inst_id = *instance_id;
                             let cond_name = condition_name.clone();
-                            let conditions = state.read_conditions(&inst_target).unwrap_or_default();
+                            let conditions =
+                                state.read_conditions(&inst_target).unwrap_or_default();
                             let (state_fields, params) = conditions
                                 .iter()
                                 .find(|c| c.id == inst_id)
@@ -3855,12 +3838,10 @@ impl Frame {
                             };
                             Advance::Continue
                         }
-                        other => Advance::Error(RuntimeError::new(
-                            format!(
-                                "protocol error: unexpected response \
+                        other => Advance::Error(RuntimeError::new(format!(
+                            "protocol error: unexpected response \
                                  for ConditionRemovalGate: {other:?}"
-                            ),
-                        )),
+                        ))),
                     }
                 } else {
                     // First advance — emit the gate effect.
@@ -3889,10 +3870,11 @@ impl Frame {
                     match result {
                         Ok(_) => {
                             // Read back mutated state from scope.
-                            if let Some(Value::Struct { fields, .. }) =
-                                env.scopes.last()
-                                    .and_then(|s| s.bindings.get(&Name::from("state")))
-                                    .cloned()
+                            if let Some(Value::Struct { fields, .. }) = env
+                                .scopes
+                                .last()
+                                .and_then(|s| s.bindings.get(&Name::from("state")))
+                                .cloned()
                             {
                                 *state_fields = fields;
                             }
@@ -3934,10 +3916,7 @@ impl Frame {
                         {
                             // Set up scope for this on_remove block.
                             env.push_scope();
-                            env.bind(
-                                decl.receiver_name.clone(),
-                                Value::Entity(*target),
-                            );
+                            env.bind(decl.receiver_name.clone(), Value::Entity(*target));
                             for (pname, pval) in params.iter() {
                                 env.bind(pname.clone(), pval.clone());
                             }
@@ -3978,64 +3957,43 @@ impl Frame {
                         condition_id: *instance_id,
                         fields: std::mem::take(state_fields),
                     };
-                    let emit_result = if let Some(ref mut h) = handler {
-                        bridge_eval_with(core, env, state, *h, BridgeCategory::EffectEmission, |tmp_env| {
-                            tmp_env.emit(set_state_effect);
-                            Ok(Value::Void)
-                        })
-                    } else {
-                        bridge_eval_with(core, env, state, &mut NoYieldHandler, BridgeCategory::EffectEmission, |tmp_env| {
-                            tmp_env.emit(set_state_effect);
-                            Ok(Value::Void)
-                        })
+                    let mut noyield = NoYieldHandler;
+                    let h: &mut dyn EffectHandler = match handler.as_deref_mut() {
+                        Some(h) => h,
+                        None => &mut noyield,
                     };
-                    if let Err(e) = emit_result
-                        && on_remove_error.is_none()
-                    {
-                        *on_remove_error = Some(e);
-                    }
+                    state.emit_effect(h, set_state_effect);
                 }
 
                 // Always emit RemoveCondition (even if on_remove errored).
-                let remove_effect = Effect::RemoveCondition {
-                    target: *target,
-                    condition: condition_name.clone(),
-                    params: None,
-                    id: Some(*instance_id),
-                };
-                let remove_result = if let Some(ref mut h) = handler {
-                    bridge_eval_with(core, env, state, *h, BridgeCategory::EffectEmission, |tmp_env| {
-                        let _ = tmp_env.emit(remove_effect);
-                        Ok(Value::Void)
-                    })
-                } else {
-                    bridge_eval_with(core, env, state, &mut NoYieldHandler, BridgeCategory::EffectEmission, |tmp_env| {
-                        let _ = tmp_env.emit(remove_effect);
-                        Ok(Value::Void)
-                    })
-                };
-                if let Err(e) = remove_result
-                    && on_remove_error.is_none()
                 {
-                    *on_remove_error = Some(e);
+                    let remove_effect = Effect::RemoveCondition {
+                        target: *target,
+                        condition: condition_name.clone(),
+                        params: None,
+                        id: Some(*instance_id),
+                    };
+                    let mut noyield = NoYieldHandler;
+                    let h: &mut dyn EffectHandler = match handler.as_deref_mut() {
+                        Some(h) => h,
+                        None => &mut noyield,
+                    };
+                    state.emit_effect(h, remove_effect);
                 }
 
                 // Always emit RemoveSuspensionSource.
-                let suspension_effect = Effect::RemoveSuspensionSource {
-                    entity: *target,
-                    source_id: *instance_id,
-                };
-                let _ = if let Some(ref mut h) = handler {
-                    bridge_eval_with(core, env, state, *h, BridgeCategory::EffectEmission, |tmp_env| {
-                        let _ = tmp_env.emit(suspension_effect);
-                        Ok(Value::Void)
-                    })
-                } else {
-                    bridge_eval_with(core, env, state, &mut NoYieldHandler, BridgeCategory::EffectEmission, |tmp_env| {
-                        let _ = tmp_env.emit(suspension_effect);
-                        Ok(Value::Void)
-                    })
-                };
+                {
+                    let suspension_effect = Effect::RemoveSuspensionSource {
+                        entity: *target,
+                        source_id: *instance_id,
+                    };
+                    let mut noyield = NoYieldHandler;
+                    let h: &mut dyn EffectHandler = match handler.as_deref_mut() {
+                        Some(h) => h,
+                        None => &mut noyield,
+                    };
+                    state.emit_effect(h, suspension_effect);
+                }
 
                 // If on_remove errored, propagate.
                 if let Some(err) = on_remove_error.take() {
@@ -4155,7 +4113,9 @@ impl Frame {
                 // Yield frame child completed — cache for replay.
                 expr_cache.push(value);
             }
-            Frame::ConditionApplyGate { state_expr_cache, .. } => {
+            Frame::ConditionApplyGate {
+                state_expr_cache, ..
+            } => {
                 // Yield frame child completed — cache for state default replay.
                 state_expr_cache.push(value);
             }
@@ -7762,11 +7722,7 @@ mod tests {
         let a1 = add_character(&mut game1, 20);
         let t1 = add_character(&mut game1, 15);
         // Apply Haste condition
-        game1.apply_condition(
-            &a1,
-            "Haste",
-            crate::state::ConditionArgs::default(),
-        );
+        game1.apply_condition(&a1, "Haste", crate::state::ConditionArgs::default());
         let adapter1 = StateAdapter::new(game1);
         let mut handler1 = ScriptedHandler::always_ack();
         let result1 = adapter1.run(&mut handler1, |state, handler| {
@@ -7783,11 +7739,7 @@ mod tests {
         let mut game2 = GameState::new();
         let a2 = add_character(&mut game2, 20);
         let t2 = add_character(&mut game2, 15);
-        game2.apply_condition(
-            &a2,
-            "Haste",
-            crate::state::ConditionArgs::default(),
-        );
+        game2.apply_condition(&a2, "Haste", crate::state::ConditionArgs::default());
         let adapter2 = StateAdapter::new(game2);
         let exec = Execution::start_function(
             core,
@@ -8101,9 +8053,8 @@ mod tests {
         let mut game2 = GameState::new();
         let t2 = add_creature(&mut game2, 15);
         let adapter2 = StateAdapter::new(game2);
-        let exec =
-            Execution::start_function(core, adapter2, "try_remove", vec![Value::Entity(t2)])
-                .unwrap();
+        let exec = Execution::start_function(core, adapter2, "try_remove", vec![Value::Entity(t2)])
+            .unwrap();
         let mut handler2 = ScriptedHandler::new(vec![
             Response::Acknowledged, // ConditionApplyGate
             Response::Vetoed,       // ConditionRemovalGate → vetoed
@@ -8150,9 +8101,7 @@ mod tests {
         let adapter1 = StateAdapter::new(game1);
         let mut handler1 = ScriptedHandler::always_ack();
         let result1 = adapter1.run(&mut handler1, |state, handler| {
-            interp.execute_action(
-                state, handler, "DualCast", a1, vec![Value::Entity(t1)],
-            )
+            interp.execute_action(state, handler, "DualCast", a1, vec![Value::Entity(t1)])
         });
 
         // Step-based path
@@ -8162,7 +8111,12 @@ mod tests {
         let t2 = add_creature(&mut game2, 15);
         let adapter2 = StateAdapter::new(game2);
         let exec = Execution::start_action(
-            core, adapter2, "DualCast", a2, vec![Value::Entity(t2)], Span::dummy(),
+            core,
+            adapter2,
+            "DualCast",
+            a2,
+            vec![Value::Entity(t2)],
+            Span::dummy(),
         )
         .unwrap();
         let mut handler2 = ScriptedHandler::always_ack();
@@ -8632,8 +8586,7 @@ mod tests {
         let mut game2 = GameState::new();
         let a2 = add_creature(&mut game2, 10);
         let adapter2 = StateAdapter::new(game2);
-        let exec =
-            Execution::start_action(core, adapter2, "Noop", a2, vec![], Span::dummy());
+        let exec = Execution::start_action(core, adapter2, "Noop", a2, vec![], Span::dummy());
         assert!(
             exec.is_err(),
             "step-based path should error on u64::MAX overflow"
@@ -9890,9 +9843,7 @@ mod tests {
         let mut game1 = GameState::new();
         let c1 = add_creature(&mut game1, 20);
         let adapter1 = StateAdapter::new(game1);
-        let mut handler1 = ScriptedHandler::new(vec![
-            Response::Rolled(roll_result.clone()),
-        ]);
+        let mut handler1 = ScriptedHandler::new(vec![Response::Rolled(roll_result.clone())]);
         let result1 = adapter1.run(&mut handler1, |state, handler| {
             interp.evaluate_mechanic(state, handler, "damage", vec![Value::Entity(c1)])
         });
@@ -9902,11 +9853,9 @@ mod tests {
         let mut game2 = GameState::new();
         let c2 = add_creature(&mut game2, 20);
         let adapter2 = StateAdapter::new(game2);
-        let exec = Execution::start_mechanic(core, adapter2, "damage", vec![Value::Entity(c2)])
-            .unwrap();
-        let mut handler2 = ScriptedHandler::new(vec![
-            Response::Rolled(roll_result),
-        ]);
+        let exec =
+            Execution::start_mechanic(core, adapter2, "damage", vec![Value::Entity(c2)]).unwrap();
+        let mut handler2 = ScriptedHandler::new(vec![Response::Rolled(roll_result)]);
         let result2 = exec.run_with_handler(&mut handler2);
 
         let kinds1 = all_structural_kinds(&handler1.log);
@@ -10437,24 +10386,29 @@ mod tests {
         let mut handler1 = ScriptedHandler::always_ack();
         let result1 = adapter1.run(&mut handler1, |state, handler| {
             interp.execute_action(
-                state, handler, "Poison", a1,
+                state,
+                handler,
+                "Poison",
+                a1,
                 vec![Value::Entity(t1), Value::Int(3)],
             )
         });
 
         // Step-based path (async poll/respond)
-        let core = RuntimeCore::new(
-            Arc::clone(&program), Arc::clone(&type_env), 1, 1,
-        );
+        let core = RuntimeCore::new(Arc::clone(&program), Arc::clone(&type_env), 1, 1);
         let mut game2 = GameState::new();
         let a2 = add_creature(&mut game2, 20);
         let t2 = add_creature(&mut game2, 15);
         let adapter2 = StateAdapter::new(game2);
         let mut exec = Execution::start_action(
-            core, adapter2, "Poison", a2,
+            core,
+            adapter2,
+            "Poison",
+            a2,
             vec![Value::Entity(t2), Value::Int(3)],
             Span::dummy(),
-        ).unwrap();
+        )
+        .unwrap();
 
         let mut step_effects = Vec::new();
         loop {
@@ -10475,14 +10429,19 @@ mod tests {
 
         let kinds1 = structural_kinds(&handler1.log);
         let kinds2 = structural_kinds(&step_effects);
-        assert_eq!(kinds1, kinds2,
-            "structural effect sequence mismatch for async condition apply");
+        assert_eq!(
+            kinds1, kinds2,
+            "structural effect sequence mismatch for async condition apply"
+        );
 
         assert!(result1.is_ok(), "recursive failed: {result1:?}");
 
         // Verify ConditionApplyGate is yielded in the async path
-        assert!(kinds2.contains(&EffectKind::ConditionApplyGate),
-            "expected ConditionApplyGate in async effects: {:?}", kinds2);
+        assert!(
+            kinds2.contains(&EffectKind::ConditionApplyGate),
+            "expected ConditionApplyGate in async effects: {:?}",
+            kinds2
+        );
     }
 
     #[test]
@@ -10511,35 +10470,35 @@ mod tests {
         let t1 = add_creature(&mut game1, 15);
         let adapter1 = StateAdapter::new(game1);
         let mut handler1 = ScriptedHandler::new(vec![
-            Response::Acknowledged,  // ActionStarted
-            Response::Vetoed,        // ConditionApplyGate → vetoed
-            Response::Acknowledged,  // ActionCompleted
+            Response::Acknowledged, // ActionStarted
+            Response::Vetoed,       // ConditionApplyGate → vetoed
+            Response::Acknowledged, // ActionCompleted
         ]);
         let result1 = adapter1.run(&mut handler1, |state, handler| {
-            interp.execute_action(
-                state, handler, "Poison", a1, vec![Value::Entity(t1)],
-            )
+            interp.execute_action(state, handler, "Poison", a1, vec![Value::Entity(t1)])
         });
 
         // Step-based path (async poll/respond)
-        let core = RuntimeCore::new(
-            Arc::clone(&program), Arc::clone(&type_env), 1, 1,
-        );
+        let core = RuntimeCore::new(Arc::clone(&program), Arc::clone(&type_env), 1, 1);
         let mut game2 = GameState::new();
         let a2 = add_creature(&mut game2, 20);
         let t2 = add_creature(&mut game2, 15);
         let adapter2 = StateAdapter::new(game2);
         let mut exec = Execution::start_action(
-            core, adapter2, "Poison", a2,
+            core,
+            adapter2,
+            "Poison",
+            a2,
             vec![Value::Entity(t2)],
             Span::dummy(),
-        ).unwrap();
+        )
+        .unwrap();
 
         let mut step_effects = Vec::new();
         let responses = [
-            Response::Acknowledged,  // ActionStarted
-            Response::Vetoed,        // ConditionApplyGate → vetoed
-            Response::Acknowledged,  // ActionCompleted
+            Response::Acknowledged, // ActionStarted
+            Response::Vetoed,       // ConditionApplyGate → vetoed
+            Response::Acknowledged, // ActionCompleted
         ];
         let mut resp_idx = 0;
         loop {
@@ -10566,8 +10525,10 @@ mod tests {
 
         let kinds1 = structural_kinds(&handler1.log);
         let kinds2 = structural_kinds(&step_effects);
-        assert_eq!(kinds1, kinds2,
-            "structural effect sequence mismatch for async condition veto");
+        assert_eq!(
+            kinds1, kinds2,
+            "structural effect sequence mismatch for async condition veto"
+        );
 
         assert!(result1.is_ok(), "recursive failed: {result1:?}");
     }
@@ -10600,24 +10561,24 @@ mod tests {
         let adapter1 = StateAdapter::new(game1);
         let mut handler1 = ScriptedHandler::always_ack();
         let result1 = adapter1.run(&mut handler1, |state, handler| {
-            interp.execute_action(
-                state, handler, "Ignite", a1, vec![Value::Entity(t1)],
-            )
+            interp.execute_action(state, handler, "Ignite", a1, vec![Value::Entity(t1)])
         });
 
         // Step-based path (async poll/respond)
-        let core = RuntimeCore::new(
-            Arc::clone(&program), Arc::clone(&type_env), 1, 1,
-        );
+        let core = RuntimeCore::new(Arc::clone(&program), Arc::clone(&type_env), 1, 1);
         let mut game2 = GameState::new();
         let a2 = add_creature(&mut game2, 20);
         let t2 = add_creature(&mut game2, 15);
         let adapter2 = StateAdapter::new(game2);
         let mut exec = Execution::start_action(
-            core, adapter2, "Ignite", a2,
+            core,
+            adapter2,
+            "Ignite",
+            a2,
             vec![Value::Entity(t2)],
             Span::dummy(),
-        ).unwrap();
+        )
+        .unwrap();
 
         let mut step_effects = Vec::new();
         loop {
@@ -10638,8 +10599,10 @@ mod tests {
 
         let kinds1 = all_structural_kinds(&handler1.log);
         let kinds2 = all_structural_kinds(&step_effects);
-        assert_eq!(kinds1, kinds2,
-            "structural effect sequence mismatch for async condition state default");
+        assert_eq!(
+            kinds1, kinds2,
+            "structural effect sequence mismatch for async condition state default"
+        );
 
         assert!(result1.is_ok(), "recursive failed: {result1:?}");
         assert!(kinds2.contains(&EffectKind::ConditionApplyGate));
@@ -11058,13 +11021,7 @@ mod tests {
         let adapter1 = StateAdapter::new(game1);
         let mut handler1 = ScriptedHandler::always_ack();
         let result1 = adapter1.run(&mut handler1, |state, handler| {
-            interp.execute_action(
-                state,
-                handler,
-                "CastHeal",
-                a1,
-                vec![Value::Entity(t1)],
-            )
+            interp.execute_action(state, handler, "CastHeal", a1, vec![Value::Entity(t1)])
         });
 
         // Step-based path
@@ -11189,15 +11146,8 @@ mod tests {
             },
         );
         let adapter2 = StateAdapter::new(game2);
-        let exec = Execution::start_action(
-            core,
-            adapter2,
-            "StartTurn",
-            a2,
-            vec![],
-            Span::dummy(),
-        )
-        .unwrap();
+        let exec = Execution::start_action(core, adapter2, "StartTurn", a2, vec![], Span::dummy())
+            .unwrap();
         let mut handler2 = ScriptedHandler::always_ack();
         let result2 = exec.run_with_handler(&mut handler2);
 
@@ -11216,7 +11166,10 @@ mod tests {
         // recursive path: ticks should be 1 (from 0), HP should be 18 (from 20).
         let state1 = adapter1.into_inner();
         let conds1 = state1.read_conditions(&a1).unwrap();
-        let burning1 = conds1.iter().find(|c| c.name.as_str() == "Burning").unwrap();
+        let burning1 = conds1
+            .iter()
+            .find(|c| c.name.as_str() == "Burning")
+            .unwrap();
         assert_eq!(
             burning1.state_fields.get(&Name::from("ticks")),
             Some(&Value::Int(1)),
@@ -11263,13 +11216,7 @@ mod tests {
         let adapter1 = StateAdapter::new(game1);
         let mut handler1 = ScriptedHandler::always_ack();
         let result1 = adapter1.run(&mut handler1, |state, handler| {
-            interp.execute_action(
-                state,
-                handler,
-                "Strike",
-                a1,
-                vec![Value::Entity(t1)],
-            )
+            interp.execute_action(state, handler, "Strike", a1, vec![Value::Entity(t1)])
         });
 
         // Step-based path
@@ -11599,15 +11546,9 @@ mod tests {
         );
         let adapter = StateAdapter::new(game);
 
-        let mut exec = Execution::start_action(
-            core,
-            adapter,
-            "StartTurn",
-            actor,
-            vec![],
-            Span::dummy(),
-        )
-        .unwrap();
+        let mut exec =
+            Execution::start_action(core, adapter, "StartTurn", actor, vec![], Span::dummy())
+                .unwrap();
 
         let mut effect_kinds = Vec::new();
         let mut saw_removal_gate = false;
@@ -11712,15 +11653,9 @@ mod tests {
 
         let adapter = StateAdapter::new(game);
 
-        let mut exec = Execution::start_action(
-            core,
-            adapter,
-            "ClearMarks",
-            actor,
-            vec![],
-            Span::dummy(),
-        )
-        .unwrap();
+        let mut exec =
+            Execution::start_action(core, adapter, "ClearMarks", actor, vec![], Span::dummy())
+                .unwrap();
 
         let mut effect_kinds = Vec::new();
         let mut removal_gate_count = 0;
@@ -11784,12 +11719,7 @@ mod tests {
         );
 
         // Create a core with invocation counter at u64::MAX
-        let core = RuntimeCore::new(
-            core.program.clone(),
-            core.type_env.clone(),
-            u64::MAX,
-            1,
-        );
+        let core = RuntimeCore::new(core.program.clone(), core.type_env.clone(), u64::MAX, 1);
 
         let mut game = GameState::new();
         let actor = add_creature(&mut game, 10);
@@ -11797,14 +11727,7 @@ mod tests {
 
         // Starting an action allocates an invocation ID.
         // With counter at u64::MAX, checked_add(1) overflows → Err.
-        let exec = Execution::start_action(
-            core,
-            adapter,
-            "Noop",
-            actor,
-            vec![],
-            Span::dummy(),
-        );
+        let exec = Execution::start_action(core, adapter, "Noop", actor, vec![], Span::dummy());
         assert!(
             exec.is_err(),
             "alloc at u64::MAX should return Err (checked_add overflow)"
@@ -11847,13 +11770,9 @@ mod tests {
         let game = GameState::new();
         let adapter = StateAdapter::new(game);
 
-        let exec = Execution::start_function(
-            Rc::clone(&core),
-            adapter,
-            "add_one",
-            vec![Value::Int(5)],
-        )
-        .unwrap();
+        let exec =
+            Execution::start_function(Rc::clone(&core), adapter, "add_one", vec![Value::Int(5)])
+                .unwrap();
         let mut handler = ScriptedHandler::always_ack();
         let result = exec.run_with_handler(&mut handler);
         assert!(result.is_ok(), "function should succeed: {result:?}");
@@ -11892,7 +11811,9 @@ mod tests {
         let (program, type_env) = setup(source);
 
         // Verify the prompt declaration has a default block
-        let prompt_decl = program.prompts.get("ask_damage")
+        let prompt_decl = program
+            .prompts
+            .get("ask_damage")
             .expect("ask_damage prompt should exist in program");
         assert!(
             prompt_decl.default.is_some(),
@@ -11905,15 +11826,8 @@ mod tests {
         let actor = add_creature(&mut game, 20);
         let adapter = StateAdapter::new(game);
 
-        let mut exec = Execution::start_action(
-            core,
-            adapter,
-            "Strike",
-            actor,
-            vec![],
-            Span::dummy(),
-        )
-        .unwrap();
+        let mut exec =
+            Execution::start_action(core, adapter, "Strike", actor, vec![], Span::dummy()).unwrap();
 
         // Poll → ActionStarted
         let step = exec.poll().unwrap();
@@ -11925,7 +11839,13 @@ mod tests {
         match &step {
             Step::Yielded(e) => {
                 assert!(
-                    matches!(&**e, Effect::ResolvePrompt { has_default: true, .. }),
+                    matches!(
+                        &**e,
+                        Effect::ResolvePrompt {
+                            has_default: true,
+                            ..
+                        }
+                    ),
                     "expected ResolvePrompt with has_default=true, got {e:?}"
                 );
             }
@@ -11981,26 +11901,15 @@ mod tests {
             }
         "#;
         let (program, type_env) = setup(source);
-        let core = RuntimeCore::new(
-            Arc::clone(&program),
-            Arc::clone(&type_env),
-            1,
-            1,
-        );
+        let core = RuntimeCore::new(Arc::clone(&program), Arc::clone(&type_env), 1, 1);
 
         let mut game = GameState::new();
         let actor = add_creature(&mut game, 10);
         let adapter = StateAdapter::new(game);
 
-        let mut exec = Execution::start_action(
-            core,
-            adapter,
-            "RiskyAttack",
-            actor,
-            vec![],
-            Span::dummy(),
-        )
-        .unwrap();
+        let mut exec =
+            Execution::start_action(core, adapter, "RiskyAttack", actor, vec![], Span::dummy())
+                .unwrap();
 
         // Poll → ActionStarted
         let step = exec.poll().unwrap();
@@ -12048,12 +11957,7 @@ mod tests {
         let (program, type_env) = setup(source);
 
         // Step-based path via poll/respond with budget pre-provisioned
-        let core = RuntimeCore::new(
-            Arc::clone(&program),
-            Arc::clone(&type_env),
-            1,
-            1,
-        );
+        let core = RuntimeCore::new(Arc::clone(&program), Arc::clone(&type_env), 1, 1);
         let mut game = GameState::new();
         let attacker = add_character(&mut game, 20);
         let target = add_character(&mut game, 15);
@@ -12117,12 +12021,7 @@ mod tests {
         let (program, type_env) = setup(source);
 
         // Step-based path via poll/respond with insufficient budget
-        let core = RuntimeCore::new(
-            Arc::clone(&program),
-            Arc::clone(&type_env),
-            1,
-            1,
-        );
+        let core = RuntimeCore::new(Arc::clone(&program), Arc::clone(&type_env), 1, 1);
         let mut game = GameState::new();
         let attacker = add_character(&mut game, 20);
         let target = add_character(&mut game, 15);
@@ -12161,7 +12060,14 @@ mod tests {
 
         // Check for budget RequiresCheck in step-based path
         let has_budget_check = effects.iter().any(|e| {
-            matches!(e, Effect::RequiresCheck { passed: false, reason: Some(_), .. })
+            matches!(
+                e,
+                Effect::RequiresCheck {
+                    passed: false,
+                    reason: Some(_),
+                    ..
+                }
+            )
         });
         // BUG: step-based path skips cost pipeline, so no budget check emitted
         assert!(

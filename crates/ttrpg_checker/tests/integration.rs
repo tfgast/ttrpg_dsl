@@ -1537,7 +1537,10 @@ system "test" {
     derive bad() -> int { add(b: 2, 1) }
 }
 "#;
-    expect_errors(source, &["positional arguments must come before named arguments"]);
+    expect_errors(
+        source,
+        &["positional arguments must come before named arguments"],
+    );
 }
 
 #[test]
