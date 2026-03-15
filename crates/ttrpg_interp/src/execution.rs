@@ -218,35 +218,6 @@ impl EffectHandler for NoYieldHandler {
     }
 }
 
-/// Handler that auto-acknowledges informational effects (`ModifyApplied`)
-/// and collects them for later yielding. Panics on host-decided effects.
-/// Used by the cost modifier collection bridge call.
-struct InformationalAckHandler {
-    collected: Vec<Effect>,
-}
-
-impl InformationalAckHandler {
-    fn new() -> Self {
-        Self {
-            collected: Vec::new(),
-        }
-    }
-}
-
-impl EffectHandler for InformationalAckHandler {
-    fn handle(&mut self, effect: Effect) -> Response {
-        match EffectKind::of(&effect) {
-            EffectKind::ModifyApplied => {
-                self.collected.push(effect);
-                Response::Acknowledged
-            }
-            other => panic!(
-                "unexpected forwarded effect in cost modifier bridge evaluation: {other:?}",
-            ),
-        }
-    }
-}
-
 /// Handler that replays cached responses for previously-resolved
 /// host-decided effects and captures the first uncached one.
 ///
@@ -1493,12 +1464,19 @@ pub(crate) enum ActionStep {
 /// Phase within the CostEval frame's cost pipeline.
 #[derive(Debug)]
 pub(crate) enum CostEvalPhase {
-    /// Run collect_and_apply_cost_modifiers via bridge.
-    ModifierCollection,
-    /// Yield collected ModifyApplied effects to the host one at a time.
-    YieldModifyApplied(Vec<Effect>, usize),
+    /// Collect matching cost modifiers via bridge (reads conditions,
+    /// computes stacking, evaluates bindings, sorts by gained_at).
+    CollectModifiers,
+    /// Apply modifier at index via bridge (exec cost modify stmts).
+    /// If the cost changed, prepares a ModifyApplied effect to yield.
+    ApplyModifier(usize),
+    /// Yield the ModifyApplied effect for the modifier that just changed cost.
+    /// After ack, advances to next modifier or transitions out.
+    YieldModifyApplied(usize),
     /// Await host acknowledgement for a yielded ModifyApplied effect.
-    AwaitModifyAck(Vec<Effect>, usize),
+    AwaitModifyAck(usize),
+    /// Run emit_modify_applied_events via bridge (dispatches hooks).
+    EmitModifyEvents,
     /// Budget pre-check: iterate tokens, check budget sufficiency.
     BudgetPreCheck(usize),
     /// Await budget pre-check host response.
@@ -1816,7 +1794,7 @@ pub(crate) enum Frame {
     },
 
     /// Cost evaluation frame for the async action lifecycle.
-    /// Handles the full cost pipeline: modifier collection → budget pre-check → deduction.
+    /// Handles the full cost pipeline: modifier collection → apply → yield → budget → deduction.
     CostEval {
         cost: CostClause,
         actor: EntityRef,
@@ -1826,6 +1804,10 @@ pub(crate) enum Frame {
         effective_cost: Option<CostClause>,
         pending: Option<Response>,
         abort_value: Value,
+        /// Collected cost modifiers (populated by CollectModifiers phase).
+        modifiers: Vec<crate::pipeline::OwnedModifier>,
+        /// Pending ModifyApplied effect to yield (populated by ApplyModifier phase).
+        pending_modify_effect: Option<Effect>,
     },
 
     /// Resumable bridge evaluation frame. Evaluates an expression through
@@ -2118,10 +2100,12 @@ impl Frame {
                                 actor: *actor,
                                 action_name: name.clone(),
                                 call_span: *call_span,
-                                phase: CostEvalPhase::ModifierCollection,
+                                phase: CostEvalPhase::CollectModifiers,
                                 effective_cost: Some(c.clone()),
                                 pending: None,
                                 abort_value: abort,
+                                modifiers: Vec::new(),
+                                pending_modify_effect: None,
                             });
                         }
                         // No cost or cost is free — skip to resolve.
@@ -2266,6 +2250,8 @@ impl Frame {
                 effective_cost,
                 pending,
                 abort_value,
+                modifiers,
+                pending_modify_effect,
             } => {
                 let tokens = effective_cost
                     .as_ref()
@@ -2278,81 +2264,134 @@ impl Frame {
                     .collect();
 
                 match phase {
-                    CostEvalPhase::ModifierCollection => {
-                        // Run cost modifier collection via bridge with an
-                        // InformationalAckHandler that auto-acks ModifyApplied
-                        // and collects them for yielding to the host.
+                    CostEvalPhase::CollectModifiers => {
+                        // Collect matching cost modifiers via bridge (needs
+                        // eval_expr for binding evaluation).
                         let actor_ref = *actor;
                         let action = action_name.as_str().to_owned();
-                        let original = cost.clone();
-                        let span = *call_span;
 
-                        let effective_cell =
-                            std::rc::Rc::new(std::cell::RefCell::new(None::<CostClause>));
-                        let cell_clone = effective_cell.clone();
-                        let mut handler = InformationalAckHandler::new();
-
-                        let bridge_result = bridge_eval_with(
+                        let collect_result = bridge_run(
                             core,
                             env,
                             state,
-                            &mut handler,
+                            &mut NoYieldHandler,
                             BridgeCategory::Pipeline,
                             move |tmp_env| {
-                                let eff = crate::action::collect_and_apply_cost_modifiers(
-                                    tmp_env, &actor_ref, &action, &original, span,
-                                )?;
-                                *cell_clone.borrow_mut() = eff;
-                                Ok(Value::Void)
+                                crate::action::collect_cost_modifiers(
+                                    tmp_env, &actor_ref, &action,
+                                )
                             },
                         );
 
-                        if let Err(e) = bridge_result {
-                            return Advance::Error(e);
-                        }
-
-                        let collected = handler.collected;
-                        let new_effective = effective_cell.borrow_mut().take();
-
-                        if let Some(eff) = new_effective {
-                            let is_free = eff.free;
-                            *effective_cost = Some(eff);
-
-                            if collected.is_empty() {
-                                if is_free {
-                                    return Advance::Pop(Value::Void);
+                        match collect_result {
+                            Ok(collected) => {
+                                if collected.is_empty() {
+                                    // No modifiers — skip to budget pre-check.
+                                    *phase = CostEvalPhase::BudgetPreCheck(0);
+                                } else {
+                                    *modifiers = collected;
+                                    *phase = CostEvalPhase::ApplyModifier(0);
                                 }
-                                *phase = CostEvalPhase::BudgetPreCheck(0);
-                            } else {
-                                *phase = CostEvalPhase::YieldModifyApplied(collected, 0);
+                                Advance::Continue
                             }
-                        } else {
-                            *phase = CostEvalPhase::BudgetPreCheck(0);
+                            Err(e) => Advance::Error(e),
                         }
-                        Advance::Continue
                     }
 
-                    CostEvalPhase::YieldModifyApplied(effects, idx) => {
-                        if *idx >= effects.len() {
-                            // All ModifyApplied effects yielded.
-                            // Check if cost was made free.
-                            if effective_cost.as_ref().is_some_and(|c| c.free) {
-                                return Advance::Pop(Value::Void);
+                    CostEvalPhase::ApplyModifier(idx) => {
+                        if *idx >= modifiers.len() {
+                            // All modifiers applied — emit events then
+                            // check if cost was made free.
+                            if modifiers.is_empty() {
+                                *phase = CostEvalPhase::BudgetPreCheck(0);
+                            } else {
+                                *phase = CostEvalPhase::EmitModifyEvents;
                             }
-                            *phase = CostEvalPhase::BudgetPreCheck(0);
                             return Advance::Continue;
                         }
-                        let effect = effects[*idx].clone();
-                        let next_idx = *idx + 1;
-                        *phase = CostEvalPhase::AwaitModifyAck(std::mem::take(effects), next_idx);
+
+                        // Apply modifier at index via bridge (needs eval_expr
+                        // for cost modify stmts).
+                        let modifier = modifiers[*idx].clone();
+                        let action = action_name.as_str().to_owned();
+                        let mut eff_cost = effective_cost.clone().unwrap_or_else(|| cost.clone());
+
+                        let apply_result = bridge_run(
+                            core,
+                            env,
+                            state,
+                            &mut NoYieldHandler,
+                            BridgeCategory::Pipeline,
+                            move |tmp_env| {
+                                let effect = crate::action::apply_single_cost_modifier(
+                                    tmp_env, &modifier, &mut eff_cost, &action,
+                                )?;
+                                Ok((eff_cost, effect))
+                            },
+                        );
+
+                        match apply_result {
+                            Ok((new_effective, maybe_effect)) => {
+                                *effective_cost = Some(new_effective);
+                                if let Some(effect) = maybe_effect {
+                                    *pending_modify_effect = Some(effect);
+                                    *phase = CostEvalPhase::YieldModifyApplied(*idx);
+                                } else {
+                                    // No change — advance to next modifier.
+                                    *phase = CostEvalPhase::ApplyModifier(*idx + 1);
+                                }
+                                Advance::Continue
+                            }
+                            Err(e) => Advance::Error(e),
+                        }
+                    }
+
+                    CostEvalPhase::YieldModifyApplied(idx) => {
+                        // Yield the pending ModifyApplied effect to the host.
+                        let effect = pending_modify_effect
+                            .take()
+                            .expect("YieldModifyApplied entered without pending effect");
+                        *phase = CostEvalPhase::AwaitModifyAck(*idx);
                         Advance::Yield(effect)
                     }
 
-                    CostEvalPhase::AwaitModifyAck(effects, idx) => {
+                    CostEvalPhase::AwaitModifyAck(idx) => {
                         // ModifyApplied is informational — we don't check the response.
                         let _ = pending.take();
-                        *phase = CostEvalPhase::YieldModifyApplied(std::mem::take(effects), *idx);
+                        *phase = CostEvalPhase::ApplyModifier(*idx + 1);
                         Advance::Continue
+                    }
+
+                    CostEvalPhase::EmitModifyEvents => {
+                        // Run emit_modify_applied_events via bridge (dispatches hooks).
+                        let mods = std::mem::take(modifiers);
+                        let action = action_name.as_str().to_owned();
+                        let span = *call_span;
+
+                        let emit_result = bridge_run(
+                            core,
+                            env,
+                            state,
+                            &mut NoYieldHandler,
+                            BridgeCategory::Pipeline,
+                            move |tmp_env| {
+                                crate::pipeline::emit_modify_applied_events(
+                                    tmp_env, &mods, &action, span,
+                                )
+                            },
+                        );
+
+                        match emit_result {
+                            Ok(()) => {
+                                // Check if cost was made free.
+                                if effective_cost.as_ref().is_some_and(|c| c.free) {
+                                    return Advance::Pop(Value::Void);
+                                }
+                                *phase = CostEvalPhase::BudgetPreCheck(0);
+                                Advance::Continue
+                            }
+                            Err(e) => Advance::Error(e),
+                        }
                     }
 
                     CostEvalPhase::BudgetPreCheck(idx) => {

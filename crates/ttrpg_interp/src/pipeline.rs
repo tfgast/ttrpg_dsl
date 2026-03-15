@@ -535,6 +535,7 @@ fn is_modifier_suppressed(
 }
 
 /// An owned modifier with cloned clause data.
+#[derive(Clone)]
 pub(crate) struct OwnedModifier {
     pub source: ModifySource,
     pub clause: ModifyClause,

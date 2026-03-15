@@ -27,7 +27,7 @@ pub enum BridgeCategory {
     Eval,
     /// dispatch_table_with_values, evaluate_fn_with_values, evaluate_function_with_values
     Dispatch,
-    /// execute_pipeline, collect_and_apply_cost_modifiers
+    /// execute_pipeline, collect_cost_modifiers, apply_single_cost_modifier
     Pipeline,
     /// Thin wrappers that only call emit() (budget, condition, revoke effects)
     EffectEmission,
