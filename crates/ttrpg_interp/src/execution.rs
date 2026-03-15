@@ -634,36 +634,26 @@ fn try_frame_dispatch_stmt<S: WritableState>(
 
     let params = &fn_info.params;
 
-    // ── Pre-pass: determine named-arg → slot mapping ──────────
-    // Mirrors bind_args pre-pass. On duplicate or unknown param,
-    // return Ok(None) to fall back to bridge path for proper error.
-    let mut named_slots = vec![false; params.len()];
-    for arg in args {
-        if let Some(ref name) = arg.name {
-            let pos = match params.iter().position(|p| p.name == *name) {
-                Some(p) => p,
-                None => return Ok(None), // unknown param — bridge will error
-            };
-            if named_slots[pos] {
-                return Ok(None); // duplicate — bridge will error
-            }
-            named_slots[pos] = true;
-        }
-    }
-
     // ── Eval pass: evaluate args with TryEvalHandler ──────────
+    // Positional args fill slots 0..N sequentially, named args fill by name.
+    // Positional args must come before named args (enforced by checker).
     let mut slot_values: Vec<Option<Value>> = vec![None; params.len()];
-    let mut pos_iter = (0..params.len()).filter(|i| !named_slots[*i]);
+    let mut next_positional = 0usize;
 
     for arg in args {
         let slot_idx = if let Some(ref name) = arg.name {
-            // Already validated above.
-            params.iter().position(|p| p.name == *name).unwrap()
-        } else {
-            match pos_iter.next() {
-                Some(i) => i,
-                None => return Ok(None), // too many positional args
+            match params.iter().position(|p| p.name == *name) {
+                Some(p) if slot_values[p].is_some() => return Ok(None), // duplicate
+                Some(p) => p,
+                None => return Ok(None), // unknown param — bridge will error
             }
+        } else {
+            if next_positional >= params.len() {
+                return Ok(None); // too many positional args
+            }
+            let idx = next_positional;
+            next_positional += 1;
+            idx
         };
 
         state.reset_mutation_flag();
@@ -11006,7 +10996,7 @@ mod tests {
 
     #[test]
     fn mixed_positional_and_named_args_on_async_path() {
-        // Mixed positional/named: f(1, c: 3, b: 2) for f(a, b, c)
+        // Positional first, then named: f(1, c: 3, b: 2) for f(a, b, c)
         // should bind a=1, b=2, c=3.
         let (core, _) = make_core(
             r#"

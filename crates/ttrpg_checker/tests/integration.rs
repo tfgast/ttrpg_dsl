@@ -1534,10 +1534,10 @@ fn test_mixed_named_then_positional_args() {
     let source = r#"
 system "test" {
     derive add(a: int, b: int) -> int { a + b }
-    derive ok() -> int { add(b: 2, 1) }
+    derive bad() -> int { add(b: 2, 1) }
 }
 "#;
-    expect_no_errors(source);
+    expect_errors(source, &["positional arguments must come before named arguments"]);
 }
 
 #[test]
@@ -1556,7 +1556,7 @@ fn test_mixed_args_type_mismatch() {
     let source = r#"
 system "test" {
     derive add(a: int, b: int) -> int { a + b }
-    derive bad() -> int { add(b: 2, "hello") }
+    derive bad() -> int { add("hello", b: 2) }
 }
 "#;
     expect_errors(source, &["argument `a` has type string, expected int"]);
@@ -2290,7 +2290,7 @@ system "test" {
 
 #[test]
 fn test_mixed_named_then_positional_trigger_binding() {
-    // named `actor:` consumes param 0, positional should resolve to param 1 (target)
+    // named `actor:` after positional is now an error
     let source = r#"
 system "test" {
     entity Character { name: string }
@@ -2301,7 +2301,10 @@ system "test" {
     }
 }
 "#;
-    expect_no_errors(source);
+    expect_errors(
+        source,
+        &["positional trigger bindings must come before named bindings"],
+    );
 }
 
 #[test]
@@ -2322,12 +2325,12 @@ system "test" {
 
 #[test]
 fn test_mixed_named_positional_trigger_type_mismatch() {
-    // named binds param 0 (actor); positional should check against param 1 (amount: int), not param 0
+    // positional fills param 0 (actor), named fills param 1 (amount) — type mismatch on named
     let source = r#"
 system "test" {
     entity Character { name: string }
     event damage(actor: Character, amount: int) {}
-    reaction Block on defender: Character (trigger: damage(actor: defender, defender)) {
+    reaction Block on defender: Character (trigger: damage(defender, amount: defender)) {
         cost { reaction }
         resolve {}
     }
@@ -2335,7 +2338,7 @@ system "test" {
 "#;
     expect_errors(
         source,
-        &["positional trigger binding 1 has type Character, expected int"],
+        &["trigger binding `amount` has type Character, expected int"],
     );
 }
 

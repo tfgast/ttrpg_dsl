@@ -867,7 +867,7 @@ condition Imprisoned on bearer: entity
 ```ttrpg-snippet
 // In an action or function:
 suspend_with_source(target, source_id: 42,
-    Presence.OffBoard, freeze_turns: true, freeze_durations: true)
+    presence: Presence.OffBoard, freeze_turns: true, freeze_durations: true)
 
 // Later, to restore:
 remove_suspension_source(target, source_id: 42)
@@ -935,7 +935,7 @@ condition Polymorphed(original: Character, suspension_key: int) on bearer: Monst
 
 function polymorph(target: Character, form_name: string, form_ac: int, key: int) -> Monster {
     suspend_with_source(target, source_id: key,
-        Presence.OffBoard, freeze_turns: true, freeze_durations: true)
+        presence: Presence.OffBoard, freeze_turns: true, freeze_durations: true)
 
     let form = Monster {
         name: form_name,

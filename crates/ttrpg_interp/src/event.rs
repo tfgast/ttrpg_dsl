@@ -282,9 +282,8 @@ fn receiver_matches_constraints(
 
 /// Match a reaction's trigger bindings against event payload.
 ///
-/// Uses **fill-the-gaps** semantics:
-/// 1. Named bindings claim their slots first (params first, then fields)
-/// 2. Positional bindings fill remaining unclaimed param slots left-to-right
+/// Positional bindings fill slots 0..N sequentially, named bindings match
+/// by name. Positional bindings must come before named bindings.
 ///
 /// Returns true if all bindings match.
 fn match_trigger_bindings(
@@ -315,22 +314,10 @@ fn match_bindings_inner(
     event_fields: &[(Name, Ty)],
     payload_fields: &BTreeMap<Name, Value>,
 ) -> Result<bool, RuntimeError> {
-    // Track which param slots are claimed by named bindings
-    let mut claimed_params: HashSet<usize> = HashSet::new();
-
-    // First pass: identify named bindings and claim their slots
-    for binding in bindings {
-        if let Some(ref name) = binding.name {
-            // Look up in event params first
-            if let Some(pos) = event_params.iter().position(|p| p.name == *name) {
-                claimed_params.insert(pos);
-            }
-            // Named bindings referencing fields don't claim param slots
-        }
-    }
-
-    // Second pass: evaluate all bindings and check matches
-    let mut pos_iter = (0..event_params.len()).filter(|i| !claimed_params.contains(i));
+    // Single pass: positional bindings fill slots 0..N sequentially,
+    // named bindings match by name. Positional must come before named
+    // (enforced by checker).
+    let mut next_positional = 0usize;
 
     for binding in bindings {
         // Evaluate the binding expression
@@ -361,11 +348,12 @@ fn match_bindings_inner(
                 }
             }
         } else {
-            // Positional binding: fill next unclaimed param slot
-            let slot_idx = match pos_iter.next() {
-                Some(idx) => idx,
-                None => return Ok(false), // more positional bindings than unclaimed params
-            };
+            // Positional binding: fill next param slot sequentially
+            if next_positional >= event_params.len() {
+                return Ok(false); // more positional bindings than params
+            }
+            let slot_idx = next_positional;
+            next_positional += 1;
 
             let param_name = &event_params[slot_idx].name;
             match payload_fields.get(param_name) {

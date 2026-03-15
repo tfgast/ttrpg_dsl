@@ -39,7 +39,7 @@ condition Polymorphed(original: Character, suspension_key: int) on bearer: Monst
 // All-in-one: polymorph, take damage, revert, return original's HP.
 function test_polymorph_cycle(target: Character, damage: int) -> int {
     suspend_with_source(target, source_id: 1001,
-        Presence.OffBoard, freeze_turns: true, freeze_durations: true)
+        presence: Presence.OffBoard, freeze_turns: true, freeze_durations: true)
 
     let form = Monster {
         name: "Troll",
@@ -117,7 +117,7 @@ function damage_monster(target: Monster, amount: int) {
 
 function test_eagle_polymorph(target: Character, damage: int) -> int {
     suspend_with_source(target, source_id: 5001,
-        Presence.OffBoard, freeze_turns: true, freeze_durations: true)
+        presence: Presence.OffBoard, freeze_turns: true, freeze_durations: true)
 
     let form = Monster {
         name: "Giant Eagle",
@@ -190,7 +190,7 @@ entity Character {
 
 function suspend_and_read(target: Character, key: int) -> int {
     suspend_with_source(target, source_id: key,
-        Presence.OffBoard, freeze_turns: true, freeze_durations: true)
+        presence: Presence.OffBoard, freeze_turns: true, freeze_durations: true)
     target.level
 }
 
@@ -241,7 +241,7 @@ function damage_monster(target: Monster, amount: int) {
 
 function test_lethal_polymorph(target: Character) -> int {
     suspend_with_source(target, source_id: 9001,
-        Presence.OffBoard, freeze_turns: true, freeze_durations: true)
+        presence: Presence.OffBoard, freeze_turns: true, freeze_durations: true)
 
     let form = Monster {
         name: "Bear",
@@ -303,7 +303,7 @@ function damage_monster(target: Monster, amount: int) {
 
 function do_polymorph(target: Character, form_name: string, form_ac: int, key: int) -> Monster {
     suspend_with_source(target, source_id: key,
-        Presence.OffBoard, freeze_turns: true, freeze_durations: true)
+        presence: Presence.OffBoard, freeze_turns: true, freeze_durations: true)
 
     let form = Monster {
         name: form_name,
@@ -389,7 +389,7 @@ condition Polymorphed(original: Character, suspension_key: int) on bearer: Monst
 
 function do_polymorph(target: Character, key: int) -> Monster {
     suspend_with_source(target, source_id: key,
-        Presence.OffBoard, freeze_turns: true, freeze_durations: true)
+        presence: Presence.OffBoard, freeze_turns: true, freeze_durations: true)
 
     let form = Monster {
         name: "Troll",
@@ -481,7 +481,7 @@ condition Polymorphed(original: Character, suspension_key: int) on bearer: Monst
 
 function do_polymorph(target: Character, key: int) -> Monster {
     suspend_with_source(target, source_id: key,
-        Presence.OffBoard, freeze_turns: true, freeze_durations: true)
+        presence: Presence.OffBoard, freeze_turns: true, freeze_durations: true)
     let form = Monster {
         name: "Bear",
         hp: target.hp,
@@ -558,7 +558,7 @@ condition Polymorphed(original: Character, suspension_key: int) on bearer: Monst
 
 function do_polymorph(target: Character, key: int) -> Monster {
     suspend_with_source(target, source_id: key,
-        Presence.OffBoard, freeze_turns: true, freeze_durations: true)
+        presence: Presence.OffBoard, freeze_turns: true, freeze_durations: true)
     let form = Monster {
         name: "Wolf",
         hp: target.hp,
@@ -614,7 +614,7 @@ condition Blessed on bearer: entity stacking all {
 // Use a fixed source_id so we can add/remove suspension independently
 function statue_on(target: Character) {
     suspend_with_source(target, source_id: 4001,
-        Presence.OnMap, freeze_turns: true, freeze_durations: true)
+        presence: Presence.OnMap, freeze_turns: true, freeze_durations: true)
 }
 
 function statue_off(target: Character) {
@@ -694,7 +694,7 @@ function damage_monster(target: Monster, amount: int) {
 
 function do_polymorph(target: Character, form_name: string, form_ac: int, key: int) -> Monster {
     suspend_with_source(target, source_id: key,
-        Presence.OffBoard, freeze_turns: true, freeze_durations: true)
+        presence: Presence.OffBoard, freeze_turns: true, freeze_durations: true)
     let form = Monster {
         name: form_name,
         hp: target.hp,

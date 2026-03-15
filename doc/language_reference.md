@@ -487,7 +487,7 @@ condition Imprisoned on bearer: entity stacking first {
 
 **Outside lifecycle blocks** (actions, functions):
 ```
-suspend_with_source(target, source_id: 42, Presence.OffBoard,
+suspend_with_source(target, source_id: 42, presence: Presence.OffBoard,
     freeze_turns: true, freeze_durations: true)
 // Later:
 remove_suspension_source(target, source_id: 42)

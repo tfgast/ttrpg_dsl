@@ -235,13 +235,18 @@ impl Checker<'_> {
     ) {
         let mut satisfied: HashSet<usize> = HashSet::new();
         let mut next_positional = 0usize;
+        let mut seen_named = false;
 
         for arg in args {
             let param_idx = if let Some(ref name) = arg.name {
+                seen_named = true;
                 params.iter().position(|p| p.name == *name)
             } else {
-                while next_positional < params.len() && satisfied.contains(&next_positional) {
-                    next_positional += 1;
+                if seen_named {
+                    self.error(
+                        "positional arguments must come before named arguments".to_string(),
+                        arg.span,
+                    );
                 }
                 if next_positional < params.len() {
                     let idx = next_positional;
