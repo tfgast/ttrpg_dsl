@@ -1885,15 +1885,26 @@ impl Frame {
                                 }
                             };
 
-                            if let Some(Value::Int(current)) = budget.get(&budget_field) {
-                                if *current < 1 {
+                            if let Some(current) = budget.get(&budget_field) {
+                                let current_int = match current {
+                                    Value::Int(v) => *v,
+                                    other => {
+                                        return Advance::Error(RuntimeError::with_span(
+                                            format!(
+                                                "budget field '{budget_field}' has non-integer value: {other:?}",
+                                            ),
+                                            token.span,
+                                        ));
+                                    }
+                                };
+                                if current_int < 1 {
                                     // Insufficient budget — yield RequiresCheck
                                     let effect = Effect::RequiresCheck {
                                         action: action_name.clone(),
                                         passed: false,
                                         reason: Some(format!(
                                             "insufficient budget: {budget_field} requires 1 \
-                                             but {budget_field} has {current}",
+                                             but {budget_field} has {current_int}",
                                         )),
                                     };
                                     *phase = CostEvalPhase::AwaitBudgetCheck(*idx);
