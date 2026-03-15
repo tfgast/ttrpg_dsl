@@ -1202,6 +1202,8 @@ pub(crate) enum Frame {
         bound_args: Option<Vec<(Name, Value)>>,
         /// Modifiers collected during setup (for Phase 2 teardown).
         modifiers: Vec<OwnedModifier>,
+        /// Function body, stored across phases for pushing FunctionEval.
+        body: Option<Block>,
     },
 
     FunctionEval {
@@ -2158,6 +2160,7 @@ impl Frame {
                             phase: DeriveEvalPhase::Init,
                             bound_args: None,
                             modifiers: Vec::new(),
+                            body: None,
                         })
                     }
                     BridgeCallInfo::Mechanic { name, args } => Advance::Push(Frame::DeriveEval {
@@ -2171,6 +2174,7 @@ impl Frame {
                         phase: DeriveEvalPhase::Init,
                         bound_args: None,
                         modifiers: Vec::new(),
+                        body: None,
                     }),
                     BridgeCallInfo::Function { name, args } => {
                         // Look up function decl and construct FunctionEval.
@@ -2501,6 +2505,7 @@ impl Frame {
                 phase,
                 bound_args,
                 modifiers,
+                body,
             } => {
                 match phase {
                     DeriveEvalPhase::Init => {
@@ -2547,10 +2552,109 @@ impl Frame {
                             }
                         };
 
-                        // Map positional args, fill defaults, collect modifiers, run Phase 1.
-                        // All via bridge_run (Eval category — pure, no yields).
+                        // ── Inline arg mapping (pure data transform) ────
+                        if args.len() > fn_info.params.len() {
+                            return Advance::Error(RuntimeError::new(format!(
+                                "too many arguments: '{}' takes {} params, got {}",
+                                name,
+                                fn_info.params.len(),
+                                args.len()
+                            )));
+                        }
+
+                        // Build FillDefaults params: provided args + defaults.
+                        let mut fill_params: Vec<DefaultParam> = Vec::new();
+                        let arg_count = args.len();
+                        for (i, param) in fn_info.params.iter().enumerate() {
+                            if i < arg_count {
+                                fill_params.push(DefaultParam {
+                                    name: param.name.clone(),
+                                    provided_value: Some(args[i].clone()),
+                                    default_expr: None,
+                                });
+                            } else if param.has_default {
+                                let default_expr = fn_decl
+                                    .params
+                                    .get(i)
+                                    .and_then(|p| p.default.as_ref())
+                                    .cloned();
+                                fill_params.push(DefaultParam {
+                                    name: param.name.clone(),
+                                    provided_value: None,
+                                    default_expr,
+                                });
+                            } else {
+                                return Advance::Error(RuntimeError::new(format!(
+                                    "missing required argument '{}' for '{}'",
+                                    param.name, name
+                                )));
+                            }
+                        }
+                        args.clear();
+
+                        *body = Some(fn_decl.body.clone());
+                        *phase = DeriveEvalPhase::DefaultsDone;
+
+                        // Push FillDefaults to resolve all params (provided +
+                        // defaults). It binds each into the current scope.
+                        if fill_params.iter().any(|p| p.default_expr.is_some()) {
+                            return Advance::Push(Frame::FillDefaults {
+                                params: fill_params,
+                                resolved: Vec::new(),
+                                index: 0,
+                                child_result: None,
+                            });
+                        }
+
+                        // No defaults — bind provided args directly and continue.
+                        let mapped: Vec<(Name, Value)> = fill_params
+                            .into_iter()
+                            .filter_map(|p| p.provided_value.map(|v| (p.name, v)))
+                            .collect();
+                        *bound_args = Some(mapped);
+                        Advance::Continue
+                    }
+
+                    DeriveEvalPhase::DefaultsDone => {
+                        // FillDefaults completed (or skipped). Collect bound
+                        // args from scope bindings if FillDefaults ran.
+                        let fn_info = match core.type_env.lookup_fn(name.as_ref()) {
+                            Some(fi) => fi.clone(),
+                            None => {
+                                return Advance::Error(RuntimeError::new(format!(
+                                    "internal error: no type info for '{name}'"
+                                )));
+                            }
+                        };
+
+                        // If bound_args isn't set, FillDefaults ran and bindings
+                        // are in the current scope. Collect them by param name.
+                        if bound_args.is_none() {
+                            let mut mapped = Vec::new();
+                            for param in &fn_info.params {
+                                if let Some(val) =
+                                    env.scopes.last().and_then(|s| s.bindings.get(&param.name))
+                                {
+                                    mapped.push((param.name.clone(), val.clone()));
+                                }
+                            }
+                            *bound_args = Some(mapped);
+                        }
+
+                        let fn_body = match body.take() {
+                            Some(b) => b,
+                            None => {
+                                return Advance::Error(RuntimeError::new(format!(
+                                    "DeriveEval '{}': body missing in DefaultsDone",
+                                    name
+                                )));
+                            }
+                        };
                         let n = name.clone();
-                        let a = args.clone();
+                        let ba = bound_args.take().unwrap_or_default();
+
+                        // Collect modifiers + run Phase 1 via bridge (still
+                        // needs eval_expr for condition matching & modify exprs).
                         let setup_result = bridge_run(
                             core,
                             env,
@@ -2558,28 +2662,28 @@ impl Frame {
                             &mut NoYieldHandler,
                             BridgeCategory::Eval,
                             move |tmp_env| {
-                                crate::call::derive_setup(
-                                    tmp_env,
-                                    &n,
-                                    &fn_info,
-                                    &fn_decl,
-                                    a,
-                                    Span::dummy(),
-                                )
+                                let mods = crate::pipeline::collect_modifiers_owned(
+                                    tmp_env, &n, &fn_info, &ba,
+                                )?;
+                                let final_bound = if mods.is_empty() {
+                                    ba
+                                } else {
+                                    crate::pipeline::run_phase1(tmp_env, &n, &fn_info, ba, &mods)?
+                                };
+                                Ok((final_bound, mods))
                             },
                         );
 
                         match setup_result {
-                            Ok((final_bound, body, mods)) => {
+                            Ok((final_bound, mods)) => {
                                 *bound_args = Some(final_bound.clone());
                                 *modifiers = mods;
                                 *phase = DeriveEvalPhase::BodyDone;
-                                // Push FunctionEval child for body execution.
                                 Advance::Push(Frame::FunctionEval {
                                     name: name.clone(),
                                     args: final_bound,
-                                    default_params: Vec::new(), // already resolved
-                                    body: Some(body),
+                                    default_params: Vec::new(),
+                                    body: Some(fn_body),
                                     defaults_done: false,
                                     child_result: None,
                                 })
@@ -4426,8 +4530,10 @@ pub(crate) enum EmitEvalPhase {
 /// Phase within derive/mechanic evaluation.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum DeriveEvalPhase {
-    /// Initial: look up decl, map args, collect modifiers, push FunctionEval child.
+    /// Initial: look up decl, map positional args, push FillDefaults if needed.
     Init,
+    /// Defaults filled: collect modifiers, run Phase 1, push FunctionEval child.
+    DefaultsDone,
     /// FunctionEval child completed with body result.
     BodyDone,
 }
@@ -4770,6 +4876,7 @@ impl<S: WritableState> Execution<S> {
             phase: DeriveEvalPhase::Init,
             bound_args: None,
             modifiers: Vec::new(),
+            body: None,
         });
         Ok(exec)
     }
@@ -4796,6 +4903,7 @@ impl<S: WritableState> Execution<S> {
             phase: DeriveEvalPhase::Init,
             bound_args: None,
             modifiers: Vec::new(),
+            body: None,
         });
         Ok(exec)
     }
