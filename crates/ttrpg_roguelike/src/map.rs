@@ -171,5 +171,5 @@ pub struct EntityDisplay {
     pub x: i64,
     pub y: i64,
     pub glyph: char,
-    pub is_player: bool,
+    pub color: ratatui::style::Color,
 }

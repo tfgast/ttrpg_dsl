@@ -1,9 +1,11 @@
+pub mod config;
 mod map;
 mod state;
 mod ui;
 
 use std::collections::BTreeMap;
 use std::io;
+use std::path::Path;
 
 use crossterm::event::{self, Event, KeyCode, KeyEventKind};
 use rand::SeedableRng;
@@ -13,10 +15,14 @@ use ttrpg_interp::Interpreter;
 use ttrpg_interp::adapter::StateAdapter;
 use ttrpg_interp::reference_state::GameState;
 use ttrpg_interp::state::EntityRef;
-use ttrpg_interp::value::{DiceExpr, Value};
+use ttrpg_interp::value::Value;
 
+use rustc_hash::FxHashMap;
+
+use crate::config::{DisplayHint, HostConfig, StatField};
 use crate::map::{EntityDisplay, Map};
-use crate::state::{RoguelikeHandler, read_hp, read_name, read_position, spawn_creature};
+use crate::state::{RoguelikeHandler, read_hp, read_name, read_position};
+use crate::ui::StatLine;
 
 // ── Game state ──────────────────────────────────────────────────
 
@@ -26,6 +32,8 @@ struct Game {
     monsters: Vec<EntityRef>,
     messages: Vec<String>,
     over: bool,
+    /// Glyph + color per entity, populated at spawn time from config.
+    display: FxHashMap<EntityRef, (char, ratatui::style::Color)>,
 }
 
 impl Game {
@@ -43,32 +51,32 @@ impl Game {
     ) -> Vec<EntityDisplay> {
         let mut displays = Vec::new();
 
-        if let Some((x, y)) = read_position(state, &self.player) {
-            displays.push(EntityDisplay {
-                x,
-                y,
-                glyph: '@',
-                is_player: true,
-            });
-        }
+        // All tracked entities: player + monsters
+        let all_entities = std::iter::once(self.player).chain(self.monsters.iter().copied());
 
-        for &monster in &self.monsters {
-            if read_hp(state, &monster) <= 0 {
+        for entity in all_entities {
+            if read_hp(state, &entity) <= 0 {
                 continue;
             }
-            if let Some((x, y)) = read_position(state, &monster) {
-                let name = read_name(state, &monster);
-                let glyph = name.chars().next().unwrap_or('?');
-                displays.push(EntityDisplay {
-                    x,
-                    y,
-                    glyph,
-                    is_player: false,
-                });
+            if let Some((x, y)) = read_position(state, &entity) {
+                let &(glyph, color) = self.display.get(&entity).unwrap_or(&('?', ratatui::style::Color::White));
+                displays.push(EntityDisplay { x, y, glyph, color });
             }
         }
 
         displays
+    }
+
+    /// Build stat lines for the player from config field list.
+    fn player_stats(
+        &self,
+        state: &dyn ttrpg_interp::state::StateProvider,
+        stats_panel: &[StatField],
+    ) -> Vec<StatLine> {
+        stats_panel
+            .iter()
+            .map(|sf| format_stat(state, &self.player, sf))
+            .collect()
     }
 
     /// Find a monster at a given position.
@@ -95,11 +103,40 @@ impl Game {
 
 // ── DSL loading ─────────────────────────────────────────────────
 
-fn load_rules() -> (ttrpg_ast::ast::Program, ttrpg_checker::env::TypeEnv) {
-    let source = include_str!("../roguelike.ttrpg");
-    let sources = vec![("roguelike.ttrpg".to_string(), source.to_string())];
+fn load_rules(
+    config: &HostConfig,
+    config_dir: &Path,
+) -> (ttrpg_ast::ast::Program, ttrpg_checker::env::TypeEnv) {
+    let manifest_path = config_dir.join(&config.system.manifest);
+    let manifest = ttrpg_parser::manifest::load_manifest(&manifest_path).unwrap_or_else(|e| {
+        eprintln!("error: {e}");
+        std::process::exit(1);
+    });
 
-    let result = ttrpg_parser::parse_multi(&sources);
+    let pkg_root = manifest_path.parent().unwrap_or(config_dir);
+    let resolved = manifest
+        .resolve_target(config.system.bundle.as_deref())
+        .unwrap_or_else(|e| {
+            eprintln!("error: {e}");
+            std::process::exit(1);
+        });
+
+    let entry_paths: Vec<_> = resolved
+        .entry_paths
+        .iter()
+        .map(|p| pkg_root.join(p))
+        .collect();
+
+    let sources = ttrpg_parser::source_resolve::resolve_sources(&entry_paths).unwrap_or_else(|e| {
+        eprintln!("error: {e}");
+        std::process::exit(1);
+    });
+
+    for diag in &sources.diagnostics {
+        eprintln!("{}", diag.message);
+    }
+
+    let result = ttrpg_parser::parse_multi(&sources.sources);
     if result.has_errors {
         for diag in &result.diagnostics {
             eprintln!("{}", diag.message);
@@ -123,75 +160,185 @@ fn load_rules() -> (ttrpg_ast::ast::Program, ttrpg_checker::env::TypeEnv) {
     (result.program, check_result.env)
 }
 
+// ── Stat formatting ─────────────────────────────────────────────
+
+fn format_stat(
+    state: &dyn ttrpg_interp::state::StateProvider,
+    entity: &EntityRef,
+    field: &StatField,
+) -> StatLine {
+    let value = state.read_field(entity, &field.field);
+    match &field.display {
+        DisplayHint::Bar { max_field } => {
+            let cur = match &value {
+                Some(Value::Int(n)) => *n,
+                _ => 0,
+            };
+            let max = match state.read_field(entity, max_field) {
+                Some(Value::Int(n)) => n,
+                _ => 0,
+            };
+            StatLine {
+                label: field.label.clone(),
+                text: format!("{cur}/{max}"),
+                bar: Some((cur, max)),
+            }
+        }
+        DisplayHint::Number => {
+            let text = match &value {
+                Some(Value::Int(n)) => n.to_string(),
+                _ => "?".into(),
+            };
+            StatLine { label: field.label.clone(), text, bar: None }
+        }
+        DisplayHint::Modifier => {
+            let text = match &value {
+                Some(Value::Int(n)) if *n >= 0 => format!("+{n}"),
+                Some(Value::Int(n)) => n.to_string(),
+                _ => "?".into(),
+            };
+            StatLine { label: field.label.clone(), text, bar: None }
+        }
+        DisplayHint::DiceExpr => {
+            let text = match &value {
+                Some(Value::DiceExpr(expr)) => format_dice_expr(expr),
+                _ => "?".into(),
+            };
+            StatLine { label: field.label.clone(), text, bar: None }
+        }
+    }
+}
+
+fn format_dice_expr(expr: &ttrpg_interp::value::DiceExpr) -> String {
+    let parts: Vec<String> = expr
+        .groups
+        .iter()
+        .map(|g| {
+            let base = format!("{}d{}", g.count, g.sides);
+            match &g.filter {
+                Some(ttrpg_ast::DiceFilter::KeepHighest(n)) => format!("{base}kh{n}"),
+                Some(ttrpg_ast::DiceFilter::KeepLowest(n)) => format!("{base}kl{n}"),
+                Some(ttrpg_ast::DiceFilter::DropHighest(n)) => format!("{base}dh{n}"),
+                Some(ttrpg_ast::DiceFilter::DropLowest(n)) => format!("{base}dl{n}"),
+                None => base,
+            }
+        })
+        .collect();
+    let joined = parts.join("+");
+    match expr.modifier.cmp(&0) {
+        std::cmp::Ordering::Greater => format!("{joined}+{}", expr.modifier),
+        std::cmp::Ordering::Less => format!("{joined}{}", expr.modifier),
+        std::cmp::Ordering::Equal => joined,
+    }
+}
+
+// ── Entity spawning ─────────────────────────────────────────────
+
+/// Spawn an entity by calling a DSL function with a grid position.
+fn spawn_entity(
+    interp: &Interpreter,
+    adapter: &StateAdapter<GameState>,
+    handler: &mut RoguelikeHandler,
+    fn_name: &str,
+    pos: (i64, i64),
+) -> EntityRef {
+    use ttrpg_interp::reference_state::GridPosition;
+
+    let pos_val = adapter.with_state_mut(|state| state.register_position(GridPosition(pos.0, pos.1)));
+    let result = adapter.run(handler, |state, eff| {
+        interp.evaluate_function(state, eff, fn_name, vec![pos_val.clone()])
+    });
+    match result {
+        Ok(Value::Entity(entity)) => entity,
+        Ok(other) => {
+            eprintln!("error: {fn_name} returned {other:?}, expected entity");
+            std::process::exit(1);
+        }
+        Err(e) => {
+            eprintln!("error: {fn_name} failed: {}", e.message);
+            std::process::exit(1);
+        }
+    }
+}
+
 // ── Main ────────────────────────────────────────────────────────
 
 fn main() -> io::Result<()> {
+    // Load config
+    let config_path = std::env::args()
+        .nth(1)
+        .unwrap_or_else(|| "roguelike.ron".to_string());
+    let config_path = Path::new(&config_path);
+    let config = HostConfig::load(config_path).unwrap_or_else(|e| {
+        eprintln!("error: {e}");
+        std::process::exit(1);
+    });
+    let config_dir = config_path
+        .parent()
+        .unwrap_or(Path::new("."))
+        .to_path_buf();
+
     // Load DSL rules
-    let (program, type_env) = load_rules();
+    let (program, type_env) = load_rules(&config, &config_dir);
     let interp = Interpreter::new(&program, &type_env).expect("interpreter init failed");
 
     // Set up game state
-    let mut gs = GameState::new();
-
-    // Player: 20 HP, AC 14, +3 to hit, 1d6 damage
-    let player = spawn_creature(
-        &mut gs,
-        "Hero",
-        "Player",
-        (5, 5),
-        20,
-        14,
-        3,
-        DiceExpr::single(1, 6, None, 0),
-    );
-
-    // Monsters in room 2 and room 3
-    let goblin1 = spawn_creature(
-        &mut gs,
-        "Goblin",
-        "Goblin",
-        (25, 4),
-        6,
-        12,
-        2,
-        DiceExpr::single(1, 4, None, 0),
-    );
-    let goblin2 = spawn_creature(
-        &mut gs,
-        "Goblin",
-        "Goblin",
-        (28, 5),
-        6,
-        12,
-        2,
-        DiceExpr::single(1, 4, None, 0),
-    );
-    let rat = spawn_creature(
-        &mut gs,
-        "Rat",
-        "Rat",
-        (15, 14),
-        3,
-        10,
-        0,
-        DiceExpr::single(1, 2, None, 0),
-    );
-
+    let gs = GameState::new();
     let adapter = StateAdapter::new(gs);
     let mut handler = RoguelikeHandler::new(StdRng::from_os_rng());
+
+    // Build display info map
+    let mut display: FxHashMap<EntityRef, (char, ratatui::style::Color)> = FxHashMap::default();
+
+    // Spawn player via DSL
+    let player = spawn_entity(&interp, &adapter, &mut handler, &config.player.spawn_fn, (5, 5));
+    display.insert(player, (config.player.glyph, config.player.color.into()));
+
+    // Spawn monsters (positions are still hardcoded — map generation will own this later)
+    let monster_spawns: &[(&str, (i64, i64))] = &[
+        ("spawn_goblin", (25, 4)),
+        ("spawn_goblin", (28, 5)),
+        ("spawn_rat", (15, 14)),
+    ];
+
+    // Build a lookup from spawn_fn name → config display info
+    let creature_configs: FxHashMap<&str, _> = config
+        .creatures
+        .iter()
+        .map(|c| (c.spawn_fn.as_str(), (c.glyph, ratatui::style::Color::from(c.color))))
+        .collect();
+
+    let monsters: Vec<EntityRef> = monster_spawns
+        .iter()
+        .map(|(fn_name, pos)| {
+            let entity = spawn_entity(&interp, &adapter, &mut handler, fn_name, *pos);
+            if let Some(&info) = creature_configs.get(fn_name) {
+                display.insert(entity, info);
+            }
+            entity
+        })
+        .collect();
 
     let mut game = Game {
         map: Map::demo_dungeon(),
         player,
-        monsters: vec![goblin1, goblin2, rat],
+        monsters,
         messages: vec!["Welcome to the dungeon! Arrow keys to move, q to quit.".into()],
         over: false,
+        display,
     };
 
     // Terminal setup
     let mut terminal = ratatui::init();
 
-    let result = run_game_loop(&mut terminal, &interp, &adapter, &mut handler, &mut game);
+    let result = run_game_loop(
+        &mut terminal,
+        &interp,
+        &adapter,
+        &mut handler,
+        &mut game,
+        &config.ui.stats_panel,
+    );
 
     ratatui::restore();
     result
@@ -203,12 +350,14 @@ fn run_game_loop(
     adapter: &StateAdapter<GameState>,
     handler: &mut RoguelikeHandler,
     game: &mut Game,
+    stats_panel: &[StatField],
 ) -> io::Result<()> {
     loop {
         // Render
         let displays = game.entity_displays(adapter);
+        let stats = game.player_stats(adapter, stats_panel);
         terminal.draw(|frame| {
-            ui::draw(frame, &game.map, &displays, &game.messages);
+            ui::draw(frame, &game.map, &displays, &game.messages, &stats);
         })?;
 
         if game.over {

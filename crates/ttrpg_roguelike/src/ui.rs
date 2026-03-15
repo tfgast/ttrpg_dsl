@@ -7,19 +7,45 @@ use ratatui::widgets::{Block, Borders, Paragraph};
 
 use crate::map::{EntityDisplay, Map, Tile};
 
+// ── Stat line data ──────────────────────────────────────────────
+
+/// A single formatted stat for the stats panel.
+pub struct StatLine {
+    pub label: String,
+    pub text: String,
+    /// For Bar display: (current, max). If present, a visual bar is drawn.
+    pub bar: Option<(i64, i64)>,
+}
+
 // ── Rendering ───────────────────────────────────────────────────
 
-pub fn draw(frame: &mut Frame, map: &Map, entities: &[EntityDisplay], messages: &[String]) {
-    let chunks = Layout::default()
+pub fn draw(
+    frame: &mut Frame,
+    map: &Map,
+    entities: &[EntityDisplay],
+    messages: &[String],
+    stats: &[StatLine],
+) {
+    let top_bottom = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
-            Constraint::Min(map.height as u16 + 2), // map + border
+            Constraint::Min(map.height as u16 + 2), // map row + border
             Constraint::Length(6),                  // message log
         ])
         .split(frame.area());
 
-    draw_map(frame, chunks[0], map, entities);
-    draw_messages(frame, chunks[1], messages);
+    // Split the top row into map (left) + stats panel (right)
+    let top_cols = Layout::default()
+        .direction(Direction::Horizontal)
+        .constraints([
+            Constraint::Min(map.width as u16 + 2), // map + border
+            Constraint::Length(22),                 // stats panel
+        ])
+        .split(top_bottom[0]);
+
+    draw_map(frame, top_cols[0], map, entities);
+    draw_stats(frame, top_cols[1], stats);
+    draw_messages(frame, top_bottom[1], messages);
 }
 
 fn draw_map(frame: &mut Frame, area: Rect, map: &Map, entities: &[EntityDisplay]) {
@@ -74,10 +100,54 @@ fn tile_style(tile: Tile) -> (char, Style) {
 }
 
 fn entity_style(ent: &EntityDisplay) -> Style {
-    if ent.is_player {
-        Style::default().fg(Color::Yellow)
-    } else {
-        Style::default().fg(Color::Red)
+    Style::default().fg(ent.color)
+}
+
+fn draw_stats(frame: &mut Frame, area: Rect, stats: &[StatLine]) {
+    let block = Block::default().borders(Borders::ALL).title(" Stats ");
+    let inner = block.inner(area);
+    frame.render_widget(block, area);
+
+    let bar_width = inner.width.saturating_sub(6) as usize; // space for "LBL "
+
+    for (i, stat) in stats.iter().enumerate() {
+        if i as u16 >= inner.height {
+            break;
+        }
+        let y = inner.y + i as u16;
+
+        let line = if let Some((cur, max)) = stat.bar {
+            // Draw a bar: "HP 12/20 [████░░░░]"
+            let label_val = format!("{} {}/{}", stat.label, cur, max);
+            let filled = if max > 0 {
+                ((cur.max(0) as u64 * bar_width as u64) / max as u64) as usize
+            } else {
+                0
+            };
+            let empty = bar_width.saturating_sub(filled);
+            // Use two lines: value then bar
+            // Actually keep it compact: label + fraction on one line
+            let bar_str: String =
+                "█".repeat(filled.min(bar_width)) + &"░".repeat(empty.min(bar_width));
+            // Truncate bar to fit
+            let max_w = inner.width as usize;
+            if label_val.len() < max_w {
+                let remaining = max_w - label_val.len() - 1;
+                let bar_chars: String = bar_str.chars().take(remaining).collect();
+                format!("{label_val} {bar_chars}")
+            } else {
+                label_val[..max_w].to_string()
+            }
+        } else {
+            format!("{}: {}", stat.label, stat.text)
+        };
+
+        let spans = Line::from(Span::styled(line, Style::default().fg(Color::White)));
+        let paragraph = Paragraph::new(spans);
+        frame.render_widget(
+            paragraph,
+            Rect::new(inner.x, y, inner.width, 1),
+        );
     }
 }
 

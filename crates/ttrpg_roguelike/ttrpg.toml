@@ -1,0 +1,12 @@
+manifest_version = 1
+
+[package]
+name = "roguelike"
+version = "0.1.0"
+default_target = "core"
+
+[entries.core]
+path = "roguelike.ttrpg"
+
+[bundles.core]
+entries = ["core"]

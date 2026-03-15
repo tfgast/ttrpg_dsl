@@ -1,0 +1,35 @@
+HostConfig(
+    system: SystemConfig(
+        manifest: "ttrpg.toml",
+        bundle: None,
+    ),
+    player: PlayerConfig(
+        spawn_fn: "spawn_hero",
+        glyph: '@',
+        color: Yellow,
+    ),
+    creatures: [
+        CreatureConfig(
+            id: "goblin",
+            spawn_fn: "spawn_goblin",
+            glyph: 'g',
+            color: Green,
+            ai: Aggressive(chase_range: 6),
+        ),
+        CreatureConfig(
+            id: "rat",
+            spawn_fn: "spawn_rat",
+            glyph: 'r',
+            color: DarkGray,
+            ai: Aggressive(chase_range: 4),
+        ),
+    ],
+    ui: UiConfig(
+        stats_panel: [
+            StatField(field: "HP", label: "HP", display: Bar(max_field: "max_HP")),
+            StatField(field: "AC", label: "AC", display: Number),
+            StatField(field: "attack_bonus", label: "ATK", display: Modifier),
+            StatField(field: "damage", label: "DMG", display: DiceExpr),
+        ],
+    ),
+)

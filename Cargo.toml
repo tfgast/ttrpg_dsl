@@ -34,6 +34,7 @@ crossterm = "0.29"
 ratatui = "0.30"
 pathfinding = "4"
 reedline = "0.45"
+ron = "0.8"
 rustc-hash = "2"
 serde = { version = "1", features = ["derive"] }
 toml = "0.8"

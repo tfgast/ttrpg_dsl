@@ -19,4 +19,6 @@ crossterm.workspace = true
 ratatui.workspace = true
 pathfinding.workspace = true
 rand.workspace = true
+ron.workspace = true
 rustc-hash.workspace = true
+serde.workspace = true

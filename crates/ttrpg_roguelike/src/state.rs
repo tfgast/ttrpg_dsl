@@ -1,11 +1,8 @@
 use rand::Rng;
 use rand::rngs::StdRng;
-use std::collections::BTreeMap;
 
 use ttrpg_ast::DiceFilter;
-use ttrpg_ast::Name;
 use ttrpg_interp::effect::{Effect, EffectHandler, Response};
-use ttrpg_interp::reference_state::{GameState, GridPosition};
 use ttrpg_interp::state::{EntityRef, StateProvider};
 use ttrpg_interp::value::{DiceExpr, RollResult, Value};
 
@@ -90,43 +87,6 @@ fn apply_dice_filter(dice: &mut [i64], filter: &Option<DiceFilter>) -> Vec<i64> 
 }
 
 // ── Entity helpers ──────────────────────────────────────────────
-
-/// Create a Creature entity in the game state.
-pub fn spawn_creature(
-    state: &mut GameState,
-    name: &str,
-    kind: &str,
-    pos: (i64, i64),
-    hp: i64,
-    ac: i64,
-    attack_bonus: i64,
-    damage: DiceExpr,
-) -> EntityRef {
-    use rustc_hash::FxHashMap;
-
-    let mut fields = FxHashMap::default();
-    fields.insert(Name::from("name"), Value::Str(name.into()));
-    fields.insert(
-        Name::from("kind"),
-        Value::EnumVariant {
-            enum_name: Name::from("CreatureKind"),
-            variant: Name::from(kind),
-            fields: BTreeMap::new(),
-        },
-    );
-    fields.insert(
-        Name::from("position"),
-        state.register_position(GridPosition(pos.0, pos.1)),
-    );
-    fields.insert(Name::from("HP"), Value::Int(hp));
-    fields.insert(Name::from("max_HP"), Value::Int(hp));
-    fields.insert(Name::from("AC"), Value::Int(ac));
-    fields.insert(Name::from("attack_bonus"), Value::Int(attack_bonus));
-    fields.insert(Name::from("damage"), Value::DiceExpr(damage));
-    fields.insert(Name::from("speed"), Value::Int(30));
-
-    state.add_entity("Creature", fields)
-}
 
 /// Read a creature's current position as (x, y).
 pub fn read_position(state: &dyn StateProvider, entity: &EntityRef) -> Option<(i64, i64)> {

@@ -96,6 +96,52 @@ system "Roguelike" {
     }
 
     // ========================================================
+    //  SPAWN FUNCTIONS
+    // ========================================================
+
+    function spawn_hero(pos: Position) -> Creature {
+        Creature {
+            name: "Hero",
+            kind: CreatureKind.Player,
+            position: pos,
+            HP: 20,
+            max_HP: 20,
+            AC: 14,
+            attack_bonus: 3,
+            damage: 1d6,
+            speed: 30
+        }
+    }
+
+    function spawn_goblin(pos: Position) -> Creature {
+        Creature {
+            name: "Goblin",
+            kind: CreatureKind.Goblin,
+            position: pos,
+            HP: 6,
+            max_HP: 6,
+            AC: 12,
+            attack_bonus: 2,
+            damage: 1d4,
+            speed: 30
+        }
+    }
+
+    function spawn_rat(pos: Position) -> Creature {
+        Creature {
+            name: "Rat",
+            kind: CreatureKind.Rat,
+            position: pos,
+            HP: 3,
+            max_HP: 3,
+            AC: 10,
+            attack_bonus: 0,
+            damage: 1d2,
+            speed: 30
+        }
+    }
+
+    // ========================================================
     //  CONDITIONS
     // ========================================================
 
