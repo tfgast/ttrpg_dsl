@@ -762,9 +762,9 @@ impl Runner {
             Arc::clone(&self.type_env),
             &gs,
         );
-        // Enable coverage if configured
-        let core = if self.coverage.is_some() {
-            core.with_coverage()
+        // Share the runner's coverage data so step-mode hits are visible to `coverage` command
+        let core = if let Some(ref cov) = self.coverage {
+            core.with_shared_coverage(Rc::clone(cov))
         } else {
             core
         };

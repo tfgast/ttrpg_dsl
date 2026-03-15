@@ -63,15 +63,24 @@ impl RuntimeCore {
         )
     }
 
-    /// Enable coverage tracking.
+    /// Enable coverage tracking with a fresh `CoverageData`.
     pub fn with_coverage(self: &Rc<Self>) -> Rc<Self> {
-        // Since Rc is already created, we need a new one with coverage enabled.
-        // This is a construction-time concern — call before creating Executions.
+        self.with_shared_coverage(Rc::new(RefCell::new(CoverageData::default())))
+    }
+
+    /// Enable coverage tracking with an existing shared `CoverageData`.
+    ///
+    /// Use this when the caller already owns a `CoverageData` (e.g. the CLI
+    /// runner) so that coverage hits flow into the same data the caller reads.
+    pub fn with_shared_coverage(
+        self: &Rc<Self>,
+        cov: Rc<RefCell<CoverageData>>,
+    ) -> Rc<Self> {
         Rc::new(RuntimeCore {
             program: Arc::clone(&self.program),
             type_env: Arc::clone(&self.type_env),
             consts: RefCell::new(FxHashMap::default()),
-            coverage: Some(Rc::new(RefCell::new(CoverageData::default()))),
+            coverage: Some(cov),
             next_invocation_id: Cell::new(self.next_invocation_id.get()),
             next_condition_id: Cell::new(self.next_condition_id.get()),
         })
