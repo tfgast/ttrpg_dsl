@@ -508,7 +508,14 @@ impl<'p> Interpreter<'p> {
         payload: Value,
         candidates: &[EntityRef],
     ) -> Result<HookResult, RuntimeError> {
-        event::find_matching_hooks(self, state, name, &payload, candidates)
+        event::find_matching_hooks(
+            self.program,
+            self.type_env,
+            state,
+            name,
+            &payload,
+            candidates,
+        )
     }
 
     /// Execute a named hook through the full pipeline.
@@ -578,8 +585,14 @@ impl<'p> Interpreter<'p> {
         payload: Value,
         candidates: &[EntityRef],
     ) -> Result<usize, RuntimeError> {
-        let cond_result =
-            event::find_matching_condition_handlers(self, state, event_name, &payload, candidates)?;
+        let cond_result = event::find_matching_condition_handlers(
+            self.program,
+            self.type_env,
+            state,
+            event_name,
+            &payload,
+            candidates,
+        )?;
 
         let count = cond_result.handlers.len();
         if count > 0 {

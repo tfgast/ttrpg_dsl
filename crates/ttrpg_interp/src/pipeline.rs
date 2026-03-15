@@ -1210,7 +1210,8 @@ pub(crate) fn emit_modify_applied_events(
 
             let candidates = env.state.entities_in_play();
             let hook_result = event::find_matching_hooks(
-                env.interp,
+                env.interp.program,
+                env.interp.type_env,
                 env.state,
                 "modify_applied",
                 &payload,

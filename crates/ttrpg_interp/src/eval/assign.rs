@@ -1,16 +1,78 @@
-use ttrpg_ast::ast::{AssignOp, ExprKind, LValue, LValueSegment};
-use ttrpg_ast::{Name, Spanned};
+use ttrpg_ast::ast::{AssignOp, ExprKind, LValue, LValueSegment, Program};
+use ttrpg_ast::{Name, Span, Spanned};
+use ttrpg_checker::env::TypeEnv;
 
-use crate::Env;
 use crate::RuntimeError;
 use crate::effect::{Effect, FieldPathSegment};
 use crate::state::{EntityRef, StateProvider};
 use crate::value::Value;
+use crate::{Env, Scope};
 
 use super::compare::value_eq;
 use super::dispatch::eval_expr;
-use super::helpers::{resolve_resource_bounds, type_name};
+use super::helpers::{resolve_resource_bounds_ctx, type_name};
 use super::ops::coerce_roll_result;
+
+// ── Assignment context trait ───────────────────────────────────
+
+/// Minimal interface for assignment logic, abstracting over `Env` (recursive
+/// evaluator) and `FrameAssignCtx` (frame-based step engine).
+pub(crate) trait AssignContext {
+    fn lookup(&self, name: &str) -> Option<&Value>;
+    fn lookup_mut(&mut self, name: &str) -> Option<&mut Value>;
+    fn push_scope(&mut self);
+    fn pop_scope(&mut self);
+    fn bind(&mut self, name: Name, value: Value);
+    fn emit(&mut self, effect: Effect);
+    fn turn_actor(&self) -> Option<EntityRef>;
+    fn type_env(&self) -> &TypeEnv;
+    fn program(&self) -> &Program;
+    fn state_provider(&self) -> &dyn StateProvider;
+    fn eval_expr(&mut self, expr: &Spanned<ExprKind>) -> Result<Value, RuntimeError>;
+    /// Split borrow: get mutable scopes and read-only state simultaneously.
+    /// Needed because `lookup_mut` and `state_provider` both borrow `self`,
+    /// but scopes and state are independent.
+    fn scopes_mut_and_state(&mut self) -> (&mut Vec<Scope>, &dyn StateProvider);
+}
+
+impl AssignContext for Env<'_, '_> {
+    fn lookup(&self, name: &str) -> Option<&Value> {
+        Env::lookup(self, name)
+    }
+    fn lookup_mut(&mut self, name: &str) -> Option<&mut Value> {
+        Env::lookup_mut(self, name)
+    }
+    fn push_scope(&mut self) {
+        Env::push_scope(self);
+    }
+    fn pop_scope(&mut self) {
+        Env::pop_scope(self);
+    }
+    fn bind(&mut self, name: Name, value: Value) {
+        Env::bind(self, name, value);
+    }
+    fn emit(&mut self, effect: Effect) {
+        Env::emit(self, effect);
+    }
+    fn turn_actor(&self) -> Option<EntityRef> {
+        self.turn_actor
+    }
+    fn type_env(&self) -> &TypeEnv {
+        self.interp.type_env
+    }
+    fn program(&self) -> &Program {
+        self.interp.program
+    }
+    fn state_provider(&self) -> &dyn StateProvider {
+        self.state
+    }
+    fn eval_expr(&mut self, expr: &Spanned<ExprKind>) -> Result<Value, RuntimeError> {
+        eval_expr(self, expr)
+    }
+    fn scopes_mut_and_state(&mut self) -> (&mut Vec<Scope>, &dyn StateProvider) {
+        (&mut self.scopes, self.state)
+    }
+}
 
 // ── Assignment ─────────────────────────────────────────────────
 
@@ -45,29 +107,42 @@ pub(crate) fn eval_assign_with_rhs(
     rhs: Value,
     span: ttrpg_ast::Span,
 ) -> Result<(), RuntimeError> {
+    exec_assign_with_rhs(env, target, op, rhs, span)
+}
+
+/// Core assignment implementation, generic over `AssignContext`.
+/// Called from both the recursive evaluator (`Env`) and the
+/// frame-based executor (`FrameAssignCtx`).
+pub(crate) fn exec_assign_with_rhs(
+    ctx: &mut dyn AssignContext,
+    target: &LValue,
+    op: AssignOp,
+    rhs: Value,
+    span: Span,
+) -> Result<(), RuntimeError> {
     // ── Turn budget mutation path ───────────────────────────
     if target.root == "turn" {
-        return eval_assign_turn(env, target, op, rhs, span);
+        return exec_assign_turn(ctx, target, op, rhs, span);
     }
 
     // ── Direct variable reassignment (no segments) ──────────
     if target.segments.is_empty() {
-        return eval_assign_direct(env, &target.root, op, rhs, span);
+        return exec_assign_direct(ctx, &target.root, op, rhs, span);
     }
 
     // ── Look up the root value ──────────────────────────────
     // We need to check if the root is an entity (entity mutation path)
     // or a local value (local mutation path).
-    let root_val = env.lookup(&target.root).cloned();
+    let root_val = ctx.lookup(&target.root).cloned();
     match root_val {
         Some(Value::Entity(entity_ref)) => {
             // Entity mutation: all segments become FieldPathSegments
-            eval_assign_entity(env, entity_ref, &target.segments, op, rhs, target.span)
+            exec_assign_entity(ctx, entity_ref, &target.segments, op, rhs, target.span)
         }
         Some(_) => {
             // Local mutation path: walk segments, switching to entity
             // mutation if we encounter an Entity along the way
-            eval_assign_local(env, &target.root, &target.segments, op, rhs, target.span)
+            exec_assign_local(ctx, &target.root, &target.segments, op, rhs, target.span)
         }
         None => Err(RuntimeError::with_span(
             format!("undefined variable `{}`", target.root),
@@ -77,14 +152,14 @@ pub(crate) fn eval_assign_with_rhs(
 }
 
 /// Turn budget mutation: `turn.actions -= 1`
-fn eval_assign_turn(
-    env: &mut Env,
+fn exec_assign_turn(
+    ctx: &mut dyn AssignContext,
     target: &LValue,
     op: AssignOp,
     rhs: Value,
-    span: ttrpg_ast::Span,
+    span: Span,
 ) -> Result<(), RuntimeError> {
-    let actor = env.turn_actor.ok_or_else(|| {
+    let actor = ctx.turn_actor().ok_or_else(|| {
         RuntimeError::with_span(
             "cannot access `turn` outside of action/reaction/hook context",
             span,
@@ -122,20 +197,20 @@ fn eval_assign_turn(
         op,
         value: rhs,
     };
-    env.emit(effect);
+    ctx.emit(effect);
 
     Ok(())
 }
 
 /// Direct variable reassignment with no segments: `x = 5`, `x += 1`
-fn eval_assign_direct(
-    env: &mut Env,
+fn exec_assign_direct(
+    ctx: &mut dyn AssignContext,
     name: &str,
     op: AssignOp,
     rhs: Value,
-    span: ttrpg_ast::Span,
+    span: Span,
 ) -> Result<(), RuntimeError> {
-    let var = env
+    let var = ctx
         .lookup_mut(name)
         .ok_or_else(|| RuntimeError::with_span(format!("undefined variable `{name}`"), span))?;
 
@@ -146,12 +221,15 @@ fn eval_assign_direct(
 
 /// If the first path segment is a flattened included-group field, insert the
 /// group name as a prefix so the mutation targets the correct nested struct.
-fn expand_flattened_path(env: &Env, entity: &EntityRef, path: &mut Vec<FieldPathSegment>) {
+fn expand_flattened_path(
+    ctx: &dyn AssignContext,
+    entity: &EntityRef,
+    path: &mut Vec<FieldPathSegment>,
+) {
     if let Some(FieldPathSegment::Field(field_name)) = path.first()
-        && let Some(entity_type) = env.state.entity_type_name(entity)
-        && let Some(group_name) = env
-            .interp
-            .type_env
+        && let Some(entity_type) = ctx.state_provider().entity_type_name(entity)
+        && let Some(group_name) = ctx
+            .type_env()
             .lookup_flattened_field(&entity_type, field_name)
     {
         path.insert(0, FieldPathSegment::Field(group_name.clone()));
@@ -159,29 +237,29 @@ fn expand_flattened_path(env: &Env, entity: &EntityRef, path: &mut Vec<FieldPath
 }
 
 /// Entity field mutation: convert segments to FieldPathSegments and emit MutateField.
-fn eval_assign_entity(
-    env: &mut Env,
+fn exec_assign_entity(
+    ctx: &mut dyn AssignContext,
     entity: EntityRef,
     segments: &[LValueSegment],
     op: AssignOp,
     rhs: Value,
-    span: ttrpg_ast::Span,
+    span: Span,
 ) -> Result<(), RuntimeError> {
-    let mut path = lvalue_segments_to_field_path(env, segments, span)?;
+    let mut path = resolve_segments_to_field_path(ctx, segments, span)?;
 
     // Apply group alias resolution from the checker
-    if let Some((seg_idx, real_name)) = env.interp.type_env.resolved_lvalue_aliases.get(&span)
+    if let Some((seg_idx, real_name)) = ctx.type_env().resolved_lvalue_aliases.get(&span)
         && *seg_idx < path.len()
     {
         path[*seg_idx] = FieldPathSegment::Field(real_name.clone());
     }
 
-    expand_flattened_path(env, &entity, &mut path);
+    expand_flattened_path(ctx, &entity, &mut path);
 
     // Look up resource bounds from the entity's field declaration.
     // Handles direct resource fields (e.g. HP: resource(0..=max_HP)) and
     // resource-valued maps (e.g. spell_slots: map<int, resource(0..=9)>).
-    let bounds = resolve_resource_bounds(env, &entity, &path);
+    let bounds = resolve_resource_bounds_ctx(ctx, &entity, &path);
 
     let effect = Effect::MutateField {
         entity,
@@ -190,16 +268,16 @@ fn eval_assign_entity(
         value: rhs,
         bounds,
     };
-    env.emit(effect);
+    ctx.emit(effect);
 
     Ok(())
 }
 
 /// Convert LValue segments to FieldPathSegments for entity mutation effects.
-fn lvalue_segments_to_field_path(
-    env: &mut Env,
+fn resolve_segments_to_field_path(
+    ctx: &mut dyn AssignContext,
     segments: &[LValueSegment],
-    span: ttrpg_ast::Span,
+    span: Span,
 ) -> Result<Vec<FieldPathSegment>, RuntimeError> {
     let mut path = Vec::with_capacity(segments.len());
     for seg in segments {
@@ -208,7 +286,7 @@ fn lvalue_segments_to_field_path(
                 path.push(FieldPathSegment::Field(name.clone()));
             }
             LValueSegment::Index(idx_expr) => {
-                let idx_val = eval_expr(env, idx_expr)?;
+                let idx_val = ctx.eval_expr(idx_expr)?;
                 path.push(FieldPathSegment::Index(idx_val));
             }
         }
@@ -233,19 +311,23 @@ enum EvalSegment {
 /// Pre-evaluates all index expressions, then walks the local value.
 /// If an Entity is encountered along the way, the remaining segments
 /// become an entity mutation via `eval_assign_entity_from_eval_segs`.
-fn eval_assign_local(
-    env: &mut Env,
+fn exec_assign_local(
+    ctx: &mut dyn AssignContext,
     root_name: &str,
     segments: &[LValueSegment],
     op: AssignOp,
     rhs: Value,
-    span: ttrpg_ast::Span,
+    span: Span,
 ) -> Result<(), RuntimeError> {
-    // Pre-evaluate all index expressions so we don't need env during mutation walk
-    let eval_segs = eval_segments(env, segments)?;
+    // Pre-evaluate all index expressions so we don't need ctx during mutation walk
+    let eval_segs = resolve_segments(ctx, segments)?;
 
-    // Walk the value (read-only) to check for entities in the path
-    let entity_depth = find_entity_depth(env, root_name, &eval_segs, span, env.state)?;
+    // Walk the value (read-only) to check for entities in the path.
+    // Scope the state_provider borrow so it doesn't conflict with later &mut ctx.
+    let entity_depth = {
+        let state = ctx.state_provider();
+        find_entity_depth(ctx, root_name, &eval_segs, span, state)?
+    };
 
     if let Some((depth, entity_ref)) = entity_depth {
         // Convert remaining EvalSegments to FieldPathSegments for entity mutation
@@ -265,15 +347,15 @@ fn eval_assign_local(
         }
 
         // Apply group alias resolution, adjusting index for entity depth
-        if let Some((seg_idx, real_name)) = env.interp.type_env.resolved_lvalue_aliases.get(&span) {
+        if let Some((seg_idx, real_name)) = ctx.type_env().resolved_lvalue_aliases.get(&span) {
             let adjusted = seg_idx.saturating_sub(depth);
             if adjusted < path.len() {
                 path[adjusted] = FieldPathSegment::Field(real_name.clone());
             }
         }
 
-        expand_flattened_path(env, &entity_ref, &mut path);
-        let bounds = resolve_resource_bounds(env, &entity_ref, &path);
+        expand_flattened_path(ctx, &entity_ref, &mut path);
+        let bounds = resolve_resource_bounds_ctx(ctx, &entity_ref, &path);
 
         let effect = Effect::MutateField {
             entity: entity_ref,
@@ -282,23 +364,27 @@ fn eval_assign_local(
             value: rhs,
             bounds,
         };
-        env.emit(effect);
+        ctx.emit(effect);
         return Ok(());
     }
 
-    // Pure local mutation: navigate into the value and apply the op
-    // Copy the shared state reference before taking &mut on env via lookup_mut.
-    let state = env.state;
-    let root = env.lookup_mut(root_name).ok_or_else(|| {
-        RuntimeError::with_span(format!("undefined variable `{root_name}`"), span)
-    })?;
+    // Pure local mutation: navigate into the value and apply the op.
+    // Split borrow: scopes (for lookup_mut) and state (for value_eq) are independent.
+    let (scopes, state) = ctx.scopes_mut_and_state();
+    let root = scopes
+        .iter_mut()
+        .rev()
+        .find_map(|s| s.bindings.get_mut(root_name))
+        .ok_or_else(|| {
+            RuntimeError::with_span(format!("undefined variable `{root_name}`"), span)
+        })?;
 
     apply_local_mutation(root, &eval_segs, 0, op, rhs, span, state)
 }
 
 /// Pre-evaluate all index expressions in LValue segments.
-fn eval_segments(
-    env: &mut Env,
+fn resolve_segments(
+    ctx: &mut dyn AssignContext,
     segments: &[LValueSegment],
 ) -> Result<Vec<EvalSegment>, RuntimeError> {
     let mut result = Vec::with_capacity(segments.len());
@@ -308,7 +394,7 @@ fn eval_segments(
                 result.push(EvalSegment::Field(name.clone()));
             }
             LValueSegment::Index(idx_expr) => {
-                let val = eval_expr(env, idx_expr)?;
+                let val = ctx.eval_expr(idx_expr)?;
                 result.push(EvalSegment::Index(val));
             }
         }
@@ -319,13 +405,13 @@ fn eval_segments(
 /// Find the depth at which an Entity is encountered when walking segments.
 /// Returns Some((depth, entity_ref)) if found, None if the path is pure local.
 fn find_entity_depth(
-    env: &Env,
+    ctx: &dyn AssignContext,
     root_name: &str,
     segments: &[EvalSegment],
-    span: ttrpg_ast::Span,
+    span: Span,
     state: &dyn StateProvider,
 ) -> Result<Option<(usize, EntityRef)>, RuntimeError> {
-    let mut current = env.lookup(root_name).cloned().ok_or_else(|| {
+    let mut current = ctx.lookup(root_name).cloned().ok_or_else(|| {
         RuntimeError::with_span(format!("undefined variable `{root_name}`"), span)
     })?;
 

@@ -87,6 +87,120 @@ impl ExecEnv {
     }
 }
 
+// ── Frame-based assignment context ─────────────────────────────
+
+/// Implements `AssignContext` for the frame-based execution path,
+/// allowing assignment logic to run without a bridge to the
+/// recursive `Interpreter`.
+struct FrameAssignCtx<'a, S: WritableState> {
+    scopes: &'a mut Vec<Scope>,
+    turn_actor: Option<EntityRef>,
+    core: &'a RuntimeCore,
+    state: &'a StateAdapter<S>,
+}
+
+impl<S: WritableState> crate::eval::AssignContext for FrameAssignCtx<'_, S> {
+    fn lookup(&self, name: &str) -> Option<&Value> {
+        for scope in self.scopes.iter().rev() {
+            if let Some(val) = scope.bindings.get(name) {
+                return Some(val);
+            }
+        }
+        None
+    }
+    fn lookup_mut(&mut self, name: &str) -> Option<&mut Value> {
+        for scope in self.scopes.iter_mut().rev() {
+            if let Some(val) = scope.bindings.get_mut(name) {
+                return Some(val);
+            }
+        }
+        None
+    }
+    fn push_scope(&mut self) {
+        self.scopes.push(Scope::new());
+    }
+    fn pop_scope(&mut self) {
+        self.scopes.pop();
+    }
+    fn bind(&mut self, name: Name, value: Value) {
+        if let Some(scope) = self.scopes.last_mut() {
+            scope.bindings.insert(name, value);
+        }
+    }
+    fn emit(&mut self, effect: Effect) {
+        self.state.emit_effect(&mut NoYieldHandler, effect);
+    }
+    fn turn_actor(&self) -> Option<EntityRef> {
+        self.turn_actor
+    }
+    fn type_env(&self) -> &ttrpg_checker::env::TypeEnv {
+        &self.core.type_env
+    }
+    fn program(&self) -> &ttrpg_ast::ast::Program {
+        &self.core.program
+    }
+    fn state_provider(&self) -> &dyn StateProvider {
+        self.state
+    }
+    fn eval_expr(&mut self, expr: &Spanned<ExprKind>) -> Result<Value, RuntimeError> {
+        // Lightweight evaluator for simple expressions (idents, literals).
+        // Covers the common cases for LValue index expressions and resource
+        // bound expressions. Falls back to a temporary Env for complex cases.
+        match &expr.node {
+            ExprKind::IntLit(n) => return Ok(Value::Int(*n)),
+            ExprKind::StringLit(s) => return Ok(Value::Str(s.clone().into())),
+            ExprKind::BoolLit(b) => return Ok(Value::Bool(*b)),
+            ExprKind::NoneLit => return Ok(Value::Option(None)),
+            ExprKind::Ident(name) => {
+                if let Some(val) = self.lookup(name) {
+                    return Ok(val.clone());
+                }
+                // Fall through to full eval (might be a const or enum variant)
+            }
+            _ => {}
+        }
+        // Fall back to a temporary Env for complex expressions.
+        // This creates a lightweight Interpreter for type metadata access
+        // but does NOT increment bridge stats.
+        let interp = Interpreter::bridge(
+            &self.core.program,
+            &self.core.type_env,
+            self.core.counters().0,
+            self.core.counters().1,
+            self.core.coverage.clone(),
+        );
+        let scopes = std::mem::take(self.scopes);
+        let turn_actor = self.turn_actor;
+        let (result, out_scopes) =
+            self.state
+                .run(&mut NoYieldHandler, |state_provider, effect_handler| {
+                    let mut tmp_env = Env {
+                        state: state_provider,
+                        handler: effect_handler,
+                        interp: &interp,
+                        scopes,
+                        turn_actor,
+                        cost_payer: None,
+                        current_invocation_id: None,
+                        emit_depth: 0,
+                        in_lifecycle_block: 0,
+                        lifecycle_condition_stack: Vec::new(),
+                        current_condition_token: None,
+                        return_value: None,
+                    };
+                    let result = crate::eval::eval_expr(&mut tmp_env, expr);
+                    (result, std::mem::take(&mut tmp_env.scopes))
+                });
+        *self.scopes = out_scopes;
+        let (inv, cond) = interp.id_counters();
+        self.core.sync_counters(inv, cond);
+        result
+    }
+    fn scopes_mut_and_state(&mut self) -> (&mut Vec<Scope>, &dyn StateProvider) {
+        (self.scopes, self.state)
+    }
+}
+
 // ── Bridge evaluation ──────────────────────────────────────────
 
 /// Handler that panics on any forwarded (host-decided) effect.
@@ -980,8 +1094,6 @@ pub(crate) enum ActionStep {
     AwaitCostEval,
     /// Run the resolve body via bridge.
     RunResolve,
-    /// Run the full pipeline (requires → cost → resolve) via bridge.
-    RunPipeline,
     /// Body completed: emit ActionCompleted.
     EmitCompleted,
     /// Completion ack received: restore context, pop with result.
@@ -1445,15 +1557,10 @@ impl Frame {
                                     env.bind(pname, pval);
                                 }
 
-                                // Set the post-defaults step before potentially
-                                // pushing FillDefaults. receive_child_result is a
-                                // no-op for these steps, and advance() will run
-                                // them directly.
-                                *step = if handler.is_some() {
-                                    ActionStep::RunPipeline
-                                } else {
-                                    ActionStep::EvalRequires
-                                };
+                                // Always flow through the frame-based state machine
+                                // (EvalRequires → EvalCost → RunResolve), even on the
+                                // sync path. This eliminates the RunPipeline bridge.
+                                *step = ActionStep::EvalRequires;
 
                                 // Push FillDefaults if there are defaults to evaluate.
                                 if !default_params.is_empty() {
@@ -1526,38 +1633,15 @@ impl Frame {
 
                     ActionStep::EvalRequires => {
                         if let Some(req_expr) = requires.as_ref() {
-                            if handler.is_some() {
-                                // Sync path — evaluate directly with handler.
-                                match bridge_eval_expr(core, env, state, req_expr) {
-                                    Ok(Value::Bool(passed)) => {
-                                        let effect = Effect::RequiresCheck {
-                                            action: name.clone(),
-                                            passed,
-                                            reason: None,
-                                        };
-                                        *body_result = Some(Ok(Value::Bool(passed)));
-                                        *step = ActionStep::AwaitRequires;
-                                        Advance::Yield(effect)
-                                    }
-                                    Ok(other) => Advance::Error(RuntimeError::with_span(
-                                        format!(
-                                            "requires clause must evaluate to Bool, got {other:?}"
-                                        ),
-                                        req_expr.span,
-                                    )),
-                                    Err(e) => Advance::Error(e),
-                                }
-                            } else {
-                                // Async path — push ResumableBridge for the
-                                // requires expression. AwaitRequiresEval will
-                                // receive the result.
-                                *step = ActionStep::AwaitRequiresEval;
-                                Advance::Push(Frame::ResumableBridge {
-                                    expr: req_expr.clone(),
-                                    expr_cache: Vec::new(),
-                                    span: req_expr.span,
-                                })
-                            }
+                            // Push ResumableBridge for the requires expression.
+                            // Both sync and async paths use the same frame-based
+                            // dispatch (ResumableBridge handles sync via real handler).
+                            *step = ActionStep::AwaitRequiresEval;
+                            Advance::Push(Frame::ResumableBridge {
+                                expr: req_expr.clone(),
+                                expr_cache: Vec::new(),
+                                span: req_expr.span,
+                            })
                         } else {
                             // No requires clause, skip to cost evaluation
                             *step = ActionStep::EvalCost;
@@ -1681,46 +1765,6 @@ impl Frame {
                             awaiting_fn: None,
                             awaiting_error: None,
                         })
-                    }
-
-                    ActionStep::RunPipeline => {
-                        // Run the full pipeline (requires → cost → resolve)
-                        // through the recursive evaluator with a handler.
-                        // Only reachable from the sync path (handler is Some).
-                        let h = handler
-                            .as_mut()
-                            .expect("RunPipeline requires a handler (sync path)");
-                        let actor_val = *actor;
-                        let name_val = name.clone();
-                        let requires_val = requires.clone();
-                        let cost_val = cost.clone();
-                        let resolve_val = resolve.clone();
-                        let hrt = *has_return_type;
-                        let span = *call_span;
-
-                        let result = bridge_eval_with(
-                            core,
-                            env,
-                            state,
-                            *h,
-                            BridgeCategory::Pipeline,
-                            move |tmp_env| {
-                                crate::action::execute_pipeline(
-                                    tmp_env,
-                                    &actor_val,
-                                    &name_val,
-                                    requires_val.as_ref(),
-                                    cost_val.as_ref(),
-                                    &resolve_val,
-                                    hrt,
-                                    span,
-                                )
-                            },
-                        );
-                        env.return_value = None;
-                        *body_result = Some(result);
-                        *step = ActionStep::EmitCompleted;
-                        Advance::Continue
                     }
 
                     ActionStep::EmitCompleted => {
@@ -2220,24 +2264,19 @@ impl Frame {
                             env.bind(name, value);
                         }
                         AwaitingFn::Assign { target, op, span } => {
-                            // RHS was evaluated by FunctionEval. Now
-                            // apply the assignment via bridge (the assign
-                            // logic does only locally-applied mutations).
+                            // RHS was evaluated by FunctionEval. Apply
+                            // the assignment directly via AssignContext
+                            // (no bridge needed).
                             let rhs = value;
-                            let assign_result = bridge_eval_with(
+                            let mut ctx = FrameAssignCtx {
+                                scopes: &mut env.scopes,
+                                turn_actor: env.turn_actor,
                                 core,
-                                env,
                                 state,
-                                &mut NoYieldHandler,
-                                BridgeCategory::Eval,
-                                |tmp_env| {
-                                    crate::eval::eval_assign_with_rhs(
-                                        tmp_env, &target, op, rhs, span,
-                                    )?;
-                                    Ok(Value::Void)
-                                },
-                            );
-                            if let Err(e) = assign_result {
+                            };
+                            if let Err(e) =
+                                crate::eval::exec_assign_with_rhs(&mut ctx, &target, op, rhs, span)
+                            {
                                 env.pop_scope();
                                 return Advance::Error(e);
                             }
@@ -2466,44 +2505,18 @@ impl Frame {
                 match phase {
                     DeriveEvalPhase::Init => {
                         if *is_table {
-                            // Tables are pure lookups — bridge as Eval.
+                            // Tables are pure lookups — dispatch directly
+                            // via AssignContext (no bridge needed).
                             let n = name.clone();
                             let a = args.clone();
-                            let result = if let Some(ref mut h) = handler {
-                                bridge_eval_with(
-                                    core,
-                                    env,
-                                    state,
-                                    *h,
-                                    BridgeCategory::Eval,
-                                    move |tmp_env| {
-                                        crate::call::dispatch_table_with_values(
-                                            tmp_env,
-                                            &n,
-                                            a,
-                                            Span::dummy(),
-                                        )
-                                    },
-                                )
-                            } else {
-                                let n2 = name.clone();
-                                let a2 = args.clone();
-                                bridge_eval_with(
-                                    core,
-                                    env,
-                                    state,
-                                    &mut NoYieldHandler,
-                                    BridgeCategory::Eval,
-                                    move |tmp_env| {
-                                        crate::call::dispatch_table_with_values(
-                                            tmp_env,
-                                            &n2,
-                                            a2,
-                                            Span::dummy(),
-                                        )
-                                    },
-                                )
+                            let mut ctx = FrameAssignCtx {
+                                scopes: &mut env.scopes,
+                                turn_actor: env.turn_actor,
+                                core,
+                                state,
                             };
+                            let result =
+                                crate::call::dispatch_table_exec(&mut ctx, &n, a, Span::dummy());
                             return match result {
                                 Ok(val) => Advance::Pop(val),
                                 Err(e) => Advance::Error(e),
@@ -3235,21 +3248,12 @@ impl Frame {
                         };
 
                         // 6. Find matching hooks and condition handlers.
-                        // These are pure queries — they create their own Env
-                        // internally. We need an Interpreter for the query.
-                        let interp = Interpreter::bridge(
-                            &core.program,
-                            &core.type_env,
-                            core.counters().0,
-                            core.counters().1,
-                            core.coverage.clone(),
-                        );
-
-                        // StateAdapter implements StateProvider directly.
+                        // These are pure queries — no Interpreter needed.
                         let candidates = state.entities_in_play();
 
                         let hook_result = crate::event::find_matching_hooks(
-                            &interp,
+                            &core.program,
+                            &core.type_env,
                             state,
                             event_name,
                             &payload,
@@ -3261,7 +3265,8 @@ impl Frame {
                         };
 
                         let cond_result = crate::event::find_matching_condition_handlers(
-                            &interp,
+                            &core.program,
+                            &core.type_env,
                             state,
                             event_name,
                             &payload,
@@ -3271,8 +3276,6 @@ impl Frame {
                             Ok(cr) => cr.handlers,
                             Err(e) => return Advance::Error(e),
                         };
-
-                        core.sync_counters(interp.id_counters().0, interp.id_counters().1);
 
                         // Save depth/lifecycle counters
                         *saved_emit_depth = env.emit_depth;
@@ -4270,11 +4273,7 @@ impl Frame {
         match self {
             Frame::ActionLifecycle {
                 step, body_result, ..
-            } if matches!(
-                step,
-                ActionStep::RunResolve | ActionStep::EvalRequires | ActionStep::RunPipeline
-            ) =>
-            {
+            } if matches!(step, ActionStep::RunResolve | ActionStep::EvalRequires) => {
                 *body_result = Some(Err(error));
                 *step = ActionStep::EmitCompleted;
                 Ok(())

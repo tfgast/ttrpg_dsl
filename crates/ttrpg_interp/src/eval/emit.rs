@@ -108,8 +108,14 @@ pub(crate) fn eval_emit(
 
     // 6. Get candidates and find matching hooks (off-board entities excluded)
     let candidates = env.state.entities_in_play();
-    let hook_result =
-        event::find_matching_hooks(env.interp, env.state, event_name, &payload, &candidates)?;
+    let hook_result = event::find_matching_hooks(
+        env.interp.program,
+        env.interp.type_env,
+        env.state,
+        event_name,
+        &payload,
+        &candidates,
+    )?;
 
     // 7. Execute each matching hook inline (with depth tracking)
     // Save and restore in_lifecycle_block so that hooks triggered via emit
@@ -134,7 +140,8 @@ pub(crate) fn eval_emit(
 
         // 8. Execute condition event handlers (after hooks, seeing post-hook state)
         let cond_result = event::find_matching_condition_handlers(
-            env.interp,
+            env.interp.program,
+            env.interp.type_env,
             env.state,
             event_name,
             &payload,

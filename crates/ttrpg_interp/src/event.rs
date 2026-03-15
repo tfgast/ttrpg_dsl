@@ -4,6 +4,9 @@ use ttrpg_ast::Name;
 use ttrpg_ast::ast::ConditionClause;
 use ttrpg_checker::ty::Ty;
 
+use ttrpg_ast::ast::Program;
+use ttrpg_checker::env::TypeEnv;
+
 use crate::Env;
 use crate::Interpreter;
 use crate::RuntimeError;
@@ -108,7 +111,7 @@ pub fn what_triggers(
         // For each candidate entity, try to match trigger bindings
         for candidate in candidates {
             if !receiver_matches_constraints(
-                interp,
+                interp.type_env,
                 state,
                 *candidate,
                 &reaction_decl.receiver_type,
@@ -162,13 +165,14 @@ pub fn what_triggers(
 /// Like `what_triggers`, this is a **pure query** — no effects are emitted.
 /// Hooks have no suppression logic: if the trigger bindings match, the hook fires.
 pub fn find_matching_hooks(
-    interp: &Interpreter,
+    program: &Program,
+    type_env: &TypeEnv,
     state: &dyn StateProvider,
     event_name: &str,
     payload: &Value,
     candidates: &[EntityRef],
 ) -> Result<HookResult, RuntimeError> {
-    let event_info = match interp.type_env.events.get(event_name) {
+    let event_info = match type_env.events.get(event_name) {
         Some(info) => info.clone(),
         None => {
             return Err(RuntimeError::new(format!("undefined event '{event_name}'")));
@@ -182,34 +186,30 @@ pub fn find_matching_hooks(
         }
     };
 
+    let interp = Interpreter::bridge(program, type_env, 0, 0, None);
     let mut noop_handler = NoopHandler;
-    let mut env = Env::new(state, &mut noop_handler, interp);
+    let mut env = Env::new(state, &mut noop_handler, &interp);
 
     let mut hooks = Vec::new();
 
     // Use the trigger index to find only hooks that listen for this event
     let empty = Vec::new();
-    let triggered_names = interp
-        .type_env
-        .trigger_index
-        .get(event_name)
-        .unwrap_or(&empty);
+    let triggered_names = type_env.trigger_index.get(event_name).unwrap_or(&empty);
 
     for hook_name in triggered_names {
         // Skip non-hooks (reactions share the same index)
-        if interp
-            .type_env
+        if type_env
             .functions
             .get(hook_name)
             .is_none_or(|fi| fi.kind != ttrpg_checker::env::FnKind::Hook)
         {
             continue;
         }
-        let hook_decl = &interp.program.hooks[hook_name];
+        let hook_decl = &program.hooks[hook_name];
 
         for candidate in candidates {
             if !receiver_matches_constraints(
-                interp,
+                type_env,
                 state,
                 *candidate,
                 &hook_decl.receiver_type,
@@ -243,13 +243,13 @@ pub fn find_matching_hooks(
 // ── Trigger matching ────────────────────────────────────────────
 
 fn receiver_matches_constraints(
-    interp: &Interpreter,
+    type_env: &TypeEnv,
     state: &dyn StateProvider,
     candidate: EntityRef,
     receiver_type: &ttrpg_ast::Spanned<ttrpg_ast::ast::TypeExpr>,
     with_clause: &ttrpg_ast::ast::WithClause,
 ) -> bool {
-    match interp.type_env.resolve_type(receiver_type) {
+    match type_env.resolve_type(receiver_type) {
         Ty::Entity(expected) => {
             if let Some(actual) = state.entity_type_name(&candidate)
                 && actual != expected
@@ -596,13 +596,14 @@ pub struct ConditionHandlerResult {
 ///
 /// Returns handlers in entity order -> application order -> clause order.
 pub fn find_matching_condition_handlers(
-    interp: &Interpreter,
+    program: &Program,
+    type_env: &TypeEnv,
     state: &dyn StateProvider,
     event_name: &str,
     payload: &Value,
     candidates: &[EntityRef],
 ) -> Result<ConditionHandlerResult, RuntimeError> {
-    let event_info = match interp.type_env.events.get(event_name) {
+    let event_info = match type_env.events.get(event_name) {
         Some(info) => info.clone(),
         None => {
             return Err(RuntimeError::new(format!("undefined event '{event_name}'")));
@@ -618,8 +619,7 @@ pub fn find_matching_condition_handlers(
 
     // Look up which conditions have on-event handlers for this event
     let empty_ct = Vec::new();
-    let condition_handlers = interp
-        .type_env
+    let condition_handlers = type_env
         .condition_trigger_index
         .get(event_name)
         .unwrap_or(&empty_ct);
@@ -680,15 +680,12 @@ pub fn find_matching_condition_handlers(
     }
 
     // Build traversal: deduplicate entities, snapshot conditions, compute stacking winners
-    let traversal = crate::pipeline::ConditionTraversal::build(
-        named_entities,
-        candidates,
-        state,
-        interp.program,
-    )?;
+    let traversal =
+        crate::pipeline::ConditionTraversal::build(named_entities, candidates, state, program)?;
 
+    let interp = Interpreter::bridge(program, type_env, 0, 0, None);
     let mut noop_handler = NoopHandler;
-    let mut env = Env::new(state, &mut noop_handler, interp);
+    let mut env = Env::new(state, &mut noop_handler, &interp);
 
     let mut handlers = Vec::new();
 
@@ -717,7 +714,7 @@ pub fn find_matching_condition_handlers(
                 }
 
                 // Look up the condition declaration to get the on-event clause
-                let cond_decl = match interp.program.conditions.get(cond_name.as_str()) {
+                let cond_decl = match program.conditions.get(cond_name.as_str()) {
                     Some(d) => d,
                     None => continue,
                 };
@@ -1668,8 +1665,15 @@ mod tests {
         let payload = make_payload(vec![]);
         let candidates = vec![EntityRef(1), EntityRef(2), EntityRef(3)];
 
-        let result =
-            find_matching_hooks(&interp, &state, "RoundStart", &payload, &candidates).unwrap();
+        let result = find_matching_hooks(
+            interp.program,
+            interp.type_env,
+            &state,
+            "RoundStart",
+            &payload,
+            &candidates,
+        )
+        .unwrap();
 
         assert_eq!(result.hooks.len(), 1);
         assert_eq!(result.hooks[0].name, "TrackCasting");

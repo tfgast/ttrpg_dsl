@@ -1,7 +1,8 @@
 use std::collections::BTreeMap;
 
 use ttrpg_ast::ast::{
-    ArmBody, DeclKind, ElseBranch, ExprKind, FieldDef, ForIterable, GuardKind, TopLevel, TypeExpr,
+    ArmBody, DeclKind, ElseBranch, ExprKind, FieldDef, ForIterable, GuardKind, Program, TopLevel,
+    TypeExpr,
 };
 use ttrpg_ast::{Name, Spanned};
 use ttrpg_checker::env::DeclInfo;
@@ -12,6 +13,7 @@ use crate::effect::FieldPathSegment;
 use crate::state::EntityRef;
 use crate::value::Value;
 
+use super::assign::AssignContext;
 use super::dispatch::eval_expr;
 
 // ── Helpers ────────────────────────────────────────────────────
@@ -73,7 +75,16 @@ pub(super) fn find_optional_group_fields<'a>(
 }
 
 pub(super) fn find_group_decl_fields<'a>(env: &'a Env, group_name: &str) -> Option<&'a [FieldDef]> {
-    for item in &env.interp.program.items {
+    find_group_decl_fields_in(env.interp.program, group_name)
+}
+
+/// Look up group fields by name from the program. Shared between
+/// `Env`-based and `AssignContext`-based call paths.
+pub(super) fn find_group_decl_fields_in<'a>(
+    program: &'a Program,
+    group_name: &str,
+) -> Option<&'a [FieldDef]> {
+    for item in &program.items {
         if let TopLevel::System(system) = &item.node {
             for decl in &system.decls {
                 if let DeclKind::Group(group_decl) = &decl.node
@@ -98,6 +109,15 @@ fn find_field_def_and_remaining<'a>(
     entity_type: &str,
     path: &[FieldPathSegment],
 ) -> Option<(&'a FieldDef, usize)> {
+    find_field_def_and_remaining_in(env.interp.program, entity_type, path)
+}
+
+/// Shared implementation for looking up field defs from the program.
+fn find_field_def_and_remaining_in<'a>(
+    program: &'a Program,
+    entity_type: &str,
+    path: &[FieldPathSegment],
+) -> Option<(&'a FieldDef, usize)> {
     if path.is_empty() {
         return None;
     }
@@ -106,7 +126,7 @@ fn find_field_def_and_remaining<'a>(
         _ => return None,
     };
 
-    for item in &env.interp.program.items {
+    for item in &program.items {
         if let TopLevel::System(system) = &item.node {
             for decl in &system.decls {
                 if let DeclKind::Entity(entity_decl) = &decl.node {
@@ -124,7 +144,7 @@ fn find_field_def_and_remaining<'a>(
                         .find(|g| g.name == *first_name)
                     {
                         let group_fields: &[FieldDef] = if group.is_external_ref {
-                            find_group_decl_fields(env, first_name)?
+                            find_group_decl_fields_in(program, first_name)?
                         } else {
                             group.fields.as_slice()
                         };
@@ -529,6 +549,78 @@ pub(crate) fn resolve_resource_bounds_pub(
     path: &[FieldPathSegment],
 ) -> Option<(Value, Value)> {
     resolve_resource_bounds(env, entity, path)
+}
+
+/// Like `resolve_resource_bounds` but operates on `AssignContext` instead of `Env`.
+/// Used by the frame-based executor to avoid constructing a full `Env`.
+pub(super) fn resolve_resource_bounds_ctx(
+    ctx: &mut dyn AssignContext,
+    entity: &EntityRef,
+    path: &[FieldPathSegment],
+) -> Option<(Value, Value)> {
+    let entity_type = ctx.state_provider().entity_type_name(entity)?;
+    let (bound_exprs, group_prefix) = {
+        let (field_def, consumed) =
+            find_field_def_and_remaining_in(ctx.program(), &entity_type, path)?;
+        let remaining = &path[consumed..];
+        let (min_expr, max_expr) =
+            extract_resource_bounds_from_type(&field_def.ty.node, remaining, &ctx.program().items)?;
+        let prefix = if path.len() > 1 {
+            &path[..path.len() - 1]
+        } else {
+            &[]
+        };
+        ((min_expr.clone(), max_expr.clone()), prefix.to_vec())
+    };
+    let min_val = eval_bound_expr_ctx(ctx, entity, &bound_exprs.0, &group_prefix)?;
+    let max_val = eval_bound_expr_ctx(ctx, entity, &bound_exprs.1, &group_prefix)?;
+    Some((min_val, max_val))
+}
+
+/// Like `eval_bound_expr` but operates on `AssignContext`.
+fn eval_bound_expr_ctx(
+    ctx: &mut dyn AssignContext,
+    entity: &EntityRef,
+    expr: &Spanned<ExprKind>,
+    group_prefix: &[FieldPathSegment],
+) -> Option<Value> {
+    // Try normal evaluation first (handles literals, in-scope variables, derives)
+    if let Ok(val) = ctx.eval_expr(expr) {
+        return Some(val);
+    }
+    // Collect identifiers and try to resolve them as entity fields
+    let mut idents = Vec::new();
+    collect_idents(expr, &mut idents);
+
+    let state = ctx.state_provider();
+    let mut bindings = Vec::new();
+    for name in &idents {
+        if ctx.lookup(name).is_none() {
+            let resolved = if !group_prefix.is_empty() {
+                let mut full_path = group_prefix.to_vec();
+                full_path.push(FieldPathSegment::Field(name.clone()));
+                crate::adapter::read_at_path(state, entity, &full_path)
+            } else {
+                None
+            };
+            let resolved = resolved.or_else(|| state.read_field(entity, name));
+            if let Some(val) = resolved {
+                bindings.push((name.clone(), val));
+            }
+        }
+    }
+    if bindings.is_empty() {
+        return None;
+    }
+
+    // Push a temporary scope with entity field values and retry
+    ctx.push_scope();
+    for (name, val) in bindings {
+        ctx.bind(name, val);
+    }
+    let result = ctx.eval_expr(expr).ok();
+    ctx.pop_scope();
+    result
 }
 
 /// Try to resolve a bare ident as an enum variant using an expected type hint.
