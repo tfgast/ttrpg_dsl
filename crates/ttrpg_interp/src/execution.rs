@@ -854,6 +854,397 @@ fn try_frame_dispatch_stmt<S: WritableState>(
     )))
 }
 
+/// Restore a single budget (ProvisionBudget or ClearBudget) via the
+/// StateAdapter. Budget effects are mutations applied locally, so
+/// NoYieldHandler is safe.
+fn restore_single_budget<S: WritableState>(
+    state: &StateAdapter<S>,
+    actor: EntityRef,
+    prev_budget: Option<BTreeMap<Name, Value>>,
+    span: Span,
+) -> Result<(), RuntimeError> {
+    match prev_budget {
+        Some(old_budget) => {
+            let resp = state.emit_effect(
+                &mut NoYieldHandler,
+                Effect::ProvisionBudget {
+                    actor,
+                    budget: old_budget,
+                },
+            );
+            if let Response::Vetoed = resp {
+                Err(RuntimeError::with_span(
+                    "with_budget: budget restore was vetoed by host",
+                    span,
+                ))
+            } else {
+                Ok(())
+            }
+        }
+        None => {
+            let resp = state.emit_effect(&mut NoYieldHandler, Effect::ClearBudget { actor });
+            if let Response::Vetoed = resp {
+                Err(RuntimeError::with_span(
+                    "with_budget: budget clear was vetoed by host",
+                    span,
+                ))
+            } else {
+                Ok(())
+            }
+        }
+    }
+}
+
+/// Budget cleanup for error paths (body error takes precedence).
+/// Silently restores budgets without propagating cleanup errors.
+fn restore_awaiting_budget<S: WritableState>(
+    state: &StateAdapter<S>,
+    awaiting: &AwaitingFn,
+) {
+    match awaiting {
+        AwaitingFn::WithBudget {
+            actor,
+            prev_budget,
+            span,
+        } => {
+            let _ = restore_single_budget(state, *actor, prev_budget.clone(), *span);
+        }
+        AwaitingFn::WithBudgets { snapshots, span } => {
+            for (actor, prev) in snapshots.iter().rev() {
+                let _ = restore_single_budget(state, *actor, prev.clone(), *span);
+            }
+        }
+        _ => {}
+    }
+}
+
+/// Evaluate a single expression using the handler if available, or
+/// NoYieldHandler if not. Used by the native statement dispatch path
+/// for sub-expressions.
+fn eval_expr_via_handler<S: WritableState>(
+    core: &RuntimeCore,
+    env: &mut ExecEnv,
+    state: &StateAdapter<S>,
+    expr: &Spanned<ExprKind>,
+    handler: &mut Option<&mut dyn EffectHandler>,
+) -> Result<Value, RuntimeError> {
+    match handler {
+        Some(h) => bridge_eval_with(
+            core, env, state, *h, BridgeCategory::Eval,
+            |tmp_env| crate::eval::eval_expr(tmp_env, expr),
+        ),
+        None => bridge_eval_expr(core, env, state, expr),
+    }
+}
+
+/// Result of a native dispatch that pushes a child frame.
+enum NativeDispatch {
+    Push(Frame, AwaitingFn),
+}
+
+/// Try to dispatch `with_budget` natively: evaluate entity + budget fields,
+/// provision the budget, and push a Block child for the body.
+fn try_dispatch_with_budget<S: WritableState>(
+    core: &RuntimeCore,
+    env: &mut ExecEnv,
+    state: &StateAdapter<S>,
+    handler: &mut Option<&mut dyn EffectHandler>,
+    entity_expr: &Spanned<ExprKind>,
+    budget_fields: &[(Spanned<Name>, Spanned<ExprKind>)],
+    body: &Block,
+    span: Span,
+) -> Result<NativeDispatch, RuntimeError> {
+    let entity_val = eval_expr_via_handler(core, env, state, entity_expr, handler)?;
+    let actor = match entity_val {
+        Value::Entity(r) => r,
+        _ => {
+            return Err(RuntimeError::with_span(
+                "with_budget: expected entity value",
+                entity_expr.span,
+            ));
+        }
+    };
+
+    let mut budget = BTreeMap::new();
+    for (name, expr) in budget_fields {
+        let val = eval_expr_via_handler(core, env, state, expr, handler)?;
+        budget.insert(name.node.clone(), val);
+    }
+
+    // Snapshot previous budget.
+    let prev_budget = state.read_turn_budget(&actor);
+
+    // Emit ProvisionBudget (mutation — applied locally by StateAdapter).
+    let resp = state.emit_effect(
+        &mut NoYieldHandler,
+        Effect::ProvisionBudget {
+            actor,
+            budget,
+        },
+    );
+    if let Response::Vetoed = resp {
+        return Err(RuntimeError::with_span(
+            "with_budget: ProvisionBudget was vetoed by host",
+            span,
+        ));
+    }
+
+    Ok(NativeDispatch::Push(
+        Frame::Block {
+            stmts: body.node.clone(),
+            index: 0,
+            result: Value::Void,
+            expr_cache: Vec::new(),
+            awaiting_fn: None,
+            awaiting_error: None,
+        },
+        AwaitingFn::WithBudget {
+            actor,
+            prev_budget,
+            span,
+        },
+    ))
+}
+
+/// Try to dispatch `with_budgets` natively: evaluate specs, provision
+/// budgets, and push a Block child for the body.
+fn try_dispatch_with_budgets<S: WritableState>(
+    core: &RuntimeCore,
+    env: &mut ExecEnv,
+    state: &StateAdapter<S>,
+    handler: &mut Option<&mut dyn EffectHandler>,
+    specs_expr: &Spanned<ExprKind>,
+    body: &Block,
+    span: Span,
+) -> Result<NativeDispatch, RuntimeError> {
+    let specs_val = eval_expr_via_handler(core, env, state, specs_expr, handler)?;
+    let spec_list = match specs_val {
+        Value::List(items) => items,
+        _ => {
+            return Err(RuntimeError::with_span(
+                "with_budgets: expected list of BudgetSpec",
+                specs_expr.span,
+            ));
+        }
+    };
+
+    // Extract (actor, budget) pairs from each BudgetSpec struct.
+    let mut entries = Vec::with_capacity(spec_list.len());
+    for item in &spec_list {
+        match item {
+            Value::Struct { name, fields } if name == "BudgetSpec" => {
+                let actor = match fields.get("actor") {
+                    Some(Value::Entity(r)) => *r,
+                    _ => {
+                        return Err(RuntimeError::with_span(
+                            "with_budgets: BudgetSpec missing entity `actor` field",
+                            specs_expr.span,
+                        ));
+                    }
+                };
+                let budget = match fields.get("budget") {
+                    Some(Value::Struct {
+                        name: bn,
+                        fields: bf,
+                    }) if bn == "TurnBudget" => bf.clone(),
+                    _ => {
+                        return Err(RuntimeError::with_span(
+                            "with_budgets: BudgetSpec missing TurnBudget `budget` field",
+                            specs_expr.span,
+                        ));
+                    }
+                };
+                entries.push((actor, budget));
+            }
+            _ => {
+                return Err(RuntimeError::with_span(
+                    "with_budgets: list elements must be BudgetSpec structs",
+                    specs_expr.span,
+                ));
+            }
+        }
+    }
+
+    // Snapshot previous budgets and provision new ones.
+    let mut snapshots: Vec<(EntityRef, Option<BTreeMap<Name, Value>>)> =
+        Vec::with_capacity(entries.len());
+
+    for (actor, budget) in &entries {
+        snapshots.push((*actor, state.read_turn_budget(actor)));
+        let resp = state.emit_effect(
+            &mut NoYieldHandler,
+            Effect::ProvisionBudget {
+                actor: *actor,
+                budget: budget.clone(),
+            },
+        );
+        if let Response::Vetoed = resp {
+            // Rollback already-provisioned budgets.
+            for (prev_actor, prev_budget) in snapshots.into_iter().rev() {
+                let _ = restore_single_budget(state, prev_actor, prev_budget, span);
+            }
+            return Err(RuntimeError::with_span(
+                "with_budgets: ProvisionBudget was vetoed by host",
+                span,
+            ));
+        }
+    }
+
+    Ok(NativeDispatch::Push(
+        Frame::Block {
+            stmts: body.node.clone(),
+            index: 0,
+            result: Value::Void,
+            expr_cache: Vec::new(),
+            awaiting_fn: None,
+            awaiting_error: None,
+        },
+        AwaitingFn::WithBudgets { snapshots, span },
+    ))
+}
+
+/// Dispatch `grant entity.GroupName { fields }` natively: evaluate
+/// entity + field expressions, look up defaults, emit GrantGroup.
+fn try_dispatch_grant<S: WritableState>(
+    core: &RuntimeCore,
+    env: &mut ExecEnv,
+    state: &StateAdapter<S>,
+    handler: &mut Option<&mut dyn EffectHandler>,
+    entity_expr: &Spanned<ExprKind>,
+    group_name: &Name,
+    field_inits: &[ttrpg_ast::ast::StructFieldInit],
+    stmt_span: Span,
+) -> Result<(), RuntimeError> {
+    let entity_val = eval_expr_via_handler(core, env, state, entity_expr, handler)?;
+    let entity_ref = match entity_val {
+        Value::Entity(r) => r,
+        _ => {
+            return Err(RuntimeError::with_span(
+                "grant: expected entity value",
+                entity_expr.span,
+            ));
+        }
+    };
+
+    // Evaluate explicit field initializers.
+    let mut fields = BTreeMap::new();
+    for init in field_inits {
+        let val = eval_expr_via_handler(core, env, state, &init.value, handler)?;
+        fields.insert(init.name.clone(), val);
+    }
+
+    // Collect defaults from the entity declaration's optional group.
+    let entity_type = state.entity_type_name(&entity_ref);
+    let defaults: Vec<_> =
+        crate::eval::find_optional_group_fields_in(
+            &core.program,
+            entity_type.as_deref(),
+            group_name,
+        )
+        .into_iter()
+        .flatten()
+        .filter_map(|fd| {
+            if fields.contains_key(&fd.name) {
+                return None;
+            }
+            fd.default.clone().map(|d| (fd.name.clone(), d))
+        })
+        .collect();
+
+    for (name, default_expr) in &defaults {
+        let val = eval_expr_via_handler(core, env, state, default_expr, handler)?;
+        fields.insert(name.clone(), val);
+    }
+
+    let struct_val = Value::Struct {
+        name: group_name.clone(),
+        fields,
+    };
+
+    let resp = state.emit_effect(
+        &mut NoYieldHandler,
+        Effect::GrantGroup {
+            entity: entity_ref,
+            group_name: group_name.clone(),
+            fields: struct_val,
+        },
+    );
+    if let Response::Vetoed = resp {
+        return Err(RuntimeError::with_span(
+            format!("grant {group_name} was vetoed by host"),
+            stmt_span,
+        ));
+    }
+    Ok(())
+}
+
+/// Dispatch `revoke entity.GroupName` natively: evaluate entity,
+/// emit RevokeGroup.
+fn try_dispatch_revoke_stmt<S: WritableState>(
+    core: &RuntimeCore,
+    env: &mut ExecEnv,
+    state: &StateAdapter<S>,
+    handler: &mut Option<&mut dyn EffectHandler>,
+    entity_expr: &Spanned<ExprKind>,
+    group_name: &Name,
+    stmt_span: Span,
+) -> Result<(), RuntimeError> {
+    let entity_val = eval_expr_via_handler(core, env, state, entity_expr, handler)?;
+    let entity_ref = match entity_val {
+        Value::Entity(r) => r,
+        _ => {
+            return Err(RuntimeError::with_span(
+                "revoke: expected entity value",
+                entity_expr.span,
+            ));
+        }
+    };
+
+    let resp = state.emit_effect(
+        &mut NoYieldHandler,
+        Effect::RevokeGroup {
+            entity: entity_ref,
+            group_name: group_name.clone(),
+        },
+    );
+    if let Response::Vetoed = resp {
+        return Err(RuntimeError::with_span(
+            format!("revoke {group_name} was vetoed by host"),
+            stmt_span,
+        ));
+    }
+    Ok(())
+}
+
+/// Extract the expression from a Let/Assign/Expr/Return(Some) statement
+/// for ResumableBridge dispatch on the async path. Returns the expression
+/// to evaluate and the AwaitingFn to apply on completion.
+///
+/// Called only after `try_frame_dispatch_stmt` returns `Ok(None)`, so
+/// call expressions have already been handled.
+fn extract_resumable_expr(
+    stmt: &Spanned<StmtKind>,
+) -> Option<(Spanned<ExprKind>, AwaitingFn)> {
+    match &stmt.node {
+        StmtKind::Expr(expr) => Some((expr.clone(), AwaitingFn::ExprStmt)),
+        StmtKind::Let { name, value, .. } => {
+            Some((value.clone(), AwaitingFn::LetBinding { name: name.clone() }))
+        }
+        StmtKind::Assign { target, op, value } => Some((
+            value.clone(),
+            AwaitingFn::Assign {
+                target: target.clone(),
+                op: *op,
+                span: stmt.span,
+            },
+        )),
+        StmtKind::Return(Some(expr)) => {
+            Some((expr.clone(), AwaitingFn::Return))
+        }
+        _ => None,
+    }
+}
+
 /// Creates a temporary `Interpreter` and `Env` backed by the step-based
 /// context, runs `eval_block`, and syncs state back. Locally-applied
 /// mutation effects are handled by the `StateAdapter`; host-decided
@@ -2251,7 +2642,11 @@ impl Frame {
             } => {
                 // Handle error from a child frame dispatched via awaiting_fn.
                 if let Some(err) = awaiting_error.take() {
-                    awaiting_fn.take();
+                    // Budget variants need cleanup even on error (body error
+                    // takes precedence over cleanup error, matching scoped_budget).
+                    if let Some(awaiting) = awaiting_fn.take() {
+                        restore_awaiting_budget(state, &awaiting);
+                    }
                     env.pop_scope();
                     return Advance::Error(err);
                 }
@@ -2291,6 +2686,39 @@ impl Frame {
                             env.pop_scope();
                             return Advance::Pop(ret);
                         }
+                        AwaitingFn::WithBudget {
+                            actor,
+                            prev_budget,
+                            span,
+                        } => {
+                            // Restore previous budget (matches scoped_budget cleanup).
+                            let cleanup = restore_single_budget(state, actor, prev_budget, span);
+                            if let Err(e) = cleanup {
+                                env.pop_scope();
+                                return Advance::Error(e);
+                            }
+                            *result = value;
+                        }
+                        AwaitingFn::WithBudgets { snapshots, span } => {
+                            // Restore all budgets in reverse order.
+                            let mut cleanup_err = None;
+                            for (actor, prev) in snapshots.into_iter().rev() {
+                                if let Err(e) = restore_single_budget(state, actor, prev, span)
+                                    && cleanup_err.is_none()
+                                {
+                                    cleanup_err = Some(e);
+                                }
+                            }
+                            if let Some(e) = cleanup_err {
+                                env.pop_scope();
+                                return Advance::Error(e);
+                            }
+                            *result = value;
+                        }
+                        AwaitingFn::WithCostPayer { prev_cost_payer } => {
+                            env.cost_payer = prev_cost_payer;
+                            *result = value;
+                        }
                     }
                     *index += 1;
                     expr_cache.clear();
@@ -2320,8 +2748,152 @@ impl Frame {
                     return Advance::Pop(result.clone());
                 }
 
-                // Evaluate the current statement via bridge.
+                // Evaluate the current statement.
                 let stmt = stmts[*index].clone();
+
+                // ── Path-independent native dispatch ────────────────
+                // These statements have no sub-expressions that could
+                // yield, so they work identically on sync and async paths.
+
+                // Return(None): bare `return;` — no expression to evaluate.
+                if let StmtKind::Return(None) = &stmt.node {
+                    env.return_value = Some(Value::Void);
+                    env.pop_scope();
+                    return Advance::Pop(Value::Void);
+                }
+
+                // WithCostPayer: swap cost_payer, push Block child for body.
+                if let StmtKind::WithCostPayer {
+                    entity: ref entity_expr,
+                    body: ref body_block,
+                    ..
+                } = stmt.node
+                {
+                    let entity_val = eval_expr_via_handler(
+                        core, env, state, entity_expr, &mut handler,
+                    );
+                    match entity_val {
+                        Ok(Value::Entity(payer)) => {
+                            let prev = env.cost_payer;
+                            env.cost_payer = Some(payer);
+                            *awaiting_fn = Some(AwaitingFn::WithCostPayer {
+                                prev_cost_payer: prev,
+                            });
+                            return Advance::Push(Frame::Block {
+                                stmts: body_block.node.clone(),
+                                index: 0,
+                                result: Value::Void,
+                                expr_cache: Vec::new(),
+                                awaiting_fn: None,
+                                awaiting_error: None,
+                            });
+                        }
+                        Ok(_) => {
+                            env.pop_scope();
+                            return Advance::Error(RuntimeError::with_span(
+                                "with_cost_payer: expected entity value",
+                                entity_expr.span,
+                            ));
+                        }
+                        Err(e) => {
+                            env.pop_scope();
+                            return Advance::Error(e);
+                        }
+                    }
+                }
+
+                // WithBudget: provision budget, push Block child for body.
+                if let StmtKind::WithBudget {
+                    entity: ref entity_expr,
+                    budget_fields: ref budget_field_exprs,
+                    body: ref body_stmts,
+                    span: wb_span,
+                } = stmt.node
+                {
+                    match try_dispatch_with_budget(
+                        core, env, state, &mut handler, entity_expr,
+                        budget_field_exprs, body_stmts, wb_span,
+                    ) {
+                        Ok(advance) => {
+                            match advance {
+                                NativeDispatch::Push(frame, awaiting) => {
+                                    *awaiting_fn = Some(awaiting);
+                                    return Advance::Push(frame);
+                                }
+                            }
+                        }
+                        Err(e) => {
+                            env.pop_scope();
+                            return Advance::Error(e);
+                        }
+                    }
+                }
+
+                // WithBudgets: provision budgets, push Block child for body.
+                if let StmtKind::WithBudgets {
+                    specs: ref specs_expr,
+                    body: ref body_stmts,
+                    span: wb_span,
+                    ..
+                } = stmt.node
+                {
+                    match try_dispatch_with_budgets(
+                        core, env, state, &mut handler, specs_expr,
+                        body_stmts, wb_span,
+                    ) {
+                        Ok(NativeDispatch::Push(frame, awaiting)) => {
+                            *awaiting_fn = Some(awaiting);
+                            return Advance::Push(frame);
+                        }
+                        Err(e) => {
+                            env.pop_scope();
+                            return Advance::Error(e);
+                        }
+                    }
+                }
+
+                // Grant: evaluate entity/fields, emit GrantGroup effect.
+                if let StmtKind::Grant {
+                    entity: ref entity_expr,
+                    group_name: ref gname,
+                    fields: ref field_inits,
+                } = stmt.node
+                {
+                    match try_dispatch_grant(
+                        core, env, state, &mut handler, entity_expr,
+                        gname, field_inits, stmt.span,
+                    ) {
+                        Ok(()) => {
+                            *index += 1;
+                            return Advance::Continue;
+                        }
+                        Err(e) => {
+                            env.pop_scope();
+                            return Advance::Error(e);
+                        }
+                    }
+                }
+
+                // Revoke: evaluate entity, emit RevokeGroup effect.
+                if let StmtKind::Revoke {
+                    entity: ref entity_expr,
+                    group_name: ref gname,
+                } = stmt.node
+                {
+                    match try_dispatch_revoke_stmt(
+                        core, env, state, &mut handler, entity_expr,
+                        gname, stmt.span,
+                    ) {
+                        Ok(()) => {
+                            *index += 1;
+                            return Advance::Continue;
+                        }
+                        Err(e) => {
+                            env.pop_scope();
+                            return Advance::Error(e);
+                        }
+                    }
+                }
 
                 if let Some(ref mut h) = handler {
                     // Sync path: handler forwards host-decided effects.
@@ -2356,7 +2928,7 @@ impl Frame {
                             env.pop_scope();
                             return Advance::Error(e);
                         }
-                        Ok(None) => {} // fall through to CachingHandler
+                        Ok(None) => {} // fall through
                     }
 
                     // Intercept emit statements for frame-based dispatch.
@@ -2385,6 +2957,19 @@ impl Frame {
                         // EmitEval produces Void; treat like an expr stmt.
                         *awaiting_fn = Some(AwaitingFn::ExprStmt);
                         return Advance::Push(emit_frame);
+                    }
+
+                    // Let/Assign/Expr with non-call expressions: push
+                    // ResumableBridge instead of using CachingHandler.
+                    if let Some((bridge_expr, awaiting)) =
+                        extract_resumable_expr(&stmt)
+                    {
+                        *awaiting_fn = Some(awaiting);
+                        return Advance::Push(Frame::ResumableBridge {
+                            expr: bridge_expr,
+                            expr_cache: std::mem::take(expr_cache),
+                            span: stmt.span,
+                        });
                     }
 
                     // Fall back to CachingHandler bridge for statements
@@ -4490,6 +5075,21 @@ pub(crate) enum AwaitingFn {
     },
     /// Return statement — child result becomes the return value.
     Return,
+    /// WithBudget body completed — restore previous budget.
+    WithBudget {
+        actor: EntityRef,
+        prev_budget: Option<BTreeMap<Name, Value>>,
+        span: Span,
+    },
+    /// WithBudgets body completed — restore all previous budgets.
+    WithBudgets {
+        snapshots: Vec<(EntityRef, Option<BTreeMap<Name, Value>>)>,
+        span: Span,
+    },
+    /// WithCostPayer body completed — restore previous cost_payer.
+    WithCostPayer {
+        prev_cost_payer: Option<EntityRef>,
+    },
 }
 
 /// A parameter whose default expression may need evaluation.

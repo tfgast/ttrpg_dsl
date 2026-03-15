@@ -46,6 +46,36 @@ pub(crate) fn type_name(val: &Value) -> &'static str {
 }
 
 /// Walk `program.items` to find optional group field definitions by name,
+/// scoped to a specific entity type. Works with `&Program` directly
+/// (used by the frame system where no `Env` is available).
+pub(crate) fn find_optional_group_fields_in<'a>(
+    program: &'a Program,
+    entity_type: Option<&str>,
+    group_name: &str,
+) -> Option<&'a [FieldDef]> {
+    let entity_type = entity_type?;
+    for item in &program.items {
+        if let TopLevel::System(system) = &item.node {
+            for decl in &system.decls {
+                if let DeclKind::Entity(entity_decl) = &decl.node
+                    && entity_decl.name == entity_type
+                {
+                    for group in &entity_decl.optional_groups {
+                        if group.name == group_name {
+                            if group.is_external_ref {
+                                return find_group_decl_fields_in(program, group_name);
+                            }
+                            return Some(group.fields.as_slice());
+                        }
+                    }
+                }
+            }
+        }
+    }
+    None
+}
+
+/// Walk `program.items` to find optional group field definitions by name,
 /// scoped to a specific entity type.
 pub(super) fn find_optional_group_fields<'a>(
     env: &'a Env,
@@ -80,7 +110,7 @@ pub(super) fn find_group_decl_fields<'a>(env: &'a Env, group_name: &str) -> Opti
 
 /// Look up group fields by name from the program. Shared between
 /// `Env`-based and `AssignContext`-based call paths.
-pub(super) fn find_group_decl_fields_in<'a>(
+pub(crate) fn find_group_decl_fields_in<'a>(
     program: &'a Program,
     group_name: &str,
 ) -> Option<&'a [FieldDef]> {
