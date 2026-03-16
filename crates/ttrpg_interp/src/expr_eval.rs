@@ -187,6 +187,49 @@ pub(crate) enum ExprWork {
     },
 }
 
+// ── Patch helpers ────────────────────────────────────────────────
+
+/// Patch a `Branch` instruction's jump targets.
+fn patch_branch(work: &mut [ExprWork], idx: usize, then_pc: usize, else_pc: usize) {
+    if let ExprWork::Branch {
+        then_pc: tp,
+        else_pc: ep,
+        ..
+    } = &mut work[idx]
+    {
+        *tp = then_pc;
+        *ep = else_pc;
+    }
+}
+
+/// Patch an `IfLetTest` instruction's jump targets.
+fn patch_if_let_test(work: &mut [ExprWork], idx: usize, then_pc: usize, else_pc: usize) {
+    if let ExprWork::IfLetTest {
+        then_pc: tp,
+        else_pc: ep,
+        ..
+    } = &mut work[idx]
+    {
+        *tp = then_pc;
+        *ep = else_pc;
+    }
+}
+
+/// Patch a `Jump` instruction's target.
+fn patch_jump(work: &mut [ExprWork], idx: usize, target: usize) {
+    if let ExprWork::Jump(t) = &mut work[idx] {
+        *t = target;
+    }
+}
+
+/// Patch multiple `Jump` instructions to point to the current end of work.
+fn patch_jumps_to_end(work: &mut [ExprWork], indices: &[usize]) {
+    let end = work.len();
+    for &idx in indices {
+        patch_jump(work, idx, end);
+    }
+}
+
 // ── Compilation ─────────────────────────────────────────────────
 
 /// Try to compile an expression into a work sequence for ExprEval.
@@ -460,97 +503,11 @@ fn compile_inner(
             then_block,
             else_branch,
         } => {
-            compile_inner(condition, type_env, program, work)?;
-            let branch_idx = work.len();
-            work.push(ExprWork::Branch {
-                then_pc: 0,
-                else_pc: 0,
-                span,
-            }); // placeholder
-
-            // Then branch
-            let then_pc = work.len();
-            work.push(ExprWork::PushBlock(then_block.node.clone(), span));
-            let jump_idx = work.len();
-            work.push(ExprWork::Jump(0)); // placeholder
-
-            // Else branch
-            let else_pc = work.len();
-            match else_branch {
-                Some(ElseBranch::Block(block)) => {
-                    work.push(ExprWork::PushBlock(block.node.clone(), span));
-                }
-                Some(ElseBranch::If(if_expr)) => {
-                    // Recursively compile the else-if chain
-                    compile_inner(if_expr, type_env, program, work)?;
-                }
-                None => {
-                    work.push(ExprWork::Literal(Value::Void, span));
-                }
-            }
-            let end_pc = work.len();
-
-            // Patch
-            if let ExprWork::Branch {
-                then_pc: tp,
-                else_pc: ep,
-                ..
-            } = &mut work[branch_idx]
-            {
-                *tp = then_pc;
-                *ep = else_pc;
-            }
-            if let ExprWork::Jump(target) = &mut work[jump_idx] {
-                *target = end_pc;
-            }
+            compile_if_expr(condition, then_block, else_branch.as_ref(), span, type_env, program, work)?;
         }
 
         ExprKind::GuardMatch { arms } => {
-            let mut jump_patches = Vec::new();
-            for arm in arms {
-                match &arm.guard {
-                    GuardKind::Wildcard => {
-                        work.push(ExprWork::Literal(Value::Bool(true), arm.span));
-                    }
-                    GuardKind::Expr(expr) => {
-                        compile_inner(expr, type_env, program, work)?;
-                    }
-                }
-                let branch_idx = work.len();
-                work.push(ExprWork::Branch {
-                    then_pc: 0,
-                    else_pc: 0,
-                    span: arm.span,
-                });
-                let then_pc = work.len();
-                match &arm.body {
-                    ArmBody::Block(block) => {
-                        work.push(ExprWork::PushBlock(block.node.clone(), arm.span));
-                    }
-                    ArmBody::Expr(expr) => {
-                        compile_inner(expr, type_env, program, work)?;
-                    }
-                }
-                jump_patches.push(work.len());
-                work.push(ExprWork::Jump(0)); // placeholder
-                let else_pc = work.len();
-                if let ExprWork::Branch {
-                    then_pc: tp,
-                    else_pc: ep,
-                    ..
-                } = &mut work[branch_idx]
-                {
-                    *tp = then_pc;
-                    *ep = else_pc;
-                }
-            }
-            // Patch all jumps to end
-            let end_pc = work.len();
-            for idx in jump_patches {
-                if let ExprWork::Jump(target) = &mut work[idx] {
-                    *target = end_pc;
-                }
-            }
+            compile_guard_match(arms, type_env, program, work)?;
         }
 
         ExprKind::IfLet {
@@ -559,53 +516,7 @@ fn compile_inner(
             then_block,
             else_branch,
         } => {
-            // Evaluate scrutinee → value on operand stack
-            compile_inner(scrutinee, type_env, program, work)?;
-
-            // IfLetTest: pop scrutinee, pattern match, branch
-            let test_idx = work.len();
-            work.push(ExprWork::IfLetTest {
-                pattern: pattern.clone(),
-                then_pc: 0,
-                else_pc: 0,
-                span,
-            }); // placeholder targets
-
-            // Then branch (runs in the scope pushed by IfLetTest)
-            let then_pc = work.len();
-            work.push(ExprWork::PushBlock(then_block.node.clone(), span));
-            work.push(ExprWork::PopScope);
-            let jump_idx = work.len();
-            work.push(ExprWork::Jump(0)); // placeholder
-
-            // Else branch
-            let else_pc = work.len();
-            match else_branch {
-                Some(ElseBranch::Block(block)) => {
-                    work.push(ExprWork::PushBlock(block.node.clone(), span));
-                }
-                Some(ElseBranch::If(if_expr)) => {
-                    compile_inner(if_expr, type_env, program, work)?;
-                }
-                None => {
-                    work.push(ExprWork::Literal(Value::Void, span));
-                }
-            }
-            let end_pc = work.len();
-
-            // Patch jump targets
-            if let ExprWork::IfLetTest {
-                then_pc: tp,
-                else_pc: ep,
-                ..
-            } = &mut work[test_idx]
-            {
-                *tp = then_pc;
-                *ep = else_pc;
-            }
-            if let ExprWork::Jump(target) = &mut work[jump_idx] {
-                *target = end_pc;
-            }
+            compile_if_let(pattern, scrutinee, then_block, else_branch.as_ref(), span, type_env, program, work)?;
         }
 
         ExprKind::StructLit {
@@ -747,68 +658,191 @@ fn compile_inner(
 
         // ── Phase 6: PatternMatch ──────────────────────────────
         ExprKind::PatternMatch { scrutinee, arms } => {
-            // Compile scrutinee — its value stays on the stack as long as
-            // we keep testing arms, removed by Pop once we commit to a body.
-            compile_inner(scrutinee, type_env, program, work)?;
-
-            let mut jump_patches = Vec::new(); // Jump-to-end after each arm body
-
-            for arm in arms {
-                // Dup scrutinee for this arm's pattern test
-                work.push(ExprWork::Dup);
-                let test_idx = work.len();
-                work.push(ExprWork::IfLetTest {
-                    pattern: Box::new(arm.pattern.clone()),
-                    then_pc: 0,
-                    else_pc: 0,
-                    span: arm.span,
-                });
-
-                // ── Match succeeded: remove original scrutinee, run body ──
-                let then_pc = work.len();
-                work.push(ExprWork::Pop); // pop original scrutinee
-                match &arm.body {
-                    ArmBody::Block(block) => {
-                        work.push(ExprWork::PushBlock(block.node.clone(), arm.span));
-                    }
-                    ArmBody::Expr(expr) => {
-                        compile_inner(expr, type_env, program, work)?;
-                    }
-                }
-                work.push(ExprWork::PopScope);
-                jump_patches.push(work.len());
-                work.push(ExprWork::Jump(0)); // placeholder: jump to end
-
-                // Patch IfLetTest targets
-                let else_pc = work.len();
-                if let ExprWork::IfLetTest {
-                    then_pc: tp,
-                    else_pc: ep,
-                    ..
-                } = &mut work[test_idx]
-                {
-                    *tp = then_pc;
-                    *ep = else_pc;
-                }
-            }
-
-            // No arm matched: pop scrutinee and error
-            work.push(ExprWork::Pop);
-            work.push(ExprWork::MatchFail(span));
-
-            // Patch all arm-end jumps to skip past the error
-            let end_pc = work.len();
-            for idx in jump_patches {
-                if let ExprWork::Jump(target) = &mut work[idx] {
-                    *target = end_pc;
-                }
-            }
+            compile_pattern_match(scrutinee, arms, span, type_env, program, work)?;
         }
 
         // Safety fallback for future ExprKind variants.
         #[allow(unreachable_patterns)]
         _ => return None,
     }
+    Some(())
+}
+
+// ── Extracted control-flow compilation helpers ──────────────────
+
+/// Compile an `if` / `else if` / `else` expression.
+fn compile_if_expr(
+    condition: &Spanned<ExprKind>,
+    then_block: &Spanned<Vec<Spanned<StmtKind>>>,
+    else_branch: Option<&ElseBranch>,
+    span: Span,
+    type_env: &TypeEnv,
+    program: &ttrpg_ast::ast::Program,
+    work: &mut Vec<ExprWork>,
+) -> Option<()> {
+    compile_inner(condition, type_env, program, work)?;
+    let branch_idx = work.len();
+    work.push(ExprWork::Branch {
+        then_pc: 0,
+        else_pc: 0,
+        span,
+    });
+
+    let then_pc = work.len();
+    work.push(ExprWork::PushBlock(then_block.node.clone(), span));
+    let jump_idx = work.len();
+    work.push(ExprWork::Jump(0));
+
+    let else_pc = work.len();
+    match else_branch {
+        Some(ElseBranch::Block(block)) => {
+            work.push(ExprWork::PushBlock(block.node.clone(), span));
+        }
+        Some(ElseBranch::If(if_expr)) => {
+            compile_inner(if_expr, type_env, program, work)?;
+        }
+        None => {
+            work.push(ExprWork::Literal(Value::Void, span));
+        }
+    }
+    let end_pc = work.len();
+
+    patch_branch(work, branch_idx, then_pc, else_pc);
+    patch_jump(work, jump_idx, end_pc);
+    Some(())
+}
+
+/// Compile a `guard match` expression (chain of condition → body arms).
+fn compile_guard_match(
+    arms: &[ttrpg_ast::ast::GuardArm],
+    type_env: &TypeEnv,
+    program: &ttrpg_ast::ast::Program,
+    work: &mut Vec<ExprWork>,
+) -> Option<()> {
+    let mut jump_patches = Vec::new();
+    for arm in arms {
+        match &arm.guard {
+            GuardKind::Wildcard => {
+                work.push(ExprWork::Literal(Value::Bool(true), arm.span));
+            }
+            GuardKind::Expr(expr) => {
+                compile_inner(expr, type_env, program, work)?;
+            }
+        }
+        let branch_idx = work.len();
+        work.push(ExprWork::Branch {
+            then_pc: 0,
+            else_pc: 0,
+            span: arm.span,
+        });
+        let then_pc = work.len();
+        match &arm.body {
+            ArmBody::Block(block) => {
+                work.push(ExprWork::PushBlock(block.node.clone(), arm.span));
+            }
+            ArmBody::Expr(expr) => {
+                compile_inner(expr, type_env, program, work)?;
+            }
+        }
+        jump_patches.push(work.len());
+        work.push(ExprWork::Jump(0));
+        let else_pc = work.len();
+        patch_branch(work, branch_idx, then_pc, else_pc);
+    }
+    patch_jumps_to_end(work, &jump_patches);
+    Some(())
+}
+
+/// Compile an `if let` expression with pattern matching.
+fn compile_if_let(
+    pattern: &Spanned<PatternKind>,
+    scrutinee: &Spanned<ExprKind>,
+    then_block: &Spanned<Vec<Spanned<StmtKind>>>,
+    else_branch: Option<&ElseBranch>,
+    span: Span,
+    type_env: &TypeEnv,
+    program: &ttrpg_ast::ast::Program,
+    work: &mut Vec<ExprWork>,
+) -> Option<()> {
+    compile_inner(scrutinee, type_env, program, work)?;
+
+    let test_idx = work.len();
+    work.push(ExprWork::IfLetTest {
+        pattern: Box::new(pattern.clone()),
+        then_pc: 0,
+        else_pc: 0,
+        span,
+    });
+
+    let then_pc = work.len();
+    work.push(ExprWork::PushBlock(then_block.node.clone(), span));
+    work.push(ExprWork::PopScope);
+    let jump_idx = work.len();
+    work.push(ExprWork::Jump(0));
+
+    let else_pc = work.len();
+    match else_branch {
+        Some(ElseBranch::Block(block)) => {
+            work.push(ExprWork::PushBlock(block.node.clone(), span));
+        }
+        Some(ElseBranch::If(if_expr)) => {
+            compile_inner(if_expr, type_env, program, work)?;
+        }
+        None => {
+            work.push(ExprWork::Literal(Value::Void, span));
+        }
+    }
+    let end_pc = work.len();
+
+    patch_if_let_test(work, test_idx, then_pc, else_pc);
+    patch_jump(work, jump_idx, end_pc);
+    Some(())
+}
+
+/// Compile a `match` expression with pattern arms.
+fn compile_pattern_match(
+    scrutinee: &Spanned<ExprKind>,
+    arms: &[ttrpg_ast::ast::PatternArm],
+    span: Span,
+    type_env: &TypeEnv,
+    program: &ttrpg_ast::ast::Program,
+    work: &mut Vec<ExprWork>,
+) -> Option<()> {
+    compile_inner(scrutinee, type_env, program, work)?;
+
+    let mut jump_patches = Vec::new();
+
+    for arm in arms {
+        work.push(ExprWork::Dup);
+        let test_idx = work.len();
+        work.push(ExprWork::IfLetTest {
+            pattern: Box::new(arm.pattern.clone()),
+            then_pc: 0,
+            else_pc: 0,
+            span: arm.span,
+        });
+
+        let then_pc = work.len();
+        work.push(ExprWork::Pop);
+        match &arm.body {
+            ArmBody::Block(block) => {
+                work.push(ExprWork::PushBlock(block.node.clone(), arm.span));
+            }
+            ArmBody::Expr(expr) => {
+                compile_inner(expr, type_env, program, work)?;
+            }
+        }
+        work.push(ExprWork::PopScope);
+        jump_patches.push(work.len());
+        work.push(ExprWork::Jump(0));
+
+        let else_pc = work.len();
+        patch_if_let_test(work, test_idx, then_pc, else_pc);
+    }
+
+    work.push(ExprWork::Pop);
+    work.push(ExprWork::MatchFail(span));
+    patch_jumps_to_end(work, &jump_patches);
     Some(())
 }
 
@@ -1176,71 +1210,14 @@ pub(crate) fn advance_expr_eval(
                 arg_meta,
                 span,
             } => {
-                let start = operands.len().saturating_sub(arg_meta.len());
-                let arg_values = operands.split_off(start);
-                let receiver = operands.pop().unwrap();
-                *pc += 1;
-
-                match resolve_call_method(
-                    receiver,
-                    method,
-                    arg_meta,
-                    &arg_values,
-                    *span,
-                    core,
-                    env,
-                    sp,
-                    eh,
-                ) {
-                    Ok(CallResult::Value(val)) => {
-                        operands.push(val);
-                        // stay in loop
-                    }
-                    Ok(CallResult::PushChild(frame)) => {
-                        return Advance::Push(frame);
-                    }
-                    Err(e) => return Advance::Error(e),
-                }
+                return advance_call_method(
+                    method, arg_meta, *span, operands, pc, core, env, sp, eh,
+                );
             }
 
             // ── Phase 3: Callable-value call ───────────────────
             ExprWork::CallValue { arg_meta, span } => {
-                let start = operands.len().saturating_sub(arg_meta.len());
-                let arg_values = operands.split_off(start);
-                let callee_val = operands.pop().unwrap();
-                *pc += 1;
-
-                match callee_val {
-                    Value::FnRef(fn_name) => {
-                        match dispatch_fn_ref_step(
-                            &fn_name,
-                            arg_meta,
-                            &arg_values,
-                            *span,
-                            core,
-                            env,
-                            sp,
-                            eh,
-                        ) {
-                            Ok(CallResult::Value(val)) => {
-                                operands.push(val);
-                            }
-                            Ok(CallResult::PushChild(frame)) => {
-                                return Advance::Push(frame);
-                            }
-                            Err(e) => return Advance::Error(e),
-                        }
-                    }
-                    other => {
-                        return Advance::Error(RuntimeError::with_span(
-                            format!(
-                                "expression of type {} is not callable",
-                                crate::value::value_type_display(&other)
-                            ),
-                            *span,
-                        ));
-                    }
-                }
+                return advance_call_value(arg_meta, *span, operands, pc, core, env, sp, eh);
             }
 
             // ── Phase 4: Short-circuit And/Or ─────────────────
@@ -1426,46 +1403,9 @@ pub(crate) fn advance_expr_eval(
                 group_specs,
                 span,
             } => {
-                // Pop base field values from operand stack (reverse order)
-                let total_group_fields: usize =
-                    group_specs.iter().map(|(_, names)| names.len()).sum();
-                let base_count = field_names.len();
-                let total = base_count + total_group_fields;
-                let start = operands.len().saturating_sub(total);
-                let all_values = operands.split_off(start);
-                let mut vals = all_values.into_iter();
-
-                // Build base fields
-                let base_fields: Vec<(Name, Value)> = field_names
-                    .iter()
-                    .map(|name| (name.clone(), vals.next().unwrap()))
-                    .collect();
-
-                // Build groups
-                let groups: Vec<crate::execution::GroupInit> = group_specs
-                    .iter()
-                    .map(|(group_name, gfield_names)| {
-                        let mut fields = BTreeMap::new();
-                        for fname in gfield_names {
-                            fields.insert(fname.clone(), vals.next().unwrap());
-                        }
-                        crate::execution::GroupInit {
-                            group_name: group_name.clone(),
-                            fields,
-                        }
-                    })
-                    .collect();
-
-                *pc += 1;
-                return Advance::Push(Frame::SpawnEntity {
-                    entity_type: entity_type.clone(),
-                    base_fields,
-                    groups,
-                    phase: crate::execution::SpawnPhase::Defaults,
-                    pending: None,
-                    entity_ref: None,
-                    span: *span,
-                });
+                return advance_spawn_entity(
+                    entity_type, field_names, group_specs, *span, operands, pc,
+                );
             }
         }
     }
@@ -1757,6 +1697,113 @@ fn advance_call_named(
         }
         Err(e) => Advance::Error(e),
     }
+}
+
+fn advance_call_method(
+    method: &Name,
+    arg_meta: &[ArgMeta],
+    span: Span,
+    operands: &mut Vec<Value>,
+    pc: &mut usize,
+    core: &RuntimeCore,
+    env: &mut ExecEnv,
+    sp: &dyn StateProvider,
+    eh: &mut dyn EffectHandler,
+) -> Advance {
+    let start = operands.len().saturating_sub(arg_meta.len());
+    let arg_values = operands.split_off(start);
+    let receiver = operands.pop().unwrap();
+    *pc += 1;
+
+    match resolve_call_method(receiver, method, arg_meta, &arg_values, span, core, env, sp, eh) {
+        Ok(CallResult::Value(val)) => {
+            operands.push(val);
+            Advance::Continue
+        }
+        Ok(CallResult::PushChild(frame)) => Advance::Push(frame),
+        Err(e) => Advance::Error(e),
+    }
+}
+
+fn advance_call_value(
+    arg_meta: &[ArgMeta],
+    span: Span,
+    operands: &mut Vec<Value>,
+    pc: &mut usize,
+    core: &RuntimeCore,
+    env: &mut ExecEnv,
+    sp: &dyn StateProvider,
+    eh: &mut dyn EffectHandler,
+) -> Advance {
+    let start = operands.len().saturating_sub(arg_meta.len());
+    let arg_values = operands.split_off(start);
+    let callee_val = operands.pop().unwrap();
+    *pc += 1;
+
+    match callee_val {
+        Value::FnRef(fn_name) => {
+            match dispatch_fn_ref_step(&fn_name, arg_meta, &arg_values, span, core, env, sp, eh) {
+                Ok(CallResult::Value(val)) => {
+                    operands.push(val);
+                    Advance::Continue
+                }
+                Ok(CallResult::PushChild(frame)) => Advance::Push(frame),
+                Err(e) => Advance::Error(e),
+            }
+        }
+        other => Advance::Error(RuntimeError::with_span(
+            format!(
+                "expression of type {} is not callable",
+                crate::value::value_type_display(&other)
+            ),
+            span,
+        )),
+    }
+}
+
+fn advance_spawn_entity(
+    entity_type: &Name,
+    field_names: &[Name],
+    group_specs: &[(Name, Vec<Name>)],
+    span: Span,
+    operands: &mut Vec<Value>,
+    pc: &mut usize,
+) -> Advance {
+    let total_group_fields: usize = group_specs.iter().map(|(_, names)| names.len()).sum();
+    let total = field_names.len() + total_group_fields;
+    let start = operands.len().saturating_sub(total);
+    let all_values = operands.split_off(start);
+    let mut vals = all_values.into_iter();
+
+    let base_fields: Vec<(Name, Value)> = field_names
+        .iter()
+        .map(|name| (name.clone(), vals.next().unwrap()))
+        .collect();
+
+    let groups: Vec<crate::execution::GroupInit> = group_specs
+        .iter()
+        .map(|(group_name, gfield_names)| {
+            let mut fields = BTreeMap::new();
+            for fname in gfield_names {
+                fields.insert(fname.clone(), vals.next().unwrap());
+            }
+            crate::execution::GroupInit {
+                group_name: group_name.clone(),
+                fields,
+            }
+        })
+        .collect();
+
+    *pc += 1;
+    Advance::Push(Frame::SpawnEntity {
+        entity_type: entity_type.clone(),
+        base_fields,
+        groups,
+        phase: crate::execution::SpawnPhase::Defaults,
+        pending: None,
+        entity_ref: None,
+        span,
+    })
 }
 
 fn resolve_call_named(
