@@ -222,7 +222,7 @@ fn compile_inner(
             work.push(ExprWork::Literal(Value::Bool(*b), span));
         }
         ExprKind::NoneLit => {
-            work.push(ExprWork::Literal(Value::Void, span));
+            work.push(ExprWork::Literal(Value::Option(None), span));
         }
         ExprKind::DiceLit {
             count,

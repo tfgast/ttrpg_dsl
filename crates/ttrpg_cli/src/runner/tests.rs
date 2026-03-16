@@ -50,7 +50,7 @@ fn eval_boolean() {
 #[test]
 fn eval_none_literal() {
     let mut runner = Runner::new();
-    assert_eq!(runner.eval("none").unwrap(), Value::Void);
+    assert_eq!(runner.eval("none").unwrap(), Value::Option(None));
 }
 
 #[test]

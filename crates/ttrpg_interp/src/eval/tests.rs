@@ -173,7 +173,7 @@ fn eval_none_lit() {
     let mut env = make_env(&state, &mut handler, &interp);
 
     let expr = spanned(ExprKind::NoneLit);
-    assert_eq!(eval_expr(&mut env, &expr).unwrap(), Value::Void);
+    assert_eq!(eval_expr(&mut env, &expr).unwrap(), Value::Option(None));
 }
 
 #[test]

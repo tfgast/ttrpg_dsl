@@ -636,7 +636,7 @@ system "test" {
         "Blessed should be revoked by DropSpell"
     );
     // last_spell should be none
-    assert_eq!(state.read_field(&caster, "last_spell"), Some(Value::Void));
+    assert_eq!(state.read_field(&caster, "last_spell"), Some(Value::Option(None)));
 }
 
 #[test]
