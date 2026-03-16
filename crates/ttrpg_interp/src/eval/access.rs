@@ -380,10 +380,7 @@ pub(crate) fn field_access_on_value(
         Value::Condition { name, args } => match field {
             "name" => Ok(Value::Str(name.to_string())),
             _ => args.get(field).cloned().ok_or_else(|| {
-                RuntimeError::with_span(
-                    format!("condition '{name}' has no field '{field}'"),
-                    span,
-                )
+                RuntimeError::with_span(format!("condition '{name}' has no field '{field}'"), span)
             }),
         },
 
@@ -458,9 +455,7 @@ pub(crate) fn index_on_value(
             .iter()
             .find(|(k, _)| value_eq(state, k, key))
             .map(|(_, v)| v.clone())
-            .ok_or_else(|| {
-                RuntimeError::with_span(format!("map key {key:?} not found"), span)
-            }),
+            .ok_or_else(|| RuntimeError::with_span(format!("map key {key:?} not found"), span)),
         _ => Err(RuntimeError::with_span(
             format!(
                 "cannot index {:?} with {:?}",

@@ -667,9 +667,9 @@ pub(crate) fn apply_unary_values(
     if op == UnaryOp::Neg
         && let Some((name, field, n)) = as_unit_value(val, type_env)
     {
-        let result = n.checked_neg().ok_or_else(|| {
-            RuntimeError::with_span("integer overflow in unit negation", span)
-        })?;
+        let result = n
+            .checked_neg()
+            .ok_or_else(|| RuntimeError::with_span("integer overflow in unit negation", span))?;
         return Ok(make_unit_value(name, field, result));
     }
     match (op, val) {

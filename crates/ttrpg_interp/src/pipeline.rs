@@ -1065,7 +1065,10 @@ pub(crate) fn has_phase2_stmts(stmts: &[ModifyStmt]) -> bool {
 
 // ── Change tracking ─────────────────────────────────────────────
 
-pub(crate) fn collect_param_changes(old: &[(Name, Value)], new: &[(Name, Value)]) -> Vec<FieldChange> {
+pub(crate) fn collect_param_changes(
+    old: &[(Name, Value)],
+    new: &[(Name, Value)],
+) -> Vec<FieldChange> {
     let mut changes = Vec::new();
     for (i, (name, old_val)) in old.iter().enumerate() {
         let new_val = &new[i].1;
@@ -1080,7 +1083,11 @@ pub(crate) fn collect_param_changes(old: &[(Name, Value)], new: &[(Name, Value)]
     changes
 }
 
-pub(crate) fn collect_result_changes(old: &Value, new: &Value, _fn_info: &FnInfo) -> Vec<FieldChange> {
+pub(crate) fn collect_result_changes(
+    old: &Value,
+    new: &Value,
+    _fn_info: &FnInfo,
+) -> Vec<FieldChange> {
     if old == new {
         return Vec::new();
     }

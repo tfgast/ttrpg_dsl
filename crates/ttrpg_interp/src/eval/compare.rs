@@ -215,10 +215,7 @@ pub(crate) fn match_pattern(
         PatternKind::Ident(name) => {
             // Checker only populates resolved_variants when this ident is a variant match.
             // Absence = binding context (for-loop, destructure, or non-variant name).
-            if type_env
-                .resolved_variants
-                .contains_key(&pattern.span)
-            {
+            if type_env.resolved_variants.contains_key(&pattern.span) {
                 matches!(value, Value::EnumVariant { variant, .. } if variant == name)
             } else {
                 bindings.insert(name.clone(), value.clone());
@@ -281,10 +278,7 @@ pub(crate) fn match_pattern(
             fields: patterns,
         } => {
             // Check if this is a known enum variant
-            if type_env
-                .variant_to_enums
-                .contains_key(name.as_str())
-            {
+            if type_env.variant_to_enums.contains_key(name.as_str()) {
                 if let Value::EnumVariant {
                     enum_name: actual_enum,
                     variant,
@@ -329,9 +323,7 @@ pub(crate) fn match_pattern(
                         return false;
                     }
                     // Match fields positionally using struct field info
-                    if let Some(DeclInfo::Struct(struct_info)) =
-                        type_env.types.get(name.as_str())
-                    {
+                    if let Some(DeclInfo::Struct(struct_info)) = type_env.types.get(name.as_str()) {
                         if patterns.len() != struct_info.fields.len() {
                             return false;
                         }
