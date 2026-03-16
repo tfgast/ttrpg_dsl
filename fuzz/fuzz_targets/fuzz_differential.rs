@@ -48,11 +48,7 @@ impl EffectHandler for DeterministicHandler {
     }
 }
 
-fuzz_target!(|data: &[u8]| {
-    let Ok(program) = Unstructured::new(data).arbitrary::<Program>() else {
-        return;
-    };
-
+fn run_differential(program: Program) {
     let mut diags = Vec::new();
     let program = ttrpg_parser::lower_moves(program, &mut diags);
 
@@ -144,5 +140,22 @@ fuzz_target!(|data: &[u8]| {
                 panic!("DIVERGENCE in '{name}': recursive=Err({ea:?}), step=Ok({vb:?})");
             }
         }
+    }
+}
+
+fuzz_target!(|data: &[u8]| {
+    let Ok(program) = Unstructured::new(data).arbitrary::<Program>() else {
+        return;
+    };
+
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        run_differential(program);
+    }));
+
+    if let Err(panic) = result {
+        if let Ok(program) = Unstructured::new(data).arbitrary::<Program>() {
+            eprintln!("=== FAILED AST ===\n{program:#?}\n==================");
+        }
+        std::panic::resume_unwind(panic);
     }
 });
