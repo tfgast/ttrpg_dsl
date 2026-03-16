@@ -14,7 +14,7 @@
 use std::collections::BTreeMap;
 
 use rustc_hash::FxHashMap;
-use ttrpg_ast::ast::{ArmBody, BinOp, ElseBranch, ExprKind, GuardKind, PatternKind, StmtKind, TypeExpr, UnaryOp};
+use ttrpg_ast::ast::{ArmBody, BinOp, ElseBranch, ExprKind, ForIterable, GuardKind, PatternKind, StmtKind, TypeExpr, UnaryOp};
 use ttrpg_ast::{Name, Span, Spanned};
 use ttrpg_checker::env::{DeclInfo, FnKind, TypeEnv};
 
@@ -142,6 +142,44 @@ pub(crate) enum ExprWork {
     Dup,
     /// No pattern arm matched in a `match` expression — emit runtime error.
     MatchFail(Span),
+
+    // ── Phase 7 variants ────────────────────────────────────────
+
+    /// For loop: pop iterable (collection or range start+end), materialize,
+    /// push ForLoop child frame.
+    PushForLoop {
+        pattern: Box<Spanned<PatternKind>>,
+        body: Vec<Spanned<StmtKind>>,
+        body_span: Span,
+        range: bool,
+        inclusive: bool,
+        span: Span,
+    },
+    /// List comprehension: pop iterable, materialize, push ListComp child frame.
+    PushListComp {
+        pattern: Box<Spanned<PatternKind>>,
+        element: Box<Spanned<ExprKind>>,
+        filter: Option<Box<Spanned<ExprKind>>>,
+        range: bool,
+        inclusive: bool,
+        span: Span,
+    },
+
+    // ── Phase 8 variants ────────────────────────────────────────
+
+    /// Entity construction: pop field + group field values from the operand
+    /// stack, build a `Frame::SpawnEntity` child frame and push it.
+    /// After the child frame completes the entity ref sits on the operand
+    /// stack for any subsequent with-condition calls.
+    PushSpawnEntity {
+        entity_type: Name,
+        /// Base field names (values on operand stack in this order).
+        field_names: Vec<Name>,
+        /// Each entry is (group_name, [field_names]). Values on the operand
+        /// stack follow the base fields, groups in order.
+        group_specs: Vec<(Name, Vec<Name>)>,
+        span: Span,
+    },
 }
 
 // ── Compilation ─────────────────────────────────────────────────
@@ -460,23 +498,79 @@ fn compile_inner(
         }
 
         ExprKind::StructLit { name, fields, groups, base, with_conditions } => {
-            // Entity construction or complex features — fall back
-            if !groups.is_empty() || base.is_some() || !with_conditions.is_empty() {
-                return None;
+            let is_entity = matches!(
+                type_env.types.get(name.as_str()),
+                Some(DeclInfo::Entity(_))
+            );
+
+            if is_entity {
+                // ..base spread not yet supported for entity construction
+                if base.is_some() {
+                    return None;
+                }
+                compile_entity_struct_lit(
+                    name, fields, groups, with_conditions, span,
+                    type_env, program, work,
+                )?;
+            } else {
+                // Non-entity: groups/base/with_conditions → fall back
+                if !groups.is_empty() || base.is_some() || !with_conditions.is_empty() {
+                    return None;
+                }
+                // Plain struct: compile each field
+                let mut field_names = Vec::with_capacity(fields.len());
+                for field in fields {
+                    compile_inner(&field.value, type_env, program, work)?;
+                    field_names.push(field.name.clone());
+                }
+                work.push(ExprWork::MakeStruct { name: name.clone(), field_names, span });
             }
-            // Check if this is an entity type — fall back for those
-            if let Some(decl) = type_env.types.get(name.as_str())
-                && matches!(decl, DeclInfo::Entity(_))
-            {
-                return None;
-            }
-            // Plain struct: compile each field
-            let mut field_names = Vec::with_capacity(fields.len());
-            for field in fields {
-                compile_inner(&field.value, type_env, program, work)?;
-                field_names.push(field.name.clone());
-            }
-            work.push(ExprWork::MakeStruct { name: name.clone(), field_names, span });
+        }
+
+        // ── Phase 7: For loop ──────────────────────────────────
+        ExprKind::For { pattern, iterable, body } => {
+            let (range, inclusive) = match iterable {
+                ForIterable::Collection(expr) => {
+                    compile_inner(expr, type_env, program, work)?;
+                    (false, false)
+                }
+                ForIterable::Range { start, end, inclusive } => {
+                    compile_inner(start, type_env, program, work)?;
+                    compile_inner(end, type_env, program, work)?;
+                    (true, *inclusive)
+                }
+            };
+            work.push(ExprWork::PushForLoop {
+                pattern: pattern.clone(),
+                body: body.node.clone(),
+                body_span: body.span,
+                range,
+                inclusive,
+                span,
+            });
+        }
+
+        // ── Phase 7: List comprehension ─────────────────────────
+        ExprKind::ListComprehension { element, pattern, iterable, filter } => {
+            let (range, inclusive) = match iterable {
+                ForIterable::Collection(expr) => {
+                    compile_inner(expr, type_env, program, work)?;
+                    (false, false)
+                }
+                ForIterable::Range { start, end, inclusive } => {
+                    compile_inner(start, type_env, program, work)?;
+                    compile_inner(end, type_env, program, work)?;
+                    (true, *inclusive)
+                }
+            };
+            work.push(ExprWork::PushListComp {
+                pattern: pattern.clone(),
+                element: element.clone(),
+                filter: filter.clone(),
+                range,
+                inclusive,
+                span,
+            });
         }
 
         // ── Phase 6: PatternMatch ──────────────────────────────
@@ -534,10 +628,197 @@ fn compile_inner(
             }
         }
 
-        // Everything else is non-trivial for this phase.
+        // Safety fallback for future ExprKind variants.
+        #[allow(unreachable_patterns)]
         _ => return None,
     }
     Some(())
+}
+
+// ── Entity StructLit compilation ─────────────────────────────────
+
+/// Compile an entity construction expression into ExprWork instructions.
+///
+/// Layout: evaluate base fields (explicit + defaults), then group fields
+/// (explicit + defaults per group), emit PushSpawnEntity, then with_condition
+/// calls.
+fn compile_entity_struct_lit(
+    entity_name: &Name,
+    fields: &[ttrpg_ast::ast::StructFieldInit],
+    groups: &[ttrpg_ast::ast::GroupInit],
+    with_conditions: &[Spanned<ExprKind>],
+    span: Span,
+    type_env: &TypeEnv,
+    program: &ttrpg_ast::ast::Program,
+    work: &mut Vec<ExprWork>,
+) -> Option<()> {
+    let entity_decl = find_entity_decl(program, entity_name.as_str())?;
+
+    // ── Base fields: explicit values + defaults for omitted fields ──
+    let explicit_names: std::collections::HashSet<&Name> = fields.iter().map(|f| &f.name).collect();
+    let mut field_names: Vec<Name> = Vec::new();
+
+    // Compile explicit field expressions
+    for field in fields {
+        compile_inner(&field.value, type_env, program, work)?;
+        field_names.push(field.name.clone());
+    }
+
+    // Compile default expressions for omitted base fields
+    for fd in &entity_decl.fields {
+        if explicit_names.contains(&fd.name) {
+            continue;
+        }
+        if let Some(default_expr) = &fd.default {
+            compile_inner(default_expr, type_env, program, work)?;
+            field_names.push(fd.name.clone());
+        }
+    }
+
+    // ── Groups: inline groups + required groups with defaults ──
+    let provided_groups: std::collections::HashSet<&Name> =
+        groups.iter().map(|g| &g.name).collect();
+
+    let mut group_specs: Vec<(Name, Vec<Name>)> = Vec::new();
+
+    // Inline groups from the construction expression
+    for group in groups {
+        let explicit_group_names: std::collections::HashSet<&Name> =
+            group.fields.iter().map(|f| &f.name).collect();
+        let mut gfield_names = Vec::new();
+
+        // Compile explicit group field expressions
+        for f in &group.fields {
+            compile_inner(&f.value, type_env, program, work)?;
+            gfield_names.push(f.name.clone());
+        }
+
+        // Compile defaults for omitted group fields
+        if let Some(group_fields) = find_group_fields(program, entity_decl, &group.name) {
+            for fd in group_fields {
+                if explicit_group_names.contains(&fd.name) {
+                    continue;
+                }
+                if let Some(default_expr) = &fd.default {
+                    compile_inner(default_expr, type_env, program, work)?;
+                    gfield_names.push(fd.name.clone());
+                }
+            }
+        }
+
+        group_specs.push((group.name.clone(), gfield_names));
+    }
+
+    // Auto-materialize required (include) groups not already provided
+    for og in &entity_decl.optional_groups {
+        if !og.is_required || provided_groups.contains(&og.name) {
+            continue;
+        }
+        let mut gfield_names = Vec::new();
+        let group_fields = if og.is_external_ref {
+            find_external_group_fields(program, &og.name)
+        } else {
+            Some(og.fields.as_slice())
+        };
+        if let Some(gfields) = group_fields {
+            for fd in gfields {
+                if let Some(default_expr) = &fd.default {
+                    compile_inner(default_expr, type_env, program, work)?;
+                    gfield_names.push(fd.name.clone());
+                }
+            }
+        }
+        group_specs.push((og.name.clone(), gfield_names));
+    }
+
+    // ── Emit PushSpawnEntity ──
+    work.push(ExprWork::PushSpawnEntity {
+        entity_type: entity_name.clone(),
+        field_names,
+        group_specs,
+        span,
+    });
+
+    // ── With-conditions: Dup entity, eval cond, push Indefinite, call apply_condition, Pop ──
+    for cond_expr in with_conditions {
+        work.push(ExprWork::Dup);
+        compile_inner(cond_expr, type_env, program, work)?;
+        work.push(ExprWork::Literal(
+            crate::value::duration_variant("Indefinite"),
+            cond_expr.span,
+        ));
+        work.push(ExprWork::CallNamed {
+            callee: Name::from("apply_condition"),
+            arg_meta: vec![
+                ArgMeta { name: None, span: cond_expr.span },
+                ArgMeta { name: None, span: cond_expr.span },
+                ArgMeta { name: None, span: cond_expr.span },
+            ],
+            span: cond_expr.span,
+        });
+        work.push(ExprWork::Pop); // discard apply_condition return value
+    }
+
+    Some(())
+}
+
+/// Find an entity declaration by name in the program AST.
+fn find_entity_decl<'a>(
+    program: &'a ttrpg_ast::ast::Program,
+    name: &str,
+) -> Option<&'a ttrpg_ast::ast::EntityDecl> {
+    use ttrpg_ast::ast::{DeclKind, TopLevel};
+    for item in &program.items {
+        if let TopLevel::System(system) = &item.node {
+            for decl in &system.decls {
+                if let DeclKind::Entity(e) = &decl.node
+                    && e.name == name
+                {
+                    return Some(e);
+                }
+            }
+        }
+    }
+    None
+}
+
+/// Find group field definitions for an entity's optional group.
+/// Handles both inline and external group references.
+fn find_group_fields<'a>(
+    program: &'a ttrpg_ast::ast::Program,
+    entity_decl: &'a ttrpg_ast::ast::EntityDecl,
+    group_name: &Name,
+) -> Option<&'a [ttrpg_ast::ast::FieldDef]> {
+    for group in &entity_decl.optional_groups {
+        if &group.name == group_name {
+            return if group.is_external_ref {
+                find_external_group_fields(program, group_name)
+            } else {
+                Some(group.fields.as_slice())
+            };
+        }
+    }
+    None
+}
+
+/// Find field definitions for a standalone group declaration.
+fn find_external_group_fields<'a>(
+    program: &'a ttrpg_ast::ast::Program,
+    group_name: &Name,
+) -> Option<&'a [ttrpg_ast::ast::FieldDef]> {
+    use ttrpg_ast::ast::{DeclKind, TopLevel};
+    for item in &program.items {
+        if let TopLevel::System(system) = &item.node {
+            for decl in &system.decls {
+                if let DeclKind::Group(g) = &decl.node
+                    && g.name == *group_name
+                {
+                    return Some(g.fields.as_slice());
+                }
+            }
+        }
+    }
+    None
 }
 
 // ── Advance loop ────────────────────────────────────────────────
@@ -856,6 +1137,138 @@ pub(crate) fn advance_expr_eval(
                     *span,
                 ));
             }
+
+            // ── Phase 7: For loop / List comprehension ──────
+            ExprWork::PushForLoop { pattern, body, body_span, range, inclusive, span } => {
+                let items = match materialize_iterable(operands, *range, *inclusive, *span)
+                {
+                    Ok(v) => v,
+                    Err(e) => return Advance::Error(e),
+                };
+                *pc += 1;
+                return Advance::Push(Frame::ForLoop {
+                    items,
+                    index: 0,
+                    pattern: pattern.clone(),
+                    body: body.clone(),
+                    body_span: *body_span,
+                    child_result: None,
+                });
+            }
+            ExprWork::PushListComp { pattern, element, filter, range, inclusive, span } => {
+                let items = match materialize_iterable(operands, *range, *inclusive, *span)
+                {
+                    Ok(v) => v,
+                    Err(e) => return Advance::Error(e),
+                };
+                *pc += 1;
+                return Advance::Push(Frame::ListComp {
+                    items,
+                    index: 0,
+                    pattern: pattern.clone(),
+                    element: element.clone(),
+                    filter: filter.clone(),
+                    collected: Vec::new(),
+                    phase: crate::execution::ListCompPhase::TryMatch,
+                    span: *span,
+                    child_result: None,
+                });
+            }
+
+            // ── Phase 8: Entity construction ─────────────────────
+            ExprWork::PushSpawnEntity { entity_type, field_names, group_specs, span } => {
+                // Pop base field values from operand stack (reverse order)
+                let total_group_fields: usize =
+                    group_specs.iter().map(|(_, names)| names.len()).sum();
+                let base_count = field_names.len();
+                let total = base_count + total_group_fields;
+                let start = operands.len().saturating_sub(total);
+                let all_values = operands.split_off(start);
+                let mut vals = all_values.into_iter();
+
+                // Build base fields
+                let base_fields: Vec<(Name, Value)> = field_names
+                    .iter()
+                    .map(|name| (name.clone(), vals.next().unwrap()))
+                    .collect();
+
+                // Build groups
+                let groups: Vec<crate::execution::GroupInit> = group_specs
+                    .iter()
+                    .map(|(group_name, gfield_names)| {
+                        let mut fields = BTreeMap::new();
+                        for fname in gfield_names {
+                            fields.insert(fname.clone(), vals.next().unwrap());
+                        }
+                        crate::execution::GroupInit {
+                            group_name: group_name.clone(),
+                            fields,
+                        }
+                    })
+                    .collect();
+
+                *pc += 1;
+                return Advance::Push(Frame::SpawnEntity {
+                    entity_type: entity_type.clone(),
+                    base_fields,
+                    groups,
+                    phase: crate::execution::SpawnPhase::Defaults,
+                    pending: None,
+                    entity_ref: None,
+                    span: *span,
+                });
+            }
+        }
+    }
+}
+
+/// Pop iterable value(s) from the operand stack and materialize into Vec<Value>.
+fn materialize_iterable(
+    operands: &mut Vec<Value>,
+    range: bool,
+    inclusive: bool,
+    span: Span,
+) -> Result<Vec<Value>, RuntimeError> {
+    if range {
+        let end_val = operands.pop().unwrap();
+        let start_val = operands.pop().unwrap();
+        let s = match start_val {
+            Value::Int(n) => n,
+            other => {
+                return Err(RuntimeError::with_span(
+                    format!(
+                        "range start must be int, got {}",
+                        crate::value::value_type_display(&other)
+                    ),
+                    span,
+                ));
+            }
+        };
+        let e = match end_val {
+            Value::Int(n) => n,
+            other => {
+                return Err(RuntimeError::with_span(
+                    format!(
+                        "range end must be int, got {}",
+                        crate::value::value_type_display(&other)
+                    ),
+                    span,
+                ));
+            }
+        };
+        crate::eval::collect_range(s, e, inclusive, span)
+    } else {
+        let collection = operands.pop().unwrap();
+        match collection {
+            Value::List(items) => Ok(items),
+            Value::Set(items) => Ok(items.into_iter().collect()),
+            other => Err(RuntimeError::with_span(
+                format!(
+                    "expected list or set, got {}",
+                    crate::value::value_type_display(&other)
+                ),
+                span,
+            )),
         }
     }
 }

@@ -14,7 +14,7 @@ mod tests;
 pub(crate) use access::{field_access_on_value, index_on_value};
 pub(crate) use assign::{AssignContext, exec_assign_with_rhs};
 pub(crate) use compare::{match_pattern, value_eq};
-pub(crate) use control::{eval_block, eval_stmt};
+pub(crate) use control::{collect_range, eval_block, eval_stmt};
 pub(crate) use dispatch::eval_expr;
 pub(crate) use helpers::{
     find_optional_group_fields_in, resolve_resource_bounds_pub, try_resolve_variant_from_hint,

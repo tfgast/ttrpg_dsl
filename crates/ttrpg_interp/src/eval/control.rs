@@ -23,7 +23,7 @@ const MAX_RANGE_LEN: i64 = 1_000_000;
 
 /// Materialize a range into a Vec<Value>, returning an error if the range
 /// would exceed `MAX_RANGE_LEN` elements.
-fn collect_range(s: i64, e: i64, inclusive: bool, span: Span) -> Result<Vec<Value>, RuntimeError> {
+pub(crate) fn collect_range(s: i64, e: i64, inclusive: bool, span: Span) -> Result<Vec<Value>, RuntimeError> {
     let len = if inclusive {
         (e - s).saturating_add(1)
     } else {

@@ -12,7 +12,7 @@ use std::rc::Rc;
 
 use rustc_hash::FxHashMap;
 
-use ttrpg_ast::ast::{Arg, AssignOp, Block, CostClause, ExprKind, LValue, StmtKind};
+use ttrpg_ast::ast::{Arg, AssignOp, Block, CostClause, ExprKind, LValue, PatternKind, StmtKind};
 use ttrpg_ast::{Name, Span, Spanned};
 
 use crate::adapter::{MutationTracker, StateAdapter, is_mutation};
@@ -2508,6 +2508,34 @@ pub(crate) enum Frame {
         scope_depth: usize,
     },
 
+    /// For loop iteration frame. Iterates over materialized items,
+    /// pushing Block child frames for each matching iteration body.
+    ForLoop {
+        items: Vec<Value>,
+        index: usize,
+        pattern: Box<Spanned<PatternKind>>,
+        body: Vec<Spanned<StmtKind>>,
+        body_span: Span,
+        /// Result from child Block frame executing the loop body.
+        child_result: Option<Result<Value, RuntimeError>>,
+    },
+
+    /// List comprehension iteration frame. Iterates over materialized items,
+    /// evaluating element expression for matching/filtered items, collecting
+    /// results into a list.
+    ListComp {
+        items: Vec<Value>,
+        index: usize,
+        pattern: Box<Spanned<PatternKind>>,
+        element: Box<Spanned<ExprKind>>,
+        filter: Option<Box<Spanned<ExprKind>>>,
+        collected: Vec<Value>,
+        phase: ListCompPhase,
+        span: Span,
+        /// Result from child frame (filter or element evaluation).
+        child_result: Option<Result<Value, RuntimeError>>,
+    },
+
     /// Resumable bridge evaluation frame. Evaluates an expression through
     /// the recursive evaluator with CachingHandler replay support. Pushes
     /// yield frames (RollDiceWaiting, PromptWaiting) when host-decided
@@ -3175,6 +3203,141 @@ impl Frame {
                     work, operands, pc, child_result, scope_depth,
                     core, env, sp, &mut *eh,
                 )
+            }
+
+            Frame::ForLoop {
+                items,
+                index,
+                pattern,
+                body,
+                body_span: _,
+                child_result,
+            } => {
+                // Handle completed child Block frame.
+                if let Some(result) = child_result.take() {
+                    env.pop_scope();
+                    match result {
+                        Ok(_) => {
+                            // Check for early return.
+                            if env.return_value.is_some() {
+                                return Advance::Pop(Value::Void);
+                            }
+                            *index += 1;
+                            return Advance::Continue;
+                        }
+                        Err(e) => return Advance::Error(e),
+                    }
+                }
+
+                // Iterate: find next matching item.
+                while *index < items.len() {
+                    let item = &items[*index];
+                    let mut bindings = rustc_hash::FxHashMap::default();
+                    if crate::eval::match_pattern(&core.type_env, pattern, item, &mut bindings) {
+                        env.push_scope();
+                        for (name, val) in bindings {
+                            env.bind(name, val);
+                        }
+                        return Advance::Push(Frame::Block {
+                            stmts: body.clone(),
+                            index: 0,
+                            result: Value::Void,
+                            expr_cache: Vec::new(),
+                            awaiting_fn: None,
+                            awaiting_error: None,
+                        });
+                    }
+                    // Pattern didn't match — skip this item.
+                    *index += 1;
+                }
+
+                // All items processed.
+                Advance::Pop(Value::Void)
+            }
+
+            Frame::ListComp {
+                items,
+                index,
+                pattern,
+                element,
+                filter,
+                collected,
+                phase,
+                span,
+                child_result,
+            } => {
+                // Handle child frame result based on current phase.
+                if let Some(result) = child_result.take() {
+                    match result {
+                        Err(e) => {
+                            env.pop_scope();
+                            return Advance::Error(e);
+                        }
+                        Ok(val) => match phase {
+                            ListCompPhase::FilterDone => {
+                                match val {
+                                    Value::Bool(true) => {
+                                        // Filter passed — evaluate element expression.
+                                        *phase = ListCompPhase::ElementDone;
+                                        let elem_frame = compile_or_bridge(element, core, Vec::new());
+                                        return Advance::Push(elem_frame);
+                                    }
+                                    Value::Bool(false) => {
+                                        // Filter failed — skip item, pop scope.
+                                        env.pop_scope();
+                                        *index += 1;
+                                        *phase = ListCompPhase::TryMatch;
+                                        return Advance::Continue;
+                                    }
+                                    _ => {
+                                        env.pop_scope();
+                                        return Advance::Error(RuntimeError::with_span(
+                                            "list comprehension filter must be bool",
+                                            *span,
+                                        ));
+                                    }
+                                }
+                            }
+                            ListCompPhase::ElementDone => {
+                                collected.push(val);
+                                env.pop_scope();
+                                *index += 1;
+                                *phase = ListCompPhase::TryMatch;
+                                return Advance::Continue;
+                            }
+                            _ => {} // TryMatch doesn't have child results
+                        },
+                    }
+                }
+
+                // Iterate: find next matching item.
+                while *index < items.len() {
+                    let item = &items[*index];
+                    let mut bindings = rustc_hash::FxHashMap::default();
+                    if crate::eval::match_pattern(&core.type_env, pattern, item, &mut bindings) {
+                        env.push_scope();
+                        for (name, val) in bindings {
+                            env.bind(name, val);
+                        }
+                        if let Some(filter_expr) = filter {
+                            // Evaluate filter expression.
+                            *phase = ListCompPhase::FilterDone;
+                            let filter_frame = compile_or_bridge(filter_expr, core, Vec::new());
+                            return Advance::Push(filter_frame);
+                        } else {
+                            // No filter — evaluate element directly.
+                            *phase = ListCompPhase::ElementDone;
+                            let elem_frame = compile_or_bridge(element, core, Vec::new());
+                            return Advance::Push(elem_frame);
+                        }
+                    }
+                    // Pattern didn't match — skip.
+                    *index += 1;
+                }
+
+                // All items processed.
+                let result = std::mem::take(collected);
+                Advance::Pop(Value::List(result))
             }
 
             Frame::ResumableBridge {
@@ -5972,6 +6135,12 @@ impl Frame {
             Frame::ExprEval { child_result, .. } => {
                 *child_result = Some(Ok(value));
             }
+            Frame::ForLoop { child_result, .. } => {
+                *child_result = Some(Ok(value));
+            }
+            Frame::ListComp { child_result, .. } => {
+                *child_result = Some(Ok(value));
+            }
             Frame::ResumableBridge { expr_cache, .. } => {
                 // Yield frame child completed — cache for replay.
                 expr_cache.push(value);
@@ -6054,6 +6223,14 @@ impl Frame {
                 *child_result = Some(Err(error));
                 Ok(())
             }
+            Frame::ForLoop { child_result, .. } => {
+                *child_result = Some(Err(error));
+                Ok(())
+            }
+            Frame::ListComp { child_result, .. } => {
+                *child_result = Some(Err(error));
+                Ok(())
+            }
             _ => Err(error),
         }
     }
@@ -6106,6 +6283,17 @@ pub(crate) enum StmtResumeKind {
         fields: BTreeMap<Name, Value>,
         span: Span,
     },
+}
+
+/// Phase within a list comprehension iteration.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum ListCompPhase {
+    /// Try pattern match on current item; if match, evaluate filter or element.
+    TryMatch,
+    /// Filter expression evaluated; check result and maybe evaluate element.
+    FilterDone,
+    /// Element expression evaluated; collect result.
+    ElementDone,
 }
 
 /// Tracks that a child frame (FunctionEval) was pushed to handle a
