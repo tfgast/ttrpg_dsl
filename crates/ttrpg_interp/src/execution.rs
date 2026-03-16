@@ -445,63 +445,6 @@ fn try_frame_dispatch_stmt(
     )))
 }
 
-/// Restore a single budget (ProvisionBudget or ClearBudget) via the
-/// StateAdapter. Budget effects are mutations applied locally, so
-/// NoYieldHandler is safe.
-fn restore_single_budget(
-    handler: &mut dyn EffectHandler,
-    actor: EntityRef,
-    prev_budget: Option<BTreeMap<Name, Value>>,
-    span: Span,
-) -> Result<(), RuntimeError> {
-    match prev_budget {
-        Some(old_budget) => {
-            let resp = handler.handle(Effect::ProvisionBudget {
-                actor,
-                budget: old_budget,
-            });
-            if let Response::Vetoed = resp {
-                Err(RuntimeError::with_span(
-                    "with_budget: budget restore was vetoed by host",
-                    span,
-                ))
-            } else {
-                Ok(())
-            }
-        }
-        None => {
-            let resp = handler.handle(Effect::ClearBudget { actor });
-            if let Response::Vetoed = resp {
-                Err(RuntimeError::with_span(
-                    "with_budget: budget clear was vetoed by host",
-                    span,
-                ))
-            } else {
-                Ok(())
-            }
-        }
-    }
-}
-
-/// Budget cleanup for error paths (body error takes precedence).
-/// Silently restores budgets without propagating cleanup errors.
-fn restore_awaiting_budget(handler: &mut dyn EffectHandler, awaiting: &AwaitingFn) {
-    match awaiting {
-        AwaitingFn::WithBudget {
-            actor,
-            prev_budget,
-            span,
-        } => {
-            let _ = restore_single_budget(handler, *actor, prev_budget.clone(), *span);
-        }
-        AwaitingFn::WithBudgets { snapshots, span } => {
-            for (actor, prev) in snapshots.iter().rev() {
-                let _ = restore_single_budget(handler, *actor, prev.clone(), *span);
-            }
-        }
-        _ => {}
-    }
-}
 
 /// Run a frame (and any children it pushes) to completion synchronously.
 ///
@@ -599,29 +542,20 @@ fn try_dispatch_with_budget(
     // Snapshot previous budget.
     let prev_budget = sp.read_turn_budget(&actor);
 
-    // Emit ProvisionBudget (mutation — applied locally by StateAdapter).
-    let resp = eh.handle(Effect::ProvisionBudget { actor, budget });
-    if let Response::Vetoed = resp {
-        return Err(RuntimeError::with_span(
-            "with_budget: ProvisionBudget was vetoed by host",
-            span,
-        ));
-    }
-
+    // Push BudgetGuard frame which will yield ProvisionBudget,
+    // run the body, then yield restore effect.
     Ok(NativeDispatch::Push(
-        Frame::Block {
-            stmts: body.node.clone(),
-            index: 0,
-            result: Value::Void,
-            expr_cache: Vec::new(),
-            awaiting_fn: None,
-            awaiting_error: None,
-        },
-        AwaitingFn::WithBudget {
+        Frame::BudgetGuard {
             actor,
-            prev_budget,
+            budget,
+            saved_budget: prev_budget,
+            body: Some(body.clone()),
+            child_result: None,
+            pending: None,
+            phase: BudgetGuardPhase::Provision,
             span,
         },
+        AwaitingFn::ExprStmt,
     ))
 }
 
@@ -684,38 +618,27 @@ fn try_dispatch_with_budgets(
         }
     }
 
-    // Snapshot previous budgets and provision new ones.
+    // Snapshot previous budgets.
     let mut snapshots: Vec<(EntityRef, Option<BTreeMap<Name, Value>>)> =
         Vec::with_capacity(entries.len());
-
-    for (actor, budget) in &entries {
+    for (actor, _budget) in &entries {
         snapshots.push((*actor, sp.read_turn_budget(actor)));
-        let resp = eh.handle(Effect::ProvisionBudget {
-            actor: *actor,
-            budget: budget.clone(),
-        });
-        if let Response::Vetoed = resp {
-            // Rollback already-provisioned budgets.
-            for (prev_actor, prev_budget) in snapshots.into_iter().rev() {
-                let _ = restore_single_budget(&mut *eh, prev_actor, prev_budget, span);
-            }
-            return Err(RuntimeError::with_span(
-                "with_budgets: ProvisionBudget was vetoed by host",
-                span,
-            ));
-        }
     }
 
+    // Push MultiBudgetGuard frame which will yield each ProvisionBudget,
+    // run the body, then yield restore effects.
     Ok(NativeDispatch::Push(
-        Frame::Block {
-            stmts: body.node.clone(),
-            index: 0,
-            result: Value::Void,
-            expr_cache: Vec::new(),
-            awaiting_fn: None,
-            awaiting_error: None,
+        Frame::MultiBudgetGuard {
+            entries,
+            saved_budgets: snapshots,
+            provision_index: 0,
+            phase: MultiBudgetPhase::Provisioning,
+            body: Some(body.clone()),
+            child_result: None,
+            pending: None,
+            span,
         },
-        AwaitingFn::WithBudgets { snapshots, span },
+        AwaitingFn::ExprStmt,
     ))
 }
 
@@ -2378,9 +2301,14 @@ pub(crate) enum Frame {
 
     BudgetGuard {
         actor: EntityRef,
+        /// New budget to provision.
+        budget: BTreeMap<Name, Value>,
+        /// Previous budget to restore after body completes.
         saved_budget: Option<BTreeMap<Name, Value>>,
         body: Option<Block>,
         child_result: Option<Result<Value, RuntimeError>>,
+        pending: Option<Response>,
+        phase: BudgetGuardPhase,
         span: Span,
     },
 
@@ -2391,6 +2319,7 @@ pub(crate) enum Frame {
         phase: MultiBudgetPhase,
         body: Option<Block>,
         child_result: Option<Result<Value, RuntimeError>>,
+        pending: Option<Response>,
         span: Span,
     },
 
@@ -3576,11 +3505,7 @@ impl Frame {
             } => {
                 // Handle error from a child frame dispatched via awaiting_fn.
                 if let Some(err) = awaiting_error.take() {
-                    // Budget variants need cleanup even on error (body error
-                    // takes precedence over cleanup error, matching scoped_budget).
-                    if let Some(awaiting) = awaiting_fn.take() {
-                        restore_awaiting_budget(&mut *eh, &awaiting);
-                    }
+                    awaiting_fn.take();
                     env.pop_scope();
                     return Advance::Error(err);
                 }
@@ -3620,35 +3545,6 @@ impl Frame {
                             let ret = env.return_value.clone().unwrap();
                             env.pop_scope();
                             return Advance::Pop(ret);
-                        }
-                        AwaitingFn::WithBudget {
-                            actor,
-                            prev_budget,
-                            span,
-                        } => {
-                            // Restore previous budget (matches scoped_budget cleanup).
-                            let cleanup = restore_single_budget(&mut *eh, actor, prev_budget, span);
-                            if let Err(e) = cleanup {
-                                env.pop_scope();
-                                return Advance::Error(e);
-                            }
-                            *result = value;
-                        }
-                        AwaitingFn::WithBudgets { snapshots, span } => {
-                            // Restore all budgets in reverse order.
-                            let mut cleanup_err = None;
-                            for (actor, prev) in snapshots.into_iter().rev() {
-                                if let Err(e) = restore_single_budget(&mut *eh, actor, prev, span)
-                                    && cleanup_err.is_none()
-                                {
-                                    cleanup_err = Some(e);
-                                }
-                            }
-                            if let Some(e) = cleanup_err {
-                                env.pop_scope();
-                                return Advance::Error(e);
-                            }
-                            *result = value;
                         }
                         AwaitingFn::WithCostPayer { prev_cost_payer } => {
                             env.cost_payer = prev_cost_payer;
@@ -4593,71 +4489,154 @@ impl Frame {
 
             Frame::BudgetGuard {
                 actor,
+                budget,
                 saved_budget,
                 body,
                 child_result,
+                pending,
+                phase,
                 span,
             } => {
-                // Phase 2: body completed — restore budget and return.
-                if let Some(result) = child_result.take() {
-                    // Restore budget (locally-applied).
-                    let restore_result: Result<Value, RuntimeError> = match saved_budget {
-                        Some(old) => {
-                            eh.handle(Effect::ProvisionBudget {
+                match phase {
+                    BudgetGuardPhase::Provision => {
+                        if let Some(response) = pending.take() {
+                            match response {
+                                Response::Vetoed => {
+                                    return Advance::Error(RuntimeError::with_span(
+                                        "with_budget: ProvisionBudget was vetoed by host",
+                                        *span,
+                                    ));
+                                }
+                                _ => {
+                                    *phase = BudgetGuardPhase::Body;
+                                    return Advance::Continue;
+                                }
+                            }
+                        }
+                        // Yield the provision effect.
+                        Advance::Yield(Effect::ProvisionBudget {
+                            actor: *actor,
+                            budget: budget.clone(),
+                        })
+                    }
+
+                    BudgetGuardPhase::Body => {
+                        if let Some(result) = child_result.take() {
+                            // Body completed — transition to restore.
+                            *child_result = Some(result);
+                            *phase = BudgetGuardPhase::Restore;
+                            return Advance::Continue;
+                        }
+
+                        // Push Block for body.
+                        if let Some(block) = body.take() {
+                            return Advance::Push(Frame::Block {
+                                stmts: block.node,
+                                index: 0,
+                                result: Value::Void,
+                                expr_cache: Vec::new(),
+                                awaiting_fn: None,
+                                awaiting_error: None,
+                            });
+                        }
+
+                        Advance::Error(RuntimeError::with_span(
+                            "BudgetGuard: no body and no result",
+                            *span,
+                        ))
+                    }
+
+                    BudgetGuardPhase::Restore => {
+                        if let Some(_response) = pending.take() {
+                            // Restore acknowledged — return body result.
+                            return match child_result.take() {
+                                Some(Ok(val)) => Advance::Pop(val),
+                                Some(Err(e)) => Advance::Error(e),
+                                None => Advance::Pop(Value::Void),
+                            };
+                        }
+                        // Yield the restore effect.
+                        match saved_budget {
+                            Some(old) => Advance::Yield(Effect::ProvisionBudget {
                                 actor: *actor,
                                 budget: old.clone(),
-                            });
-                            Ok(Value::Void)
+                            }),
+                            None => Advance::Yield(Effect::ClearBudget { actor: *actor }),
                         }
-                        None => {
-                            eh.handle(Effect::ClearBudget { actor: *actor });
-                            Ok(Value::Void)
-                        }
-                    };
-
-                    // Body error takes precedence over cleanup error.
-                    return match result {
-                        Err(e) => Advance::Error(e),
-                        Ok(val) => match restore_result {
-                            Err(e) => Advance::Error(e),
-                            Ok(_) => Advance::Pop(val),
-                        },
-                    };
+                    }
                 }
-
-                // Phase 1: push Block for body.
-                if let Some(block) = body.take() {
-                    return Advance::Push(Frame::Block {
-                        stmts: block.node,
-                        index: 0,
-                        result: Value::Void,
-                        expr_cache: Vec::new(),
-                        awaiting_fn: None,
-                        awaiting_error: None,
-                    });
-                }
-
-                Advance::Error(RuntimeError::with_span(
-                    "BudgetGuard: no body and no result",
-                    *span,
-                ))
             }
 
             Frame::MultiBudgetGuard {
-                entries: _,
+                entries,
                 saved_budgets,
-                provision_index: _,
+                provision_index,
                 phase,
                 body,
                 child_result,
+                pending,
                 span,
             } => {
                 match phase {
                     MultiBudgetPhase::Provisioning => {
-                        // Provisioning is done by the caller before pushing
-                        // this frame. Transition to Body.
-                        *phase = MultiBudgetPhase::Body;
-                        Advance::Continue
+                        if let Some(response) = pending.take() {
+                            match response {
+                                Response::Vetoed => {
+                                    // Roll back already-provisioned budgets.
+                                    if *provision_index > 0 {
+                                        *phase = MultiBudgetPhase::Rollback { index: 0 };
+                                        return Advance::Continue;
+                                    }
+                                    return Advance::Error(RuntimeError::with_span(
+                                        "with_budgets: ProvisionBudget was vetoed by host",
+                                        *span,
+                                    ));
+                                }
+                                _ => {
+                                    *provision_index += 1;
+                                    // Fall through to check if more to provision.
+                                }
+                            }
+                        }
+
+                        if *provision_index >= entries.len() {
+                            // All provisioned — transition to body.
+                            *phase = MultiBudgetPhase::Body;
+                            return Advance::Continue;
+                        }
+
+                        // Yield next ProvisionBudget.
+                        let (actor, budget) = &entries[*provision_index];
+                        Advance::Yield(Effect::ProvisionBudget {
+                            actor: *actor,
+                            budget: budget.clone(),
+                        })
+                    }
+
+                    MultiBudgetPhase::Rollback { index } => {
+                        if let Some(_response) = pending.take() {
+                            *index += 1;
+                            // Fall through to check if done.
+                        }
+
+                        // Rollback in reverse: indices 0..provision_index-1
+                        // already provisioned, restore in reverse.
+                        if *index >= *provision_index {
+                            return Advance::Error(RuntimeError::with_span(
+                                "with_budgets: ProvisionBudget was vetoed by host",
+                                *span,
+                            ));
+                        }
+
+                        let restore_idx = *provision_index - 1 - *index;
+                        let (actor, ref prev) = saved_budgets[restore_idx];
+                        match prev {
+                            Some(old) => Advance::Yield(Effect::ProvisionBudget {
+                                actor,
+                                budget: old.clone(),
+                            }),
+                            None => Advance::Yield(Effect::ClearBudget { actor }),
+                        }
                     }
 
                     MultiBudgetPhase::Body => {
@@ -4688,6 +4667,11 @@ impl Frame {
                     }
 
                     MultiBudgetPhase::Restoring { index } => {
+                        if let Some(_response) = pending.take() {
+                            *index += 1;
+                            // Fall through to check if done.
+                        }
+
                         if *index >= saved_budgets.len() {
                             // All budgets restored. Return body result.
                             return match child_result.take() {
@@ -4701,19 +4685,12 @@ impl Frame {
                         let restore_idx = saved_budgets.len() - 1 - *index;
                         let (actor, ref prev) = saved_budgets[restore_idx];
                         match prev {
-                            Some(old) => {
-                                eh.handle(Effect::ProvisionBudget {
-                                    actor,
-                                    budget: old.clone(),
-                                });
-                            }
-                            None => {
-                                eh.handle(Effect::ClearBudget { actor });
-                            }
+                            Some(old) => Advance::Yield(Effect::ProvisionBudget {
+                                actor,
+                                budget: old.clone(),
+                            }),
+                            None => Advance::Yield(Effect::ClearBudget { actor }),
                         }
-
-                        *index += 1;
-                        Advance::Continue
                     }
                 }
             }
@@ -5798,6 +5775,8 @@ impl Frame {
             Frame::ConditionRemovalGate { pending, .. } => *pending = Some(response),
             Frame::CostEval { pending, .. } => *pending = Some(response),
             Frame::DeriveEval { pending, .. } => *pending = Some(response),
+            Frame::BudgetGuard { pending, .. } => *pending = Some(response),
+            Frame::MultiBudgetGuard { pending, .. } => *pending = Some(response),
             _ => {}
         }
     }
@@ -6095,17 +6074,6 @@ pub(crate) enum AwaitingFn {
     },
     /// Return statement — child result becomes the return value.
     Return,
-    /// WithBudget body completed — restore previous budget.
-    WithBudget {
-        actor: EntityRef,
-        prev_budget: Option<BTreeMap<Name, Value>>,
-        span: Span,
-    },
-    /// WithBudgets body completed — restore all previous budgets.
-    WithBudgets {
-        snapshots: Vec<(EntityRef, Option<BTreeMap<Name, Value>>)>,
-        span: Span,
-    },
     /// WithCostPayer body completed — restore previous cost_payer.
     WithCostPayer { prev_cost_payer: Option<EntityRef> },
 }
@@ -6191,10 +6159,23 @@ pub(crate) enum SpawnPhase {
     GrantingGroups { index: usize },
 }
 
+/// Phase within single-entity budget guard.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum BudgetGuardPhase {
+    /// Yield ProvisionBudget, await host response.
+    Provision,
+    /// Push body Block.
+    Body,
+    /// Yield restore effect (ProvisionBudget or ClearBudget), await host response.
+    Restore,
+}
+
 /// Phase within multi-entity budget scope.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum MultiBudgetPhase {
     Provisioning,
+    /// Rolling back already-provisioned budgets after a veto.
+    Rollback { index: usize },
     Body,
     Restoring { index: usize },
 }
@@ -12067,6 +12048,11 @@ mod tests {
 
         let mut exec = exec_with_frame(Frame::BudgetGuard {
             actor: EntityRef(1),
+            budget: {
+                let mut m = BTreeMap::new();
+                m.insert(Name::from("actions"), Value::Int(5));
+                m
+            },
             saved_budget: Some({
                 let mut m = BTreeMap::new();
                 m.insert(Name::from("actions"), Value::Int(3));
@@ -12074,10 +12060,22 @@ mod tests {
             }),
             body: Some(body),
             child_result: None,
+            pending: None,
+            phase: BudgetGuardPhase::Provision,
             span: Span::dummy(),
         });
 
-        // Poll → body executes → budget restored → Done(99)
+        // Poll → yields ProvisionBudget
+        let step = exec.poll().unwrap();
+        assert!(matches!(&step, Step::Yielded(e) if matches!(**e, Effect::ProvisionBudget { .. })));
+        exec.respond(Response::Acknowledged).unwrap();
+
+        // Poll → body executes → yields restore ProvisionBudget
+        let step = exec.poll().unwrap();
+        assert!(matches!(&step, Step::Yielded(e) if matches!(**e, Effect::ProvisionBudget { .. })));
+        exec.respond(Response::Acknowledged).unwrap();
+
+        // Poll → Done(99)
         let step = exec.poll().unwrap();
         assert!(matches!(step, Step::Done(Value::Int(99))));
     }
@@ -12110,13 +12108,30 @@ mod tests {
 
         let mut exec = exec_with_frame(Frame::BudgetGuard {
             actor: EntityRef(1),
+            budget: {
+                let mut m = BTreeMap::new();
+                m.insert(Name::from("actions"), Value::Int(2));
+                m
+            },
             saved_budget: None, // No previous budget → ClearBudget
             body: Some(body),
             child_result: None,
+            pending: None,
+            phase: BudgetGuardPhase::Provision,
             span: Span::dummy(),
         });
 
-        // Poll → body errors → budget cleared → error propagated
+        // Poll → yields ProvisionBudget
+        let step = exec.poll().unwrap();
+        assert!(matches!(&step, Step::Yielded(e) if matches!(**e, Effect::ProvisionBudget { .. })));
+        exec.respond(Response::Acknowledged).unwrap();
+
+        // Poll → body errors → yields ClearBudget for restore
+        let step = exec.poll().unwrap();
+        assert!(matches!(&step, Step::Yielded(e) if matches!(**e, Effect::ClearBudget { .. })));
+        exec.respond(Response::Acknowledged).unwrap();
+
+        // Poll → error propagated
         let result = exec.poll();
         assert!(matches!(result, Err(PollError::Runtime(_))));
     }
@@ -12206,10 +12221,31 @@ mod tests {
             phase: MultiBudgetPhase::Provisioning,
             body: Some(body),
             child_result: None,
+            pending: None,
             span: Span::dummy(),
         });
 
-        // Poll → provisions (pass-through), body executes, restores → Done(77)
+        // Poll → yields ProvisionBudget for entity 1
+        let step = exec.poll().unwrap();
+        assert!(matches!(&step, Step::Yielded(e) if matches!(**e, Effect::ProvisionBudget { .. })));
+        exec.respond(Response::Acknowledged).unwrap();
+
+        // Poll → yields ProvisionBudget for entity 2
+        let step = exec.poll().unwrap();
+        assert!(matches!(&step, Step::Yielded(e) if matches!(**e, Effect::ProvisionBudget { .. })));
+        exec.respond(Response::Acknowledged).unwrap();
+
+        // Poll → body executes → yields ClearBudget (restore entity 2, reverse order)
+        let step = exec.poll().unwrap();
+        assert!(matches!(&step, Step::Yielded(e) if matches!(**e, Effect::ProvisionBudget { .. })));
+        exec.respond(Response::Acknowledged).unwrap();
+
+        // Poll → yields ClearBudget (restore entity 1)
+        let step = exec.poll().unwrap();
+        assert!(matches!(&step, Step::Yielded(e) if matches!(**e, Effect::ClearBudget { .. })));
+        exec.respond(Response::Acknowledged).unwrap();
+
+        // Poll → Done(77)
         let step = exec.poll().unwrap();
         assert!(matches!(step, Step::Done(Value::Int(77))));
     }
