@@ -652,6 +652,29 @@ fn compile_inner(
                     }
                     field_names.push(field.name.clone());
                 }
+                // Compile defaults for omitted fields into the work stream
+                // so they participate in frame-based evaluation (no eval_expr_step).
+                if let Some(defaults) = find_struct_defaults_step(program, name) {
+                    for (fname, default_expr) in defaults {
+                        if !field_names.contains(&fname) {
+                            let hint = schema_fields
+                                .and_then(|sf| sf.iter().find(|fi| fi.name == fname))
+                                .map(|fi| &fi.ty);
+                            if let Some(hint) = hint {
+                                try_compile_with_hint(
+                                    &default_expr,
+                                    type_env,
+                                    program,
+                                    work,
+                                    hint,
+                                )?;
+                            } else {
+                                compile_inner(&default_expr, type_env, program, work)?;
+                            }
+                            field_names.push(fname);
+                        }
+                    }
+                }
                 work.push(ExprWork::MakeStruct {
                     name: name.clone(),
                     field_names,
@@ -1296,19 +1319,8 @@ pub(crate) fn advance_expr_eval(
                 for (fname, val) in field_names.iter().zip(values) {
                     fields.insert(fname.clone(), val);
                 }
-                // Fill in defaults for omitted fields (mirrors recursive mode).
-                if let Some(defaults) = find_struct_defaults_step(&core.program, name) {
-                    for (fname, default_expr) in defaults {
-                        if !fields.contains_key(&fname) {
-                            match eval_expr_step(core, env, sp, eh, &default_expr) {
-                                Ok(val) => {
-                                    fields.insert(fname, val);
-                                }
-                                Err(e) => return Advance::Error(e),
-                            }
-                        }
-                    }
-                }
+                // Defaults are now compiled into the work stream at compile time,
+                // so all field values (provided + defaults) are already on the operand stack.
                 operands.push(Value::Struct {
                     name: name.clone(),
                     fields,
@@ -1528,7 +1540,7 @@ fn advance_ident(
     core: &RuntimeCore,
     env: &mut ExecEnv,
     sp: &dyn StateProvider,
-    eh: &mut dyn EffectHandler,
+    _eh: &mut dyn EffectHandler,
 ) -> Advance {
     // 1. Check local scopes
     if let Some(val) = env.lookup(name) {
@@ -1600,22 +1612,37 @@ fn advance_ident(
     // 5. Bare condition name (materialize with defaults)
     if let Some(cond_decl) = core.program.conditions.get(name.as_str()) {
         let cond_decl = cond_decl.clone();
-        let mut args = BTreeMap::new();
-        // Evaluate default expressions for all params
-        for param in &cond_decl.params {
-            if let Some(ref default_expr) = param.default {
-                match eval_expr_step(core, env, sp, eh, default_expr) {
-                    Ok(val) => {
-                        args.insert(param.name.clone(), val);
+        // Build DefaultParam entries for each condition param with a default.
+        let params: Vec<crate::execution::DefaultParam> = cond_decl
+            .params
+            .iter()
+            .filter_map(|param| {
+                param.default.as_ref().map(|default_expr| {
+                    crate::execution::DefaultParam {
+                        name: param.name.clone(),
+                        provided_value: None,
+                        default_expr: Some(default_expr.clone()),
                     }
-                    Err(e) => return Advance::Error(e),
-                }
-            }
+                })
+            })
+            .collect();
+        if params.is_empty() {
+            // No defaults — push an empty Condition value directly.
+            operands.push(Value::Condition {
+                name: name.clone(),
+                args: BTreeMap::new(),
+            });
+        } else {
+            // Push ConditionMaterialize frame to evaluate defaults via child ExprEval frames.
+            *pc += 1;
+            skip_const_writeback(work, pc);
+            return Advance::Push(Frame::ConditionMaterialize {
+                name: name.clone(),
+                params,
+                index: 0,
+                child_result: None,
+            });
         }
-        operands.push(Value::Condition {
-            name: name.clone(),
-            args,
-        });
         *pc += 1;
         skip_const_writeback(work, pc);
         return Advance::Continue;
@@ -2603,9 +2630,9 @@ fn dispatch_function_step(
     arg_values: &[Value],
     span: Span,
     core: &RuntimeCore,
-    env: &mut ExecEnv,
-    sp: &dyn StateProvider,
-    eh: &mut dyn EffectHandler,
+    _env: &mut ExecEnv,
+    _sp: &dyn StateProvider,
+    _eh: &mut dyn EffectHandler,
 ) -> Result<CallResult, RuntimeError> {
     let fn_decl = core.program.functions.get(name).ok_or_else(|| {
         RuntimeError::with_span(
@@ -2627,24 +2654,30 @@ fn dispatch_function_step(
         })?
         .clone();
 
-    let bound = bind_args_from_values(
+    let fill_params = bind_args_to_fill_params(
         &fn_info.params,
         arg_meta,
         arg_values,
         Some(&ast_params),
-        core,
-        env,
-        sp,
-        eh,
         span,
     )?;
 
-    // All args (including defaults) are already evaluated by bind_args_from_values.
-    // Push FunctionEval with all args bound and no remaining defaults.
+    // Separate provided args from unevaluated defaults.
+    let mut args = Vec::new();
+    let mut default_params = Vec::new();
+    for dp in fill_params {
+        if let Some(val) = dp.provided_value {
+            args.push((dp.name, val));
+        } else if let Some(expr) = dp.default_expr {
+            default_params.push((dp.name, expr));
+        }
+    }
+
+    // FunctionEval handles default_params via FillDefaults child frames.
     Ok(CallResult::PushChild(Frame::FunctionEval {
         name: Name::from(name),
-        args: bound,
-        default_params: Vec::new(),
+        args,
+        default_params,
         body: Some(body),
         defaults_done: false,
         child_result: None,
@@ -2659,9 +2692,9 @@ fn dispatch_derive_step(
     arg_values: &[Value],
     span: Span,
     core: &RuntimeCore,
-    env: &mut ExecEnv,
-    sp: &dyn StateProvider,
-    eh: &mut dyn EffectHandler,
+    _env: &mut ExecEnv,
+    _sp: &dyn StateProvider,
+    _eh: &mut dyn EffectHandler,
 ) -> Result<CallResult, RuntimeError> {
     // For derive/mechanic, we use the DeriveEval frame which handles
     // the full modifier pipeline natively.
@@ -2683,28 +2716,22 @@ fn dispatch_derive_step(
         })?
         .clone();
 
-    let bound = bind_args_from_values(
+    let fill_params = bind_args_to_fill_params(
         &fn_info.params,
         arg_meta,
         arg_values,
         Some(&fn_decl.params),
-        core,
-        env,
-        sp,
-        eh,
         span,
     )?;
 
-    // Convert bound to positional Vec<Value> for DeriveEval
-    let bound_values: Vec<Value> = bound.iter().map(|(_, v)| v.clone()).collect();
-
+    // DeriveEval::Init will use pre_fill_params for FillDefaults.
     Ok(CallResult::PushChild(Frame::DeriveEval {
         name: Name::from(name),
-        args: bound_values,
+        args: Vec::new(),
         is_table: false,
         base_value: None,
         phase: crate::execution::DeriveEvalPhase::Init,
-        bound_args: Some(bound),
+        bound_args: None,
         modifiers: Vec::new(),
         body: Some(body),
         pending_modify_effect: None,
@@ -2715,6 +2742,7 @@ fn dispatch_derive_step(
         modify_hooks_result: None,
         modify_walker: None,
         collect_state: None,
+        pre_fill_params: Some(fill_params),
     }))
 }
 
@@ -2727,9 +2755,9 @@ fn dispatch_table_step(
     arg_values: &[Value],
     span: Span,
     core: &RuntimeCore,
-    env: &mut ExecEnv,
-    sp: &dyn StateProvider,
-    eh: &mut dyn EffectHandler,
+    _env: &mut ExecEnv,
+    _sp: &dyn StateProvider,
+    _eh: &mut dyn EffectHandler,
 ) -> Result<CallResult, RuntimeError> {
     let fn_info = core
         .type_env
@@ -2749,26 +2777,22 @@ fn dispatch_table_step(
         )
     })?;
 
-    let bound = bind_args_from_values(
+    let fill_params = bind_args_to_fill_params(
         &fn_info.params,
         arg_meta,
         arg_values,
         Some(&table_decl.params),
-        core,
-        env,
-        sp,
-        eh,
         span,
     )?;
-    let bound_values: Vec<Value> = bound.iter().map(|(_, v)| v.clone()).collect();
 
+    // DeriveEval::Init will use pre_fill_params for FillDefaults.
     Ok(CallResult::PushChild(Frame::DeriveEval {
         name: Name::from(name),
-        args: bound_values,
+        args: Vec::new(),
         is_table: true,
         base_value: None,
         phase: crate::execution::DeriveEvalPhase::Init,
-        bound_args: Some(bound),
+        bound_args: None,
         modifiers: Vec::new(),
         body: None,
         pending_modify_effect: None,
@@ -2779,6 +2803,7 @@ fn dispatch_table_step(
         modify_hooks_result: None,
         modify_walker: None,
         collect_state: None,
+        pre_fill_params: Some(fill_params),
     }))
 }
 
@@ -2790,9 +2815,9 @@ fn dispatch_prompt_step(
     arg_values: &[Value],
     span: Span,
     core: &RuntimeCore,
-    env: &mut ExecEnv,
-    sp: &dyn StateProvider,
-    eh: &mut dyn EffectHandler,
+    _env: &mut ExecEnv,
+    _sp: &dyn StateProvider,
+    _eh: &mut dyn EffectHandler,
 ) -> Result<CallResult, RuntimeError> {
     let prompt_decl = core.program.prompts.get(name).ok_or_else(|| {
         RuntimeError::with_span(
@@ -2816,42 +2841,39 @@ fn dispatch_prompt_step(
         })?
         .clone();
 
-    let bound = bind_args_from_values(
+    let fill_params = bind_args_to_fill_params(
         &fn_info.params,
         arg_meta,
         arg_values,
         Some(&prompt_decl.params),
-        core,
-        env,
-        sp,
-        eh,
         span,
     )?;
 
-    // Evaluate suggest expression if present
-    let suggest = match &suggest_expr {
-        Some(expr) => {
-            env.push_scope();
-            for (pn, pv) in &bound {
-                env.bind(pn.clone(), pv.clone());
-            }
-            let result = eval_expr_step(core, env, sp, eh, expr);
-            env.pop_scope();
-            Some(result?)
+    // Separate provided args from defaults.
+    let mut params = Vec::new();
+    let mut default_params = Vec::new();
+    for dp in fill_params {
+        if let Some(val) = dp.provided_value {
+            params.push((dp.name, val));
+        } else {
+            default_params.push(dp);
         }
-        None => None,
-    };
+    }
 
+    // Suggest and param defaults are evaluated by PromptWaiting's phase machine.
     Ok(CallResult::PushChild(Frame::PromptWaiting {
         prompt_name: Name::from(name),
-        params: bound,
+        params,
         return_type: fn_info.return_type.clone(),
         hint,
-        suggest,
+        suggest: None,
         default_block,
         span,
         pending: None,
-        result: None,
+        child_result: None,
+        phase: crate::execution::PromptPhase::EvalDefaults,
+        suggest_expr,
+        default_params,
     }))
 }
 
@@ -3212,6 +3234,85 @@ fn fill_defaults_step(
         }
     }
     Ok(bound)
+}
+
+/// Bind pre-evaluated argument values to parameters, returning `DefaultParam`
+/// entries suitable for `FillDefaults`. Does NOT evaluate defaults — they are
+/// left as `default_expr` for frame-based evaluation.
+fn bind_args_to_fill_params(
+    params: &[ttrpg_checker::env::ParamInfo],
+    arg_meta: &[ArgMeta],
+    arg_values: &[Value],
+    ast_params: Option<&[ttrpg_ast::ast::Param]>,
+    call_span: Span,
+) -> Result<Vec<crate::execution::DefaultParam>, RuntimeError> {
+    let mut slots: Vec<Option<Value>> = vec![None; params.len()];
+
+    // Map positional + named args to param slots
+    let mut next_positional = 0usize;
+    for (meta, val) in arg_meta.iter().zip(arg_values.iter()) {
+        if let Some(ref name) = meta.name {
+            let pos = params.iter().position(|p| p.name == *name).ok_or_else(|| {
+                RuntimeError::with_span(format!("unknown parameter '{name}'"), meta.span)
+            })?;
+            if slots[pos].is_some() {
+                return Err(RuntimeError::with_span(
+                    format!("duplicate argument for parameter '{name}'"),
+                    meta.span,
+                ));
+            }
+            slots[pos] = Some(val.clone());
+        } else {
+            if next_positional >= params.len() {
+                return Err(RuntimeError::with_span(
+                    "too many positional arguments",
+                    meta.span,
+                ));
+            }
+            slots[next_positional] = Some(val.clone());
+            next_positional += 1;
+        }
+    }
+
+    // Build DefaultParam entries
+    let mut fill_params = Vec::with_capacity(params.len());
+    for (i, param) in params.iter().enumerate() {
+        if let Some(val) = slots[i].take() {
+            fill_params.push(crate::execution::DefaultParam {
+                name: param.name.clone(),
+                provided_value: Some(val),
+                default_expr: None,
+            });
+        } else if param.has_default {
+            let default_expr = ast_params
+                .and_then(|ps| ps.get(i))
+                .and_then(|p| p.default.as_ref())
+                .cloned();
+            if default_expr.is_some() {
+                fill_params.push(crate::execution::DefaultParam {
+                    name: param.name.clone(),
+                    provided_value: None,
+                    default_expr,
+                });
+            } else if ast_params.is_none() {
+                // Builtin or enum constructor: no AST defaults available, skip.
+            } else {
+                return Err(RuntimeError::with_span(
+                    format!(
+                        "internal error: parameter '{}' has_default but no default expression",
+                        param.name
+                    ),
+                    call_span,
+                ));
+            }
+        } else {
+            return Err(RuntimeError::with_span(
+                format!("missing required argument '{}'", param.name),
+                call_span,
+            ));
+        }
+    }
+    Ok(fill_params)
 }
 
 // ── Collection builtins (value-level) ───────────────────────────

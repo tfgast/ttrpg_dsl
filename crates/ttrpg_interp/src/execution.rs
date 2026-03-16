@@ -972,6 +972,16 @@ pub(crate) enum Frame {
         child_result: Option<Value>,
     },
 
+    /// Materializes a bare condition name with default parameter values.
+    /// Evaluates each default expression via child ExprEval frames, then
+    /// pops a `Value::Condition { name, args }`.
+    ConditionMaterialize {
+        name: Name,
+        params: Vec<DefaultParam>,
+        index: usize,
+        child_result: Option<Value>,
+    },
+
     DeriveEval {
         name: Name,
         args: Vec<Value>,
@@ -1002,6 +1012,10 @@ pub(crate) enum Frame {
         modify_walker: Option<Box<ModifyStmtWalker>>,
         /// State for frame-based modifier collection (CollectCheck phase).
         collect_state: Option<Box<ModifierCollectState>>,
+        /// Pre-built FillDefaults params from ExprWork dispatch path (named-arg
+        /// mapping already done). When Some, Init phase uses these instead of
+        /// building from positional `args`.
+        pre_fill_params: Option<Vec<DefaultParam>>,
     },
 
     FunctionEval {
@@ -1184,8 +1198,15 @@ pub(crate) enum Frame {
         default_block: Option<Block>,
         span: Span,
         pending: Option<Response>,
-        /// Stores the result from a UseDefault Block child frame.
-        result: Option<Value>,
+        /// Result from child frames (FillDefaults, ExprEval for suggest, UseDefault Block).
+        /// Phase disambiguates the meaning.
+        child_result: Option<Result<Value, RuntimeError>>,
+        /// Current evaluation phase.
+        phase: PromptPhase,
+        /// Unevaluated suggest expression (evaluated via child ExprEval in EvalSuggest phase).
+        suggest_expr: Option<Spanned<ExprKind>>,
+        /// Param defaults to evaluate via FillDefaults.
+        default_params: Vec<DefaultParam>,
     },
 
     SpawnEntity {
@@ -3340,6 +3361,51 @@ impl Frame {
                 }
             }
 
+            Frame::ConditionMaterialize {
+                name,
+                params,
+                index,
+                child_result,
+            } => {
+                // Handle child ExprEval result (default expr evaluated).
+                if let Some(val) = child_result.take() {
+                    // Store value in the param slot for later collection.
+                    params[*index].provided_value = Some(val);
+                    *index += 1;
+                    return Advance::Continue;
+                }
+
+                // All params resolved — build and pop Condition value.
+                if *index >= params.len() {
+                    let mut args = std::collections::BTreeMap::new();
+                    for param in params.drain(..) {
+                        if let Some(val) = param.provided_value {
+                            args.insert(param.name, val);
+                        }
+                    }
+                    return Advance::Pop(Value::Condition {
+                        name: name.clone(),
+                        args,
+                    });
+                }
+
+                let param = &mut params[*index];
+
+                if let Some(val) = param.provided_value.take() {
+                    // Already provided — re-store and advance.
+                    params[*index].provided_value = Some(val);
+                    *index += 1;
+                    Advance::Continue
+                } else if let Some(ref default_expr) = param.default_expr {
+                    // Push child frame to evaluate the default expression.
+                    Advance::Push(compile_expr_to_frame(default_expr, core))
+                } else {
+                    // Condition param without default — skip it.
+                    *index += 1;
+                    Advance::Continue
+                }
+            }
+
             Frame::DeriveEval {
                 name,
                 args,
@@ -3357,12 +3423,15 @@ impl Frame {
                 modify_hooks_result,
                 modify_walker,
                 collect_state,
+                pre_fill_params,
             } => {
                 match phase {
                     DeriveEvalPhase::Init => {
-                        if *is_table {
+                        if *is_table && pre_fill_params.is_none() {
                             // Tables are pure lookups — dispatch directly
                             // via AssignContext (no bridge needed).
+                            // (Only when args are fully resolved; if pre_fill_params
+                            // is set, defaults need evaluation first via FillDefaults.)
                             let n = name.clone();
                             let a = args.clone();
                             let mut ctx = FrameAssignCtx {
@@ -3381,72 +3450,81 @@ impl Frame {
                             };
                         }
 
-                        // Derive/mechanic: look up decl and type info.
-                        let fn_decl = match core
-                            .program
-                            .derives
-                            .get(name.as_ref())
-                            .or_else(|| core.program.mechanics.get(name.as_ref()))
-                        {
-                            Some(d) => d.clone(),
-                            None => {
+                        // Use pre-built fill_params if available (from ExprWork
+                        // dispatch path with named-arg mapping already done).
+                        // When pre_fill_params is set, fn_info_cache and body
+                        // are already populated by the dispatch function.
+                        let fill_params = if let Some(pfp) = pre_fill_params.take() {
+                            args.clear();
+                            pfp
+                        } else {
+                            // Derive/mechanic: look up decl and type info.
+                            let fn_decl = match core
+                                .program
+                                .derives
+                                .get(name.as_ref())
+                                .or_else(|| core.program.mechanics.get(name.as_ref()))
+                            {
+                                Some(d) => d.clone(),
+                                None => {
+                                    return Advance::Error(RuntimeError::new(format!(
+                                        "undefined derive/mechanic '{name}'"
+                                    )));
+                                }
+                            };
+
+                            let fi = match core.type_env.lookup_fn(name.as_ref()) {
+                                Some(fi) => fi.clone(),
+                                None => {
+                                    return Advance::Error(RuntimeError::new(format!(
+                                        "internal error: no type info for '{name}'"
+                                    )));
+                                }
+                            };
+
+                            // ── Inline arg mapping (pure data transform) ────
+                            if args.len() > fi.params.len() {
                                 return Advance::Error(RuntimeError::new(format!(
-                                    "undefined derive/mechanic '{name}'"
+                                    "too many arguments: '{}' takes {} params, got {}",
+                                    name,
+                                    fi.params.len(),
+                                    args.len()
                                 )));
                             }
+
+                            let mut fp: Vec<DefaultParam> = Vec::new();
+                            let arg_count = args.len();
+                            for (i, param) in fi.params.iter().enumerate() {
+                                if i < arg_count {
+                                    fp.push(DefaultParam {
+                                        name: param.name.clone(),
+                                        provided_value: Some(args[i].clone()),
+                                        default_expr: None,
+                                    });
+                                } else if param.has_default {
+                                    let default_expr = fn_decl
+                                        .params
+                                        .get(i)
+                                        .and_then(|p| p.default.as_ref())
+                                        .cloned();
+                                    fp.push(DefaultParam {
+                                        name: param.name.clone(),
+                                        provided_value: None,
+                                        default_expr,
+                                    });
+                                } else {
+                                    return Advance::Error(RuntimeError::new(format!(
+                                        "missing required argument '{}' for '{}'",
+                                        param.name, name
+                                    )));
+                                }
+                            }
+                            args.clear();
+
+                            *body = Some(fn_decl.body.clone());
+                            *fn_info_cache = Some(fi);
+                            fp
                         };
-
-                        let fi = match core.type_env.lookup_fn(name.as_ref()) {
-                            Some(fi) => fi.clone(),
-                            None => {
-                                return Advance::Error(RuntimeError::new(format!(
-                                    "internal error: no type info for '{name}'"
-                                )));
-                            }
-                        };
-
-                        // ── Inline arg mapping (pure data transform) ────
-                        if args.len() > fi.params.len() {
-                            return Advance::Error(RuntimeError::new(format!(
-                                "too many arguments: '{}' takes {} params, got {}",
-                                name,
-                                fi.params.len(),
-                                args.len()
-                            )));
-                        }
-
-                        // Build FillDefaults params: provided args + defaults.
-                        let mut fill_params: Vec<DefaultParam> = Vec::new();
-                        let arg_count = args.len();
-                        for (i, param) in fi.params.iter().enumerate() {
-                            if i < arg_count {
-                                fill_params.push(DefaultParam {
-                                    name: param.name.clone(),
-                                    provided_value: Some(args[i].clone()),
-                                    default_expr: None,
-                                });
-                            } else if param.has_default {
-                                let default_expr = fn_decl
-                                    .params
-                                    .get(i)
-                                    .and_then(|p| p.default.as_ref())
-                                    .cloned();
-                                fill_params.push(DefaultParam {
-                                    name: param.name.clone(),
-                                    provided_value: None,
-                                    default_expr,
-                                });
-                            } else {
-                                return Advance::Error(RuntimeError::new(format!(
-                                    "missing required argument '{}' for '{}'",
-                                    param.name, name
-                                )));
-                            }
-                        }
-                        args.clear();
-
-                        *body = Some(fn_decl.body.clone());
-                        *fn_info_cache = Some(fi);
                         *phase = DeriveEvalPhase::DefaultsDone;
 
                         // Push FillDefaults to resolve all params (provided +
@@ -4567,61 +4645,161 @@ impl Frame {
                 default_block,
                 span,
                 pending,
-                result,
+                child_result,
+                phase,
+                suggest_expr,
+                default_params,
             } => {
-                // If we have a result from a UseDefault Block child, pop
-                // the param scope we pushed before the Block and return.
-                if let Some(val) = result.take() {
-                    env.pop_scope();
-                    return Advance::Pop(val);
-                }
-
-                if let Some(response) = pending.take() {
-                    // Host responded to ResolvePrompt.
-                    match response {
-                        Response::PromptResult(val) => Advance::Pop(val),
-                        Response::Override(val) => Advance::Pop(val),
-                        Response::UseDefault => {
-                            if let Some(block) = default_block.take() {
-                                // Bind prompt params so the default block
-                                // can reference them (matches recursive mode).
-                                env.push_scope();
-                                for (pn, pv) in params.drain(..) {
-                                    env.bind(pn, pv);
+                match phase {
+                    PromptPhase::EvalDefaults => {
+                        // Handle FillDefaults child result.
+                        if let Some(result) = child_result.take() {
+                            if let Err(e) = result {
+                                return Advance::Error(e);
+                            }
+                            // FillDefaults completed. Collect bound params from scope.
+                            // FillDefaults binds values into scope by name.
+                            // We need to rebuild params from scope bindings.
+                            if let Some(scope) = env.scopes.last() {
+                                for dp in default_params.drain(..) {
+                                    if let Some(val) = scope.bindings.get(&dp.name) {
+                                        params.push((dp.name, val.clone()));
+                                    }
                                 }
-                                Advance::Push(Frame::Block {
-                                    stmts: block.node,
-                                    index: 0,
-                                    result: Value::Void,
-                                    expr_cache: Vec::new(),
-                                    awaiting_fn: None,
-                                    awaiting_error: None,
-                                })
-                            } else {
-                                Advance::Error(RuntimeError::with_span(
-                                    "prompt: UseDefault response but no default block",
-                                    *span,
-                                ))
+                            }
+                            *phase = PromptPhase::EvalSuggest;
+                            return Advance::Continue;
+                        }
+
+                        if default_params.iter().any(|p| p.default_expr.is_some()) {
+                            // Push FillDefaults to evaluate param defaults.
+                            // Phase stays at EvalDefaults so child_result is handled here.
+                            env.push_scope();
+                            // Bind already-provided params so defaults can reference them.
+                            for (pn, pv) in params.iter() {
+                                env.bind(pn.clone(), pv.clone());
+                            }
+                            let fill = std::mem::take(default_params);
+                            return Advance::Push(Frame::FillDefaults {
+                                params: fill,
+                                index: 0,
+                                child_result: None,
+                            });
+                        }
+
+                        // No defaults to evaluate — convert default_params to params.
+                        for dp in default_params.drain(..) {
+                            if let Some(val) = dp.provided_value {
+                                params.push((dp.name, val));
                             }
                         }
-                        other => Advance::Error(RuntimeError::with_span(
-                            format!(
-                                "protocol error: expected PromptResult, Override, \
-                                 or UseDefault for ResolvePrompt, got {other:?}"
-                            ),
-                            *span,
-                        )),
+                        *phase = PromptPhase::EvalSuggest;
+                        Advance::Continue
                     }
-                } else {
-                    // First advance — emit the ResolvePrompt effect.
-                    Advance::Yield(Effect::ResolvePrompt {
-                        name: prompt_name.clone(),
-                        params: params.clone(),
-                        return_type: return_type.clone(),
-                        hint: hint.clone(),
-                        suggest: suggest.take(),
-                        has_default: default_block.is_some(),
-                    })
+
+                    PromptPhase::EvalSuggest => {
+                        // Handle suggest ExprEval child result.
+                        if let Some(result) = child_result.take() {
+                            match result {
+                                Ok(val) => {
+                                    env.pop_scope();
+                                    *suggest = Some(val);
+                                }
+                                Err(e) => {
+                                    env.pop_scope();
+                                    return Advance::Error(e);
+                                }
+                            }
+                            *phase = PromptPhase::EmitPrompt;
+                            return Advance::Continue;
+                        }
+
+                        if let Some(expr) = suggest_expr.take() {
+                            // Push scope and bind params for suggest evaluation.
+                            // Phase stays at EvalSuggest so child_result is handled here.
+                            env.push_scope();
+                            for (pn, pv) in params.iter() {
+                                env.bind(pn.clone(), pv.clone());
+                            }
+                            return Advance::Push(compile_expr_to_frame(&expr, core));
+                        }
+
+                        // No suggest expression — skip to emit.
+                        *phase = PromptPhase::EmitPrompt;
+                        Advance::Continue
+                    }
+
+                    PromptPhase::EmitPrompt => {
+                        *phase = PromptPhase::AwaitResponse;
+                        Advance::Yield(Effect::ResolvePrompt {
+                            name: prompt_name.clone(),
+                            params: params.clone(),
+                            return_type: return_type.clone(),
+                            hint: hint.clone(),
+                            suggest: suggest.take(),
+                            has_default: default_block.is_some(),
+                        })
+                    }
+
+                    PromptPhase::AwaitResponse => {
+                        if let Some(response) = pending.take() {
+                            match response {
+                                Response::PromptResult(val) => Advance::Pop(val),
+                                Response::Override(val) => Advance::Pop(val),
+                                Response::UseDefault => {
+                                    if let Some(block) = default_block.take() {
+                                        env.push_scope();
+                                        for (pn, pv) in params.drain(..) {
+                                            env.bind(pn, pv);
+                                        }
+                                        *phase = PromptPhase::RunningDefault;
+                                        Advance::Push(Frame::Block {
+                                            stmts: block.node,
+                                            index: 0,
+                                            result: Value::Void,
+                                            expr_cache: Vec::new(),
+                                            awaiting_fn: None,
+                                            awaiting_error: None,
+                                        })
+                                    } else {
+                                        Advance::Error(RuntimeError::with_span(
+                                            "prompt: UseDefault response but no default block",
+                                            *span,
+                                        ))
+                                    }
+                                }
+                                other => Advance::Error(RuntimeError::with_span(
+                                    format!(
+                                        "protocol error: expected PromptResult, Override, \
+                                         or UseDefault for ResolvePrompt, got {other:?}"
+                                    ),
+                                    *span,
+                                )),
+                            }
+                        } else {
+                            // Waiting for host response — should not be called
+                            // without a pending response in AwaitResponse phase.
+                            Advance::Error(RuntimeError::with_span(
+                                "prompt: AwaitResponse but no pending response",
+                                *span,
+                            ))
+                        }
+                    }
+
+                    PromptPhase::RunningDefault => {
+                        // UseDefault Block child completed.
+                        if let Some(result) = child_result.take() {
+                            env.pop_scope();
+                            return match result {
+                                Ok(val) => Advance::Pop(val),
+                                Err(e) => Advance::Error(e),
+                            };
+                        }
+                        Advance::Error(RuntimeError::with_span(
+                            "prompt: RunningDefault but no child result",
+                            *span,
+                        ))
+                    }
                 }
             }
 
@@ -6162,12 +6340,16 @@ impl Frame {
                     expr_cache.push(value);
                 }
             }
-            Frame::PromptWaiting { result, .. } => {
-                // UseDefault → Block child completed.
-                *result = Some(value);
+            Frame::PromptWaiting { child_result, .. } => {
+                // Child completed (FillDefaults, suggest ExprEval, or UseDefault Block).
+                *child_result = Some(Ok(value));
             }
             Frame::FillDefaults { child_result, .. } => {
                 // ExprEval child completed with default value.
+                *child_result = Some(value);
+            }
+            Frame::ConditionMaterialize { child_result, .. } => {
+                // ExprEval child completed with condition param default value.
                 *child_result = Some(value);
             }
             Frame::FunctionEval { child_result, .. } => {
@@ -6344,6 +6526,10 @@ impl Frame {
                 Ok(())
             }
             Frame::ExprEval { child_result, .. } => {
+                *child_result = Some(Err(error));
+                Ok(())
+            }
+            Frame::PromptWaiting { child_result, .. } => {
                 *child_result = Some(Err(error));
                 Ok(())
             }
@@ -6824,6 +7010,21 @@ impl ModifyStmtWalker {
 pub(crate) struct GroupInit {
     pub group_name: Name,
     pub fields: BTreeMap<Name, Value>,
+}
+
+/// Phase within prompt evaluation.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum PromptPhase {
+    /// Evaluate param defaults via FillDefaults child.
+    EvalDefaults,
+    /// FillDefaults done; evaluate suggest expression via ExprEval child.
+    EvalSuggest,
+    /// Suggest done (or no suggest); emit ResolvePrompt yield.
+    EmitPrompt,
+    /// Waiting for host response.
+    AwaitResponse,
+    /// UseDefault block child running.
+    RunningDefault,
 }
 
 /// Phase within entity spawn.
@@ -7371,6 +7572,7 @@ impl<S: WritableState> Execution<S> {
             modify_hooks_result: None,
             modify_walker: None,
             collect_state: None,
+            pre_fill_params: None,
         });
         Ok(exec)
     }
@@ -7403,6 +7605,7 @@ impl<S: WritableState> Execution<S> {
             modify_hooks_result: None,
             modify_walker: None,
             collect_state: None,
+            pre_fill_params: None,
         });
         Ok(exec)
     }
@@ -12189,7 +12392,10 @@ mod tests {
             default_block: None,
             span: Span::dummy(),
             pending: None,
-            result: None,
+            child_result: None,
+            phase: PromptPhase::EmitPrompt,
+            suggest_expr: None,
+            default_params: Vec::new(),
         });
 
         // Poll → yield ResolvePrompt
@@ -12228,7 +12434,10 @@ mod tests {
             default_block: None,
             span: Span::dummy(),
             pending: None,
-            result: None,
+            child_result: None,
+            phase: PromptPhase::EmitPrompt,
+            suggest_expr: None,
+            default_params: Vec::new(),
         });
 
         let _ = exec.poll().unwrap();
@@ -12263,7 +12472,10 @@ mod tests {
             default_block: Some(default_block),
             span: Span::dummy(),
             pending: None,
-            result: None,
+            child_result: None,
+            phase: PromptPhase::EmitPrompt,
+            suggest_expr: None,
+            default_params: Vec::new(),
         });
 
         // Poll → yield ResolvePrompt (has_default: true)
@@ -12300,7 +12512,10 @@ mod tests {
             default_block: None, // no default
             span: Span::dummy(),
             pending: None,
-            result: None,
+            child_result: None,
+            phase: PromptPhase::EmitPrompt,
+            suggest_expr: None,
+            default_params: Vec::new(),
         });
 
         let _ = exec.poll().unwrap();
