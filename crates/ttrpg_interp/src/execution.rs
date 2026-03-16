@@ -7171,6 +7171,9 @@ pub struct Execution<S: WritableState> {
 
     // ── Final result (set when the last frame pops) ──
     final_result: Option<Result<Value, RuntimeError>>,
+
+    // ── Raw mode: poll() bypasses StateAdapter auto-apply ──
+    raw: bool,
 }
 
 impl<S: WritableState> Execution<S> {
@@ -7184,6 +7187,7 @@ impl<S: WritableState> Execution<S> {
             protocol: ProtocolState::Idle,
             pending_before_yield: None,
             final_result: None,
+            raw: false,
         }
     }
 
@@ -7765,6 +7769,7 @@ impl<S: WritableState> Execution<S> {
             final_result,
             protocol,
             pending_before_yield,
+            raw,
             ..
         } = self;
         /// Handler that panics on host-decided effects (used for synchronous poll).
@@ -7779,7 +7784,7 @@ impl<S: WritableState> Execution<S> {
         }
 
         let tracker = state.mutation_tracker();
-        state.run(&mut NoYieldHandler, |sp, eh| {
+        let poll_inner = |sp: &dyn StateProvider, eh: &mut dyn EffectHandler| {
             loop {
                 if frames.is_empty() {
                     if let ProtocolState::Unwinding(e) =
@@ -7833,7 +7838,13 @@ impl<S: WritableState> Execution<S> {
                     }
                 }
             }
-        })
+        };
+
+        if *raw {
+            state.run_raw(&mut NoYieldHandler, poll_inner)
+        } else {
+            state.run(&mut NoYieldHandler, poll_inner)
+        }
     }
 
     /// Provide a host response to a yielded effect.
@@ -7932,6 +7943,22 @@ impl<S: WritableState> Execution<S> {
                 }
             }
         })
+    }
+
+    // ── Configuration ────────────────────────────────────────────
+
+    /// Enable raw execution mode. When raw, `poll()` bypasses `StateAdapter`
+    /// auto-apply — mutations flow through `Advance::Yield` to the host,
+    /// which must call `apply_effect()` to apply them. The sync
+    /// `run_with_handler`/`drive()` path is unaffected.
+    pub fn raw(mut self) -> Self {
+        self.raw = true;
+        self
+    }
+
+    /// Returns whether raw mode is enabled.
+    pub fn is_raw(&self) -> bool {
+        self.raw
     }
 
     // ── Accessors ──────────────────────────────────────────────
@@ -15372,5 +15399,102 @@ mod tests {
         let mut handler = ScriptedHandler::always_ack();
         let result = exec.run_with_handler(&mut handler).unwrap();
         assert_eq!(result, Value::Str("medium".into()));
+    }
+
+    // ── Raw mode tests ──────────────────────────────────────────
+
+    #[test]
+    fn raw_mode_does_not_auto_apply_mutation() {
+        let (core, _) = make_core(
+            r"
+            system Test {
+                entity Creature { HP: int }
+                action Hit on actor: Creature (target: Creature) {
+                    resolve {
+                        target.HP -= 3
+                    }
+                }
+            }
+            ",
+        );
+
+        let mut game = GameState::new();
+        let attacker = add_creature(&mut game, 20);
+        let defender = add_creature(&mut game, 10);
+        let adapter = StateAdapter::new(game);
+
+        let mut exec = Execution::start_action(
+            core,
+            adapter,
+            "Hit",
+            attacker,
+            vec![Value::Entity(defender.clone())],
+            Span::dummy(),
+        )
+        .unwrap()
+        .raw();
+
+        // ActionStarted
+        let step = exec.poll().unwrap();
+        assert!(matches!(&*unwrap_yielded(step), Effect::ActionStarted { .. }));
+        exec.respond(Response::Acknowledged).unwrap();
+
+        // MutateField yielded — but since raw mode, state is NOT auto-applied
+        let step = exec.poll().unwrap();
+        let effect = *unwrap_yielded(step);
+        assert!(matches!(&effect, Effect::MutateField { .. }));
+
+        // Verify HP is still 10 (not auto-applied)
+        let hp = exec
+            .state()
+            .read_field(&defender, "HP")
+            .unwrap();
+        assert_eq!(hp, Value::Int(10), "raw mode should not auto-apply mutations");
+
+        // Host applies manually
+        exec.state().with_state_mut(|gs| {
+            crate::adapter::apply_mutation(gs, &effect, &FxHashMap::default());
+        });
+        exec.respond(Response::Acknowledged).unwrap();
+
+        // Verify HP is now 7
+        let hp = exec
+            .state()
+            .read_field(&defender, "HP")
+            .unwrap();
+        assert_eq!(hp, Value::Int(7));
+
+        // ActionCompleted
+        let step = exec.poll().unwrap();
+        assert!(matches!(&*unwrap_yielded(step), Effect::ActionCompleted { .. }));
+        exec.respond(Response::Acknowledged).unwrap();
+
+        // Done
+        let step = exec.poll().unwrap();
+        assert!(matches!(step, Step::Done(_)));
+    }
+
+    #[test]
+    fn raw_mode_is_raw_accessor() {
+        let (core, _) = make_core(
+            r"
+            system Test {
+                entity Creature { HP: int }
+            }
+            ",
+        );
+        let game = GameState::new();
+        let adapter = StateAdapter::new(game);
+        let exec = Execution::new(core, adapter);
+        assert!(!exec.is_raw());
+        let exec = exec.raw();
+        assert!(exec.is_raw());
+    }
+
+    fn unwrap_yielded(step: Step) -> Box<Effect> {
+        match step {
+            Step::Yielded(e) => e,
+            Step::Done(_) => panic!("expected Yielded, got Done"),
+        }
     }
 }

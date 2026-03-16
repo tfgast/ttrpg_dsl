@@ -121,6 +121,20 @@ impl<S: WritableState> StateAdapter<S> {
         f(self, &mut handler)
     }
 
+    /// Execute a closure in raw mode — provides `StateProvider` for reads
+    /// but passes the handler through without `AdaptedHandler` wrapping.
+    /// Mutations are not auto-applied; they flow as `Advance::Yield` to the host.
+    /// Execute a closure in raw mode — provides `StateProvider` for reads
+    /// but passes the handler through without `AdaptedHandler` wrapping.
+    /// Mutations are not auto-applied; they flow as `Advance::Yield` to the host.
+    pub fn run_raw<H: EffectHandler, R>(
+        &self,
+        handler: &mut H,
+        f: impl FnOnce(&dyn StateProvider, &mut dyn EffectHandler) -> R,
+    ) -> R {
+        f(self, handler)
+    }
+
     /// Borrow the inner state mutably for direct manipulation.
     ///
     /// Use this when you need `&mut S` outside of an interpreter call,
