@@ -197,6 +197,7 @@ system "test" {
 }
 
 #[test]
+#[allow(deprecated)]
 fn fire_hooks_executes_all_matching() {
     let source = r#"
 system "test" {

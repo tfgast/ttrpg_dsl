@@ -1,3 +1,40 @@
+//! Event query API for host-driven emit patterns.
+//!
+//! The functions in this module are **pure queries** — they determine which hooks,
+//! reactions, and condition handlers match an event without executing any of them.
+//! Hosts combine these queries with `Execution` entry points to drive execution
+//! at their own pace.
+//!
+//! # Host-driven emit pattern
+//!
+//! ```rust,ignore
+//! use ttrpg_interp::event;
+//! use ttrpg_interp::execution::Execution;
+//!
+//! // 1. Query matching hooks and condition handlers
+//! let hook_result = event::find_matching_hooks(&program, &type_env, &state, "OnDamage", &payload, &candidates)?;
+//! let cond_result = event::find_matching_condition_handlers(&program, &type_env, &state, "OnDamage", &payload, &candidates)?;
+//!
+//! // 2. Execute each hook (host controls the loop, can skip/reorder)
+//! for hook in &hook_result.hooks {
+//!     let mut exec = Execution::start_hook(core.clone(), state_adapter, &hook.name, hook.target, payload.clone(), span)?;
+//!     loop {
+//!         match exec.poll()? {
+//!             Step::Yielded(effect) => { /* host handles */ exec.respond(response)?; }
+//!             Step::Done(_) => break,
+//!         }
+//!     }
+//!     state_adapter = exec.state_mut().take(); // recover state for next execution
+//! }
+//!
+//! // 3. Execute condition handlers (batch or individual)
+//! let mut exec = Execution::start_condition_handlers(core.clone(), state_adapter, cond_result.handlers, payload);
+//! // ... same poll/respond loop ...
+//! ```
+//!
+//! Alternatively, use the batch entry points [`Execution::start_hooks`] and
+//! [`Execution::start_condition_handlers`] when per-item control is not needed.
+
 use std::collections::{BTreeMap, HashSet};
 
 use ttrpg_ast::Name;

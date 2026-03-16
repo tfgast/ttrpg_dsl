@@ -6483,6 +6483,200 @@ impl<S: WritableState> Execution<S> {
         Ok(exec)
     }
 
+    /// Start executing all matching hooks as a single batch execution.
+    ///
+    /// Pushes an `EmitHooks` frame that dispatches each hook in order.
+    /// Hosts that don't need per-hook control can fire all matching hooks
+    /// as one `Execution` and drive the entire batch via `poll()`/`respond()`.
+    ///
+    /// `hooks` should come from [`event::find_matching_hooks`].
+    pub fn start_hooks(
+        core: Rc<RuntimeCore>,
+        state: StateAdapter<S>,
+        hooks: Vec<crate::event::HookInfo>,
+        event_payload: Value,
+        _call_span: Span,
+    ) -> Self {
+        let exec_hooks: Vec<HookInfo> = hooks
+            .into_iter()
+            .map(|h| HookInfo {
+                hook_name: h.name,
+                actor: h.target,
+            })
+            .collect();
+
+        let mut exec = Self::new(core, state);
+
+        if exec_hooks.is_empty() {
+            // Push a trivial frame that immediately completes.
+            exec.frames.push(Frame::ExprEntry {
+                result: Some(Ok(Value::Void)),
+                expr: None,
+            });
+        } else {
+            exec.frames.push(Frame::EmitHooks {
+                event_name: Name::from("__batch"),
+                hooks: exec_hooks,
+                condition_handlers: Vec::new(),
+                index: 0,
+                payload: event_payload,
+                saved_emit_depth: 0,
+                saved_lifecycle: 0,
+                initialized: false,
+                child_result: None,
+            });
+        }
+
+        exec
+    }
+
+    /// Start executing a single condition event handler via the step-based
+    /// frame stack.
+    ///
+    /// Looks up the condition declaration, verifies the condition instance
+    /// still exists on the bearer, sets up scope bindings, and pushes a
+    /// `ConditionHandlerEpilogue` frame that will execute the clause body
+    /// and emit `SetConditionState` if state changed.
+    ///
+    /// `handler_info` should come from [`event::find_matching_condition_handlers`].
+    pub fn start_condition_handler(
+        core: Rc<RuntimeCore>,
+        state: StateAdapter<S>,
+        handler_info: &crate::event::ConditionHandlerInfo,
+        event_payload: Value,
+        call_span: Span,
+    ) -> Result<Self, RuntimeError> {
+        let decl = core
+            .program
+            .conditions
+            .get(handler_info.condition_name.as_str())
+            .ok_or_else(|| {
+                RuntimeError::with_span(
+                    format!(
+                        "undefined condition '{}' in event handler",
+                        handler_info.condition_name
+                    ),
+                    call_span,
+                )
+            })?
+            .clone();
+
+        // Read condition instance from state (verify it exists).
+        let cond_instance = {
+            let conditions = state
+                .read_conditions(&handler_info.bearer)
+                .unwrap_or_default();
+            conditions
+                .into_iter()
+                .find(|c| c.id == handler_info.instance_id)
+                .ok_or_else(|| {
+                    RuntimeError::with_span(
+                        format!(
+                            "condition instance {} no longer exists on bearer {:?}",
+                            handler_info.instance_id, handler_info.bearer
+                        ),
+                        call_span,
+                    )
+                })?
+        };
+
+        // Get the on-event clause body.
+        let clause_body = match decl.clauses.get(handler_info.clause_index) {
+            Some(ttrpg_ast::ast::ConditionClause::OnEvent(oe)) => oe.body.clone(),
+            _ => {
+                return Err(RuntimeError::with_span(
+                    format!(
+                        "condition '{}' clause {} is not an on-event clause",
+                        handler_info.condition_name, handler_info.clause_index
+                    ),
+                    call_span,
+                ));
+            }
+        };
+
+        // Snapshot state for delta detection.
+        let original_state = cond_instance.state_fields.clone();
+
+        let mut exec = Self::new(core, state);
+
+        // Push scope with bindings (receiver, self, params, state, trigger).
+        exec.env.push_scope();
+        exec.env.bind(
+            decl.receiver_name.clone(),
+            Value::Entity(handler_info.bearer),
+        );
+        exec.env.bind("self".into(), cond_instance.to_value());
+        for (pname, pval) in &cond_instance.params {
+            exec.env.bind(pname.clone(), pval.clone());
+        }
+        if !cond_instance.state_fields.is_empty() {
+            exec.env.bind(
+                Name::from("state"),
+                Value::Struct {
+                    name: Name::from("state"),
+                    fields: cond_instance.state_fields.clone(),
+                },
+            );
+        }
+        exec.env.bind(Name::from("trigger"), event_payload);
+
+        // Push ConditionHandlerEpilogue — it pushes the Block on first
+        // advance, then does the state-diff + SetConditionState emit.
+        exec.frames.push(Frame::ConditionHandlerEpilogue {
+            target: handler_info.bearer,
+            condition_name: handler_info.condition_name.clone(),
+            instance_id: handler_info.instance_id,
+            original_state,
+            block_stmts: Some(clause_body.node),
+            child_result: None,
+        });
+
+        Ok(exec)
+    }
+
+    /// Start executing all matching condition event handlers as a single
+    /// batch execution.
+    ///
+    /// Pushes an `EmitConditionHandlers` frame that dispatches each handler
+    /// in order. For per-handler control, use [`start_condition_handler`] in
+    /// a loop instead.
+    ///
+    /// `handlers` should come from [`event::find_matching_condition_handlers`].
+    pub fn start_condition_handlers(
+        core: Rc<RuntimeCore>,
+        state: StateAdapter<S>,
+        handlers: Vec<crate::event::ConditionHandlerInfo>,
+        event_payload: Value,
+    ) -> Self {
+        let exec_handlers: Vec<ConditionHandlerInfo> = handlers
+            .into_iter()
+            .map(|h| ConditionHandlerInfo {
+                target: h.bearer,
+                condition_name: h.condition_name,
+                instance_id: h.instance_id,
+                handler_index: h.clause_index,
+            })
+            .collect();
+
+        let mut exec = Self::new(core, state);
+
+        if exec_handlers.is_empty() {
+            exec.frames.push(Frame::ExprEntry {
+                result: Some(Ok(Value::Void)),
+                expr: None,
+            });
+        } else {
+            exec.frames.push(Frame::EmitConditionHandlers {
+                handlers: exec_handlers,
+                index: 0,
+                payload: event_payload,
+                child_result: None,
+            });
+        }
+
+        exec
+    }
+
     // ── Non-action entry points (Phase 6) ──────────────────────
 
     /// Start evaluating a derive or table.

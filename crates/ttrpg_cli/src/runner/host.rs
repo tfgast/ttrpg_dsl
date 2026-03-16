@@ -193,6 +193,7 @@ impl Runner {
         .interactive(self.interactive);
         let candidates = state.all_entities();
 
+        #[allow(deprecated)] // migration to step-based Execution is tracked separately
         let results = interp
             .fire_hooks(
                 &state,
@@ -253,6 +254,7 @@ impl Runner {
         )
         .quiet(self.quiet)
         .interactive(self.interactive);
+        #[allow(deprecated)] // migration to step-based Execution is tracked separately
         let cond_count = interp2
             .fire_condition_handlers(&state, &mut handler2, event_name, payload, &candidates)
             .map_err(|e| {

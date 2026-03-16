@@ -548,6 +548,13 @@ impl<'p> Interpreter<'p> {
     ///
     /// This is the convenience method that combines `what_hooks` + `execute_hook`
     /// for each match. Returns the list of hook results in execution order.
+    ///
+    /// **Deprecated:** Use the step-based [`Execution::start_hook`] (per-hook) or
+    /// [`Execution::start_hooks`] (batch) entry points instead — they yield effects
+    /// to the host rather than consuming them internally.
+    #[deprecated(
+        note = "Use Execution::start_hook() or Execution::start_hooks() for step-based hosts"
+    )]
     pub fn fire_hooks(
         &self,
         state: &dyn StateProvider,
@@ -578,6 +585,13 @@ impl<'p> Interpreter<'p> {
     /// This is the condition-handler analogue of `fire_hooks`. It finds all
     /// condition `on` clauses matching the event, then executes each handler
     /// in entity → application → clause order. Returns the count of handlers fired.
+    ///
+    /// **Deprecated:** Use the step-based [`Execution::start_condition_handler`]
+    /// (per-handler) or [`Execution::start_condition_handlers`] (batch) entry
+    /// points instead — they yield effects to the host.
+    #[deprecated(
+        note = "Use Execution::start_condition_handler() or Execution::start_condition_handlers() for step-based hosts"
+    )]
     pub fn fire_condition_handlers(
         &self,
         state: &dyn StateProvider,
