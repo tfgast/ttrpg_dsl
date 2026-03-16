@@ -17,8 +17,8 @@ fmt-check:
 clippy:
     cargo clippy --workspace --all-targets
 
-# Run all tests (Rust + .ttrpg-cli scripts)
-test: test-rust test-scripts
+# Run all tests (Rust + .ttrpg-cli scripts, both execution modes)
+test: test-rust test-scripts test-scripts-step
 
 # Run the Rust test suite
 test-rust:

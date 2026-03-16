@@ -204,6 +204,43 @@ pub(crate) fn compile_expr(
     Some(work)
 }
 
+/// Try to compile a bare ident as an enum variant using a parameter type hint.
+///
+/// When the checker hasn't resolved a bare ident (e.g. CLI-parsed expressions),
+/// and `unique_variant_owner` returns `None` because the variant name appears in
+/// multiple enums (e.g. `Paladin` is in both `Class` and `SpellProgression`),
+/// this function uses the expected parameter type to disambiguate — matching the
+/// recursive interpreter's `try_eval_with_hint` behaviour.
+fn try_compile_with_hint(
+    arg_expr: &Spanned<ExprKind>,
+    type_env: &TypeEnv,
+    program: &ttrpg_ast::ast::Program,
+    work: &mut Vec<ExprWork>,
+    hint: &ttrpg_checker::ty::Ty,
+) -> Option<()> {
+    use ttrpg_checker::ty::Ty;
+
+    if let ExprKind::Ident(name) = &arg_expr.node
+        && !type_env.resolved_variants.contains_key(&arg_expr.span)
+        && type_env.unique_variant_owner(name).is_none()
+        && let Ty::Enum(enum_name) = hint
+        && let Some(DeclInfo::Enum(enum_info)) = type_env.types.get(enum_name.as_str())
+        && let Some(variant) = enum_info.variants.iter().find(|v| v.name == *name)
+        && variant.fields.is_empty()
+    {
+        work.push(ExprWork::Literal(
+            Value::EnumVariant {
+                enum_name: enum_name.clone(),
+                variant: Name::from(name.as_str()),
+                fields: BTreeMap::new(),
+            },
+            arg_expr.span,
+        ));
+        return Some(());
+    }
+    compile_inner(arg_expr, type_env, program, work)
+}
+
 fn compile_inner(
     expr: &Spanned<ExprKind>,
     type_env: &TypeEnv,
@@ -305,10 +342,32 @@ fn compile_inner(
         ExprKind::Call { callee, args } => {
             match &callee.node {
                 ExprKind::Ident(name) => {
+                    // Look up callee's parameter types for hint-based
+                    // enum variant resolution (mirrors recursive mode's
+                    // try_eval_with_hint).
+                    let fn_params = type_env.lookup_fn(name).map(|f| f.params.clone());
                     // Compile each arg value expression
                     let mut meta = Vec::with_capacity(args.len());
+                    let mut next_positional = 0usize;
                     for arg in args {
-                        compile_inner(&arg.value, type_env, program, work)?;
+                        // Determine which parameter this arg maps to
+                        let param_idx = if let Some(ref arg_name) = arg.name {
+                            fn_params.as_ref().and_then(|params| {
+                                params.iter().position(|p| p.name == *arg_name)
+                            })
+                        } else {
+                            let idx = next_positional;
+                            next_positional += 1;
+                            Some(idx)
+                        };
+                        let hint = param_idx.and_then(|i| {
+                            fn_params.as_ref().and_then(|p| p.get(i)).map(|p| &p.ty)
+                        });
+                        if let Some(hint) = hint {
+                            try_compile_with_hint(&arg.value, type_env, program, work, hint)?;
+                        } else {
+                            compile_inner(&arg.value, type_env, program, work)?;
+                        }
                         meta.push(ArgMeta {
                             name: arg.name.clone(),
                             span: arg.span,
@@ -579,10 +638,19 @@ fn compile_inner(
                 if !groups.is_empty() || base.is_some() || !with_conditions.is_empty() {
                     return None;
                 }
-                // Plain struct: compile each field
+                // Plain struct: compile each field, using type hints
+                // for enum variant disambiguation (mirrors recursive mode).
+                let schema_fields = type_env.lookup_fields(name);
                 let mut field_names = Vec::with_capacity(fields.len());
                 for field in fields {
-                    compile_inner(&field.value, type_env, program, work)?;
+                    let hint = schema_fields
+                        .and_then(|sf| sf.iter().find(|fi| fi.name == field.name))
+                        .map(|fi| &fi.ty);
+                    if let Some(hint) = hint {
+                        try_compile_with_hint(&field.value, type_env, program, work, hint)?;
+                    } else {
+                        compile_inner(&field.value, type_env, program, work)?;
+                    }
                     field_names.push(field.name.clone());
                 }
                 work.push(ExprWork::MakeStruct {
@@ -1223,18 +1291,32 @@ pub(crate) fn advance_expr_eval(
             ExprWork::MakeStruct {
                 name,
                 field_names,
-                span: _,
+                span: mk_span,
             } => {
                 let values = operands.split_off(operands.len() - field_names.len());
                 let mut fields = BTreeMap::new();
                 for (fname, val) in field_names.iter().zip(values) {
                     fields.insert(fname.clone(), val);
                 }
+                // Fill in defaults for omitted fields (mirrors recursive mode).
+                if let Some(defaults) = find_struct_defaults_step(&core.program, name) {
+                    for (fname, default_expr) in defaults {
+                        if !fields.contains_key(&fname) {
+                            match eval_expr_step(core, env, sp, eh, &default_expr) {
+                                Ok(val) => {
+                                    fields.insert(fname, val);
+                                }
+                                Err(e) => return Advance::Error(e),
+                            }
+                        }
+                    }
+                }
                 operands.push(Value::Struct {
                     name: name.clone(),
                     fields,
                 });
                 *pc += 1;
+                let _ = mk_span; // suppress unused warning
             }
 
             // ── Phase 5: IfLet pattern matching ─────────────
@@ -2568,7 +2650,7 @@ fn dispatch_function_step(
         args: bound,
         default_params: Vec::new(),
         body: Some(body),
-        defaults_done: true,
+        defaults_done: false,
         child_result: None,
     }))
 }
@@ -4925,4 +5007,33 @@ pub(crate) fn eval_expr_step(
         "expression could not be compiled for step-based evaluation",
         expr.span,
     ))
+}
+
+/// Find default field values for a struct type (step-mode equivalent of
+/// `eval::helpers::find_struct_defaults`).
+fn find_struct_defaults_step(
+    program: &ttrpg_ast::ast::Program,
+    struct_name: &str,
+) -> Option<Vec<(Name, Spanned<ExprKind>)>> {
+    use ttrpg_ast::ast::{DeclKind, TopLevel};
+    for item in &program.items {
+        if let TopLevel::System(system) = &item.node {
+            for decl in &system.decls {
+                let fields = match &decl.node {
+                    DeclKind::Struct(s) if s.name == struct_name => &s.fields,
+                    DeclKind::Unit(u) if u.name == struct_name => &u.fields,
+                    _ => continue,
+                };
+                let defaults: Vec<_> = fields
+                    .iter()
+                    .filter_map(|f| f.default.as_ref().map(|d| (f.name.clone(), d.clone())))
+                    .collect();
+                if defaults.is_empty() {
+                    return None;
+                }
+                return Some(defaults);
+            }
+        }
+    }
+    None
 }

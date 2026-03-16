@@ -4143,6 +4143,12 @@ impl Frame {
                             *phase = DeriveEvalPhase::ApplyPhase2(0);
                             return Advance::Continue;
                         }
+                        // Body evaluation may have errored and the error was
+                        // stored in modify_hooks_result by receive_child_error.
+                        // Propagate it instead of the generic message.
+                        if let Some(Err(e)) = modify_hooks_result.take() {
+                            return Advance::Error(e);
+                        }
                         Advance::Error(RuntimeError::new(format!(
                             "DeriveEval '{name}': BodyDone but no base_value"
                         )))
@@ -4366,8 +4372,10 @@ impl Frame {
                 pending,
                 result,
             } => {
-                // If we have a result from a UseDefault Block child, pop it.
+                // If we have a result from a UseDefault Block child, pop
+                // the param scope we pushed before the Block and return.
                 if let Some(val) = result.take() {
+                    env.pop_scope();
                     return Advance::Pop(val);
                 }
 
@@ -4378,6 +4386,12 @@ impl Frame {
                         Response::Override(val) => Advance::Pop(val),
                         Response::UseDefault => {
                             if let Some(block) = default_block.take() {
+                                // Bind prompt params so the default block
+                                // can reference them (matches recursive mode).
+                                env.push_scope();
+                                for (pn, pv) in params.drain(..) {
+                                    env.bind(pn, pv);
+                                }
                                 Advance::Push(Frame::Block {
                                     stmts: block.node,
                                     index: 0,
