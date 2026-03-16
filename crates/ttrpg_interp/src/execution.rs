@@ -1754,6 +1754,14 @@ pub(crate) enum Frame {
         span: Span,
     },
 
+    /// Yield a mutation effect (AdvanceTime, RemoveEntity, AddSuspension, etc.)
+    /// and wait for host response. Acknowledged/Override/Vetoed → Pop(Void).
+    MutationYield {
+        effect: Effect,
+        pending: Option<Response>,
+        span: Span,
+    },
+
     /// Cost evaluation frame for the async action lifecycle.
     /// Handles the full cost pipeline: modifier collection → apply → yield → budget → deduction.
     CostEval {
@@ -5727,6 +5735,28 @@ impl Frame {
                 }
             }
 
+            Frame::MutationYield {
+                effect,
+                pending,
+                span,
+            } => {
+                if let Some(response) = pending.take() {
+                    match response {
+                        Response::Acknowledged | Response::Override(_) | Response::Vetoed => {
+                            Advance::Pop(Value::Void)
+                        }
+                        other => Advance::Error(RuntimeError::with_span(
+                            format!(
+                                "protocol error: unsupported response for mutation effect: {other:?}"
+                            ),
+                            *span,
+                        )),
+                    }
+                } else {
+                    Advance::Yield(effect.clone())
+                }
+            }
+
             Frame::ConditionOnRemove {
                 target,
                 condition_name,
@@ -5880,6 +5910,7 @@ impl Frame {
             Frame::DeriveEval { pending, .. } => *pending = Some(response),
             Frame::BudgetGuard { pending, .. } => *pending = Some(response),
             Frame::MultiBudgetGuard { pending, .. } => *pending = Some(response),
+            Frame::MutationYield { pending, .. } => *pending = Some(response),
             _ => {}
         }
     }
@@ -13266,9 +13297,20 @@ mod tests {
 
         let mut exec = Execution::start_function(core, adapter, "caller", vec![]).unwrap();
 
-        // Poll: tick_and_roll() dispatched via FunctionEval.
-        // Inner Block: advance_time(1) completes as stmt 0,
-        // then roll(1d6) yields as stmt 1.
+        // advance_time(1) now yields to the host.
+        let step = exec.poll().unwrap();
+        assert!(
+            matches!(&step, Step::Yielded(e) if matches!(&**e, Effect::AdvanceTime { amount: 1 })),
+            "expected AdvanceTime yield, got {step:?}"
+        );
+        // Host applies the mutation.
+        exec.state().with_state_mut(|gs| {
+            let t = gs.game_time();
+            WritableState::set_game_time(gs, t + 1);
+        });
+        exec.respond(Response::Acknowledged).unwrap();
+
+        // Then roll(1d6) yields.
         let step = exec.poll().unwrap();
         assert!(
             matches!(&step, Step::Yielded(e) if matches!(&**e, Effect::RollDice { .. })),
@@ -13330,6 +13372,18 @@ mod tests {
 
         let mut exec = Execution::start_function(core, adapter, "caller", vec![]).unwrap();
 
+        // advance_time(1) yields first.
+        let step = exec.poll().unwrap();
+        assert!(
+            matches!(&step, Step::Yielded(e) if matches!(&**e, Effect::AdvanceTime { amount: 1 })),
+            "expected AdvanceTime yield, got {step:?}"
+        );
+        exec.state().with_state_mut(|gs| {
+            let t = gs.game_time();
+            WritableState::set_game_time(gs, t + 1);
+        });
+        exec.respond(Response::Acknowledged).unwrap();
+
         let step = exec.poll().unwrap();
         assert!(
             matches!(&step, Step::Yielded(e) if matches!(&**e, Effect::RollDice { .. })),
@@ -13382,6 +13436,18 @@ mod tests {
         let mut exec =
             Execution::start_function(core, adapter, "caller", vec![Value::Entity(target)])
                 .unwrap();
+
+        // advance_time(1) yields first.
+        let step = exec.poll().unwrap();
+        assert!(
+            matches!(&step, Step::Yielded(e) if matches!(&**e, Effect::AdvanceTime { amount: 1 })),
+            "expected AdvanceTime yield, got {step:?}"
+        );
+        exec.state().with_state_mut(|gs| {
+            let t = gs.game_time();
+            WritableState::set_game_time(gs, t + 1);
+        });
+        exec.respond(Response::Acknowledged).unwrap();
 
         let step = exec.poll().unwrap();
         assert!(
@@ -13577,9 +13643,17 @@ mod tests {
 
         let mut exec = Execution::start_function(core, adapter, "caller", vec![]).unwrap();
 
+        // advance_time(1) yields first.
         let result = exec.poll();
         assert!(
-            matches!(&result, Ok(Step::Yielded(e)) if matches!(**e, crate::Effect::RollDice { .. })),
+            matches!(&result, Ok(Step::Yielded(e)) if matches!(**e, Effect::AdvanceTime { amount: 1 })),
+            "expected AdvanceTime yield from child frame dispatch, got {result:?}"
+        );
+        exec.respond(Response::Acknowledged).unwrap();
+
+        let result = exec.poll();
+        assert!(
+            matches!(&result, Ok(Step::Yielded(e)) if matches!(**e, Effect::RollDice { .. })),
             "expected RollDice yield from child frame dispatch, got {result:?}"
         );
     }

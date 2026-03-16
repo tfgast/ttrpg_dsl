@@ -22,7 +22,7 @@ use ttrpg_ast::{Name, Span, Spanned};
 use ttrpg_checker::env::{DeclInfo, FnKind, TypeEnv};
 
 use crate::RuntimeError;
-use crate::effect::{Effect, EffectHandler, Response};
+use crate::effect::{Effect, EffectHandler};
 use crate::eval::{
     apply_binop_values, apply_unary_values, field_access_on_value, index_on_value, match_pattern,
 };
@@ -4038,18 +4038,18 @@ fn call_builtin_step_full(
         // Env-context builtins: implemented natively using ExecEnv + EffectHandler
         "invocation" => builtin_invocation_step(env, &args, span).map(CallResult::Value),
         "condition_token" => builtin_condition_token_step(env, &args, span).map(CallResult::Value),
-        "advance_time" => builtin_advance_time_step(env, &args, span, eh).map(CallResult::Value),
-        "despawn" => builtin_despawn_step(&args, span, eh).map(CallResult::Value),
-        "suspend" => builtin_suspend_step(env, &args, span, eh).map(CallResult::Value),
-        "suspend_with_source" => {
-            builtin_suspend_with_source_step(&args, span, eh).map(CallResult::Value)
-        }
-        "remove_suspension_source" => {
-            builtin_remove_suspension_source_step(&args, span, eh).map(CallResult::Value)
-        }
-        "transfer_conditions" => {
-            builtin_transfer_conditions_step(env, &args, span, core, eh).map(CallResult::Value)
-        }
+        "advance_time" => builtin_advance_time_step(env, &args, span)
+            .map(|effect| CallResult::PushChild(Frame::MutationYield { effect, pending: None, span })),
+        "despawn" => builtin_despawn_step(&args, span)
+            .map(|effect| CallResult::PushChild(Frame::MutationYield { effect, pending: None, span })),
+        "suspend" => builtin_suspend_step(env, &args, span)
+            .map(|effect| CallResult::PushChild(Frame::MutationYield { effect, pending: None, span })),
+        "suspend_with_source" => builtin_suspend_with_source_step(&args, span)
+            .map(|effect| CallResult::PushChild(Frame::MutationYield { effect, pending: None, span })),
+        "remove_suspension_source" => builtin_remove_suspension_source_step(&args, span)
+            .map(|effect| CallResult::PushChild(Frame::MutationYield { effect, pending: None, span })),
+        "transfer_conditions" => builtin_transfer_conditions_step(env, &args, span, core)
+            .map(|effect| CallResult::PushChild(Frame::MutationYield { effect, pending: None, span })),
         // Complex lifecycle builtins — run via frame-based execution
         "apply_condition" | "remove_condition" | "revoke" => {
             run_builtin_via_frame(name, args, span, core, env, sp, eh).map(CallResult::Value)
@@ -4579,8 +4579,7 @@ fn builtin_advance_time_step(
     env: &ExecEnv,
     args: &[Value],
     span: Span,
-    eh: &mut dyn EffectHandler,
-) -> Result<Value, RuntimeError> {
+) -> Result<Effect, RuntimeError> {
     if env.current_invocation_id.is_some() {
         return Err(RuntimeError::with_span(
             "advance_time() cannot be called during action/reaction/hook execution",
@@ -4588,13 +4587,9 @@ fn builtin_advance_time_step(
         ));
     }
     match args.first() {
-        Some(Value::Int(amount)) if *amount > 0 => {
-            let effect = Effect::AdvanceTime {
-                amount: *amount as u64,
-            };
-            validate_mutation_response(eh.handle(effect), "AdvanceTime", span)?;
-            Ok(Value::Void)
-        }
+        Some(Value::Int(amount)) if *amount > 0 => Ok(Effect::AdvanceTime {
+            amount: *amount as u64,
+        }),
         Some(Value::Int(0)) => Err(RuntimeError::with_span(
             "advance_time() amount must be positive, got 0",
             span,
@@ -4617,14 +4612,9 @@ fn builtin_advance_time_step(
 fn builtin_despawn_step(
     args: &[Value],
     span: Span,
-    eh: &mut dyn EffectHandler,
-) -> Result<Value, RuntimeError> {
+) -> Result<Effect, RuntimeError> {
     match args.first() {
-        Some(Value::Entity(entity)) => {
-            let effect = Effect::RemoveEntity { entity: *entity };
-            validate_mutation_response(eh.handle(effect), "RemoveEntity", span)?;
-            Ok(Value::Void)
-        }
+        Some(Value::Entity(entity)) => Ok(Effect::RemoveEntity { entity: *entity }),
         Some(other) => Err(RuntimeError::with_span(
             format!("despawn() expects entity, got {}", type_name(other)),
             span,
@@ -4659,8 +4649,7 @@ fn builtin_suspend_step(
     env: &ExecEnv,
     args: &[Value],
     span: Span,
-    eh: &mut dyn EffectHandler,
-) -> Result<Value, RuntimeError> {
+) -> Result<Effect, RuntimeError> {
     if env.in_lifecycle_block == 0 {
         return Err(RuntimeError::with_span(
             "suspend() can only be called inside on_apply/on_remove blocks. \
@@ -4682,15 +4671,13 @@ fn builtin_suspend_step(
             Some(Value::Bool(freeze_durations)),
         ) => {
             let presence = parse_presence_step(presence_val, span)?;
-            let effect = Effect::AddSuspension {
+            Ok(Effect::AddSuspension {
                 entity: *entity,
                 source_id: token.0,
                 presence,
                 freeze_turns: *freeze_turns,
                 freeze_durations: *freeze_durations,
-            };
-            validate_mutation_response(eh.handle(effect), "AddSuspension", span)?;
-            Ok(Value::Void)
+            })
         }
         _ => Err(RuntimeError::with_span(
             "suspend() requires 4 arguments: (entity, Presence, bool, bool)",
@@ -4702,8 +4689,7 @@ fn builtin_suspend_step(
 fn builtin_suspend_with_source_step(
     args: &[Value],
     span: Span,
-    eh: &mut dyn EffectHandler,
-) -> Result<Value, RuntimeError> {
+) -> Result<Effect, RuntimeError> {
     match (
         args.first(),
         args.get(1),
@@ -4719,15 +4705,13 @@ fn builtin_suspend_with_source_step(
             Some(Value::Bool(freeze_durations)),
         ) if *source_id >= 0 => {
             let presence = parse_presence_step(presence_val, span)?;
-            let effect = Effect::AddSuspension {
+            Ok(Effect::AddSuspension {
                 entity: *entity,
                 source_id: *source_id as u64,
                 presence,
                 freeze_turns: *freeze_turns,
                 freeze_durations: *freeze_durations,
-            };
-            validate_mutation_response(eh.handle(effect), "AddSuspension", span)?;
-            Ok(Value::Void)
+            })
         }
         _ => Err(RuntimeError::with_span(
             "suspend_with_source() requires 5 arguments: (entity, int, Presence, bool, bool)",
@@ -4739,16 +4723,13 @@ fn builtin_suspend_with_source_step(
 fn builtin_remove_suspension_source_step(
     args: &[Value],
     span: Span,
-    eh: &mut dyn EffectHandler,
-) -> Result<Value, RuntimeError> {
+) -> Result<Effect, RuntimeError> {
     match (args.first(), args.get(1)) {
         (Some(Value::Entity(entity)), Some(Value::Int(source_id))) if *source_id >= 0 => {
-            let effect = Effect::RemoveSuspensionSource {
+            Ok(Effect::RemoveSuspensionSource {
                 entity: *entity,
                 source_id: *source_id as u64,
-            };
-            validate_mutation_response(eh.handle(effect), "RemoveSuspensionSource", span)?;
-            Ok(Value::Void)
+            })
         }
         _ => Err(RuntimeError::with_span(
             "remove_suspension_source() requires 2 arguments: (entity, int)",
@@ -4762,8 +4743,7 @@ fn builtin_transfer_conditions_step(
     args: &[Value],
     span: Span,
     core: &RuntimeCore,
-    eh: &mut dyn EffectHandler,
-) -> Result<Value, RuntimeError> {
+) -> Result<Effect, RuntimeError> {
     let (from, to, tag) = match (args.first(), args.get(1), args.get(2)) {
         (Some(Value::Entity(from)), Some(Value::Entity(to)), Some(Value::Str(tag))) => {
             (*from, *to, tag.clone())
@@ -4787,31 +4767,15 @@ fn builtin_transfer_conditions_step(
     }
 
     let exclude_instance = env.lifecycle_condition_stack.last().copied();
-    let effect = Effect::TransferConditions {
+    Ok(Effect::TransferConditions {
         from,
         to,
         tag: Name::from(tag.as_str()),
         exclude_instance,
-    };
-    validate_mutation_response(eh.handle(effect), "TransferConditions", span)?;
-    Ok(Value::Void)
+    })
 }
 
 /// Validate a response to a mutation effect.
-fn validate_mutation_response(
-    response: Response,
-    effect_name: &str,
-    span: Span,
-) -> Result<(), RuntimeError> {
-    match response {
-        Response::Acknowledged | Response::Override(_) | Response::Vetoed => Ok(()),
-        _ => Err(RuntimeError::with_span(
-            format!("protocol error: unsupported response for {effect_name}: {response:?}"),
-            span,
-        )),
-    }
-}
-
 /// Run a complex lifecycle builtin (apply_condition, remove_condition, revoke)
 /// by constructing a synthetic call expression and evaluating it via a
 /// ResumableBridge frame. This avoids a direct bridge_call_builtin call from
