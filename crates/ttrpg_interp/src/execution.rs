@@ -765,7 +765,6 @@ fn collect_cost_modifiers_native(
     action_name: &str,
 ) -> Result<Vec<OwnedModifier>, RuntimeError> {
     use crate::effect::ModifySource;
-    use crate::eval::value_eq;
     use ttrpg_ast::ast::{ConditionClause, ModifyTarget};
 
     let conditions = match sp.read_conditions(actor) {
@@ -806,14 +805,14 @@ fn collect_cost_modifiers_native(
             let bindings_match = if clause.bindings.is_empty() {
                 true
             } else {
-                let mut all_match = true;
-
-                let binding_vals: Vec<Option<Value>> = clause
+                // Capture param values from current env BEFORE pushing scope.
+                let bound_params: Vec<(Name, Value)> = clause
                     .bindings
                     .iter()
-                    .map(|b| env.lookup(&b.name).cloned())
+                    .filter_map(|b| env.lookup(&b.name).cloned().map(|v| (b.name.clone(), v)))
                     .collect();
 
+                // Caller-managed scope.
                 env.push_scope();
                 env.bind(
                     cond_decl.receiver_name.clone(),
@@ -832,33 +831,28 @@ fn collect_cost_modifiers_native(
                     );
                 }
 
-                for (idx, binding) in clause.bindings.iter().enumerate() {
-                    let param_val = match &binding_vals[idx] {
-                        Some(val) => val.clone(),
-                        None => {
-                            all_match = false;
-                            break;
-                        }
-                    };
+                let frame = Frame::BindingCheck {
+                    bindings: clause.bindings.clone(),
+                    bound_params,
+                    scope_bindings: Vec::new(),
+                    scope_mode: BindingScopeMode::Caller,
+                    index: 0,
+                    child_result: None,
+                    scope_pushed: false,
+                };
 
-                    if let Some(ref expr) = binding.value {
-                        match crate::expr_eval::eval_expr_step(core, env, sp, eh, expr) {
-                            Ok(val) => {
-                                if !value_eq(sp, &param_val, &val) {
-                                    all_match = false;
-                                    break;
-                                }
-                            }
-                            Err(e) => {
-                                env.pop_scope();
-                                return Err(e);
-                            }
-                        }
-                    }
-                }
-
+                let result = run_frame_to_completion_sync(frame, core, env, sp, eh);
                 env.pop_scope();
-                all_match
+
+                match result {
+                    Ok(Value::Bool(b)) => b,
+                    Ok(other) => {
+                        return Err(RuntimeError::new(format!(
+                            "BindingCheck returned non-Bool: {other:?}",
+                        )));
+                    }
+                    Err(e) => return Err(e),
+                }
             };
 
             if bindings_match {
@@ -1233,54 +1227,45 @@ fn check_modify_bindings_native(
     _fn_info: &FnInfo,
     bound_params: &[(Name, Value)],
 ) -> Result<bool, RuntimeError> {
-    use crate::eval::value_eq;
-
     if clause.bindings.is_empty() {
         return Ok(true);
     }
 
-    let receiver_name = receiver_name.clone();
-
-    for binding in &clause.bindings {
-        let param_val = match bound_params.iter().find(|(name, _)| *name == binding.name) {
-            Some((_, val)) => val.clone(),
-            None => return Ok(false),
-        };
-
-        env.push_scope();
-        env.bind(receiver_name.clone(), Value::Entity(condition.bearer));
-        for (name, val) in &condition.params {
-            env.bind(name.clone(), val.clone());
-        }
-        for (name, val) in bound_params {
-            env.bind(name.clone(), val.clone());
-        }
-        if !condition.state_fields.is_empty() {
-            env.bind(
-                Name::from("state"),
-                Value::Struct {
-                    name: Name::from("state"),
-                    fields: condition.state_fields.clone(),
-                },
-            );
-        }
-
-        let binding_val = match binding.value {
-            Some(ref expr) => crate::expr_eval::eval_expr_step(core, env, sp, eh, expr),
-            None => {
-                env.pop_scope();
-                continue;
-            }
-        };
-        env.pop_scope();
-
-        let val = binding_val?;
-        if !value_eq(sp, &param_val, &val) {
-            return Ok(false);
-        }
+    // Build scope bindings: receiver, condition params, bound params, state fields.
+    let mut scope_bindings = Vec::new();
+    scope_bindings.push((receiver_name.clone(), Value::Entity(condition.bearer)));
+    for (name, val) in &condition.params {
+        scope_bindings.push((name.clone(), val.clone()));
+    }
+    for (name, val) in bound_params {
+        scope_bindings.push((name.clone(), val.clone()));
+    }
+    if !condition.state_fields.is_empty() {
+        scope_bindings.push((
+            Name::from("state"),
+            Value::Struct {
+                name: Name::from("state"),
+                fields: condition.state_fields.clone(),
+            },
+        ));
     }
 
-    Ok(true)
+    let frame = Frame::BindingCheck {
+        bindings: clause.bindings.clone(),
+        bound_params: bound_params.to_vec(),
+        scope_bindings,
+        scope_mode: BindingScopeMode::Owned,
+        index: 0,
+        child_result: None,
+        scope_pushed: false,
+    };
+
+    match run_frame_to_completion_sync(frame, core, env, sp, eh)? {
+        Value::Bool(b) => Ok(b),
+        other => Err(RuntimeError::new(format!(
+            "BindingCheck returned non-Bool: {other:?}",
+        ))),
+    }
 }
 
 /// Native version of `pipeline::check_option_modify_bindings`.
@@ -1293,38 +1278,28 @@ fn check_option_modify_bindings_native(
     _fn_info: &FnInfo,
     bound_params: &[(Name, Value)],
 ) -> Result<bool, RuntimeError> {
-    use crate::eval::value_eq;
-
     if clause.bindings.is_empty() {
         return Ok(true);
     }
 
-    for binding in &clause.bindings {
-        let param_val = match bound_params.iter().find(|(name, _)| *name == binding.name) {
-            Some((_, val)) => val.clone(),
-            None => return Ok(false),
-        };
+    let scope_bindings: Vec<(Name, Value)> = bound_params.to_vec();
 
-        let binding_expr = match binding.value {
-            Some(ref expr) => expr,
-            None => continue,
-        };
+    let frame = Frame::BindingCheck {
+        bindings: clause.bindings.clone(),
+        bound_params: bound_params.to_vec(),
+        scope_bindings,
+        scope_mode: BindingScopeMode::Owned,
+        index: 0,
+        child_result: None,
+        scope_pushed: false,
+    };
 
-        env.push_scope();
-        for (name, val) in bound_params {
-            env.bind(name.clone(), val.clone());
-        }
-
-        let binding_val = crate::expr_eval::eval_expr_step(core, env, sp, eh, binding_expr);
-        env.pop_scope();
-
-        let val = binding_val?;
-        if !value_eq(sp, &param_val, &val) {
-            return Ok(false);
-        }
+    match run_frame_to_completion_sync(frame, core, env, sp, eh)? {
+        Value::Bool(b) => Ok(b),
+        other => Err(RuntimeError::new(format!(
+            "BindingCheck returned non-Bool: {other:?}",
+        ))),
     }
-
-    Ok(true)
 }
 
 /// Native version of `pipeline::is_modifier_suppressed`.
@@ -1341,7 +1316,6 @@ fn is_modifier_suppressed_native<S>(
 where
     S: SuppressModifyAccess,
 {
-    use crate::eval::value_eq;
     use ttrpg_ast::ast::SelectorPredicate;
 
     for sup in suppressions {
@@ -1375,30 +1349,36 @@ where
             return Ok(true);
         }
 
+        // Caller-managed scope: push here, BindingCheck frame uses Caller mode.
         env.push_scope();
         env.bind(sup.receiver_name().clone(), sup.bearer().clone());
         for (pname, pval) in sup.condition_params() {
             env.bind(pname.clone(), pval.clone());
         }
 
-        let mut bindings_match = true;
-        for binding in &sup.clause().bindings {
-            let param_val = match bound_params.iter().find(|(name, _)| *name == binding.name) {
-                Some((_, val)) => val.clone(),
-                None => {
-                    bindings_match = false;
-                    break;
-                }
-            };
+        let frame = Frame::BindingCheck {
+            bindings: sup.clause().bindings.clone(),
+            bound_params: bound_params.to_vec(),
+            scope_bindings: Vec::new(),
+            scope_mode: BindingScopeMode::Caller,
+            index: 0,
+            child_result: None,
+            scope_pushed: false,
+        };
 
-            if let Some(value_expr) = &binding.value {
-                let binding_val = crate::expr_eval::eval_expr_step(core, env, sp, eh, value_expr)?;
-                if !value_eq(sp, &param_val, &binding_val) {
-                    bindings_match = false;
-                    break;
-                }
+        let bindings_match = match run_frame_to_completion_sync(frame, core, env, sp, eh) {
+            Ok(Value::Bool(b)) => b,
+            Ok(other) => {
+                env.pop_scope();
+                return Err(RuntimeError::new(format!(
+                    "BindingCheck returned non-Bool: {other:?}",
+                )));
             }
-        }
+            Err(e) => {
+                env.pop_scope();
+                return Err(e);
+            }
+        };
 
         env.pop_scope();
 
@@ -2239,6 +2219,29 @@ pub(crate) enum Frame {
         result: Option<Result<Value, RuntimeError>>,
         expr: Option<Spanned<ExprKind>>,
     },
+
+    /// Evaluates modifier binding expressions and returns Bool.
+    /// Iterates bindings, pushing ExprEval children for each expression,
+    /// comparing results with bound parameter values via `value_eq`.
+    BindingCheck {
+        bindings: Vec<ttrpg_ast::ast::ModifyBinding>,
+        bound_params: Vec<(Name, Value)>,
+        scope_bindings: Vec<(Name, Value)>,
+        scope_mode: BindingScopeMode,
+        index: usize,
+        child_result: Option<Result<Value, RuntimeError>>,
+        /// Whether Owned scope has been pushed (for cleanup on error).
+        scope_pushed: bool,
+    },
+}
+
+/// Controls whether [`Frame::BindingCheck`] manages its own scope.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum BindingScopeMode {
+    /// Push scope on init with scope_bindings, pop on completion/early-exit.
+    Owned,
+    /// Caller manages scope. Frame does no push/pop.
+    Caller,
 }
 
 // ── Frame advance implementation ───────────────────────────────
@@ -3339,6 +3342,88 @@ impl Frame {
                     Some(ref e) => Advance::Push(compile_expr_to_frame(e, core)),
                     None => Advance::Error(RuntimeError::new("ExprEntry frame has no expression")),
                 }
+            }
+
+            Frame::BindingCheck {
+                bindings,
+                bound_params,
+                scope_bindings,
+                scope_mode,
+                index,
+                child_result,
+                scope_pushed,
+            } => {
+                // Helper: pop scope if Owned mode.
+                let cleanup = |env: &mut ExecEnv, pushed: &mut bool, mode: BindingScopeMode| {
+                    if mode == BindingScopeMode::Owned && *pushed {
+                        env.pop_scope();
+                        *pushed = false;
+                    }
+                };
+
+                // Init: push scope for Owned mode on first entry.
+                if *scope_mode == BindingScopeMode::Owned && !*scope_pushed {
+                    env.push_scope();
+                    for (name, val) in scope_bindings.iter() {
+                        env.bind(name.clone(), val.clone());
+                    }
+                    *scope_pushed = true;
+                }
+
+                // Handle child ExprEval result.
+                if let Some(result) = child_result.take() {
+                    match result {
+                        Err(e) => {
+                            cleanup(env, scope_pushed, *scope_mode);
+                            return Advance::Error(e);
+                        }
+                        Ok(val) => {
+                            let binding = &bindings[*index];
+                            let param_val = bound_params
+                                .iter()
+                                .find(|(n, _)| *n == binding.name)
+                                .map(|(_, v)| v);
+                            // param_val must exist — we checked before pushing ExprEval.
+                            if let Some(pv) = param_val {
+                                if !crate::eval::value_eq(sp, pv, &val) {
+                                    cleanup(env, scope_pushed, *scope_mode);
+                                    return Advance::Pop(Value::Bool(false));
+                                }
+                            }
+                            *index += 1;
+                            return Advance::Continue;
+                        }
+                    }
+                }
+
+                // All bindings checked — success.
+                if *index >= bindings.len() {
+                    cleanup(env, scope_pushed, *scope_mode);
+                    return Advance::Pop(Value::Bool(true));
+                }
+
+                let binding = &bindings[*index];
+
+                // Param lookup.
+                let _param_val = match bound_params.iter().find(|(n, _)| *n == binding.name) {
+                    Some((_, val)) => val,
+                    None => {
+                        cleanup(env, scope_pushed, *scope_mode);
+                        return Advance::Pop(Value::Bool(false));
+                    }
+                };
+
+                // Wildcard binding (value == None): skip.
+                let expr = match &binding.value {
+                    Some(expr) => expr,
+                    None => {
+                        *index += 1;
+                        return Advance::Continue;
+                    }
+                };
+
+                // Push ExprEval child for binding expression.
+                Advance::Push(compile_expr_to_frame(expr, core))
             }
 
             Frame::Block {
@@ -5914,6 +5999,9 @@ impl Frame {
                 // Child ExprEval completed.
                 *result = Some(Ok(value));
             }
+            Frame::BindingCheck { child_result, .. } => {
+                *child_result = Some(Ok(value));
+            }
             Frame::CostEval {
                 modify_hooks_result,
                 ..
@@ -5977,7 +6065,8 @@ impl Frame {
             | Frame::ConditionOnRemove { child_result, .. }
             | Frame::EmitHooks { child_result, .. }
             | Frame::EmitConditionHandlers { child_result, .. }
-            | Frame::ConditionHandlerEpilogue { child_result, .. } => {
+            | Frame::ConditionHandlerEpilogue { child_result, .. }
+            | Frame::BindingCheck { child_result, .. } => {
                 // Absorb the error so advance() can run cleanup
                 // (scope pop, budget restore) before propagating.
                 *child_result = Some(Err(error));
