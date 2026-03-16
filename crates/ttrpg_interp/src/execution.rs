@@ -264,29 +264,8 @@ impl EffectHandler for CachingHandler {
     }
 }
 
-/// Handler that captures any forwarded effect by returning `Vetoed`.
-/// Simpler than `CachingHandler` — no cache, no effect storage.
-/// Used by `try_frame_dispatch_stmt` to probe whether argument
-/// evaluation would yield a host-decided effect.
-struct TryEvalHandler {
-    captured: bool,
-}
-
-impl TryEvalHandler {
-    fn new() -> Self {
-        TryEvalHandler { captured: false }
-    }
-}
-
-impl EffectHandler for TryEvalHandler {
-    fn handle(&mut self, _effect: Effect) -> Response {
-        self.captured = true;
-        Response::Vetoed
-    }
-}
-
 /// Handler that routes mutations through an already-adapted handler
-/// and non-mutations through a custom handler (CachingHandler, TryEvalHandler, etc.).
+/// and non-mutations through a custom handler (CachingHandler, etc.).
 ///
 /// This allows bridge calls with custom handlers to work with trait objects,
 /// without needing direct access to StateAdapter. The adapted handler
@@ -352,358 +331,82 @@ fn effect_to_yield_frame(
     }
 }
 
-/// Try to dispatch an `apply_condition(...)` call as a frame.
+/// Dispatch an `apply_condition(...)` call as a `CallSetup` frame.
 ///
-/// Evaluates all arguments via bridge (pure evaluation, no host-decided
-/// effects expected for args), then constructs a `ConditionApplyGate` frame.
-///
-/// Returns `Ok(None)` if args can't be evaluated (fall back to bridge).
+/// Collects argument expressions and returns a `CallSetup` that will
+/// evaluate them one at a time via `ResumableBridge` children.
 fn try_dispatch_apply_condition(
-    core: &RuntimeCore,
-    env: &mut ExecEnv,
-    sp: &dyn StateProvider,
-    eh: &mut dyn EffectHandler,
     args: &[ttrpg_ast::ast::Arg],
     span: Span,
     awaiting: AwaitingFn,
 ) -> Result<Option<(Frame, AwaitingFn)>, RuntimeError> {
-    // Evaluate all arguments via bridge (no host-decided effects expected).
-    let mut values = Vec::new();
-    for arg in args {
-        let mut probe = TryEvalHandler::new();
-        let eval_result = bridge_eval_with(
-            core,
-            env,
-            sp,
-            &mut ComposedHandler {
-                adapted: &mut *eh,
-                custom: &mut probe,
-            },
-            BridgeCategory::Probe,
-            |tmp_env| crate::eval::eval_expr(tmp_env, &arg.value),
-        );
-        if probe.captured {
-            return Ok(None); // arg yields — fall back to bridge
-        }
-        match eval_result {
-            Ok(v) => values.push(v),
-            Err(_) => return Ok(None), // eval error — bridge will report
-        }
-    }
-
-    // Check lifecycle guard
-    if env.in_lifecycle_block > 0 {
-        return Err(RuntimeError::with_span(
-            "apply_condition() cannot be called inside on_apply/on_remove blocks",
-            span,
-        ));
-    }
-
-    // Extract arguments (mirrors builtin_apply_condition arg parsing)
-    let (target, cond_name, cond_args, duration) =
-        match (values.first(), values.get(1), values.get(2)) {
-            (
-                Some(Value::Entity(target)),
-                Some(Value::Condition {
-                    name: cond_name,
-                    args: cond_args,
-                }),
-                Some(duration),
-            ) => (
-                *target,
-                cond_name.clone(),
-                cond_args.clone(),
-                duration.clone(),
-            ),
-            (Some(Value::Entity(target)), Some(Value::Str(cond_name)), Some(duration)) => (
-                *target,
-                Name::from(cond_name.as_str()),
-                BTreeMap::new(),
-                duration.clone(),
-            ),
-            _ => return Ok(None), // type mismatch — bridge will report error
-        };
-
-    // Optional 4th argument: EffectSource
-    let source = if let Some(s) = values.get(3) {
-        s.clone()
-    } else {
-        crate::value::effect_source_unknown()
-    };
-
-    // Look up declaration tags
-    let tags: Vec<Name> = core
-        .type_env
-        .conditions
-        .get(&cond_name)
-        .map(|info| info.tags.iter().cloned().collect())
-        .unwrap_or_default();
-
-    // Allocate condition ID
-    let token = ConditionToken(core.alloc_condition_id()?);
-
-    // Convert params from BTreeMap to Vec
-    let params: Vec<(Name, Value)> = cond_args.into_iter().collect();
-
     Ok(Some((
-        Frame::ConditionApplyGate {
-            target,
-            condition_name: cond_name,
-            params,
-            duration,
-            source,
-            tags,
-            token,
-            pending: None,
-            state_defaults: None,
-            state_defaults_idx: 0,
-            state_fields_acc: BTreeMap::new(),
-            state_expr_cache: Vec::new(),
-            default_scope_pushed: false,
+        Frame::CallSetup {
+            target: CallTarget::ApplyCondition { span },
+            arg_exprs: args.iter().map(|a| a.value.clone()).collect(),
+            arg_index: 0,
+            evaluated: Vec::new(),
+            child_result: None,
+            awaiting_child: false,
+            span,
         },
         awaiting,
     )))
 }
 
-/// Try to dispatch a `remove_condition(...)` call as a frame.
-///
-/// Evaluates arguments via bridge, resolves matching condition instances,
-/// then constructs a `ConditionRemovalLoop` frame.
+/// Dispatch a `remove_condition(...)` call as a `CallSetup` frame.
 fn try_dispatch_remove_condition(
-    core: &RuntimeCore,
-    env: &mut ExecEnv,
-    sp: &dyn StateProvider,
-    eh: &mut dyn EffectHandler,
     args: &[Arg],
     span: Span,
     awaiting: AwaitingFn,
 ) -> Result<Option<(Frame, AwaitingFn)>, RuntimeError> {
-    // Evaluate all arguments via bridge (no host-decided effects expected).
-    let mut values = Vec::new();
-    for arg in args {
-        let mut probe = TryEvalHandler::new();
-        let eval_result = bridge_eval_with(
-            core,
-            env,
-            sp,
-            &mut ComposedHandler {
-                adapted: &mut *eh,
-                custom: &mut probe,
-            },
-            BridgeCategory::Probe,
-            |tmp_env| crate::eval::eval_expr(tmp_env, &arg.value),
-        );
-        if probe.captured {
-            return Ok(None);
-        }
-        match eval_result {
-            Ok(v) => values.push(v),
-            Err(_) => return Ok(None),
-        }
-    }
-
-    // Check lifecycle guard
-    if env.in_lifecycle_block > 0 {
-        return Err(RuntimeError::with_span(
-            "remove_condition() cannot be called inside on_apply/on_remove blocks",
-            span,
-        ));
-    }
-
-    // Extract target and matching instances (mirrors builtin_remove_condition)
-    let (target, instances) = match (values.first(), values.get(1)) {
-        (
-            Some(Value::Entity(target)),
-            Some(Value::Condition {
-                name: cond_name,
-                args: cond_args,
-            }),
-        ) => {
-            let conditions = sp.read_conditions(target).unwrap_or_default();
-            let matching: Vec<_> = conditions
-                .into_iter()
-                .filter(|c| c.name == *cond_name && c.params == *cond_args)
-                .collect();
-            (*target, matching)
-        }
-        (Some(Value::Entity(target)), Some(Value::Str(cond_name))) => {
-            let conditions = sp.read_conditions(target).unwrap_or_default();
-            let name = Name::from(cond_name.as_str());
-            let matching: Vec<_> = conditions.into_iter().filter(|c| c.name == name).collect();
-            (*target, matching)
-        }
-        (Some(Value::Entity(target)), Some(Value::Struct { name, fields }))
-            if name == "ActiveCondition" =>
-        {
-            let cond_id = match fields.get("id") {
-                Some(Value::Int(id)) if *id >= 0 => *id as u64,
-                Some(Value::Int(_)) => {
-                    return Err(RuntimeError::with_span(
-                        "ActiveCondition id must be non-negative",
-                        span,
-                    ));
-                }
-                _ => {
-                    return Err(RuntimeError::with_span(
-                        "ActiveCondition missing 'id' field",
-                        span,
-                    ));
-                }
-            };
-            let conditions = sp.read_conditions(target).unwrap_or_default();
-            let matching: Vec<_> = conditions.into_iter().filter(|c| c.id == cond_id).collect();
-            (*target, matching)
-        }
-        _ => return Ok(None), // type mismatch — bridge will report error
-    };
-
-    // Sort by gained_at and pair with target
-    let mut sorted: Vec<(EntityRef, ActiveCondition)> =
-        instances.into_iter().map(|c| (target, c)).collect();
-    sorted.sort_by_key(|(_, c)| c.gained_at);
-
     Ok(Some((
-        Frame::ConditionRemovalLoop {
-            target,
-            condition_name: sorted
-                .first()
-                .map(|(_, c)| c.name.clone())
-                .unwrap_or_default(),
-            instances: sorted,
-            index: 0,
-            first_error: None,
-            removed_count: 0,
-            revoke_invocation: None,
+        Frame::CallSetup {
+            target: CallTarget::RemoveCondition { span },
+            arg_exprs: args.iter().map(|a| a.value.clone()).collect(),
+            arg_index: 0,
+            evaluated: Vec::new(),
             child_result: None,
+            awaiting_child: false,
+            span,
         },
         awaiting,
     )))
 }
 
-/// Try to dispatch a `revoke(...)` call as a frame.
-///
-/// Evaluates the invocation argument, collects matching conditions across
-/// all entities, then constructs a `ConditionRemovalLoop` frame with
-/// `revoke_invocation` set.
+/// Dispatch a `revoke(...)` call as a `CallSetup` frame.
 fn try_dispatch_revoke(
-    core: &RuntimeCore,
-    env: &mut ExecEnv,
-    sp: &dyn StateProvider,
-    eh: &mut dyn EffectHandler,
     args: &[Arg],
     span: Span,
     awaiting: AwaitingFn,
 ) -> Result<Option<(Frame, AwaitingFn)>, RuntimeError> {
-    // Evaluate all arguments via bridge.
-    let mut values = Vec::new();
-    for arg in args {
-        let mut probe = TryEvalHandler::new();
-        let eval_result = bridge_eval_with(
-            core,
-            env,
-            sp,
-            &mut ComposedHandler {
-                adapted: &mut *eh,
-                custom: &mut probe,
-            },
-            BridgeCategory::Probe,
-            |tmp_env| crate::eval::eval_expr(tmp_env, &arg.value),
-        );
-        if probe.captured {
-            return Ok(None);
-        }
-        match eval_result {
-            Ok(v) => values.push(v),
-            Err(_) => return Ok(None),
-        }
-    }
-
-    // Check lifecycle guard
-    if env.in_lifecycle_block > 0 {
-        return Err(RuntimeError::with_span(
-            "revoke() cannot be called inside on_apply/on_remove blocks",
-            span,
-        ));
-    }
-
-    let arg = match values.first() {
-        Some(v) => v,
-        None => return Ok(None), // bridge will error
-    };
-
-    let inv_id = match arg {
-        Value::Invocation(id) => *id,
-        Value::Option(Some(inner)) => match inner.as_ref() {
-            Value::Invocation(id) => *id,
-            _ => return Ok(None),
-        },
-        Value::Option(None) | Value::Void => {
-            // No-op: nothing to revoke.
-            return Ok(Some((
-                // Use a ConditionRemovalLoop with empty instances — it will
-                // just pop immediately.
-                Frame::ConditionRemovalLoop {
-                    target: EntityRef(0),
-                    condition_name: Name::from(""),
-                    instances: Vec::new(),
-                    index: 0,
-                    first_error: None,
-                    removed_count: 0,
-                    revoke_invocation: None,
-                    child_result: None,
-                },
-                awaiting,
-            )));
-        }
-        _ => return Ok(None),
-    };
-
-    // Collect all conditions with this invocation across all entities
-    let entities = sp.all_entities();
-    let mut matching: Vec<(EntityRef, ActiveCondition)> = Vec::new();
-    for entity in &entities {
-        if let Some(conditions) = sp.read_conditions(entity) {
-            for cond in conditions {
-                if cond.invocation == Some(inv_id) {
-                    matching.push((*entity, cond));
-                }
-            }
-        }
-    }
-
-    // Sort by gained_at
-    matching.sort_by_key(|(_, c)| c.gained_at);
-
     Ok(Some((
-        Frame::ConditionRemovalLoop {
-            target: matching.first().map_or(EntityRef(0), |(t, _)| *t),
-            condition_name: Name::from(""),
-            instances: matching,
-            index: 0,
-            first_error: None,
-            removed_count: 0,
-            revoke_invocation: Some(inv_id),
+        Frame::CallSetup {
+            target: CallTarget::Revoke { span },
+            arg_exprs: args.iter().map(|a| a.value.clone()).collect(),
+            arg_index: 0,
+            evaluated: Vec::new(),
             child_result: None,
+            awaiting_child: false,
+            span,
         },
         awaiting,
     )))
 }
 
-/// Evaluate a block using the existing recursive evaluator.
-///
 /// Try to dispatch a statement via frame-based execution instead of
 /// `bridge_eval_with`. Returns `Some((frame, awaiting))` if the
 /// statement is a bare function call or a let binding whose value is
-/// a function call that can be dispatched via `FunctionEval`.
+/// a function call that can be dispatched via `CallSetup`/`FunctionEval`.
 ///
-/// This avoids the unsound bridge replay pattern for functions whose
-/// bodies contain mutations followed by host-decided effects.
+/// Arguments are evaluated one at a time via `ResumableBridge` children
+/// inside a `CallSetup` frame, avoiding the probe-then-build pattern.
 fn try_frame_dispatch_stmt(
     core: &RuntimeCore,
-    env: &mut ExecEnv,
-    sp: &dyn StateProvider,
-    eh: &mut dyn EffectHandler,
-    tracker: &MutationTracker,
+    _env: &mut ExecEnv,
+    _sp: &dyn StateProvider,
+    _eh: &mut dyn EffectHandler,
+    _tracker: &MutationTracker,
     stmt: &Spanned<StmtKind>,
 ) -> Result<Option<(Frame, AwaitingFn)>, RuntimeError> {
     // Extract the call expression and determine the awaiting type.
@@ -734,35 +437,19 @@ fn try_frame_dispatch_stmt(
     // Check for apply_condition builtin — must be dispatched as a frame
     // because it yields a ConditionApplyGate effect.
     if callee_name.as_str() == "apply_condition" {
-        return try_dispatch_apply_condition(
-            core,
-            env,
-            sp,
-            &mut *eh,
-            args,
-            call_expr.span,
-            awaiting,
-        );
+        return try_dispatch_apply_condition(args, call_expr.span, awaiting);
     }
 
     // Check for remove_condition builtin — must be dispatched as a frame
     // because it yields ConditionRemovalGate effects.
     if callee_name.as_str() == "remove_condition" {
-        return try_dispatch_remove_condition(
-            core,
-            env,
-            sp,
-            &mut *eh,
-            args,
-            call_expr.span,
-            awaiting,
-        );
+        return try_dispatch_remove_condition(args, call_expr.span, awaiting);
     }
 
     // Check for revoke builtin — must be dispatched as a frame
     // because it yields ConditionRemovalGate effects.
     if callee_name.as_str() == "revoke" {
-        return try_dispatch_revoke(core, env, sp, &mut *eh, args, call_expr.span, awaiting);
+        return try_dispatch_revoke(args, call_expr.span, awaiting);
     }
 
     // Must be a user-defined function (not a builtin, condition, etc.)
@@ -780,16 +467,16 @@ fn try_frame_dispatch_stmt(
 
     let params = &fn_info.params;
 
-    // ── Eval pass: evaluate args with TryEvalHandler ──────────
+    // Build slot mapping (arg_index → param_slot) and collect arg expressions.
     // Positional args fill slots 0..N sequentially, named args fill by name.
-    // Positional args must come before named args (enforced by checker).
-    let mut slot_values: Vec<Option<Value>> = vec![None; params.len()];
+    let mut slot_mapping: Vec<usize> = Vec::with_capacity(args.len());
+    let mut slot_used: Vec<bool> = vec![false; params.len()];
     let mut next_positional = 0usize;
 
     for arg in args {
         let slot_idx = if let Some(ref name) = arg.name {
             match params.iter().position(|p| p.name == *name) {
-                Some(p) if slot_values[p].is_some() => return Ok(None), // duplicate
+                Some(p) if slot_used[p] => return Ok(None), // duplicate
                 Some(p) => p,
                 None => return Ok(None), // unknown param — bridge will error
             }
@@ -801,55 +488,28 @@ fn try_frame_dispatch_stmt(
             next_positional += 1;
             idx
         };
-
-        tracker.reset();
-        let mut probe = TryEvalHandler::new();
-        let eval_result = bridge_eval_with(
-            core,
-            env,
-            sp,
-            &mut ComposedHandler {
-                adapted: &mut *eh,
-                custom: &mut probe,
-            },
-            BridgeCategory::Probe,
-            |tmp_env| crate::eval::eval_expr(tmp_env, &arg.value),
-        );
-
-        if probe.captured {
-            // The arg expression yielded a host-decided effect.
-            if tracker.applied() {
-                // Double-mutation bug: mutation happened before yield
-                // in arg probing — hard error, not a safe fallback.
-                return Err(RuntimeError::new(format!(
-                    "async replay unsound: local mutation applied \
-                     before host-decided effect in argument evaluation \
-                     for call to '{}' at {:?}",
-                    callee_name, stmt.span,
-                )));
-            }
-            // Safe fallback: no mutation was applied, so the bridge
-            // path can re-evaluate the args without corruption.
-            return Ok(None);
-        }
-
-        // No yield — eval_result should be Ok.
-        match eval_result {
-            Ok(val) => slot_values[slot_idx] = Some(val),
-            Err(_) => return Ok(None), // eval error — bridge will report
-        }
+        slot_used[slot_idx] = true;
+        slot_mapping.push(slot_idx);
     }
 
-    // ── Post-pass: collect evaluated args + defaults ──────────
-    let mut evaluated_args: Vec<(Name, Value)> = Vec::new();
-    let mut default_params: Vec<(Name, Spanned<ExprKind>)> = Vec::new();
-
+    // Build DefaultParam entries for each param slot.
+    let param_names: Vec<Name> = params.iter().map(|p| p.name.clone()).collect();
+    let mut default_params: Vec<DefaultParam> = Vec::with_capacity(params.len());
     for (i, param) in params.iter().enumerate() {
-        if let Some(val) = slot_values[i].take() {
-            evaluated_args.push((param.name.clone(), val));
+        if slot_used[i] {
+            // Will be filled by evaluated arg.
+            default_params.push(DefaultParam {
+                name: param.name.clone(),
+                provided_value: None,
+                default_expr: None,
+            });
         } else if param.has_default {
             if let Some(default_expr) = fn_decl.params.get(i).and_then(|p| p.default.as_ref()) {
-                default_params.push((param.name.clone(), default_expr.clone()));
+                default_params.push(DefaultParam {
+                    name: param.name.clone(),
+                    provided_value: None,
+                    default_expr: Some(default_expr.clone()),
+                });
             } else {
                 return Ok(None); // missing default expr
             }
@@ -858,14 +518,23 @@ fn try_frame_dispatch_stmt(
         }
     }
 
+    let arg_exprs: Vec<Spanned<ExprKind>> = args.iter().map(|a| a.value.clone()).collect();
+
     Ok(Some((
-        Frame::FunctionEval {
-            name: callee_name,
-            args: evaluated_args,
-            default_params,
-            body: Some(fn_decl.body.clone()),
-            defaults_done: false,
+        Frame::CallSetup {
+            target: CallTarget::Function {
+                callee: callee_name,
+                body: fn_decl.body.clone(),
+                slot_mapping,
+                param_names,
+                default_params,
+            },
+            arg_exprs,
+            arg_index: 0,
+            evaluated: Vec::new(),
             child_result: None,
+            awaiting_child: false,
+            span: stmt.span,
         },
         awaiting,
     )))
@@ -1452,6 +1121,29 @@ pub(crate) enum CostEvalPhase {
     AwaitDeduction(usize),
 }
 
+// ── CallTarget ─────────────────────────────────────────────────
+
+/// Target for a `CallSetup` frame — determines what frame to push
+/// once all arguments have been evaluated.
+pub(crate) enum CallTarget {
+    ApplyCondition {
+        span: Span,
+    },
+    RemoveCondition {
+        span: Span,
+    },
+    Revoke {
+        span: Span,
+    },
+    Function {
+        callee: Name,
+        body: Block,
+        slot_mapping: Vec<usize>,
+        param_names: Vec<Name>,
+        default_params: Vec<DefaultParam>,
+    },
+}
+
 // ── Frame enum ─────────────────────────────────────────────────
 
 /// Each frame variant represents a point where execution suspended waiting
@@ -1783,6 +1475,21 @@ pub(crate) enum Frame {
         modifiers: Vec<crate::pipeline::OwnedModifier>,
         /// Pending ModifyApplied effect to yield (populated by ApplyModifier phase).
         pending_modify_effect: Option<Effect>,
+    },
+
+    /// Evaluates call arguments one at a time via ResumableBridge children,
+    /// then constructs and pushes the target frame (ConditionApplyGate,
+    /// ConditionRemovalLoop, FunctionEval). Replaces the probe-then-build
+    /// pattern that used TryEvalHandler.
+    CallSetup {
+        target: CallTarget,
+        arg_exprs: Vec<Spanned<ExprKind>>,
+        arg_index: usize,
+        evaluated: Vec<Value>,
+        child_result: Option<Result<Value, RuntimeError>>,
+        /// true = waiting for target frame result, false = waiting for arg eval
+        awaiting_child: bool,
+        span: Span,
     },
 
     /// Resumable bridge evaluation frame. Evaluates an expression through
@@ -2154,6 +1861,297 @@ impl Frame {
                             Some(Err(e)) => Advance::Error(e),
                             None => Advance::Pop(Value::Void),
                         }
+                    }
+                }
+            }
+
+            Frame::CallSetup {
+                target,
+                arg_exprs,
+                arg_index,
+                evaluated,
+                child_result,
+                awaiting_child,
+                span,
+            } => {
+                // Phase 3: pass-through — target frame completed.
+                if *awaiting_child {
+                    return match child_result.take() {
+                        Some(Ok(val)) => Advance::Pop(val),
+                        Some(Err(e)) => Advance::Error(e),
+                        None => Advance::Error(RuntimeError::with_span(
+                            "CallSetup: awaiting child but no result",
+                            *span,
+                        )),
+                    };
+                }
+
+                // Phase 1: collect child result from previous arg eval.
+                if let Some(res) = child_result.take() {
+                    match res {
+                        Ok(val) => {
+                            evaluated.push(val);
+                            *arg_index += 1;
+                        }
+                        Err(e) => return Advance::Error(e),
+                    }
+                }
+
+                // Phase 1: push ResumableBridge for next arg.
+                if *arg_index < arg_exprs.len() {
+                    return Advance::Push(Frame::ResumableBridge {
+                        expr: arg_exprs[*arg_index].clone(),
+                        expr_cache: Vec::new(),
+                        span: *span,
+                    });
+                }
+
+                // Phase 2: all args evaluated — build and push target frame.
+                let values = std::mem::take(evaluated);
+                let call_span = *span;
+                *awaiting_child = true;
+
+                match target {
+                    CallTarget::ApplyCondition { span: ac_span } => {
+                        let ac_span = *ac_span;
+                        // Lifecycle guard
+                        if env.in_lifecycle_block > 0 {
+                            return Advance::Error(RuntimeError::with_span(
+                                "apply_condition() cannot be called inside on_apply/on_remove blocks",
+                                ac_span,
+                            ));
+                        }
+                        // Extract arguments
+                        let (target_ref, cond_name, cond_args, duration) =
+                            match (values.first(), values.get(1), values.get(2)) {
+                                (
+                                    Some(Value::Entity(t)),
+                                    Some(Value::Condition { name: cn, args: ca }),
+                                    Some(dur),
+                                ) => (*t, cn.clone(), ca.clone(), dur.clone()),
+                                (Some(Value::Entity(t)), Some(Value::Str(cn)), Some(dur)) => {
+                                    (*t, Name::from(cn.as_str()), BTreeMap::new(), dur.clone())
+                                }
+                                _ => {
+                                    return Advance::Error(RuntimeError::with_span(
+                                        "apply_condition: invalid arguments",
+                                        ac_span,
+                                    ));
+                                }
+                            };
+                        let source = values
+                            .get(3)
+                            .cloned()
+                            .unwrap_or_else(crate::value::effect_source_unknown);
+                        let tags: Vec<Name> = core
+                            .type_env
+                            .conditions
+                            .get(&cond_name)
+                            .map(|info| info.tags.iter().cloned().collect())
+                            .unwrap_or_default();
+                        let token = match core.alloc_condition_id() {
+                            Ok(id) => ConditionToken(id),
+                            Err(e) => return Advance::Error(e),
+                        };
+                        let params: Vec<(Name, Value)> = cond_args.into_iter().collect();
+                        Advance::Push(Frame::ConditionApplyGate {
+                            target: target_ref,
+                            condition_name: cond_name,
+                            params,
+                            duration,
+                            source,
+                            tags,
+                            token,
+                            pending: None,
+                            state_defaults: None,
+                            state_defaults_idx: 0,
+                            state_fields_acc: BTreeMap::new(),
+                            state_expr_cache: Vec::new(),
+                            default_scope_pushed: false,
+                        })
+                    }
+                    CallTarget::RemoveCondition { span: rc_span } => {
+                        let rc_span = *rc_span;
+                        if env.in_lifecycle_block > 0 {
+                            return Advance::Error(RuntimeError::with_span(
+                                "remove_condition() cannot be called inside on_apply/on_remove blocks",
+                                rc_span,
+                            ));
+                        }
+                        let (target_ref, instances) = match (values.first(), values.get(1)) {
+                            (
+                                Some(Value::Entity(t)),
+                                Some(Value::Condition { name: cn, args: ca }),
+                            ) => {
+                                let conditions = sp.read_conditions(t).unwrap_or_default();
+                                let matching: Vec<_> = conditions
+                                    .into_iter()
+                                    .filter(|c| c.name == *cn && c.params == *ca)
+                                    .collect();
+                                (*t, matching)
+                            }
+                            (Some(Value::Entity(t)), Some(Value::Str(cn))) => {
+                                let conditions = sp.read_conditions(t).unwrap_or_default();
+                                let name = Name::from(cn.as_str());
+                                let matching: Vec<_> =
+                                    conditions.into_iter().filter(|c| c.name == name).collect();
+                                (*t, matching)
+                            }
+                            (Some(Value::Entity(t)), Some(Value::Struct { name, fields }))
+                                if name == "ActiveCondition" =>
+                            {
+                                let cond_id = match fields.get("id") {
+                                    Some(Value::Int(id)) if *id >= 0 => *id as u64,
+                                    Some(Value::Int(_)) => {
+                                        return Advance::Error(RuntimeError::with_span(
+                                            "ActiveCondition id must be non-negative",
+                                            rc_span,
+                                        ));
+                                    }
+                                    _ => {
+                                        return Advance::Error(RuntimeError::with_span(
+                                            "ActiveCondition missing 'id' field",
+                                            rc_span,
+                                        ));
+                                    }
+                                };
+                                let conditions = sp.read_conditions(t).unwrap_or_default();
+                                let matching: Vec<_> =
+                                    conditions.into_iter().filter(|c| c.id == cond_id).collect();
+                                (*t, matching)
+                            }
+                            _ => {
+                                return Advance::Error(RuntimeError::with_span(
+                                    "remove_condition: invalid arguments",
+                                    rc_span,
+                                ));
+                            }
+                        };
+                        let mut sorted: Vec<(EntityRef, ActiveCondition)> =
+                            instances.into_iter().map(|c| (target_ref, c)).collect();
+                        sorted.sort_by_key(|(_, c)| c.gained_at);
+                        Advance::Push(Frame::ConditionRemovalLoop {
+                            target: target_ref,
+                            condition_name: sorted
+                                .first()
+                                .map(|(_, c)| c.name.clone())
+                                .unwrap_or_default(),
+                            instances: sorted,
+                            index: 0,
+                            first_error: None,
+                            removed_count: 0,
+                            revoke_invocation: None,
+                            child_result: None,
+                        })
+                    }
+                    CallTarget::Revoke { span: rv_span } => {
+                        let rv_span = *rv_span;
+                        if env.in_lifecycle_block > 0 {
+                            return Advance::Error(RuntimeError::with_span(
+                                "revoke() cannot be called inside on_apply/on_remove blocks",
+                                rv_span,
+                            ));
+                        }
+                        let arg = match values.first() {
+                            Some(v) => v,
+                            None => {
+                                return Advance::Error(RuntimeError::with_span(
+                                    "revoke: missing argument",
+                                    rv_span,
+                                ));
+                            }
+                        };
+                        let inv_id = match arg {
+                            Value::Invocation(id) => *id,
+                            Value::Option(Some(inner)) => match inner.as_ref() {
+                                Value::Invocation(id) => *id,
+                                _ => {
+                                    return Advance::Error(RuntimeError::with_span(
+                                        "revoke: expected Invocation argument",
+                                        rv_span,
+                                    ));
+                                }
+                            },
+                            Value::Option(None) | Value::Void => {
+                                // No-op: nothing to revoke.
+                                return Advance::Push(Frame::ConditionRemovalLoop {
+                                    target: EntityRef(0),
+                                    condition_name: Name::from(""),
+                                    instances: Vec::new(),
+                                    index: 0,
+                                    first_error: None,
+                                    removed_count: 0,
+                                    revoke_invocation: None,
+                                    child_result: None,
+                                });
+                            }
+                            _ => {
+                                return Advance::Error(RuntimeError::with_span(
+                                    "revoke: expected Invocation argument",
+                                    rv_span,
+                                ));
+                            }
+                        };
+                        let entities = sp.all_entities();
+                        let mut matching: Vec<(EntityRef, ActiveCondition)> = Vec::new();
+                        for entity in &entities {
+                            if let Some(conditions) = sp.read_conditions(entity) {
+                                for cond in conditions {
+                                    if cond.invocation == Some(inv_id) {
+                                        matching.push((*entity, cond));
+                                    }
+                                }
+                            }
+                        }
+                        matching.sort_by_key(|(_, c)| c.gained_at);
+                        Advance::Push(Frame::ConditionRemovalLoop {
+                            target: matching.first().map_or(EntityRef(0), |(t, _)| *t),
+                            condition_name: Name::from(""),
+                            instances: matching,
+                            index: 0,
+                            first_error: None,
+                            removed_count: 0,
+                            revoke_invocation: Some(inv_id),
+                            child_result: None,
+                        })
+                    }
+                    CallTarget::Function {
+                        callee,
+                        body,
+                        slot_mapping,
+                        param_names,
+                        default_params: fn_defaults,
+                    } => {
+                        // Map evaluated values to (name, value) pairs using slot_mapping.
+                        let mut slot_values: Vec<Option<Value>> = vec![None; param_names.len()];
+                        for (arg_idx, val) in values.into_iter().enumerate() {
+                            slot_values[slot_mapping[arg_idx]] = Some(val);
+                        }
+                        let mut evaluated_args: Vec<(Name, Value)> = Vec::new();
+                        let mut remaining_defaults: Vec<(Name, Spanned<ExprKind>)> = Vec::new();
+                        for (i, dp) in fn_defaults.iter().enumerate() {
+                            if let Some(val) = slot_values[i].take() {
+                                evaluated_args.push((param_names[i].clone(), val));
+                            } else if let Some(ref expr) = dp.default_expr {
+                                remaining_defaults.push((param_names[i].clone(), expr.clone()));
+                            } else {
+                                return Advance::Error(RuntimeError::with_span(
+                                    &format!(
+                                        "missing required argument '{}' for '{}'",
+                                        param_names[i], callee
+                                    ),
+                                    call_span,
+                                ));
+                            }
+                        }
+                        Advance::Push(Frame::FunctionEval {
+                            name: callee.clone(),
+                            args: evaluated_args,
+                            default_params: remaining_defaults,
+                            body: Some(body.clone()),
+                            defaults_done: false,
+                            child_result: None,
+                        })
                     }
                 }
             }
@@ -5058,6 +5056,9 @@ impl Frame {
             Frame::ConditionHandlerEpilogue { child_result, .. } => {
                 *child_result = Some(Ok(value));
             }
+            Frame::CallSetup { child_result, .. } => {
+                *child_result = Some(Ok(value));
+            }
             Frame::ResumableBridge { expr_cache, .. } => {
                 // Yield frame child completed — cache for replay.
                 expr_cache.push(value);
@@ -5117,6 +5118,10 @@ impl Frame {
             | Frame::ConditionHandlerEpilogue { child_result, .. } => {
                 // Absorb the error so advance() can run cleanup
                 // (scope pop, budget restore) before propagating.
+                *child_result = Some(Err(error));
+                Ok(())
+            }
+            Frame::CallSetup { child_result, .. } => {
                 *child_result = Some(Err(error));
                 Ok(())
             }
