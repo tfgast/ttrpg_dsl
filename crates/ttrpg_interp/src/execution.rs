@@ -1872,6 +1872,7 @@ impl SuppressModifyAccess for NativeSuppressModify {
 }
 
 /// Native version of `pipeline::apply_phase1_modifier`.
+#[allow(clippy::type_complexity)]
 fn apply_phase1_modifier_native(
     core: &RuntimeCore,
     env: &mut ExecEnv,
@@ -3280,7 +3281,7 @@ impl Frame {
                                 remaining_defaults.push((param_names[i].clone(), expr.clone()));
                             } else {
                                 return Advance::Error(RuntimeError::with_span(
-                                    &format!(
+                                    format!(
                                         "missing required argument '{}' for '{}'",
                                         param_names[i], callee
                                     ),
@@ -3438,12 +3439,11 @@ impl Frame {
                             *phase = ListCompPhase::FilterDone;
                             let filter_frame = compile_or_bridge(filter_expr, core, Vec::new());
                             return Advance::Push(filter_frame);
-                        } else {
-                            // No filter — evaluate element directly.
-                            *phase = ListCompPhase::ElementDone;
-                            let elem_frame = compile_or_bridge(element, core, Vec::new());
-                            return Advance::Push(elem_frame);
                         }
+                        // No filter — evaluate element directly.
+                        *phase = ListCompPhase::ElementDone;
+                        let elem_frame = compile_or_bridge(element, core, Vec::new());
+                        return Advance::Push(elem_frame);
                     }
                     // Pattern didn't match — skip.
                     *index += 1;
@@ -7333,7 +7333,7 @@ mod tests {
     #[test]
     fn action_lifecycle_acknowledged() {
         let (core, _) = make_core(
-            r#"
+            r"
             system Test {
                 entity Creature { HP: int }
                 action Attack on actor: Creature (target: Creature) {
@@ -7342,7 +7342,7 @@ mod tests {
                     }
                 }
             }
-            "#,
+            ",
         );
 
         let mut game = GameState::new();
@@ -7407,7 +7407,7 @@ mod tests {
     #[test]
     fn action_lifecycle_vetoed() {
         let (core, _) = make_core(
-            r#"
+            r"
             system Test {
                 entity Creature { HP: int }
                 action Attack on actor: Creature (target: Creature) {
@@ -7416,7 +7416,7 @@ mod tests {
                     }
                 }
             }
-            "#,
+            ",
         );
 
         let mut game = GameState::new();
@@ -7472,7 +7472,7 @@ mod tests {
     #[test]
     fn action_run_with_handler() {
         let (core, _) = make_core(
-            r#"
+            r"
             system Test {
                 entity Creature { HP: int }
                 action Attack on actor: Creature (target: Creature) {
@@ -7481,7 +7481,7 @@ mod tests {
                     }
                 }
             }
-            "#,
+            ",
         );
 
         let mut game = GameState::new();
@@ -7518,7 +7518,7 @@ mod tests {
     #[test]
     fn action_with_requires_pass() {
         let (core, _) = make_core(
-            r#"
+            r"
             system Test {
                 entity Creature { HP: int }
                 action Heal on actor: Creature (target: Creature) {
@@ -7528,7 +7528,7 @@ mod tests {
                     }
                 }
             }
-            "#,
+            ",
         );
 
         let mut game = GameState::new();
@@ -7586,7 +7586,7 @@ mod tests {
     #[test]
     fn action_with_requires_fail() {
         let (core, _) = make_core(
-            r#"
+            r"
             system Test {
                 entity Creature { HP: int }
                 action Heal on actor: Creature (target: Creature) {
@@ -7596,7 +7596,7 @@ mod tests {
                     }
                 }
             }
-            "#,
+            ",
         );
 
         let mut game = GameState::new();
@@ -7653,14 +7653,14 @@ mod tests {
     #[test]
     fn protocol_error_poll_while_pending() {
         let (core, _) = make_core(
-            r#"
+            r"
             system Test {
                 entity Creature { HP: int }
                 action Noop on actor: Creature () {
                     resolve { }
                 }
             }
-            "#,
+            ",
         );
 
         let mut game = GameState::new();
@@ -7684,14 +7684,14 @@ mod tests {
     #[test]
     fn protocol_error_respond_without_pending() {
         let (core, _) = make_core(
-            r#"
+            r"
             system Test {
                 entity Creature { HP: int }
                 action Noop on actor: Creature () {
                     resolve { }
                 }
             }
-            "#,
+            ",
         );
 
         let mut game = GameState::new();
@@ -7734,7 +7734,7 @@ mod tests {
 
     #[test]
     fn differential_simple_action() {
-        let source = r#"
+        let source = r"
             system Test {
                 entity Creature { HP: int }
                 action Attack on actor: Creature (target: Creature) {
@@ -7743,7 +7743,7 @@ mod tests {
                     }
                 }
             }
-        "#;
+        ";
 
         // Inline the setup to get entity refs for args:
         let (program, type_env) = setup(source);
@@ -7792,7 +7792,7 @@ mod tests {
 
     #[test]
     fn differential_action_with_requires() {
-        let source = r#"
+        let source = r"
             system Test {
                 entity Creature { HP: int }
                 action Heal on actor: Creature (target: Creature) {
@@ -7802,7 +7802,7 @@ mod tests {
                     }
                 }
             }
-        "#;
+        ";
 
         let (program, type_env) = setup(source);
 
@@ -7850,7 +7850,7 @@ mod tests {
 
     #[test]
     fn differential_action_vetoed() {
-        let source = r#"
+        let source = r"
             system Test {
                 entity Creature { HP: int }
                 action Attack on actor: Creature (target: Creature) {
@@ -7859,7 +7859,7 @@ mod tests {
                     }
                 }
             }
-        "#;
+        ";
 
         let (program, type_env) = setup(source);
 
@@ -7910,17 +7910,16 @@ mod tests {
         assert_eq!(kinds1[1], EffectKind::ActionCompleted);
 
         // Verify the ActionCompleted outcome matches
-        if let Effect::ActionCompleted { outcome: o1, .. } = &handler1.log[1] {
-            if let Effect::ActionCompleted { outcome: o2, .. } = &handler2.log[1] {
+        if let Effect::ActionCompleted { outcome: o1, .. } = &handler1.log[1]
+            && let Effect::ActionCompleted { outcome: o2, .. } = &handler2.log[1] {
                 assert_eq!(o1, o2, "ActionCompleted outcome mismatch");
                 assert_eq!(*o1, ActionOutcome::Vetoed);
             }
-        }
     }
 
     #[test]
     fn differential_reaction_lifecycle() {
-        let source = r#"
+        let source = r"
             system Test {
                 entity Creature { HP: int }
                 event damage(target: Creature) {}
@@ -7930,7 +7929,7 @@ mod tests {
                     }
                 }
             }
-        "#;
+        ";
 
         let (program, type_env) = setup(source);
 
@@ -8000,7 +7999,7 @@ mod tests {
 
     #[test]
     fn differential_hook_lifecycle() {
-        let source = r#"
+        let source = r"
             system Test {
                 entity Creature { HP: int }
                 event damage(target: Creature) {}
@@ -8008,7 +8007,7 @@ mod tests {
                     target.HP -= 1
                 }
             }
-        "#;
+        ";
 
         let (program, type_env) = setup(source);
 
@@ -8077,7 +8076,7 @@ mod tests {
 
     #[test]
     fn differential_requires_override_force_pass() {
-        let source = r#"
+        let source = r"
             system Test {
                 entity Creature { HP: int }
                 action Heal on actor: Creature (target: Creature) {
@@ -8087,7 +8086,7 @@ mod tests {
                     }
                 }
             }
-        "#;
+        ";
 
         let (program, type_env) = setup(source);
 
@@ -8143,17 +8142,16 @@ mod tests {
         assert!(result2.is_ok());
 
         // Verify RequiresCheck shows passed=false (original) in both
-        if let Effect::RequiresCheck { passed: p1, .. } = &handler1.log[1] {
-            if let Effect::RequiresCheck { passed: p2, .. } = &handler2.log[1] {
+        if let Effect::RequiresCheck { passed: p1, .. } = &handler1.log[1]
+            && let Effect::RequiresCheck { passed: p2, .. } = &handler2.log[1] {
                 assert_eq!(p1, p2);
                 assert!(!p1, "requires should have originally failed");
             }
-        }
     }
 
     #[test]
     fn differential_requires_override_force_fail() {
-        let source = r#"
+        let source = r"
             system Test {
                 entity Creature { HP: int }
                 action Heal on actor: Creature (target: Creature) {
@@ -8163,7 +8161,7 @@ mod tests {
                     }
                 }
             }
-        "#;
+        ";
 
         let (program, type_env) = setup(source);
 
@@ -8218,25 +8216,23 @@ mod tests {
         assert!(result2.is_ok());
 
         // Verify RequiresCheck shows passed=true (original) in both
-        if let Effect::RequiresCheck { passed: p1, .. } = &handler1.log[1] {
-            if let Effect::RequiresCheck { passed: p2, .. } = &handler2.log[1] {
+        if let Effect::RequiresCheck { passed: p1, .. } = &handler1.log[1]
+            && let Effect::RequiresCheck { passed: p2, .. } = &handler2.log[1] {
                 assert_eq!(p1, p2);
                 assert!(*p1, "requires should have originally passed");
             }
-        }
 
         // ActionCompleted outcome should match — Succeeded because abort is not an error
-        if let Effect::ActionCompleted { outcome: o1, .. } = handler1.log.last().unwrap() {
-            if let Effect::ActionCompleted { outcome: o2, .. } = handler2.log.last().unwrap() {
+        if let Effect::ActionCompleted { outcome: o1, .. } = handler1.log.last().unwrap()
+            && let Effect::ActionCompleted { outcome: o2, .. } = handler2.log.last().unwrap() {
                 assert_eq!(o1, o2);
                 assert_eq!(*o1, ActionOutcome::Succeeded);
             }
-        }
     }
 
     #[test]
     fn differential_action_with_default_params() {
-        let source = r#"
+        let source = r"
             system Test {
                 entity Creature { HP: int }
                 action Heal on actor: Creature (target: Creature, amount: int = 5) {
@@ -8245,7 +8241,7 @@ mod tests {
                     }
                 }
             }
-        "#;
+        ";
 
         let (program, type_env) = setup(source);
 
@@ -8297,7 +8293,7 @@ mod tests {
 
     #[test]
     fn differential_reaction_vetoed() {
-        let source = r#"
+        let source = r"
             system Test {
                 entity Creature { HP: int }
                 event damage(target: Creature) {}
@@ -8307,7 +8303,7 @@ mod tests {
                     }
                 }
             }
-        "#;
+        ";
 
         let (program, type_env) = setup(source);
 
@@ -8361,17 +8357,16 @@ mod tests {
         assert_eq!(kinds1.len(), 2);
 
         // Verify both have Vetoed outcome
-        if let Effect::ActionCompleted { outcome: o1, .. } = &handler1.log[1] {
-            if let Effect::ActionCompleted { outcome: o2, .. } = &handler2.log[1] {
+        if let Effect::ActionCompleted { outcome: o1, .. } = &handler1.log[1]
+            && let Effect::ActionCompleted { outcome: o2, .. } = &handler2.log[1] {
                 assert_eq!(o1, o2);
                 assert_eq!(*o1, ActionOutcome::Vetoed);
             }
-        }
     }
 
     #[test]
     fn differential_hook_vetoed() {
-        let source = r#"
+        let source = r"
             system Test {
                 entity Creature { HP: int }
                 event damage(target: Creature) {}
@@ -8379,7 +8374,7 @@ mod tests {
                     target.HP -= 1
                 }
             }
-        "#;
+        ";
 
         let (program, type_env) = setup(source);
 
@@ -8432,17 +8427,16 @@ mod tests {
         );
         assert_eq!(kinds1.len(), 2);
 
-        if let Effect::ActionCompleted { outcome: o1, .. } = &handler1.log[1] {
-            if let Effect::ActionCompleted { outcome: o2, .. } = &handler2.log[1] {
+        if let Effect::ActionCompleted { outcome: o1, .. } = &handler1.log[1]
+            && let Effect::ActionCompleted { outcome: o2, .. } = &handler2.log[1] {
                 assert_eq!(o1, o2);
                 assert_eq!(*o1, ActionOutcome::Vetoed);
             }
-        }
     }
 
     #[test]
     fn differential_multiple_sequential_actions() {
-        let source = r#"
+        let source = r"
             system Test {
                 entity Creature { HP: int }
                 action Attack on actor: Creature (target: Creature) {
@@ -8451,7 +8445,7 @@ mod tests {
                     }
                 }
             }
-        "#;
+        ";
 
         let (program, type_env) = setup(source);
 
@@ -8567,7 +8561,7 @@ mod tests {
 
     #[test]
     fn differential_action_with_multiple_params() {
-        let source = r#"
+        let source = r"
             system Test {
                 entity Creature { HP: int }
                 action MultiHit on actor: Creature (target: Creature, damage: int, bonus: int = 0) {
@@ -8576,7 +8570,7 @@ mod tests {
                     }
                 }
             }
-        "#;
+        ";
 
         let (program, type_env) = setup(source);
 
@@ -8631,14 +8625,14 @@ mod tests {
 
     #[test]
     fn differential_action_empty_resolve() {
-        let source = r#"
+        let source = r"
             system Test {
                 entity Creature { HP: int }
                 action Noop on actor: Creature () {
                     resolve { }
                 }
             }
-        "#;
+        ";
 
         let (program, type_env) = setup(source);
 
@@ -8677,7 +8671,7 @@ mod tests {
     #[test]
     fn differential_requires_fail_acknowledged() {
         // Host acknowledges a failed requires check (no override) → action aborts
-        let source = r#"
+        let source = r"
             system Test {
                 entity Creature { HP: int }
                 action Heal on actor: Creature (target: Creature) {
@@ -8687,7 +8681,7 @@ mod tests {
                     }
                 }
             }
-        "#;
+        ";
 
         let (program, type_env) = setup(source);
 
@@ -8736,12 +8730,11 @@ mod tests {
         assert_eq!(result1.unwrap(), result2.unwrap());
 
         // ActionCompleted should be Succeeded (abort is Ok(Void), not Err)
-        if let Effect::ActionCompleted { outcome: o1, .. } = handler1.log.last().unwrap() {
-            if let Effect::ActionCompleted { outcome: o2, .. } = handler2.log.last().unwrap() {
+        if let Effect::ActionCompleted { outcome: o1, .. } = handler1.log.last().unwrap()
+            && let Effect::ActionCompleted { outcome: o2, .. } = handler2.log.last().unwrap() {
                 assert_eq!(o1, o2);
                 assert_eq!(*o1, ActionOutcome::Succeeded);
             }
-        }
     }
 
     // ── Remaining differential tests (from design doc matrix) ──
@@ -8749,14 +8742,14 @@ mod tests {
     #[test]
     fn differential_action_invalid_response() {
         // ActionStarted → invalid Response type → ActionCompleted(Failed), RuntimeError
-        let source = r#"
+        let source = r"
             system Test {
                 entity Creature { HP: int }
                 action Attack on actor: Creature () {
                     resolve { actor.HP -= 1 }
                 }
             }
-        "#;
+        ";
         let (program, type_env) = setup(source);
 
         // Recursive path: send Override instead of Acknowledged/Vetoed
@@ -8791,7 +8784,7 @@ mod tests {
     #[test]
     fn differential_action_with_roll_in_body() {
         // roll() in action body → RollDice yielded
-        let source = r#"
+        let source = r"
             system Test {
                 entity Creature { HP: int }
                 action Attack on actor: Creature (target: Creature) {
@@ -8801,7 +8794,7 @@ mod tests {
                     }
                 }
             }
-        "#;
+        ";
         let (program, type_env) = setup(source);
 
         // Recursive path
@@ -8872,14 +8865,14 @@ mod tests {
     #[test]
     fn differential_action_with_effectful_default() {
         // Action with effectful default (roll()) → RollDice yielded before body
-        let source = r#"
+        let source = r"
             system Test {
                 entity Creature { HP: int }
                 action Attack on actor: Creature (damage: RollResult = roll(1d6)) {
                     resolve { actor.HP -= damage.total }
                 }
             }
-        "#;
+        ";
         let (program, type_env) = setup(source);
 
         // Recursive path
@@ -8936,7 +8929,7 @@ mod tests {
     #[test]
     fn differential_action_with_multiple_mutations() {
         // Action body with multiple field mutations
-        let source = r#"
+        let source = r"
             system Test {
                 entity Creature { HP: int, Armor: int }
                 action Fortify on actor: Creature () {
@@ -8946,7 +8939,7 @@ mod tests {
                     }
                 }
             }
-        "#;
+        ";
         let (program, type_env) = setup(source);
 
         let interp = crate::Interpreter::new(&program, &type_env).unwrap();
@@ -8987,7 +8980,7 @@ mod tests {
     #[test]
     fn differential_scope_early_return() {
         // Early return from nested block → scopes cleaned up
-        let source = r#"
+        let source = r"
             system Test {
                 entity Creature { HP: int }
                 action Heal on actor: Creature () {
@@ -9000,7 +8993,7 @@ mod tests {
                     }
                 }
             }
-        "#;
+        ";
         let (program, type_env) = setup(source);
 
         // Recursive path
@@ -9039,7 +9032,7 @@ mod tests {
     fn differential_action_runtime_error() {
         // RuntimeError during action body → ActionCompleted(Failed)
         // Use requires check that aborts, then verify effect sequence matches
-        let source = r#"
+        let source = r"
             system Test {
                 entity Creature { HP: int }
                 action Attack on actor: Creature (target: Creature) {
@@ -9049,7 +9042,7 @@ mod tests {
                     }
                 }
             }
-        "#;
+        ";
         let (program, type_env) = setup(source);
 
         // Recursive path — requires will fail (HP=10, not > 100)
@@ -9099,7 +9092,7 @@ mod tests {
     #[test]
     fn differential_condition_apply() {
         // apply_condition in action body → ConditionApplyGate + ApplyCondition
-        let source = r#"
+        let source = r"
             system Test {
                 entity Creature { HP: int }
                 condition Poisoned(damage: int) on bearer: Creature {
@@ -9111,7 +9104,7 @@ mod tests {
                     }
                 }
             }
-        "#;
+        ";
         let (program, type_env) = setup(source);
 
         // Recursive path
@@ -9166,7 +9159,7 @@ mod tests {
     #[test]
     fn differential_condition_apply_vetoed() {
         // apply_condition → gate Vetoed → no condition applied
-        let source = r#"
+        let source = r"
             system Test {
                 entity Creature { HP: int }
                 condition Poisoned(damage: int) on bearer: Creature {
@@ -9178,7 +9171,7 @@ mod tests {
                     }
                 }
             }
-        "#;
+        ";
         let (program, type_env) = setup(source);
 
         // Recursive path — veto the condition gate
@@ -9232,7 +9225,7 @@ mod tests {
     #[test]
     fn differential_spawn_in_action() {
         // spawn in action body → SpawnEntity + GrantGroup effects
-        let source = r#"
+        let source = r"
             system Test {
                 entity Creature { HP: int }
                 entity Minion { HP: int }
@@ -9242,7 +9235,7 @@ mod tests {
                     }
                 }
             }
-        "#;
+        ";
         let (program, type_env) = setup(source);
 
         // Recursive path
@@ -9279,7 +9272,7 @@ mod tests {
     #[test]
     fn differential_nested_emit_hooks() {
         // Nested emit: hook body triggers action that emits hooks
-        let source = r#"
+        let source = r"
             system Test {
                 entity Creature { HP: int }
                 event DamageDealt(target: entity, amount: int)
@@ -9295,7 +9288,7 @@ mod tests {
                     receiver.HP += 1
                 }
             }
-        "#;
+        ";
         let (program, type_env) = setup(source);
 
         // Recursive path
@@ -9351,7 +9344,7 @@ mod tests {
     #[test]
     fn differential_action_conditional_logic() {
         // Action with conditional branching in resolve body
-        let source = r#"
+        let source = r"
             system Test {
                 entity Creature { HP: int }
                 action ConditionalHeal on actor: Creature (target: Creature) {
@@ -9364,7 +9357,7 @@ mod tests {
                     }
                 }
             }
-        "#;
+        ";
         let (program, type_env) = setup(source);
 
         let interp = crate::Interpreter::new(&program, &type_env).unwrap();
@@ -9537,7 +9530,7 @@ mod tests {
     #[test]
     fn differential_action_with_let_bindings() {
         // Action with local variables and computed values
-        let source = r#"
+        let source = r"
             system Test {
                 entity Creature { HP: int }
                 action ComputeHeal on actor: Creature (target: Creature) {
@@ -9548,7 +9541,7 @@ mod tests {
                     }
                 }
             }
-        "#;
+        ";
         let (program, type_env) = setup(source);
 
         let interp = crate::Interpreter::new(&program, &type_env).unwrap();
@@ -9592,14 +9585,14 @@ mod tests {
     #[test]
     fn differential_derive_evaluation() {
         // Derive evaluated via step-based API matches recursive path
-        let source = r#"
+        let source = r"
             system Test {
                 entity Creature { HP: int, MaxHP: int }
                 derive hp_ratio(actor: Creature) -> int {
                     actor.HP
                 }
             }
-        "#;
+        ";
         let (program, type_env) = setup(source);
 
         // Recursive path
@@ -9640,14 +9633,14 @@ mod tests {
     #[test]
     fn differential_function_evaluation() {
         // Function evaluated via step-based API
-        let source = r#"
+        let source = r"
             system Test {
                 entity Creature { HP: int }
                 function add_values(a: int, b: int) -> int {
                     a + b
                 }
             }
-        "#;
+        ";
         let (program, type_env) = setup(source);
 
         // Recursive path
@@ -9690,6 +9683,7 @@ mod tests {
 
     /// Helper: run a scenario through both recursive and step-based paths
     /// using evaluate_function (for budget/cost scenarios that need a wrapping function).
+    #[allow(clippy::type_complexity)]
     fn differential_function(
         source: &str,
         fn_name: &str,
@@ -9759,7 +9753,7 @@ mod tests {
     #[test]
     fn differential_entity_spawn_with_defaults() {
         // Entity spawn with field defaults → defaults evaluated before SpawnEntity
-        let source = r#"
+        let source = r"
             system Test {
                 entity Creature { HP: int }
                 entity Minion { HP: int, Armor: int = 2 }
@@ -9769,7 +9763,7 @@ mod tests {
                     }
                 }
             }
-        "#;
+        ";
         let (program, type_env) = setup(source);
 
         let interp = crate::Interpreter::new(&program, &type_env).unwrap();
@@ -9811,7 +9805,7 @@ mod tests {
     #[test]
     fn differential_cost_budget_insufficient() {
         // Budget insufficient → RequiresCheck(passed=false) for budget → action aborts
-        let source = r#"
+        let source = r"
             system Test {
                 struct TurnBudget { action: int }
                 entity Character { HP: int }
@@ -9825,7 +9819,7 @@ mod tests {
                     }
                 }
             }
-        "#;
+        ";
 
         let (program, type_env) = setup(source);
 
@@ -9879,7 +9873,7 @@ mod tests {
     #[test]
     fn differential_cost_deduction_vetoed() {
         // DeductCost → Vetoed → cost waived, action body still executes
-        let source = r#"
+        let source = r"
             system Test {
                 struct TurnBudget { action: int }
                 entity Character { HP: int }
@@ -9893,7 +9887,7 @@ mod tests {
                     }
                 }
             }
-        "#;
+        ";
 
         let (program, type_env) = setup(source);
 
@@ -9976,7 +9970,7 @@ mod tests {
     fn differential_cost_modifier_from_condition() {
         // Condition with modify cost clause should produce ModifyApplied effects
         // in both recursive and step-based paths.
-        let source = r#"
+        let source = r"
             system Test {
                 struct TurnBudget { action: int }
                 entity Character { HP: int }
@@ -9995,7 +9989,7 @@ mod tests {
                     }
                 }
             }
-        "#;
+        ";
 
         let (program, type_env) = setup(source);
 
@@ -10065,7 +10059,7 @@ mod tests {
     fn differential_condition_effectful_state_default() {
         // apply_condition with state field default that references condition params
         // ConditionApplyGate yielded first, state defaults evaluated after gate passes
-        let source = r#"
+        let source = r"
             system Test {
                 entity Creature { HP: int }
                 condition Burning(potency: int) on bearer: Creature {
@@ -10078,7 +10072,7 @@ mod tests {
                     }
                 }
             }
-        "#;
+        ";
         let (program, type_env) = setup(source);
 
         // Recursive path
@@ -10173,8 +10167,7 @@ mod tests {
         // ConditionRemovalGate should appear (RemoveCondition is auto-applied by StateAdapter)
         assert!(
             kinds1.contains(&EffectKind::ConditionRemovalGate),
-            "expected ConditionRemovalGate in recursive log: {:?}",
-            kinds1
+            "expected ConditionRemovalGate in recursive log: {kinds1:?}"
         );
     }
 
@@ -10182,7 +10175,7 @@ mod tests {
     fn differential_revoke_multiple_conditions() {
         // revoke(invocation) with multiple conditions tagged to the same invocation
         // Apply conditions and revoke within the same action (invocation() is available)
-        let source = r#"
+        let source = r"
             system Test {
                 entity Creature { HP: int }
                 condition Buff on bearer: Creature {}
@@ -10195,7 +10188,7 @@ mod tests {
                     }
                 }
             }
-        "#;
+        ";
         let (program, type_env) = setup(source);
 
         // Recursive path
@@ -10244,8 +10237,7 @@ mod tests {
         // RevokeInvocation is handled internally by StateAdapter
         assert!(
             kinds1.contains(&EffectKind::ConditionRemovalGate),
-            "expected ConditionRemovalGate from revoke in log: {:?}",
-            kinds1
+            "expected ConditionRemovalGate from revoke in log: {kinds1:?}"
         );
 
         // Both should succeed (or fail identically)
@@ -10415,8 +10407,7 @@ mod tests {
         // Both should contain ConditionRemovalGate
         assert!(
             kinds1.contains(&EffectKind::ConditionRemovalGate),
-            "expected ConditionRemovalGate in recursive log: {:?}",
-            kinds1
+            "expected ConditionRemovalGate in recursive log: {kinds1:?}"
         );
 
         // Both should fail identically (on_remove error)
@@ -10430,7 +10421,7 @@ mod tests {
     #[test]
     fn differential_condition_handler_modifies_state() {
         // Condition event handler modifies state fields → SetConditionState emitted
-        let source = r#"
+        let source = r"
             system Test {
                 entity Creature { HP: int }
                 event TurnEnd(combatant: entity)
@@ -10450,7 +10441,7 @@ mod tests {
                     emit TurnEnd(combatant: target)
                 }
             }
-        "#;
+        ";
         let (program, type_env) = setup(source);
 
         // Recursive path: ignite then tick
@@ -10577,7 +10568,7 @@ mod tests {
     #[test]
     fn differential_budget_effectful_field_expr() {
         // with_budget with budget that allows multiple actions
-        let source = r#"
+        let source = r"
             system Test {
                 struct TurnBudget { action: int }
                 entity Character { HP: int }
@@ -10592,7 +10583,7 @@ mod tests {
                     }
                 }
             }
-        "#;
+        ";
 
         let (program, type_env) = setup(source);
 
@@ -10642,7 +10633,7 @@ mod tests {
     #[test]
     fn differential_with_budgets_multi_entity() {
         // with_budgets (multi-entity) → ProvisionBudget emitted per entity
-        let source = r#"
+        let source = r"
             system Test {
                 struct TurnBudget { action: int }
                 entity Character { HP: int }
@@ -10660,7 +10651,7 @@ mod tests {
                     }
                 }
             }
-        "#;
+        ";
 
         let (program, type_env) = setup(source);
 
@@ -10713,7 +10704,7 @@ mod tests {
     fn differential_emit_effectful_argument_default() {
         // Emit with argument that has a default value (non-effectful)
         // Verifies emit default evaluation matches between paths
-        let source = r#"
+        let source = r"
             system Test {
                 entity Creature { HP: int }
                 event DamageNotify(target: entity, amount: int = 3)
@@ -10727,7 +10718,7 @@ mod tests {
                     c.HP -= trigger.amount
                 }
             }
-        "#;
+        ";
         let (program, type_env) = setup(source);
 
         // Recursive path
@@ -10774,7 +10765,7 @@ mod tests {
     fn differential_runtime_error_in_action_body() {
         // Real RuntimeError during action body (division by zero)
         // → ActionCompleted(Failed) emitted, error returned
-        let source = r#"
+        let source = r"
             system Test {
                 entity Creature { HP: int }
                 action BadMath on actor: Creature () {
@@ -10783,7 +10774,7 @@ mod tests {
                     }
                 }
             }
-        "#;
+        ";
         let (program, type_env) = setup(source);
 
         // Recursive path
@@ -10839,14 +10830,14 @@ mod tests {
     #[test]
     fn differential_alloc_invocation_id_overflow() {
         // Both paths now use checked_add and should error at u64::MAX.
-        let source = r#"
+        let source = r"
             system Test {
                 entity Creature { HP: int }
                 action Noop on actor: Creature () {
                     resolve { }
                 }
             }
-        "#;
+        ";
         let (program, type_env) = setup(source);
 
         // Recursive path: errors on overflow (checked_add returns Err)
@@ -10964,7 +10955,7 @@ mod tests {
         // Action body with multiple mutation statements — each evaluated
         // as a separate step through the Block frame.
         let (core, _) = make_core(
-            r#"
+            r"
             system Test {
                 entity Creature { HP: int, AC: int }
                 action Buff on actor: Creature (target: Creature) {
@@ -10974,7 +10965,7 @@ mod tests {
                     }
                 }
             }
-            "#,
+            ",
         );
 
         let mut game = GameState::new();
@@ -11022,7 +11013,7 @@ mod tests {
     fn block_frame_let_bindings() {
         // Let bindings within the block should be visible to later statements.
         let (core, _) = make_core(
-            r#"
+            r"
             system Test {
                 entity Creature { HP: int }
                 action Damage on actor: Creature (target: Creature) {
@@ -11032,7 +11023,7 @@ mod tests {
                     }
                 }
             }
-            "#,
+            ",
         );
 
         let mut game = GameState::new();
@@ -11067,7 +11058,7 @@ mod tests {
         // The resolve block has type int (last expression), so the checker
         // allows it. The second statement is unreachable but still parses.
         let (core, _) = make_core(
-            r#"
+            r"
             system Test {
                 entity Creature { HP: int }
                 action Check on actor: Creature () {
@@ -11077,7 +11068,7 @@ mod tests {
                     }
                 }
             }
-            "#,
+            ",
         );
 
         let mut game = GameState::new();
@@ -11121,7 +11112,7 @@ mod tests {
         // Use an out-of-range list index to trigger a runtime error
         // that passes the checker.
         let (core, _) = make_core(
-            r#"
+            r"
             system Test {
                 entity Creature { HP: int }
                 action Bad on actor: Creature (items: list<int>) {
@@ -11130,7 +11121,7 @@ mod tests {
                     }
                 }
             }
-            "#,
+            ",
         );
 
         let mut game = GameState::new();
@@ -11171,14 +11162,14 @@ mod tests {
     fn block_frame_empty_body() {
         // An empty resolve body should complete with Void.
         let (core, _) = make_core(
-            r#"
+            r"
             system Test {
                 entity Creature { HP: int }
                 action Noop on actor: Creature () {
                     resolve { }
                 }
             }
-            "#,
+            ",
         );
 
         let mut game = GameState::new();
@@ -11203,7 +11194,7 @@ mod tests {
         // Conditional logic within the block — verifies that
         // if/else is handled correctly by bridged statements.
         let (core, _) = make_core(
-            r#"
+            r"
             system Test {
                 entity Creature { HP: int }
                 action ConditionalHeal on actor: Creature (target: Creature) {
@@ -11214,7 +11205,7 @@ mod tests {
                     }
                 }
             }
-            "#,
+            ",
         );
 
         let mut game = GameState::new();
@@ -11239,7 +11230,7 @@ mod tests {
     #[test]
     fn differential_block_frame_multi_stmt() {
         // Differential test: multiple statements in resolve body.
-        let source = r#"
+        let source = r"
             system Test {
                 entity Creature { HP: int, AC: int }
                 action Buff on actor: Creature (target: Creature) {
@@ -11250,7 +11241,7 @@ mod tests {
                     }
                 }
             }
-        "#;
+        ";
 
         let (program, type_env) = setup(source);
 
@@ -11308,7 +11299,7 @@ mod tests {
         // Verify default parameter evaluation works on the async
         // poll/respond path (not just run_with_handler).
         let (core, _) = make_core(
-            r#"
+            r"
             system Test {
                 entity Creature { HP: int }
                 action Heal on actor: Creature (target: Creature, amount: int = 5) {
@@ -11317,7 +11308,7 @@ mod tests {
                     }
                 }
             }
-            "#,
+            ",
         );
 
         let mut game = GameState::new();
@@ -11364,7 +11355,7 @@ mod tests {
     fn fill_defaults_later_references_earlier() {
         // Later default expressions can reference earlier params.
         let (core, _) = make_core(
-            r#"
+            r"
             system Test {
                 entity Creature { HP: int }
                 action Heal on actor: Creature (
@@ -11377,7 +11368,7 @@ mod tests {
                     }
                 }
             }
-            "#,
+            ",
         );
 
         let mut game = GameState::new();
@@ -11403,7 +11394,7 @@ mod tests {
     fn fill_defaults_not_evaluated_on_veto() {
         // Default params should NOT be evaluated when the action is vetoed.
         let (core, _) = make_core(
-            r#"
+            r"
             system Test {
                 entity Creature { HP: int }
                 action Heal on actor: Creature (target: Creature, amount: int = 5) {
@@ -11412,7 +11403,7 @@ mod tests {
                     }
                 }
             }
-            "#,
+            ",
         );
 
         let mut game = GameState::new();
@@ -11460,14 +11451,14 @@ mod tests {
         // Error during default evaluation should produce
         // ActionCompleted(Failed).
         let (core, _) = make_core(
-            r#"
+            r"
             system Test {
                 entity Creature { HP: int }
                 action Bad on actor: Creature (items: list<int> = [1, 2, 3]) {
                     resolve { }
                 }
             }
-            "#,
+            ",
         );
 
         // This test needs a default that errors at runtime.
@@ -11511,11 +11502,11 @@ mod tests {
     /// Helper: create a minimal Execution with a single frame pushed.
     fn exec_with_frame(frame: Frame) -> Execution<GameState> {
         let (core, _) = make_core(
-            r#"
+            r"
             system Test {
                 entity Creature { HP: int }
             }
-            "#,
+            ",
         );
         let game = GameState::new();
         let adapter = StateAdapter::new(game);
@@ -11895,14 +11886,14 @@ mod tests {
     #[test]
     fn derive_eval_simple() {
         let (core, _) = make_core(
-            r#"
+            r"
             system Test {
                 entity Creature { HP: int }
                 derive max_hp(actor: Creature) -> int {
                     actor.HP * 2
                 }
             }
-            "#,
+            ",
         );
 
         let mut game = GameState::new();
@@ -11922,14 +11913,14 @@ mod tests {
         // DeriveEval should work on the async poll/respond path
         // (for derives without host-decided effects).
         let (core, _) = make_core(
-            r#"
+            r"
             system Test {
                 entity Creature { HP: int }
                 derive max_hp(actor: Creature) -> int {
                     actor.HP + 10
                 }
             }
-            "#,
+            ",
         );
 
         let mut game = GameState::new();
@@ -11946,14 +11937,14 @@ mod tests {
     #[test]
     fn mechanic_eval_simple() {
         let (core, _) = make_core(
-            r#"
+            r"
             system Test {
                 entity Creature { HP: int }
                 mechanic compute_bonus(actor: Creature) -> int {
                     actor.HP - 10
                 }
             }
-            "#,
+            ",
         );
 
         let mut game = GameState::new();
@@ -11972,14 +11963,14 @@ mod tests {
     #[test]
     fn function_eval_simple() {
         let (core, _) = make_core(
-            r#"
+            r"
             system Test {
                 entity Creature { HP: int }
                 function add(a: int, b: int) -> int {
                     a + b
                 }
             }
-            "#,
+            ",
         );
 
         let game = GameState::new();
@@ -11999,14 +11990,14 @@ mod tests {
         // FunctionEval pushes a Block frame, so it works on the
         // async path for non-effectful function bodies.
         let (core, _) = make_core(
-            r#"
+            r"
             system Test {
                 entity Creature { HP: int }
                 function add(a: int, b: int) -> int {
                     a + b
                 }
             }
-            "#,
+            ",
         );
 
         let game = GameState::new();
@@ -12023,14 +12014,14 @@ mod tests {
     #[test]
     fn function_eval_with_default() {
         let (core, _) = make_core(
-            r#"
+            r"
             system Test {
                 entity Creature { HP: int }
                 function add(a: int, b: int = 5) -> int {
                     a + b
                 }
             }
-            "#,
+            ",
         );
 
         let game = GameState::new();
@@ -12047,14 +12038,14 @@ mod tests {
     fn function_eval_with_mutations() {
         // Function body that mutates entity state.
         let (core, _) = make_core(
-            r#"
+            r"
             system Test {
                 entity Creature { HP: int }
                 function heal(target: Creature, amount: int) {
                     target.HP += amount
                 }
             }
-            "#,
+            ",
         );
 
         let mut game = GameState::new();
@@ -12078,11 +12069,11 @@ mod tests {
         // BridgeCall now works on async path for expressions
         // without host-decided effects.
         let (core, _) = make_core(
-            r#"
+            r"
             system Test {
                 entity Creature { HP: int }
             }
-            "#,
+            ",
         );
 
         let game = GameState::new();
@@ -12103,14 +12094,14 @@ mod tests {
         // DeriveEval (mechanic) with effectful expression (roll) on async path
         // should yield RollDice and resume correctly.
         use crate::value::{DiceExpr, RollResult};
-        let source = r#"
+        let source = r"
             system Test {
                 entity Creature { HP: int }
                 mechanic damage(c: Creature) -> int {
                     roll(1d6).total
                 }
             }
-        "#;
+        ";
         let (program, type_env) = setup(source);
         let roll_result = RollResult {
             expr: DiceExpr::single(1, 6, None, 0),
@@ -12155,14 +12146,14 @@ mod tests {
     #[test]
     fn mechanic_with_roll_poll_respond() {
         // DeriveEval (mechanic) with roll() via poll/respond (no run_with_handler).
-        let source = r#"
+        let source = r"
             system Test {
                 entity Creature { HP: int }
                 mechanic damage(c: Creature) -> int {
                     roll(1d6).total
                 }
             }
-        "#;
+        ";
         let (program, type_env) = setup(source);
         let core = RuntimeCore::new(Arc::clone(&program), Arc::clone(&type_env), 1, 1);
         let mut game = GameState::new();
@@ -12287,11 +12278,11 @@ mod tests {
         };
 
         let (core, _) = make_core(
-            r#"
+            r"
             system Test {
                 entity Creature { HP: int }
             }
-            "#,
+            ",
         );
         let game = GameState::new();
         let adapter = StateAdapter::new(game);
@@ -12373,7 +12364,7 @@ mod tests {
         use crate::value::{DiceExpr, RollResult};
 
         let (core, _) = make_core(
-            r#"
+            r"
             system Test {
                 entity Creature { HP: int }
                 action Smite on actor: Creature (target: Creature) {
@@ -12382,7 +12373,7 @@ mod tests {
                     }
                 }
             }
-            "#,
+            ",
         );
 
         let mut game = GameState::new();
@@ -12460,7 +12451,7 @@ mod tests {
         use crate::value::{DiceExpr, RollResult};
 
         let (core, _) = make_core(
-            r#"
+            r"
             system Test {
                 entity Creature { HP: int, AC: int }
                 action DoubleStrike on actor: Creature (target: Creature) {
@@ -12470,7 +12461,7 @@ mod tests {
                     }
                 }
             }
-            "#,
+            ",
         );
 
         let mut game = GameState::new();
@@ -12555,7 +12546,7 @@ mod tests {
         // structural effects on both recursive and step-based paths.
         use crate::value::{DiceExpr, RollResult};
 
-        let source = r#"
+        let source = r"
             system Test {
                 entity Creature { HP: int }
                 action Hit on actor: Creature (target: Creature) {
@@ -12564,7 +12555,7 @@ mod tests {
                     }
                 }
             }
-        "#;
+        ";
         let (program, type_env) = setup(source);
 
         let roll = RollResult {
@@ -12645,7 +12636,7 @@ mod tests {
     fn async_differential_condition_apply() {
         // Async poll/respond path: apply_condition yields ConditionApplyGate,
         // evaluates state defaults, runs on_apply blocks, emits ApplyCondition.
-        let source = r#"
+        let source = r"
             system Test {
                 entity Creature { HP: int }
                 condition Poisoned(damage: int) on bearer: Creature {
@@ -12657,7 +12648,7 @@ mod tests {
                     }
                 }
             }
-        "#;
+        ";
         let (program, type_env) = setup(source);
 
         // Recursive path
@@ -12722,8 +12713,7 @@ mod tests {
         // Verify ConditionApplyGate is yielded in the async path
         assert!(
             kinds2.contains(&EffectKind::ConditionApplyGate),
-            "expected ConditionApplyGate in async effects: {:?}",
-            kinds2
+            "expected ConditionApplyGate in async effects: {kinds2:?}"
         );
     }
 
@@ -12731,7 +12721,7 @@ mod tests {
     fn async_differential_condition_apply_vetoed() {
         // Async poll/respond path: ConditionApplyGate vetoed → no on_apply,
         // no state defaults evaluated, no condition applied.
-        let source = r#"
+        let source = r"
             system Test {
                 entity Creature { HP: int }
                 condition Poisoned(damage: int) on bearer: Creature {
@@ -12743,7 +12733,7 @@ mod tests {
                     }
                 }
             }
-        "#;
+        ";
         let (program, type_env) = setup(source);
 
         // Recursive path — veto the condition gate
@@ -12820,7 +12810,7 @@ mod tests {
     fn async_differential_condition_with_state_default() {
         // Async poll/respond path: state field defaults evaluated after gate,
         // on_apply can use state fields.
-        let source = r#"
+        let source = r"
             system Test {
                 entity Creature { HP: int }
                 condition Burning(potency: int) on bearer: Creature {
@@ -12833,7 +12823,7 @@ mod tests {
                     }
                 }
             }
-        "#;
+        ";
         let (program, type_env) = setup(source);
 
         // Recursive path
@@ -12902,7 +12892,7 @@ mod tests {
         use crate::value::{DiceExpr, RollResult};
 
         let (core, _) = make_core(
-            r#"
+            r"
             system Test {
                 entity Creature { HP: int }
                 function tick_and_roll() -> int {
@@ -12913,7 +12903,7 @@ mod tests {
                     tick_and_roll()
                 }
             }
-            "#,
+            ",
         );
 
         let game = GameState::new();
@@ -12966,7 +12956,7 @@ mod tests {
         use crate::value::{DiceExpr, RollResult};
 
         let (core, _) = make_core(
-            r#"
+            r"
             system Test {
                 entity Creature { HP: int }
                 function tick_and_roll() -> int {
@@ -12978,7 +12968,7 @@ mod tests {
                     x + 10
                 }
             }
-            "#,
+            ",
         );
 
         let game = GameState::new();
@@ -13017,7 +13007,7 @@ mod tests {
         use crate::value::{DiceExpr, RollResult};
 
         let (core, _) = make_core(
-            r#"
+            r"
             system Test {
                 entity Creature { HP: int }
                 function tick_and_roll() -> int {
@@ -13028,7 +13018,7 @@ mod tests {
                     target.HP -= tick_and_roll()
                 }
             }
-            "#,
+            ",
         );
 
         let mut game = GameState::new();
@@ -13090,7 +13080,7 @@ mod tests {
         use crate::value::{DiceExpr, RollResult};
 
         let (core, _) = make_core(
-            r#"
+            r"
             system Test {
                 entity Creature { HP: int }
                 function consume(x: int) -> int { x }
@@ -13098,7 +13088,7 @@ mod tests {
                     consume(roll(1d6).total)
                 }
             }
-            "#,
+            ",
         );
 
         let game = GameState::new();
@@ -13136,7 +13126,7 @@ mod tests {
         // errors, the error should propagate through Block and be
         // reported as ActionCompleted(Failed), not silently dropped.
         let (core, _) = make_core(
-            r#"
+            r"
             system Test {
                 entity Creature { HP: int }
                 function explode() -> float {
@@ -13148,7 +13138,7 @@ mod tests {
                     }
                 }
             }
-            "#,
+            ",
         );
 
         let mut game = GameState::new();
@@ -13181,7 +13171,7 @@ mod tests {
         // Bug 3: named arguments should be bound correctly on the
         // async frame-dispatch path, matching bind_args semantics.
         let (core, _) = make_core(
-            r#"
+            r"
             system Test {
                 entity Creature { HP: int }
                 function sub(a: int, b: int) -> int {
@@ -13191,7 +13181,7 @@ mod tests {
                     sub(b: 7, a: 3)
                 }
             }
-            "#,
+            ",
         );
 
         let game = GameState::new();
@@ -13213,7 +13203,7 @@ mod tests {
         // a host-decided effect, the ExprEval path dispatches the call
         // as a child frame instead of probing — so it yields normally.
         let (core, _) = make_core(
-            r#"
+            r"
             system Test {
                 entity Creature { HP: int }
                 function tick_and_roll() -> int {
@@ -13225,7 +13215,7 @@ mod tests {
                     consume(tick_and_roll())
                 }
             }
-            "#,
+            ",
         );
 
         let game = GameState::new();
@@ -13245,7 +13235,7 @@ mod tests {
         // Positional first, then named: f(1, c: 3, b: 2) for f(a, b, c)
         // should bind a=1, b=2, c=3.
         let (core, _) = make_core(
-            r#"
+            r"
             system Test {
                 entity Creature { HP: int }
                 function f(a: int, b: int, c: int) -> int {
@@ -13255,7 +13245,7 @@ mod tests {
                     f(1, c: 3, b: 2)
                 }
             }
-            "#,
+            ",
         );
 
         let game = GameState::new();
@@ -13277,7 +13267,7 @@ mod tests {
     fn differential_emit_with_hooks() {
         // Emit an event that triggers a hook; verify the hook runs
         // and modifies state identically in both paths.
-        let source = r#"
+        let source = r"
             system Test {
                 entity Creature { HP: int }
                 event Healed(target: entity, amount: int)
@@ -13293,7 +13283,7 @@ mod tests {
                     receiver.HP += 1
                 }
             }
-        "#;
+        ";
         let (program, type_env) = setup(source);
 
         // Recursive path
@@ -13350,7 +13340,7 @@ mod tests {
     fn differential_emit_condition_handler_state_mutation() {
         // Condition with state fields and on-event handler that mutates state.
         // Verifies SetConditionState is emitted correctly.
-        let source = r#"
+        let source = r"
             system Test {
                 entity Creature { HP: int }
                 event TurnStarted(actor: entity)
@@ -13367,7 +13357,7 @@ mod tests {
                     }
                 }
             }
-        "#;
+        ";
         let (program, type_env) = setup(source);
 
         // Pre-apply the condition on the target. We need to use the
@@ -13466,7 +13456,7 @@ mod tests {
     fn differential_emit_nested_hook_emits_event() {
         // Hook body emits another event, which triggers another hook.
         // Tests nested emit depth handling.
-        let source = r#"
+        let source = r"
             system Test {
                 entity Creature { HP: int }
                 event DamageDealt(target: entity, amount: int)
@@ -13488,7 +13478,7 @@ mod tests {
                     receiver.HP -= 1
                 }
             }
-        "#;
+        ";
         let (program, type_env) = setup(source);
 
         // Recursive path
@@ -13551,7 +13541,7 @@ mod tests {
         // the emit triggers a hook that modifies state.
         use crate::value::{DiceExpr, RollResult};
 
-        let source = r#"
+        let source = r"
             system Test {
                 entity Creature { HP: int }
                 event DamageDealt(target: entity, amount: int)
@@ -13568,7 +13558,7 @@ mod tests {
                     receiver.HP -= 1
                 }
             }
-        "#;
+        ";
         let (program, type_env) = setup(source);
 
         let roll = RollResult {
@@ -13669,7 +13659,7 @@ mod tests {
         // which triggers a hook. Verifies that lifecycle_condition_stack is
         // managed correctly (the condition is being applied when the emit
         // happens) and the hook runs as expected.
-        let source = r#"
+        let source = r"
             system Test {
                 entity Creature { HP: int }
                 event ConditionApplied(target: entity, severity: int)
@@ -13690,7 +13680,7 @@ mod tests {
                     }
                 }
             }
-        "#;
+        ";
         let (program, type_env) = setup(source);
 
         let core = RuntimeCore::new(Arc::clone(&program), Arc::clone(&type_env), 1, 1);
@@ -13778,7 +13768,7 @@ mod tests {
         // and a condition handler. The hook runs first and removes the
         // condition from the entity. The condition handler should be
         // skipped because the condition no longer exists (snapshot safety).
-        let source = r#"
+        let source = r"
             system Test {
                 entity Creature { HP: int }
                 event TurnStarted(actor: entity)
@@ -13800,7 +13790,7 @@ mod tests {
                     }
                 }
             }
-        "#;
+        ";
         let (program, type_env) = setup(source);
 
         let core = RuntimeCore::new(Arc::clone(&program), Arc::clone(&type_env), 1, 1);
@@ -13991,14 +13981,14 @@ mod tests {
         // Phase 1 target: alloc_invocation_id at u64::MAX should return Err,
         // not wrap to 0.
         let (core, _) = make_core(
-            r#"
+            r"
             system Test {
                 entity Creature { HP: int }
                 action Noop on actor: Creature () {
                     resolve { }
                 }
             }
-        "#,
+        ",
         );
 
         // Create a core with invocation counter at u64::MAX
@@ -14039,12 +14029,12 @@ mod tests {
     #[test]
     fn step_based_bridge_records_coverage() {
         // Bridge eval in step mode should record coverage hits.
-        let source = r#"
+        let source = r"
             system Test {
                 entity Creature { HP: int }
                 function add_one(x: int) -> int { x + 1 }
             }
-        "#;
+        ";
         let (program, type_env) = setup(source);
 
         let base_core = Rc::new(RuntimeCore::new(program, type_env, 1, 1));
@@ -14174,7 +14164,7 @@ mod tests {
     fn effectful_requires_yields_instead_of_panicking() {
         // Phase 4 target: requires clause containing roll() should yield
         // RollDice instead of panicking via NoYieldHandler.
-        let source = r#"
+        let source = r"
             system Test {
                 entity Creature { HP: int }
                 action RiskyAttack on actor: Creature () {
@@ -14182,7 +14172,7 @@ mod tests {
                     resolve { actor.HP += 1 }
                 }
             }
-        "#;
+        ";
         let (program, type_env) = setup(source);
         let core = RuntimeCore::new(Arc::clone(&program), Arc::clone(&type_env), 1, 1);
 
@@ -14212,10 +14202,10 @@ mod tests {
             Ok(other) => {
                 panic!("expected Yielded(RollDice), got {other:?}");
             }
-            Err(_) => {
+            Err(e) => {
                 panic!(
                     "EXPECTED FAILURE: NoYieldHandler panicked on RollDice in requires clause; \
-                     should yield instead"
+                     should yield instead: {e:?}"
                 );
             }
         }
@@ -14227,7 +14217,7 @@ mod tests {
         // in poll/respond mode, not skip cost entirely.
         // Uses start_action directly with pre-provisioned budget to avoid
         // the with_budget containment guard issue in Block frames.
-        let source = r#"
+        let source = r"
             system Test {
                 struct TurnBudget { action: int }
                 entity Character { HP: int }
@@ -14236,7 +14226,7 @@ mod tests {
                     resolve { target.HP -= 1 }
                 }
             }
-        "#;
+        ";
         let (program, type_env) = setup(source);
 
         // Step-based path via poll/respond with budget pre-provisioned
@@ -14291,7 +14281,7 @@ mod tests {
         // Phase 5 target: action with cost + insufficient budget should yield
         // RequiresCheck(passed=false) in poll/respond mode.
         // Uses start_action directly with pre-provisioned empty budget.
-        let source = r#"
+        let source = r"
             system Test {
                 struct TurnBudget { action: int }
                 entity Character { HP: int }
@@ -14300,7 +14290,7 @@ mod tests {
                     resolve { target.HP -= 1 }
                 }
             }
-        "#;
+        ";
         let (program, type_env) = setup(source);
 
         // Step-based path via poll/respond with insufficient budget
@@ -14366,14 +14356,14 @@ mod tests {
     #[test]
     fn assert_no_dispatch_bridges_derive() {
         let (core, _) = make_core(
-            r#"
+            r"
             system Test {
                 entity Creature { HP: int }
                 derive doubled_hp(target: Creature) -> int {
                     target.HP * 2
                 }
             }
-            "#,
+            ",
         );
 
         let mut game = GameState::new();
@@ -14397,14 +14387,14 @@ mod tests {
     #[test]
     fn assert_no_dispatch_bridges_function() {
         let (core, _) = make_core(
-            r#"
+            r"
             system Test {
                 entity Creature { HP: int }
                 function add(a: int, b: int) -> int {
                     a + b
                 }
             }
-            "#,
+            ",
         );
 
         let game = GameState::new();

@@ -929,7 +929,7 @@ pub(crate) fn advance_expr_eval(
     operands: &mut Vec<Value>,
     pc: &mut usize,
     child_result: &mut Option<Result<Value, RuntimeError>>,
-    _scope_depth: &mut usize,
+    scope_depth: &mut usize,
     core: &RuntimeCore,
     env: &mut ExecEnv,
     sp: &dyn StateProvider,
@@ -944,10 +944,10 @@ pub(crate) fn advance_expr_eval(
             }
             Err(e) => {
                 // Clean up any scopes pushed by IfLetTest before propagating.
-                for _ in 0..*_scope_depth {
+                for _ in 0..*scope_depth {
                     env.pop_scope();
                 }
-                *_scope_depth = 0;
+                *scope_depth = 0;
                 return Advance::Error(e);
             }
         }
@@ -1248,7 +1248,7 @@ pub(crate) fn advance_expr_eval(
                 let mut bindings = FxHashMap::default();
                 if match_pattern(&core.type_env, pattern, &scrutinee, &mut bindings) {
                     env.push_scope();
-                    *_scope_depth += 1;
+                    *scope_depth += 1;
                     for (name, val) in bindings {
                         env.bind(name, val);
                     }
@@ -1259,7 +1259,7 @@ pub(crate) fn advance_expr_eval(
             }
             ExprWork::PopScope => {
                 env.pop_scope();
-                *_scope_depth -= 1;
+                *scope_depth -= 1;
                 *pc += 1;
             }
 
@@ -1270,10 +1270,10 @@ pub(crate) fn advance_expr_eval(
                 *pc += 1;
             }
             ExprWork::MatchFail(span) => {
-                for _ in 0..*_scope_depth {
+                for _ in 0..*scope_depth {
                     env.pop_scope();
                 }
-                *_scope_depth = 0;
+                *scope_depth = 0;
                 return Advance::Error(RuntimeError::with_span(
                     "no pattern matched in match expression",
                     *span,
@@ -2832,8 +2832,7 @@ fn dispatch_action_named_step(
         other => {
             return Err(RuntimeError::with_span(
                 format!(
-                    "action '{name}' receiver must be an entity, got {:?}",
-                    other
+                    "action '{name}' receiver must be an entity, got {other:?}"
                 ),
                 span,
             ));
@@ -4884,7 +4883,7 @@ pub(crate) fn eval_expr_step(
                 eh,
             ) {
                 Advance::Pop(val) => return Ok(val),
-                Advance::Continue => continue,
+                Advance::Continue => {},
                 Advance::Error(e) => return Err(e),
                 Advance::Push(child_frame) => {
                     // Run the child frame synchronously, then feed result back
