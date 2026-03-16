@@ -3086,18 +3086,6 @@ fn build_action_lifecycle(
     }))
 }
 
-/// Convert a Value back to an ExprKind for synthetic expressions.
-/// Only needs to handle values that can appear as call arguments.
-fn value_to_expr(val: &Value) -> ExprKind {
-    match val {
-        Value::Int(n) => ExprKind::IntLit(*n),
-        Value::Bool(b) => ExprKind::BoolLit(*b),
-        Value::Str(s) => ExprKind::StringLit(s.clone()),
-        Value::Void => ExprKind::NoneLit,
-        _ => ExprKind::NoneLit, // fallback — should be unreachable in practice
-    }
-}
-
 // ── Argument binding (value-level) ──────────────────────────────
 
 /// Bind pre-evaluated argument values to parameters.
@@ -4019,7 +4007,7 @@ fn call_builtin_step_full(
     core: &RuntimeCore,
     env: &mut ExecEnv,
     sp: &dyn StateProvider,
-    eh: &mut dyn EffectHandler,
+    _eh: &mut dyn EffectHandler,
 ) -> Result<CallResult, RuntimeError> {
     match name {
         // Effectful builtins that need child frames
@@ -4050,10 +4038,36 @@ fn call_builtin_step_full(
             .map(|effect| CallResult::PushChild(Frame::MutationYield { effect, pending: None, span })),
         "transfer_conditions" => builtin_transfer_conditions_step(env, &args, span, core)
             .map(|effect| CallResult::PushChild(Frame::MutationYield { effect, pending: None, span })),
-        // Complex lifecycle builtins — run via frame-based execution
-        "apply_condition" | "remove_condition" | "revoke" => {
-            run_builtin_via_frame(name, args, span, core, env, sp, eh).map(CallResult::Value)
-        }
+        // Complex lifecycle builtins — push a CallSetup frame with pre-evaluated args.
+        // These must NOT be run synchronously via run_frame_to_completion_sync because
+        // that would re-enter compile_expr → call_builtin_step_full → infinite recursion.
+        "apply_condition" => Ok(CallResult::PushChild(Frame::CallSetup {
+            target: crate::execution::CallTarget::ApplyCondition { span },
+            arg_exprs: Vec::new(),
+            arg_index: 0,
+            evaluated: args,
+            child_result: None,
+            awaiting_child: false,
+            span,
+        })),
+        "remove_condition" => Ok(CallResult::PushChild(Frame::CallSetup {
+            target: crate::execution::CallTarget::RemoveCondition { span },
+            arg_exprs: Vec::new(),
+            arg_index: 0,
+            evaluated: args,
+            child_result: None,
+            awaiting_child: false,
+            span,
+        })),
+        "revoke" => Ok(CallResult::PushChild(Frame::CallSetup {
+            target: crate::execution::CallTarget::Revoke { span },
+            arg_exprs: Vec::new(),
+            arg_index: 0,
+            evaluated: args,
+            child_result: None,
+            awaiting_child: false,
+            span,
+        })),
         // Pure/state-reading builtins
         _ => call_builtin_step(name, &args, span, core, sp).map(CallResult::Value),
     }
@@ -4773,63 +4787,6 @@ fn builtin_transfer_conditions_step(
         tag: Name::from(tag.as_str()),
         exclude_instance,
     })
-}
-
-/// Validate a response to a mutation effect.
-/// Run a complex lifecycle builtin (apply_condition, remove_condition, revoke)
-/// by constructing a synthetic call expression and evaluating it via a
-/// ResumableBridge frame. This avoids a direct bridge_call_builtin call from
-/// expr_eval.rs while preserving full lifecycle semantics.
-fn run_builtin_via_frame(
-    name: &str,
-    args: Vec<Value>,
-    span: Span,
-    core: &RuntimeCore,
-    env: &mut ExecEnv,
-    sp: &dyn StateProvider,
-    eh: &mut dyn EffectHandler,
-) -> Result<Value, RuntimeError> {
-    use ttrpg_ast::ast::Arg;
-
-    // Build synthetic literal arguments from pre-evaluated values
-    let ast_args: Vec<Arg> = args
-        .iter()
-        .map(|val| Arg {
-            name: None,
-            value: Spanned {
-                node: value_to_expr(val),
-                span,
-            },
-            span,
-        })
-        .collect();
-
-    let callee_expr = Spanned {
-        node: ExprKind::Ident(Name::from(name)),
-        span,
-    };
-    let call_expr = Spanned {
-        node: ExprKind::Call {
-            callee: Box::new(callee_expr),
-            args: ast_args,
-        },
-        span,
-    };
-
-    let Some(work) = compile_expr(&call_expr, &core.type_env, &core.program) else {
-        return Err(RuntimeError::with_span(
-            &format!("builtin '{name}' call could not be compiled for step-based evaluation"),
-            span,
-        ));
-    };
-    let frame = Frame::ExprEval {
-        work,
-        operands: Vec::new(),
-        pc: 0,
-        child_result: None,
-        scope_depth: 0,
-    };
-    crate::execution::run_frame_to_completion_sync(frame, core, env, sp, eh)
 }
 
 // ── Is-check implementation ─────────────────────────────────────
