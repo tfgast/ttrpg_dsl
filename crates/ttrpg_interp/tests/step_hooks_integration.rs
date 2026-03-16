@@ -10,8 +10,8 @@ use std::sync::Arc;
 use rustc_hash::FxHashMap;
 use ttrpg_ast::diagnostic::Severity;
 use ttrpg_ast::{FileId, Name, Span};
-use ttrpg_interp::adapter::StateAdapter;
-use ttrpg_interp::effect::{Effect, Response, Step};
+use ttrpg_interp::adapter::{self, StateAdapter};
+use ttrpg_interp::effect::{Effect, EffectKind, Response, Step};
 use ttrpg_interp::event;
 use ttrpg_interp::execution::Execution;
 use ttrpg_interp::reference_state::GameState;
@@ -72,14 +72,20 @@ fn add_character(state: &mut GameState, hp: i64) -> EntityRef {
 }
 
 /// Drive an execution to completion, collecting all yielded effects.
-/// Responds with Acknowledged to every effect.
-fn run_to_completion<S: ttrpg_interp::state::WritableState>(
-    exec: &mut Execution<S>,
+/// Responds with Acknowledged to every effect. Mutation effects are
+/// applied to state (since MutationYield frames yield them to the host).
+fn run_to_completion(
+    exec: &mut Execution<GameState>,
 ) -> (Value, Vec<Effect>) {
     let mut effects = Vec::new();
     loop {
         match exec.poll().expect("poll should not error") {
             Step::Yielded(effect) => {
+                if adapter::MUTATION_KINDS.contains(&EffectKind::of(&effect)) {
+                    exec.state().with_state_mut(|gs| {
+                        adapter::apply_mutation(gs, &effect, &FxHashMap::default());
+                    });
+                }
                 effects.push(*effect);
                 exec.respond(Response::Acknowledged)
                     .expect("respond should not error");

@@ -97,6 +97,9 @@ struct FrameAssignCtx<'a> {
     core: &'a RuntimeCore,
     state: &'a dyn StateProvider,
     handler: &'a mut dyn EffectHandler,
+    /// Effects collected during assignment instead of emitting them synchronously.
+    /// Drained by the caller to push `MutationYield` frames.
+    collected: Vec<Effect>,
 }
 
 impl crate::eval::AssignContext for FrameAssignCtx<'_> {
@@ -128,7 +131,7 @@ impl crate::eval::AssignContext for FrameAssignCtx<'_> {
         }
     }
     fn emit(&mut self, effect: Effect) {
-        self.handler.handle(effect);
+        self.collected.push(effect);
     }
     fn turn_actor(&self) -> Option<EntityRef> {
         self.turn_actor
@@ -3128,22 +3131,38 @@ impl Frame {
                         }
                         AwaitingFn::Assign { target, op, span } => {
                             // RHS was evaluated by FunctionEval. Apply
-                            // the assignment directly via AssignContext
-                            // (no bridge needed).
+                            // the assignment via AssignContext, collecting
+                            // any mutation effects to yield.
                             let rhs = value;
-                            let mut ctx = FrameAssignCtx {
-                                scopes: &mut env.scopes,
-                                turn_actor: env.turn_actor,
-                                core,
-                                state: sp,
-                                handler: &mut *eh,
+                            let collected = {
+                                let mut ctx = FrameAssignCtx {
+                                    scopes: &mut env.scopes,
+                                    turn_actor: env.turn_actor,
+                                    core,
+                                    state: sp,
+                                    handler: &mut *eh,
+                                    collected: Vec::new(),
+                                };
+                                if let Err(e) = crate::eval::exec_assign_with_rhs(
+                                    &mut ctx, &target, op, rhs, span,
+                                ) {
+                                    env.pop_scope();
+                                    return Advance::Error(e);
+                                }
+                                ctx.collected
                             };
-                            if let Err(e) =
-                                crate::eval::exec_assign_with_rhs(&mut ctx, &target, op, rhs, span)
-                            {
-                                env.pop_scope();
-                                return Advance::Error(e);
+                            // Yield collected mutation effects via MutationYield.
+                            if let Some(effect) = collected.into_iter().next() {
+                                *awaiting_fn = Some(AwaitingFn::AssignYield);
+                                return Advance::Push(Frame::MutationYield {
+                                    effect,
+                                    pending: None,
+                                    span,
+                                });
                             }
+                        }
+                        AwaitingFn::AssignYield => {
+                            // MutationYield child completed — just advance.
                         }
                         AwaitingFn::Return => {
                             env.return_value = Some(value);
@@ -3643,6 +3662,7 @@ impl Frame {
                                 core,
                                 state: sp,
                                 handler: &mut *eh,
+                                collected: Vec::new(),
                             };
                             let result =
                                 crate::call::dispatch_table_exec(&mut ctx, &n, a, Span::dummy());
@@ -6201,6 +6221,9 @@ pub(crate) enum AwaitingFn {
     },
     /// Return statement — child result becomes the return value.
     Return,
+    /// Assignment yielded a mutation effect via MutationYield child.
+    /// Just advance the index when the child completes.
+    AssignYield,
 }
 
 /// A parameter whose default expression may need evaluation.
@@ -7587,6 +7610,35 @@ mod tests {
         game.add_entity("Creature", fields)
     }
 
+    /// Poll-mode helper: expect a mutation yield, apply it to state, and acknowledge.
+    ///
+    /// MutationYield frames yield `MutateField` / `MutateTurnField` / etc. effects
+    /// to the host. In poll mode the host must apply them (unlike `run_with_handler`
+    /// where `StateAdapter` auto-applies).
+    fn expect_and_apply_mutation(exec: &mut Execution<GameState>) -> Effect {
+        let step = exec.poll().unwrap();
+        let effect = match step {
+            Step::Yielded(e) => *e,
+            Step::Done(_) => panic!("expected Yielded(mutation), got Done"),
+        };
+        exec.state().with_state_mut(|gs| {
+            crate::adapter::apply_mutation(gs, &effect, &FxHashMap::default());
+        });
+        exec.respond(Response::Acknowledged).unwrap();
+        effect
+    }
+
+    /// Poll-mode loop helper: acknowledge a yielded effect and, if it is a
+    /// mutation effect, apply it to state before responding.
+    fn ack_and_maybe_apply(exec: &mut Execution<GameState>, effect: &Effect) {
+        if crate::adapter::MUTATION_KINDS.contains(&EffectKind::of(effect)) {
+            exec.state().with_state_mut(|gs| {
+                crate::adapter::apply_mutation(gs, effect, &FxHashMap::default());
+            });
+        }
+        exec.respond(Response::Acknowledged).unwrap();
+    }
+
     // ── Phase 3 tests ────────────────────────────────────────
 
     #[test]
@@ -7633,7 +7685,14 @@ mod tests {
 
         exec.respond(Response::Acknowledged).unwrap();
 
-        // Step 2: ActionCompleted (body runs synchronously via bridge)
+        // Step 2: MutateField (target.HP -= 5) yielded via MutationYield
+        let effect = expect_and_apply_mutation(&mut exec);
+        assert!(
+            matches!(&effect, Effect::MutateField { .. }),
+            "expected MutateField, got {effect:?}"
+        );
+
+        // Step 3: ActionCompleted
         let step = exec.poll().unwrap();
         let effect = match step {
             Step::Yielded(e) => *e,
@@ -7652,7 +7711,7 @@ mod tests {
 
         exec.respond(Response::Acknowledged).unwrap();
 
-        // Step 3: Done
+        // Step 4: Done
         let step = exec.poll().unwrap();
         assert!(matches!(step, Step::Done(Value::Void)));
 
@@ -7822,6 +7881,13 @@ mod tests {
             if action == "Heal"
         ));
         exec.respond(Response::Acknowledged).unwrap();
+
+        // MutateField (target.HP += 5)
+        let effect = expect_and_apply_mutation(&mut exec);
+        assert!(
+            matches!(&effect, Effect::MutateField { .. }),
+            "expected MutateField, got {effect:?}"
+        );
 
         // ActionCompleted
         let step = exec.poll().unwrap();
@@ -11254,7 +11320,13 @@ mod tests {
         assert!(matches!(&step, Step::Yielded(e) if matches!(&**e, Effect::ActionStarted { .. })));
         exec.respond(Response::Acknowledged).unwrap();
 
-        // ActionCompleted (both mutations applied locally via Block frame)
+        // MutateField (target.HP += 10)
+        expect_and_apply_mutation(&mut exec);
+
+        // MutateField (target.AC += 2)
+        expect_and_apply_mutation(&mut exec);
+
+        // ActionCompleted
         let step = exec.poll().unwrap();
         assert!(matches!(
             &step,
@@ -11596,6 +11668,9 @@ mod tests {
         let step = exec.poll().unwrap();
         assert!(matches!(&step, Step::Yielded(e) if matches!(&**e, Effect::ActionStarted { .. })));
         exec.respond(Response::Acknowledged).unwrap();
+
+        // MutateField (target.HP += 5, default amount)
+        expect_and_apply_mutation(&mut exec);
 
         // ActionCompleted (defaults evaluated via FillDefaults frame)
         let step = exec.poll().unwrap();
@@ -12745,6 +12820,13 @@ mod tests {
         };
         exec.respond(Response::Rolled(rr)).unwrap();
 
+        // MutateField (target.HP -= 8)
+        let effect = expect_and_apply_mutation(&mut exec);
+        assert!(
+            matches!(&effect, Effect::MutateField { .. }),
+            "expected MutateField, got {effect:?}"
+        );
+
         // ActionCompleted
         let step = exec.poll().unwrap();
         assert!(matches!(
@@ -12824,6 +12906,9 @@ mod tests {
         }))
         .unwrap();
 
+        // MutateField (target.HP -= 5)
+        expect_and_apply_mutation(&mut exec);
+
         // Second RollDice (1d4 from second statement)
         let step = exec.poll().unwrap();
         assert!(matches!(
@@ -12839,6 +12924,9 @@ mod tests {
             unmodified: 2,
         }))
         .unwrap();
+
+        // MutateField (target.AC -= 2)
+        expect_and_apply_mutation(&mut exec);
 
         // ActionCompleted
         let step = exec.poll().unwrap();
@@ -13410,6 +13498,9 @@ mod tests {
             unmodified: 4,
         }))
         .unwrap();
+
+        // MutateField (target.HP -= 4)
+        expect_and_apply_mutation(&mut exec);
 
         let step = exec.poll().unwrap();
         assert!(
@@ -13986,7 +14077,7 @@ mod tests {
             match exec.poll() {
                 Ok(Step::Yielded(e)) => {
                     effect_kinds.push(EffectKind::of(&e));
-                    exec.respond(Response::Acknowledged).unwrap();
+                    ack_and_maybe_apply(&mut exec, &e);
                 }
                 Ok(Step::Done(_)) => break,
                 Err(PollError::Runtime(e)) => panic!("runtime error: {e}"),
@@ -14100,7 +14191,7 @@ mod tests {
             match exec.poll() {
                 Ok(Step::Yielded(e)) => {
                     effect_kinds.push(EffectKind::of(&e));
-                    exec.respond(Response::Acknowledged).unwrap();
+                    ack_and_maybe_apply(&mut exec, &e);
                 }
                 Ok(Step::Done(_)) => break,
                 Err(PollError::Runtime(e)) => panic!("runtime error: {e}"),
@@ -14125,9 +14216,8 @@ mod tests {
             "expected ApplyCondition to be yielded in poll mode"
         );
 
-        // MutateField effects (bearer.HP -= power, bearer.HP -= 1 from hook) are
-        // still applied locally by StateAdapter via the frame's eh.handle() path.
-        // HP = 30 - 5 (on_apply) - 1 (hook) = 24
+        // MutateField effects are now yielded to the host and applied via
+        // ack_and_maybe_apply. HP = 30 - 5 (on_apply) - 1 (hook) = 24
         let final_hp = exec.state().read_field(&target, "HP");
         assert_eq!(
             final_hp,
@@ -14209,7 +14299,7 @@ mod tests {
                         saw_removal_gate = true;
                     }
                     effect_kinds.push(kind);
-                    exec.respond(Response::Acknowledged).unwrap();
+                    ack_and_maybe_apply(&mut exec, &e);
                 }
                 Ok(Step::Done(_)) => break,
                 Err(PollError::Runtime(e)) => panic!("runtime error: {e}"),
@@ -14231,17 +14321,17 @@ mod tests {
             "expected RemoveCondition to be yielded in poll mode"
         );
 
-        // In poll mode, RemoveCondition is yielded but not auto-applied, so
-        // the condition still exists in state when the handler checks. The
-        // handler therefore runs: HP = 20 - 10 = 10.
-        // (In drive mode, StateAdapter applies RemoveCondition immediately,
-        // so the handler would be skipped and HP would stay at 20.)
+        // When the host applies RemoveCondition (via ack_and_maybe_apply),
+        // the condition is removed from state before the condition handler
+        // checks. The handler is skipped (snapshot safety), so HP stays at 20.
+        // This matches drive-mode behavior where StateAdapter applies
+        // RemoveCondition immediately.
         let final_hp = exec.state().read_field(&actor, "HP");
         assert_eq!(
             final_hp,
-            Some(Value::Int(10)),
-            "HP should be 10 — in poll mode, condition handler runs because \
-             RemoveCondition is yielded (not yet applied to state)"
+            Some(Value::Int(20)),
+            "HP should be 20 — host applied RemoveCondition, so condition \
+             handler is skipped (condition no longer exists)"
         );
     }
 
@@ -14517,10 +14607,8 @@ mod tests {
                 Ok(Step::Yielded(e)) => {
                     if matches!(&*e, Effect::ActionCompleted { .. }) {
                         completed = true;
-                        exec.respond(Response::Acknowledged).unwrap();
-                    } else {
-                        exec.respond(Response::Acknowledged).unwrap();
                     }
+                    ack_and_maybe_apply(&mut exec, &e);
                 }
                 Ok(Step::Done(_)) => break,
                 Err(PollError::Runtime(e)) => {
