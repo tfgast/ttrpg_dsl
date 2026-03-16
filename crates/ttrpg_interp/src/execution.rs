@@ -702,520 +702,7 @@ fn build_modify_hooks_frame(
     }))
 }
 
-// ── Native modifier pipeline ───────────────────────────────────
-//
-// These functions mirror the Env-based modifier pipeline in pipeline.rs
-// and action.rs, but operate directly on step-based execution primitives
-// (RuntimeCore + ExecEnv + StateProvider + EffectHandler).
-
-/// Native version of `action::collect_cost_modifiers`.
-fn collect_cost_modifiers_native(
-    core: &RuntimeCore,
-    env: &mut ExecEnv,
-    sp: &dyn StateProvider,
-    eh: &mut dyn EffectHandler,
-    actor: &EntityRef,
-    action_name: &str,
-) -> Result<Vec<OwnedModifier>, RuntimeError> {
-    use crate::effect::ModifySource;
-    use ttrpg_ast::ast::{ConditionClause, ModifyTarget};
-
-    let conditions = match sp.read_conditions(actor) {
-        Some(c) => c,
-        None => return Ok(Vec::new()),
-    };
-
-    let stacking_winners = crate::pipeline::compute_stacking_winners(&conditions, &core.program);
-
-    let mut cost_modifiers: Vec<(u64, OwnedModifier)> = Vec::new();
-
-    for condition in &conditions {
-        if !stacking_winners.contains(&condition.id) {
-            continue;
-        }
-
-        let cond_decl = match core.program.conditions.get(condition.name.as_str()) {
-            Some(d) => d,
-            None => continue,
-        };
-
-        for clause_item in &cond_decl.clauses {
-            let clause = match clause_item {
-                ConditionClause::Modify(c) => c,
-                ConditionClause::Suppress(_)
-                | ConditionClause::SuppressModify(_)
-                | ConditionClause::OnApply(_)
-                | ConditionClause::OnRemove(_)
-                | ConditionClause::OnEvent(_)
-                | ConditionClause::Include(_) => continue,
-            };
-
-            match &clause.target {
-                ModifyTarget::Cost(name) if name == action_name => {}
-                _ => continue,
-            }
-
-            let bindings_match = if clause.bindings.is_empty() {
-                true
-            } else {
-                // Capture param values from current env BEFORE pushing scope.
-                let bound_params: Vec<(Name, Value)> = clause
-                    .bindings
-                    .iter()
-                    .filter_map(|b| env.lookup(&b.name).cloned().map(|v| (b.name.clone(), v)))
-                    .collect();
-
-                // Caller-managed scope.
-                env.push_scope();
-                env.bind(
-                    cond_decl.receiver_name.clone(),
-                    Value::Entity(condition.bearer),
-                );
-                for (name, val) in &condition.params {
-                    env.bind(name.clone(), val.clone());
-                }
-                if !condition.state_fields.is_empty() {
-                    env.bind(
-                        Name::from("state"),
-                        Value::Struct {
-                            name: Name::from("state"),
-                            fields: condition.state_fields.clone(),
-                        },
-                    );
-                }
-
-                let frame = Frame::BindingCheck {
-                    bindings: clause.bindings.clone(),
-                    bound_params,
-                    scope_bindings: Vec::new(),
-                    scope_mode: BindingScopeMode::Caller,
-                    index: 0,
-                    child_result: None,
-                    scope_pushed: false,
-                };
-
-                let result = run_frame_to_completion_sync(frame, core, env, sp, eh);
-                env.pop_scope();
-
-                match result {
-                    Ok(Value::Bool(b)) => b,
-                    Ok(other) => {
-                        return Err(RuntimeError::new(format!(
-                            "BindingCheck returned non-Bool: {other:?}",
-                        )));
-                    }
-                    Err(e) => return Err(e),
-                }
-            };
-
-            if bindings_match {
-                cost_modifiers.push((
-                    condition.gained_at,
-                    OwnedModifier {
-                        source: ModifySource::Condition(condition.name.clone()),
-                        clause: clause.clone(),
-                        bearer: Some(Value::Entity(condition.bearer)),
-                        receiver_name: Some(cond_decl.receiver_name.clone()),
-                        condition_params: condition.params.clone(),
-                        condition_id: Some(condition.id),
-                        condition_duration: Some(condition.duration.clone()),
-                        condition_state_fields: condition.state_fields.clone(),
-                    },
-                ));
-            }
-        }
-    }
-
-    cost_modifiers.sort_by_key(|(gained_at, _)| *gained_at);
-    Ok(cost_modifiers.into_iter().map(|(_, m)| m).collect())
-}
-
-/// Native version of `pipeline::collect_modifiers_owned`.
-fn collect_modifiers_owned_native(
-    core: &RuntimeCore,
-    env: &mut ExecEnv,
-    sp: &dyn StateProvider,
-    eh: &mut dyn EffectHandler,
-    fn_name: &str,
-    fn_info: &FnInfo,
-    bound_params: &[(Name, Value)],
-) -> Result<Vec<OwnedModifier>, RuntimeError> {
-    use crate::effect::ModifySource;
-    use std::collections::HashSet;
-    use ttrpg_ast::ast::{ConditionClause, ModifyTarget};
-
-    let mut condition_modifiers: Vec<(u64, OwnedModifier)> = Vec::new();
-    let mut seen_condition_ids: HashSet<u64> = HashSet::new();
-    let mut suppressions: Vec<NativeSuppressModify> = Vec::new();
-
-    // 1. For each entity-typed param, query conditions
-    for (i, param_info) in fn_info.params.iter().enumerate() {
-        if !param_info.ty.is_entity() {
-            continue;
-        }
-        let entity_ref = match &bound_params[i].1 {
-            Value::Entity(e) => *e,
-            _ => continue,
-        };
-
-        let conditions = match sp.read_conditions(&entity_ref) {
-            Some(c) => c,
-            None => {
-                return Err(RuntimeError::new(format!(
-                    "read_conditions returned None for entity {entity_ref:?} — host state out of sync",
-                )));
-            }
-        };
-
-        let stacking_winners =
-            crate::pipeline::compute_stacking_winners(&conditions, &core.program);
-
-        for condition in &conditions {
-            if !seen_condition_ids.insert(condition.id) {
-                continue;
-            }
-
-            if !stacking_winners.contains(&condition.id) {
-                continue;
-            }
-
-            let cond_decl = match core.program.conditions.get(condition.name.as_str()) {
-                Some(d) => d,
-                None => continue,
-            };
-
-            for clause_item in &cond_decl.clauses {
-                if let ConditionClause::SuppressModify(sm) = clause_item {
-                    suppressions.push(NativeSuppressModify {
-                        clause: sm.clone(),
-                        bearer: Value::Entity(condition.bearer),
-                        receiver_name: cond_decl.receiver_name.clone(),
-                        condition_params: condition.params.clone(),
-                    });
-                    continue;
-                }
-
-                let clause = match clause_item {
-                    ConditionClause::Modify(c) => c,
-                    ConditionClause::Suppress(_)
-                    | ConditionClause::SuppressModify(_)
-                    | ConditionClause::OnApply(_)
-                    | ConditionClause::OnRemove(_)
-                    | ConditionClause::OnEvent(_)
-                    | ConditionClause::Include(_) => continue,
-                };
-
-                match &clause.target {
-                    ModifyTarget::Named(name) => {
-                        if name != fn_name {
-                            continue;
-                        }
-                    }
-                    ModifyTarget::Selector(_) => {
-                        match core.type_env.selector_matches.get(&clause.id) {
-                            Some(set) if set.contains(fn_name) => {}
-                            _ => continue,
-                        }
-                    }
-                    ModifyTarget::Cost(_) => continue,
-                }
-
-                if check_modify_bindings_native(
-                    core,
-                    env,
-                    sp,
-                    eh,
-                    clause,
-                    condition,
-                    &cond_decl.receiver_name,
-                    fn_info,
-                    bound_params,
-                )? {
-                    condition_modifiers.push((
-                        condition.gained_at,
-                        OwnedModifier {
-                            source: ModifySource::Condition(condition.name.clone()),
-                            clause: clause.clone(),
-                            bearer: Some(Value::Entity(condition.bearer)),
-                            receiver_name: Some(cond_decl.receiver_name.clone()),
-                            condition_params: condition.params.clone(),
-                            condition_id: Some(condition.id),
-                            condition_duration: Some(condition.duration.clone()),
-                            condition_state_fields: condition.state_fields.clone(),
-                        },
-                    ));
-                }
-            }
-        }
-    }
-
-    condition_modifiers.sort_by_key(|(gained_at, _)| *gained_at);
-    let mut result: Vec<OwnedModifier> = condition_modifiers.into_iter().map(|(_, m)| m).collect();
-
-    // 2. Query enabled options and check their modify clauses
-    let mut enabled_options = sp.read_enabled_options();
-    let option_order = &core.program.option_order;
-    enabled_options.sort_by_key(|name| {
-        option_order
-            .iter()
-            .position(|o| *o == name.as_str())
-            .unwrap_or(usize::MAX)
-    });
-    for opt_name in &enabled_options {
-        let opt_decl = match core.program.options.get(opt_name.as_str()) {
-            Some(decl) => decl,
-            None => continue,
-        };
-
-        let clauses = match &opt_decl.when_enabled {
-            Some(clauses) => clauses,
-            None => continue,
-        };
-
-        for clause in clauses {
-            match &clause.target {
-                ModifyTarget::Named(name) => {
-                    if name != fn_name {
-                        continue;
-                    }
-                }
-                ModifyTarget::Selector(_) => match core.type_env.selector_matches.get(&clause.id) {
-                    Some(set) if set.contains(fn_name) => {}
-                    _ => continue,
-                },
-                ModifyTarget::Cost(_) => continue,
-            }
-
-            if check_option_modify_bindings_native(
-                core,
-                env,
-                sp,
-                eh,
-                clause,
-                fn_info,
-                bound_params,
-            )? {
-                result.push(OwnedModifier {
-                    source: ModifySource::Option(opt_name.clone()),
-                    clause: clause.clone(),
-                    bearer: None,
-                    receiver_name: None,
-                    condition_params: BTreeMap::new(),
-                    condition_id: None,
-                    condition_duration: None,
-                    condition_state_fields: BTreeMap::new(),
-                });
-            }
-        }
-    }
-
-    // 3. Filter out suppressed modifiers
-    if !suppressions.is_empty() {
-        let mut filtered = Vec::with_capacity(result.len());
-        for modifier in result {
-            if !is_modifier_suppressed_native(
-                core,
-                env,
-                sp,
-                eh,
-                &modifier,
-                fn_info,
-                bound_params,
-                &suppressions,
-            )? {
-                filtered.push(modifier);
-            }
-        }
-        result = filtered;
-    }
-
-    Ok(result)
-}
-
-/// Native version of `pipeline::check_modify_bindings`.
-fn check_modify_bindings_native(
-    core: &RuntimeCore,
-    env: &mut ExecEnv,
-    sp: &dyn StateProvider,
-    eh: &mut dyn EffectHandler,
-    clause: &ttrpg_ast::ast::ModifyClause,
-    condition: &ActiveCondition,
-    receiver_name: &Name,
-    _fn_info: &FnInfo,
-    bound_params: &[(Name, Value)],
-) -> Result<bool, RuntimeError> {
-    if clause.bindings.is_empty() {
-        return Ok(true);
-    }
-
-    // Build scope bindings: receiver, condition params, bound params, state fields.
-    let mut scope_bindings = Vec::new();
-    scope_bindings.push((receiver_name.clone(), Value::Entity(condition.bearer)));
-    for (name, val) in &condition.params {
-        scope_bindings.push((name.clone(), val.clone()));
-    }
-    for (name, val) in bound_params {
-        scope_bindings.push((name.clone(), val.clone()));
-    }
-    if !condition.state_fields.is_empty() {
-        scope_bindings.push((
-            Name::from("state"),
-            Value::Struct {
-                name: Name::from("state"),
-                fields: condition.state_fields.clone(),
-            },
-        ));
-    }
-
-    let frame = Frame::BindingCheck {
-        bindings: clause.bindings.clone(),
-        bound_params: bound_params.to_vec(),
-        scope_bindings,
-        scope_mode: BindingScopeMode::Owned,
-        index: 0,
-        child_result: None,
-        scope_pushed: false,
-    };
-
-    match run_frame_to_completion_sync(frame, core, env, sp, eh)? {
-        Value::Bool(b) => Ok(b),
-        other => Err(RuntimeError::new(format!(
-            "BindingCheck returned non-Bool: {other:?}",
-        ))),
-    }
-}
-
-/// Native version of `pipeline::check_option_modify_bindings`.
-fn check_option_modify_bindings_native(
-    core: &RuntimeCore,
-    env: &mut ExecEnv,
-    sp: &dyn StateProvider,
-    eh: &mut dyn EffectHandler,
-    clause: &ttrpg_ast::ast::ModifyClause,
-    _fn_info: &FnInfo,
-    bound_params: &[(Name, Value)],
-) -> Result<bool, RuntimeError> {
-    if clause.bindings.is_empty() {
-        return Ok(true);
-    }
-
-    let scope_bindings: Vec<(Name, Value)> = bound_params.to_vec();
-
-    let frame = Frame::BindingCheck {
-        bindings: clause.bindings.clone(),
-        bound_params: bound_params.to_vec(),
-        scope_bindings,
-        scope_mode: BindingScopeMode::Owned,
-        index: 0,
-        child_result: None,
-        scope_pushed: false,
-    };
-
-    match run_frame_to_completion_sync(frame, core, env, sp, eh)? {
-        Value::Bool(b) => Ok(b),
-        other => Err(RuntimeError::new(format!(
-            "BindingCheck returned non-Bool: {other:?}",
-        ))),
-    }
-}
-
-/// Native version of `pipeline::is_modifier_suppressed`.
-fn is_modifier_suppressed_native<S>(
-    core: &RuntimeCore,
-    env: &mut ExecEnv,
-    sp: &dyn StateProvider,
-    eh: &mut dyn EffectHandler,
-    modifier: &OwnedModifier,
-    fn_info: &FnInfo,
-    bound_params: &[(Name, Value)],
-    suppressions: &[S],
-) -> Result<bool, RuntimeError>
-where
-    S: SuppressModifyAccess,
-{
-    use ttrpg_ast::ast::SelectorPredicate;
-
-    for sup in suppressions {
-        let preds_match = sup.clause().predicates.iter().all(|pred| match pred {
-            SelectorPredicate::Tag(tag) => modifier.clause.tags.contains(tag),
-            SelectorPredicate::Returns(type_expr) => {
-                if let Some(fi) = core.type_env.functions.get(fn_info.name.as_str()) {
-                    let resolved = core.type_env.resolve_type(type_expr);
-                    fi.return_type == resolved
-                } else {
-                    false
-                }
-            }
-            SelectorPredicate::HasParam { name, ty } => fn_info.params.iter().any(|p| {
-                if p.name != *name {
-                    return false;
-                }
-                if let Some(te) = ty {
-                    let resolved = core.type_env.resolve_type(te);
-                    p.ty == resolved
-                } else {
-                    true
-                }
-            }),
-        });
-        if !preds_match {
-            continue;
-        }
-
-        if sup.clause().bindings.is_empty() {
-            return Ok(true);
-        }
-
-        // Caller-managed scope: push here, BindingCheck frame uses Caller mode.
-        env.push_scope();
-        env.bind(sup.receiver_name().clone(), sup.bearer().clone());
-        for (pname, pval) in sup.condition_params() {
-            env.bind(pname.clone(), pval.clone());
-        }
-
-        let frame = Frame::BindingCheck {
-            bindings: sup.clause().bindings.clone(),
-            bound_params: bound_params.to_vec(),
-            scope_bindings: Vec::new(),
-            scope_mode: BindingScopeMode::Caller,
-            index: 0,
-            child_result: None,
-            scope_pushed: false,
-        };
-
-        let bindings_match = match run_frame_to_completion_sync(frame, core, env, sp, eh) {
-            Ok(Value::Bool(b)) => b,
-            Ok(other) => {
-                env.pop_scope();
-                return Err(RuntimeError::new(format!(
-                    "BindingCheck returned non-Bool: {other:?}",
-                )));
-            }
-            Err(e) => {
-                env.pop_scope();
-                return Err(e);
-            }
-        };
-
-        env.pop_scope();
-
-        if bindings_match {
-            return Ok(true);
-        }
-    }
-    Ok(false)
-}
-
-/// Trait for accessing fields of an active suppress-modify entry.
-/// Avoids importing `pipeline::ActiveSuppressModify` which is private.
-trait SuppressModifyAccess {
-    fn clause(&self) -> &ttrpg_ast::ast::SuppressModifyClause;
-    fn bearer(&self) -> &Value;
-    fn receiver_name(&self) -> &Name;
-    fn condition_params(&self) -> &BTreeMap<Name, Value>;
-}
-
-/// Local suppress-modify struct for `collect_modifiers_owned_native`.
+/// Local suppress-modify data for modifier collection.
 struct NativeSuppressModify {
     clause: ttrpg_ast::ast::SuppressModifyClause,
     bearer: Value,
@@ -1223,19 +710,67 @@ struct NativeSuppressModify {
     condition_params: BTreeMap<Name, Value>,
 }
 
-impl SuppressModifyAccess for NativeSuppressModify {
-    fn clause(&self) -> &ttrpg_ast::ast::SuppressModifyClause {
-        &self.clause
-    }
-    fn bearer(&self) -> &Value {
-        &self.bearer
-    }
-    fn receiver_name(&self) -> &Name {
-        &self.receiver_name
-    }
-    fn condition_params(&self) -> &BTreeMap<Name, Value> {
-        &self.condition_params
-    }
+// ── Frame-based modifier collection ────────────────────────────
+//
+// These types support the CollectCheck / SuppressCheck phases of
+// CostEval and DeriveEval. Instead of running BindingCheck frames
+// synchronously, the parent frame pushes one BindingCheck child per
+// candidate and collects results across multiple advance() calls.
+
+/// A modifier candidate whose bindings need evaluation via a
+/// BindingCheck child frame. Fields are `Option` because the frame
+/// and modifier are moved out (taken) when the candidate is processed.
+pub(crate) struct CollectCandidate {
+    /// The BindingCheck frame to push as a child. Taken when pushed.
+    frame: Option<Frame>,
+    /// For Caller-mode checks: bindings to push into scope before the
+    /// child runs. Empty for Owned-mode checks.
+    caller_scope: Vec<(Name, Value)>,
+    /// Sort key (condition gained_at, or u64::MAX for options).
+    gained_at: u64,
+    /// The modifier to add if the binding check passes. Taken on match.
+    modifier: Option<OwnedModifier>,
+}
+
+/// A suppression candidate whose bindings need evaluation via a
+/// BindingCheck child frame.
+pub(crate) struct SuppressCandidate {
+    /// The BindingCheck frame to push. Taken when pushed.
+    frame: Option<Frame>,
+    /// Caller-mode scope bindings.
+    caller_scope: Vec<(Name, Value)>,
+    /// Index of the modifier being checked for suppression.
+    modifier_index: usize,
+}
+
+/// State for frame-based modifier collection iteration.
+///
+/// Boxed inside CostEval / DeriveEval to avoid bloating the Frame enum.
+pub(crate) struct ModifierCollectState {
+    /// Candidates needing a BindingCheck child frame.
+    candidates: Vec<CollectCandidate>,
+    /// Accumulated modifiers from passed checks and direct (no-binding) matches.
+    /// Stored as (gained_at, modifier) for sorting.
+    collected: Vec<(u64, OwnedModifier)>,
+    /// Current index into `candidates`.
+    index: usize,
+    /// Boundary: candidates[0..condition_count] are condition-sourced,
+    /// candidates[condition_count..] are option-sourced (DeriveEval only).
+    condition_count: usize,
+    /// Option modifiers that matched without needing binding checks.
+    option_modifiers: Vec<OwnedModifier>,
+    /// Suppression data collected during init (DeriveEval only).
+    suppressions: Vec<NativeSuppressModify>,
+    /// Suppression candidates built after collection completes.
+    suppress_candidates: Vec<SuppressCandidate>,
+    /// Current index into `suppress_candidates`.
+    suppress_index: usize,
+    /// Indices of modifiers marked as suppressed.
+    suppressed: std::collections::HashSet<usize>,
+    /// Result from the current BindingCheck child frame.
+    child_result: Option<Result<Value, RuntimeError>>,
+    /// Whether a caller-managed scope was pushed for the current candidate.
+    scope_pushed: bool,
 }
 
 /// Apply a value to a named field of a `RollResult`.
@@ -1320,9 +855,12 @@ pub(crate) enum ActionStep {
 /// Phase within the CostEval frame's cost pipeline.
 #[derive(Debug)]
 pub(crate) enum CostEvalPhase {
-    /// Collect matching cost modifiers via bridge (reads conditions,
-    /// computes stacking, evaluates bindings, sorts by gained_at).
+    /// Initialize modifier collection: read conditions, compute stacking,
+    /// build candidates for binding checks.
     CollectModifiers,
+    /// Iterate binding-check candidates: process previous child result,
+    /// push next BindingCheck child, or finish.
+    CollectCheck,
     /// Set up scope for modifier at index, init walker, save old state.
     ApplyModifier(usize),
     /// Drive the walker: process modify stmts via ExprEval child frames.
@@ -1462,6 +1000,8 @@ pub(crate) enum Frame {
         modify_hooks_result: Option<Result<Value, RuntimeError>>,
         /// Walker for inline modify stmt execution (Phase1/Phase2).
         modify_walker: Option<Box<ModifyStmtWalker>>,
+        /// State for frame-based modifier collection (CollectCheck phase).
+        collect_state: Option<Box<ModifierCollectState>>,
     },
 
     FunctionEval {
@@ -1727,6 +1267,8 @@ pub(crate) enum Frame {
         /// Saved old tokens/free for change detection during ExecCostModify.
         modify_old_tokens: Vec<String>,
         modify_old_free: bool,
+        /// State for frame-based modifier collection (CollectCheck phase).
+        collect_state: Option<Box<ModifierCollectState>>,
     },
 
     /// Evaluates call arguments one at a time via ExprEval children,
@@ -2081,6 +1623,7 @@ impl Frame {
                                 modify_walker: None,
                                 modify_old_tokens: Vec::new(),
                                 modify_old_free: false,
+                                collect_state: None,
                             });
                         }
                         // No cost or cost is free — skip to resolve.
@@ -2605,6 +2148,7 @@ impl Frame {
                 modify_walker,
                 modify_old_tokens,
                 modify_old_free,
+                collect_state,
             } => {
                 let tokens = effective_cost.as_ref().map_or(&cost.tokens, |c| &c.tokens);
                 let expected_tokens: Vec<String> = core
@@ -2616,28 +2160,192 @@ impl Frame {
 
                 match phase {
                     CostEvalPhase::CollectModifiers => {
-                        // Collect matching cost modifiers natively (no bridge_run).
-                        let collect_result = collect_cost_modifiers_native(
-                            core,
-                            env,
-                            sp,
-                            &mut *eh,
-                            actor,
-                            action_name.as_str(),
-                        );
+                        // Build candidates for binding checks.
+                        use crate::effect::ModifySource;
+                        use ttrpg_ast::ast::{ConditionClause, ModifyTarget};
 
-                        match collect_result {
-                            Ok(collected) => {
-                                if collected.is_empty() {
-                                    // No modifiers — skip to budget pre-check.
-                                    *phase = CostEvalPhase::BudgetPreCheck(0);
-                                } else {
-                                    *modifiers = collected;
-                                    *phase = CostEvalPhase::ApplyModifier(0);
-                                }
-                                Advance::Continue
+                        let conditions = match sp.read_conditions(actor) {
+                            Some(c) => c,
+                            None => {
+                                *phase = CostEvalPhase::BudgetPreCheck(0);
+                                return Advance::Continue;
                             }
-                            Err(e) => Advance::Error(e),
+                        };
+
+                        let stacking_winners =
+                            crate::pipeline::compute_stacking_winners(&conditions, &core.program);
+
+                        let mut collected_direct: Vec<(u64, OwnedModifier)> = Vec::new();
+                        let mut candidates: Vec<CollectCandidate> = Vec::new();
+
+                        for condition in &conditions {
+                            if !stacking_winners.contains(&condition.id) {
+                                continue;
+                            }
+                            let cond_decl =
+                                match core.program.conditions.get(condition.name.as_str()) {
+                                    Some(d) => d,
+                                    None => continue,
+                                };
+                            for clause_item in &cond_decl.clauses {
+                                let clause = match clause_item {
+                                    ConditionClause::Modify(c) => c,
+                                    _ => continue,
+                                };
+                                match &clause.target {
+                                    ModifyTarget::Cost(name) if name == action_name.as_str() => {}
+                                    _ => continue,
+                                }
+
+                                let owned_mod = OwnedModifier {
+                                    source: ModifySource::Condition(condition.name.clone()),
+                                    clause: clause.clone(),
+                                    bearer: Some(Value::Entity(condition.bearer)),
+                                    receiver_name: Some(cond_decl.receiver_name.clone()),
+                                    condition_params: condition.params.clone(),
+                                    condition_id: Some(condition.id),
+                                    condition_duration: Some(condition.duration.clone()),
+                                    condition_state_fields: condition.state_fields.clone(),
+                                };
+
+                                if clause.bindings.is_empty() {
+                                    collected_direct.push((condition.gained_at, owned_mod));
+                                } else {
+                                    // Capture bound_params from current env before scope push.
+                                    let bound_params: Vec<(Name, Value)> = clause
+                                        .bindings
+                                        .iter()
+                                        .filter_map(|b| {
+                                            env.lookup(&b.name)
+                                                .cloned()
+                                                .map(|v| (b.name.clone(), v))
+                                        })
+                                        .collect();
+
+                                    // Build caller-managed scope bindings.
+                                    let mut caller_scope = Vec::new();
+                                    caller_scope.push((
+                                        cond_decl.receiver_name.clone(),
+                                        Value::Entity(condition.bearer),
+                                    ));
+                                    for (name, val) in &condition.params {
+                                        caller_scope.push((name.clone(), val.clone()));
+                                    }
+                                    if !condition.state_fields.is_empty() {
+                                        caller_scope.push((
+                                            Name::from("state"),
+                                            Value::Struct {
+                                                name: Name::from("state"),
+                                                fields: condition.state_fields.clone(),
+                                            },
+                                        ));
+                                    }
+
+                                    let frame = Frame::BindingCheck {
+                                        bindings: clause.bindings.clone(),
+                                        bound_params,
+                                        scope_bindings: Vec::new(),
+                                        scope_mode: BindingScopeMode::Caller,
+                                        index: 0,
+                                        child_result: None,
+                                        scope_pushed: false,
+                                    };
+
+                                    candidates.push(CollectCandidate {
+                                        frame: Some(frame),
+                                        caller_scope,
+                                        gained_at: condition.gained_at,
+                                        modifier: Some(owned_mod),
+                                    });
+                                }
+                            }
+                        }
+
+                        if candidates.is_empty() {
+                            // All matches were direct (no binding checks needed).
+                            collected_direct.sort_by_key(|(g, _)| *g);
+                            *modifiers =
+                                collected_direct.into_iter().map(|(_, m)| m).collect();
+                            if modifiers.is_empty() {
+                                *phase = CostEvalPhase::BudgetPreCheck(0);
+                            } else {
+                                *phase = CostEvalPhase::ApplyModifier(0);
+                            }
+                        } else {
+                            *collect_state = Some(Box::new(ModifierCollectState {
+                                candidates,
+                                collected: collected_direct,
+                                index: 0,
+                                condition_count: 0, // not used for CostEval
+                                option_modifiers: Vec::new(),
+                                suppressions: Vec::new(),
+                                suppress_candidates: Vec::new(),
+                                suppress_index: 0,
+                                suppressed: std::collections::HashSet::new(),
+                                child_result: None,
+                                scope_pushed: false,
+                            }));
+                            *phase = CostEvalPhase::CollectCheck;
+                        }
+                        Advance::Continue
+                    }
+
+                    CostEvalPhase::CollectCheck => {
+                        let cs = collect_state.as_mut()
+                            .expect("CostEval::CollectCheck: collect_state must be set");
+
+                        // Process previous child result (if any).
+                        if let Some(result) = cs.child_result.take() {
+                            // Pop caller scope.
+                            if cs.scope_pushed {
+                                env.pop_scope();
+                                cs.scope_pushed = false;
+                            }
+                            match result {
+                                Ok(Value::Bool(true)) => {
+                                    let candidate = &mut cs.candidates[cs.index];
+                                    let gained_at = candidate.gained_at;
+                                    if let Some(modifier) = candidate.modifier.take() {
+                                        cs.collected.push((gained_at, modifier));
+                                    }
+                                }
+                                Ok(Value::Bool(false)) => { /* binding check failed, skip */ }
+                                Ok(other) => {
+                                    return Advance::Error(RuntimeError::new(format!(
+                                        "BindingCheck returned non-Bool: {other:?}",
+                                    )));
+                                }
+                                Err(e) => return Advance::Error(e),
+                            }
+                            cs.index += 1;
+                        }
+
+                        // Push next candidate or finish.
+                        if cs.index >= cs.candidates.len() {
+                            // Done: sort and store.
+                            let mut collected = std::mem::take(&mut cs.collected);
+                            collected.sort_by_key(|(g, _)| *g);
+                            *modifiers = collected.into_iter().map(|(_, m)| m).collect();
+                            *collect_state = None;
+                            if modifiers.is_empty() {
+                                *phase = CostEvalPhase::BudgetPreCheck(0);
+                            } else {
+                                *phase = CostEvalPhase::ApplyModifier(0);
+                            }
+                            Advance::Continue
+                        } else {
+                            // Push caller scope and BindingCheck child.
+                            let candidate = &mut cs.candidates[cs.index];
+                            if !candidate.caller_scope.is_empty() {
+                                env.push_scope();
+                                for (n, v) in &candidate.caller_scope {
+                                    env.bind(n.clone(), v.clone());
+                                }
+                                cs.scope_pushed = true;
+                            }
+                            let child_frame = candidate.frame.take()
+                                .expect("CollectCheck: frame already taken");
+                            Advance::Push(child_frame)
                         }
                     }
 
@@ -3648,6 +3356,7 @@ impl Frame {
                 pending,
                 modify_hooks_result,
                 modify_walker,
+                collect_state,
             } => {
                 match phase {
                     DeriveEvalPhase::Init => {
@@ -3785,35 +3494,515 @@ impl Frame {
                     }
 
                     DeriveEvalPhase::CollectModifiers => {
+                        use crate::effect::ModifySource;
+                        use std::collections::HashSet;
+                        use ttrpg_ast::ast::{ConditionClause, ModifyTarget};
+
                         let fi = fn_info_cache
                             .as_ref()
                             .expect("DeriveEval: fn_info_cache must be set");
                         let ba = bound_args.clone().unwrap_or_default();
+                        let fn_name = name.as_str();
 
-                        let collect_result = collect_modifiers_owned_native(
-                            core,
-                            env,
-                            sp,
-                            &mut *eh,
-                            name.as_str(),
-                            fi,
-                            &ba,
-                        );
+                        let mut collected_direct: Vec<(u64, OwnedModifier)> = Vec::new();
+                        let mut candidates: Vec<CollectCandidate> = Vec::new();
+                        let mut seen_condition_ids: HashSet<u64> = HashSet::new();
+                        let mut suppressions_list: Vec<NativeSuppressModify> = Vec::new();
 
-                        match collect_result {
-                            Ok(mods) => {
-                                if mods.is_empty() {
-                                    *modifiers = mods;
-                                    *phase = DeriveEvalPhase::PushBody;
-                                } else {
-                                    // Initialize phase1_params for the modifier loop.
-                                    *phase1_params = bound_args.clone();
-                                    *modifiers = mods;
-                                    *phase = DeriveEvalPhase::ApplyPhase1(0);
-                                }
-                                Advance::Continue
+                        // 1. For each entity-typed param, query conditions.
+                        for (i, param_info) in fi.params.iter().enumerate() {
+                            if !param_info.ty.is_entity() {
+                                continue;
                             }
-                            Err(e) => Advance::Error(e),
+                            let entity_ref = match &ba[i].1 {
+                                Value::Entity(e) => *e,
+                                _ => continue,
+                            };
+                            let conditions = match sp.read_conditions(&entity_ref) {
+                                Some(c) => c,
+                                None => {
+                                    return Advance::Error(RuntimeError::new(format!(
+                                        "read_conditions returned None for entity {entity_ref:?} — host state out of sync",
+                                    )));
+                                }
+                            };
+                            let stacking_winners =
+                                crate::pipeline::compute_stacking_winners(&conditions, &core.program);
+
+                            for condition in &conditions {
+                                if !seen_condition_ids.insert(condition.id) {
+                                    continue;
+                                }
+                                if !stacking_winners.contains(&condition.id) {
+                                    continue;
+                                }
+                                let cond_decl =
+                                    match core.program.conditions.get(condition.name.as_str()) {
+                                        Some(d) => d,
+                                        None => continue,
+                                    };
+
+                                for clause_item in &cond_decl.clauses {
+                                    if let ConditionClause::SuppressModify(sm) = clause_item {
+                                        suppressions_list.push(NativeSuppressModify {
+                                            clause: sm.clone(),
+                                            bearer: Value::Entity(condition.bearer),
+                                            receiver_name: cond_decl.receiver_name.clone(),
+                                            condition_params: condition.params.clone(),
+                                        });
+                                        continue;
+                                    }
+
+                                    let clause = match clause_item {
+                                        ConditionClause::Modify(c) => c,
+                                        _ => continue,
+                                    };
+
+                                    match &clause.target {
+                                        ModifyTarget::Named(n) if n == fn_name => {}
+                                        ModifyTarget::Selector(_) => {
+                                            match core.type_env.selector_matches.get(&clause.id) {
+                                                Some(set) if set.contains(fn_name) => {}
+                                                _ => continue,
+                                            }
+                                        }
+                                        ModifyTarget::Cost(_) => continue,
+                                        _ => continue,
+                                    }
+
+                                    let owned_mod = OwnedModifier {
+                                        source: ModifySource::Condition(condition.name.clone()),
+                                        clause: clause.clone(),
+                                        bearer: Some(Value::Entity(condition.bearer)),
+                                        receiver_name: Some(cond_decl.receiver_name.clone()),
+                                        condition_params: condition.params.clone(),
+                                        condition_id: Some(condition.id),
+                                        condition_duration: Some(condition.duration.clone()),
+                                        condition_state_fields: condition.state_fields.clone(),
+                                    };
+
+                                    if clause.bindings.is_empty() {
+                                        collected_direct.push((condition.gained_at, owned_mod));
+                                    } else {
+                                        // Build scope bindings for Owned mode.
+                                        let mut scope_bindings = Vec::new();
+                                        scope_bindings.push((
+                                            cond_decl.receiver_name.clone(),
+                                            Value::Entity(condition.bearer),
+                                        ));
+                                        for (pname, pval) in &condition.params {
+                                            scope_bindings.push((pname.clone(), pval.clone()));
+                                        }
+                                        for (pname, pval) in &ba {
+                                            scope_bindings.push((pname.clone(), pval.clone()));
+                                        }
+                                        if !condition.state_fields.is_empty() {
+                                            scope_bindings.push((
+                                                Name::from("state"),
+                                                Value::Struct {
+                                                    name: Name::from("state"),
+                                                    fields: condition.state_fields.clone(),
+                                                },
+                                            ));
+                                        }
+
+                                        let frame = Frame::BindingCheck {
+                                            bindings: clause.bindings.clone(),
+                                            bound_params: ba.clone(),
+                                            scope_bindings,
+                                            scope_mode: BindingScopeMode::Owned,
+                                            index: 0,
+                                            child_result: None,
+                                            scope_pushed: false,
+                                        };
+                                        candidates.push(CollectCandidate {
+                                            frame: Some(frame),
+                                            caller_scope: Vec::new(), // Owned mode
+                                            gained_at: condition.gained_at,
+                                            modifier: Some(owned_mod),
+                                        });
+                                    }
+                                }
+                            }
+                        }
+
+                        let condition_count = candidates.len();
+
+                        // 2. Query enabled options and check their modify clauses.
+                        let mut enabled_options = sp.read_enabled_options();
+                        let option_order = &core.program.option_order;
+                        enabled_options.sort_by_key(|opt_name| {
+                            option_order
+                                .iter()
+                                .position(|o| *o == opt_name.as_str())
+                                .unwrap_or(usize::MAX)
+                        });
+
+                        let mut option_mods_direct: Vec<OwnedModifier> = Vec::new();
+
+                        for opt_name in &enabled_options {
+                            let opt_decl = match core.program.options.get(opt_name.as_str()) {
+                                Some(decl) => decl,
+                                None => continue,
+                            };
+                            let clauses = match &opt_decl.when_enabled {
+                                Some(clauses) => clauses,
+                                None => continue,
+                            };
+
+                            for clause in clauses {
+                                match &clause.target {
+                                    ModifyTarget::Named(n) if n == fn_name => {}
+                                    ModifyTarget::Selector(_) => {
+                                        match core.type_env.selector_matches.get(&clause.id) {
+                                            Some(set) if set.contains(fn_name) => {}
+                                            _ => continue,
+                                        }
+                                    }
+                                    ModifyTarget::Cost(_) => continue,
+                                    _ => continue,
+                                }
+
+                                let owned_mod = OwnedModifier {
+                                    source: ModifySource::Option(opt_name.clone()),
+                                    clause: clause.clone(),
+                                    bearer: None,
+                                    receiver_name: None,
+                                    condition_params: BTreeMap::new(),
+                                    condition_id: None,
+                                    condition_duration: None,
+                                    condition_state_fields: BTreeMap::new(),
+                                };
+
+                                if clause.bindings.is_empty() {
+                                    option_mods_direct.push(owned_mod);
+                                } else {
+                                    let scope_bindings: Vec<(Name, Value)> = ba.clone();
+                                    let frame = Frame::BindingCheck {
+                                        bindings: clause.bindings.clone(),
+                                        bound_params: ba.clone(),
+                                        scope_bindings,
+                                        scope_mode: BindingScopeMode::Owned,
+                                        index: 0,
+                                        child_result: None,
+                                        scope_pushed: false,
+                                    };
+                                    candidates.push(CollectCandidate {
+                                        frame: Some(frame),
+                                        caller_scope: Vec::new(), // Owned mode
+                                        gained_at: u64::MAX, // sentinel for options
+                                        modifier: Some(owned_mod),
+                                    });
+                                }
+                            }
+                        }
+
+                        if candidates.is_empty() && suppressions_list.is_empty() {
+                            // Fast path: no binding checks and no suppressions needed.
+                            collected_direct.sort_by_key(|(g, _)| *g);
+                            let mut result: Vec<OwnedModifier> =
+                                collected_direct.into_iter().map(|(_, m)| m).collect();
+                            result.extend(option_mods_direct);
+                            if result.is_empty() {
+                                *modifiers = result;
+                                *phase = DeriveEvalPhase::PushBody;
+                            } else {
+                                *phase1_params = bound_args.clone();
+                                *modifiers = result;
+                                *phase = DeriveEvalPhase::ApplyPhase1(0);
+                            }
+                            Advance::Continue
+                        } else if candidates.is_empty() {
+                            // No binding checks but have suppressions — go to CollectDone.
+                            *collect_state = Some(Box::new(ModifierCollectState {
+                                candidates: Vec::new(),
+                                collected: collected_direct,
+                                index: 0,
+                                condition_count: 0,
+                                option_modifiers: option_mods_direct,
+                                suppressions: suppressions_list,
+                                suppress_candidates: Vec::new(),
+                                suppress_index: 0,
+                                suppressed: HashSet::new(),
+                                child_result: None,
+                                scope_pushed: false,
+                            }));
+                            *phase = DeriveEvalPhase::CollectDone;
+                            Advance::Continue
+                        } else {
+                            *collect_state = Some(Box::new(ModifierCollectState {
+                                candidates,
+                                collected: collected_direct,
+                                index: 0,
+                                condition_count,
+                                option_modifiers: option_mods_direct,
+                                suppressions: suppressions_list,
+                                suppress_candidates: Vec::new(),
+                                suppress_index: 0,
+                                suppressed: HashSet::new(),
+                                child_result: None,
+                                scope_pushed: false,
+                            }));
+                            *phase = DeriveEvalPhase::CollectCheck;
+                            Advance::Continue
+                        }
+                    }
+
+                    DeriveEvalPhase::CollectCheck => {
+                        let cs = collect_state.as_mut()
+                            .expect("DeriveEval::CollectCheck: collect_state must be set");
+
+                        // Process previous child result (if any).
+                        if let Some(result) = cs.child_result.take() {
+                            if cs.scope_pushed {
+                                env.pop_scope();
+                                cs.scope_pushed = false;
+                            }
+                            match result {
+                                Ok(Value::Bool(true)) => {
+                                    let candidate = &mut cs.candidates[cs.index];
+                                    let gained_at = candidate.gained_at;
+                                    if let Some(modifier) = candidate.modifier.take() {
+                                        if cs.index < cs.condition_count {
+                                            cs.collected.push((gained_at, modifier));
+                                        } else {
+                                            cs.option_modifiers.push(modifier);
+                                        }
+                                    }
+                                }
+                                Ok(Value::Bool(false)) => { /* skip */ }
+                                Ok(other) => {
+                                    return Advance::Error(RuntimeError::new(format!(
+                                        "BindingCheck returned non-Bool: {other:?}",
+                                    )));
+                                }
+                                Err(e) => return Advance::Error(e),
+                            }
+                            cs.index += 1;
+                        }
+
+                        // Push next candidate or finish.
+                        if cs.index >= cs.candidates.len() {
+                            *phase = DeriveEvalPhase::CollectDone;
+                            Advance::Continue
+                        } else {
+                            let candidate = &mut cs.candidates[cs.index];
+                            if !candidate.caller_scope.is_empty() {
+                                env.push_scope();
+                                for (n, v) in &candidate.caller_scope {
+                                    env.bind(n.clone(), v.clone());
+                                }
+                                cs.scope_pushed = true;
+                            }
+                            let child_frame = candidate.frame.take()
+                                .expect("CollectCheck: frame already taken");
+                            Advance::Push(child_frame)
+                        }
+                    }
+
+                    DeriveEvalPhase::CollectDone => {
+                        use ttrpg_ast::ast::SelectorPredicate;
+
+                        let cs = collect_state.as_mut()
+                            .expect("DeriveEval::CollectDone: collect_state must be set");
+
+                        // Sort condition modifiers by gained_at, build result.
+                        cs.collected.sort_by_key(|(g, _)| *g);
+                        let mut result: Vec<OwnedModifier> =
+                            std::mem::take(&mut cs.collected)
+                                .into_iter()
+                                .map(|(_, m)| m)
+                                .collect();
+                        result.extend(std::mem::take(&mut cs.option_modifiers));
+
+                        // Build suppression candidates.
+                        let fi = fn_info_cache
+                            .as_ref()
+                            .expect("DeriveEval: fn_info_cache must be set");
+                        let ba = bound_args.clone().unwrap_or_default();
+                        let mut immediately_suppressed: std::collections::HashSet<usize> =
+                            std::collections::HashSet::new();
+                        let mut suppress_candidates: Vec<SuppressCandidate> = Vec::new();
+
+                        for (mod_idx, modifier) in result.iter().enumerate() {
+                            for sup in &cs.suppressions {
+                                let preds_match =
+                                    sup.clause.predicates.iter().all(|pred| match pred {
+                                        SelectorPredicate::Tag(tag) => {
+                                            modifier.clause.tags.contains(tag)
+                                        }
+                                        SelectorPredicate::Returns(type_expr) => {
+                                            if let Some(fn_i) =
+                                                core.type_env.functions.get(fi.name.as_str())
+                                            {
+                                                let resolved =
+                                                    core.type_env.resolve_type(type_expr);
+                                                fn_i.return_type == resolved
+                                            } else {
+                                                false
+                                            }
+                                        }
+                                        SelectorPredicate::HasParam { name: pname, ty } => {
+                                            fi.params.iter().any(|p| {
+                                                if p.name != *pname {
+                                                    return false;
+                                                }
+                                                if let Some(te) = ty {
+                                                    let resolved =
+                                                        core.type_env.resolve_type(te);
+                                                    p.ty == resolved
+                                                } else {
+                                                    true
+                                                }
+                                            })
+                                        }
+                                    });
+
+                                if !preds_match {
+                                    continue;
+                                }
+
+                                if sup.clause.bindings.is_empty() {
+                                    immediately_suppressed.insert(mod_idx);
+                                    break; // no need to check other suppressions
+                                }
+
+                                // Build Caller-mode scope for this suppression.
+                                let mut caller_scope = Vec::new();
+                                caller_scope
+                                    .push((sup.receiver_name.clone(), sup.bearer.clone()));
+                                for (pname, pval) in &sup.condition_params {
+                                    caller_scope.push((pname.clone(), pval.clone()));
+                                }
+
+                                let frame = Frame::BindingCheck {
+                                    bindings: sup.clause.bindings.clone(),
+                                    bound_params: ba.clone(),
+                                    scope_bindings: Vec::new(),
+                                    scope_mode: BindingScopeMode::Caller,
+                                    index: 0,
+                                    child_result: None,
+                                    scope_pushed: false,
+                                };
+
+                                suppress_candidates.push(SuppressCandidate {
+                                    frame: Some(frame),
+                                    caller_scope,
+                                    modifier_index: mod_idx,
+                                });
+                            }
+                        }
+
+                        // Apply immediate suppressions.
+                        if !immediately_suppressed.is_empty() {
+                            cs.suppressed = immediately_suppressed;
+                        }
+
+                        if suppress_candidates.is_empty() {
+                            // No binding-check suppressions needed — filter and finish.
+                            if !cs.suppressed.is_empty() {
+                                let suppressed = &cs.suppressed;
+                                result = result
+                                    .into_iter()
+                                    .enumerate()
+                                    .filter(|(i, _)| !suppressed.contains(i))
+                                    .map(|(_, m)| m)
+                                    .collect();
+                            }
+
+                            *collect_state = None;
+                            if result.is_empty() {
+                                *modifiers = result;
+                                *phase = DeriveEvalPhase::PushBody;
+                            } else {
+                                *phase1_params = bound_args.clone();
+                                *modifiers = result;
+                                *phase = DeriveEvalPhase::ApplyPhase1(0);
+                            }
+                            Advance::Continue
+                        } else {
+                            // Store result for later filtering, switch to SuppressCheck.
+                            cs.suppress_candidates = suppress_candidates;
+                            cs.suppress_index = 0;
+                            cs.child_result = None;
+                            cs.scope_pushed = false;
+                            // Store result temporarily in modifiers for later retrieval.
+                            *modifiers = result;
+                            *phase = DeriveEvalPhase::SuppressCheck;
+                            Advance::Continue
+                        }
+                    }
+
+                    DeriveEvalPhase::SuppressCheck => {
+                        let cs = collect_state.as_mut()
+                            .expect("DeriveEval::SuppressCheck: collect_state must be set");
+
+                        // Process previous child result (if any).
+                        if let Some(result) = cs.child_result.take() {
+                            if cs.scope_pushed {
+                                env.pop_scope();
+                                cs.scope_pushed = false;
+                            }
+                            match result {
+                                Ok(Value::Bool(true)) => {
+                                    let mod_idx =
+                                        cs.suppress_candidates[cs.suppress_index].modifier_index;
+                                    cs.suppressed.insert(mod_idx);
+                                }
+                                Ok(Value::Bool(false)) => { /* not suppressed */ }
+                                Ok(other) => {
+                                    return Advance::Error(RuntimeError::new(format!(
+                                        "BindingCheck returned non-Bool: {other:?}",
+                                    )));
+                                }
+                                Err(e) => return Advance::Error(e),
+                            }
+                            cs.suppress_index += 1;
+                        }
+
+                        // Skip candidates whose modifier is already suppressed.
+                        while cs.suppress_index < cs.suppress_candidates.len() {
+                            let mod_idx =
+                                cs.suppress_candidates[cs.suppress_index].modifier_index;
+                            if cs.suppressed.contains(&mod_idx) {
+                                cs.suppress_index += 1;
+                            } else {
+                                break;
+                            }
+                        }
+
+                        if cs.suppress_index >= cs.suppress_candidates.len() {
+                            // Done: filter suppressed modifiers.
+                            let suppressed = std::mem::take(&mut cs.suppressed);
+                            let result: Vec<OwnedModifier> = std::mem::take(modifiers)
+                                .into_iter()
+                                .enumerate()
+                                .filter(|(i, _)| !suppressed.contains(i))
+                                .map(|(_, m)| m)
+                                .collect();
+
+                            *collect_state = None;
+                            if result.is_empty() {
+                                *modifiers = result;
+                                *phase = DeriveEvalPhase::PushBody;
+                            } else {
+                                *phase1_params = bound_args.clone();
+                                *modifiers = result;
+                                *phase = DeriveEvalPhase::ApplyPhase1(0);
+                            }
+                            Advance::Continue
+                        } else {
+                            // Push caller scope and BindingCheck child.
+                            let candidate =
+                                &mut cs.suppress_candidates[cs.suppress_index];
+                            env.push_scope();
+                            for (n, v) in &candidate.caller_scope {
+                                env.bind(n.clone(), v.clone());
+                            }
+                            cs.scope_pushed = true;
+                            let child_frame = candidate.frame.take()
+                                .expect("SuppressCheck: frame already taken");
+                            Advance::Push(child_frame)
                         }
                     }
 
@@ -6038,9 +6227,15 @@ impl Frame {
                 phase,
                 modify_hooks_result,
                 modify_walker,
+                collect_state,
                 ..
             } => {
-                if matches!(phase, CostEvalPhase::ExecCostModify(_)) {
+                if matches!(phase, CostEvalPhase::CollectCheck) {
+                    // BindingCheck child completed for modifier collection.
+                    if let Some(cs) = collect_state.as_mut() {
+                        cs.child_result = Some(Ok(value));
+                    }
+                } else if matches!(phase, CostEvalPhase::ExecCostModify(_)) {
                     // ExprEval child completed for walker.
                     if let Some(walker) = modify_walker.as_mut() {
                         walker.receive_child(Ok(value));
@@ -6055,9 +6250,18 @@ impl Frame {
                 phase,
                 modify_hooks_result,
                 modify_walker,
+                collect_state,
                 ..
             } => {
                 if matches!(
+                    phase,
+                    DeriveEvalPhase::CollectCheck | DeriveEvalPhase::SuppressCheck
+                ) {
+                    // BindingCheck child completed for modifier collection/suppression.
+                    if let Some(cs) = collect_state.as_mut() {
+                        cs.child_result = Some(Ok(value));
+                    }
+                } else if matches!(
                     phase,
                     DeriveEvalPhase::ExecPhase1Modify(_)
                         | DeriveEvalPhase::ExecPhase2Modify(_)
@@ -6155,9 +6359,14 @@ impl Frame {
                 phase,
                 modify_hooks_result,
                 modify_walker,
+                collect_state,
                 ..
             } => {
-                if matches!(phase, CostEvalPhase::ExecCostModify(_)) {
+                if matches!(phase, CostEvalPhase::CollectCheck) {
+                    if let Some(cs) = collect_state.as_mut() {
+                        cs.child_result = Some(Err(error));
+                    }
+                } else if matches!(phase, CostEvalPhase::ExecCostModify(_)) {
                     // ExprEval child errored during walker execution.
                     if let Some(walker) = modify_walker.as_mut() {
                         walker.receive_child(Err(error));
@@ -6171,9 +6380,17 @@ impl Frame {
                 phase,
                 modify_hooks_result,
                 modify_walker,
+                collect_state,
                 ..
             } => {
                 if matches!(
+                    phase,
+                    DeriveEvalPhase::CollectCheck | DeriveEvalPhase::SuppressCheck
+                ) {
+                    if let Some(cs) = collect_state.as_mut() {
+                        cs.child_result = Some(Err(error));
+                    }
+                } else if matches!(
                     phase,
                     DeriveEvalPhase::ExecPhase1Modify(_)
                         | DeriveEvalPhase::ExecPhase2Modify(_)
@@ -6268,8 +6485,15 @@ pub(crate) enum DeriveEvalPhase {
     Init,
     /// Defaults filled: store bound_args and body, transition to CollectModifiers.
     DefaultsDone,
-    /// Collect matching modifiers via native pipeline.
+    /// Initialize modifier collection: iterate conditions + options,
+    /// build candidates for binding checks.
     CollectModifiers,
+    /// Iterate binding-check candidates for modifier collection.
+    CollectCheck,
+    /// Collection done: sort results, build suppression candidates.
+    CollectDone,
+    /// Iterate suppression binding-check candidates.
+    SuppressCheck,
     /// Set up scope for Phase 1 modifier at index, init walker.
     ApplyPhase1(usize),
     /// Drive walker for Phase 1 modify stmts.
@@ -7146,6 +7370,7 @@ impl<S: WritableState> Execution<S> {
             pending: None,
             modify_hooks_result: None,
             modify_walker: None,
+            collect_state: None,
         });
         Ok(exec)
     }
@@ -7177,6 +7402,7 @@ impl<S: WritableState> Execution<S> {
             pending: None,
             modify_hooks_result: None,
             modify_walker: None,
+            collect_state: None,
         });
         Ok(exec)
     }

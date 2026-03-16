@@ -2714,6 +2714,7 @@ fn dispatch_derive_step(
         fn_info_cache: Some(fn_info),
         modify_hooks_result: None,
         modify_walker: None,
+        collect_state: None,
     }))
 }
 
@@ -2777,6 +2778,7 @@ fn dispatch_table_step(
         fn_info_cache: Some(fn_info),
         modify_hooks_result: None,
         modify_walker: None,
+        collect_state: None,
     }))
 }
 
