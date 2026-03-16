@@ -3806,11 +3806,16 @@ impl Frame {
                             scope_depth: 0,
                         });
                     }
-                    // Fallback removed (Phase 7) — compile_expr should handle all expressions.
-                    panic!(
-                        "compile_expr failed at {:?} — ResumableBridge fallback removed (Phase 7)",
-                        stmt.span,
-                    );
+                    // compile_expr returned None — the expression contains
+                    // constructs that can't be compiled (e.g. unknown unit
+                    // suffix, entity spread, etc.).  Return a RuntimeError
+                    // instead of panicking so the step-based path matches the
+                    // recursive interpreter's error behaviour.
+                    env.pop_scope();
+                    return Advance::Error(RuntimeError::with_span(
+                        "expression could not be compiled for step-based evaluation",
+                        bridge_expr.span,
+                    ));
                 }
 
                 // All StmtKind variants are dispatched above:

@@ -1489,10 +1489,12 @@ fn advance_ident(
                 scope_depth: 0,
             });
         }
-        // Fallback removed (Phase 7) — compile_expr should handle all const expressions.
-        panic!(
-            "compile_expr failed for const at {span:?} — ResumableBridge fallback removed (Phase 7)",
-        );
+        // compile_expr returned None — the const expression contains
+        // constructs that can't be compiled (e.g. unknown unit suffix).
+        return Advance::Error(RuntimeError::with_span(
+            "const expression could not be compiled for step-based evaluation",
+            span,
+        ));
     }
 
     // 4. Bare enum variant (fieldless)
@@ -4765,10 +4767,12 @@ fn run_builtin_via_frame(
         span,
     };
 
-    let work = compile_expr(&call_expr, &core.type_env, &core.program)
-        .unwrap_or_else(|| panic!(
-            "compile_expr failed for builtin '{name}' at {span:?} — ResumableBridge fallback removed (Phase 7)",
+    let Some(work) = compile_expr(&call_expr, &core.type_env, &core.program) else {
+        return Err(RuntimeError::with_span(
+            &format!("builtin '{name}' call could not be compiled for step-based evaluation"),
+            span,
         ));
+    };
     let frame = Frame::ExprEval {
         work,
         operands: Vec::new(),
@@ -4916,9 +4920,9 @@ pub(crate) fn eval_expr_step(
             }
         }
     }
-    // Fallback removed (Phase 7) — compile_expr should handle all expressions.
-    panic!(
-        "compile_expr failed at {:?} — ResumableBridge fallback removed (Phase 7)",
+    // compile_expr returned None — return a RuntimeError instead of panicking.
+    Err(RuntimeError::with_span(
+        "expression could not be compiled for step-based evaluation",
         expr.span,
-    )
+    ))
 }
