@@ -821,6 +821,157 @@ fn apply_roll_result_field(
     }
 }
 
+// ── Shared modifier pipeline helpers ────────────────────────────
+//
+// These functions deduplicate logic shared between CostEval and
+// DeriveEval modifier collection and application.
+
+/// Build an `OwnedModifier` from a condition instance and its modify clause.
+///
+/// Used by both CostEval::CollectModifiers and DeriveEval::CollectModifiers
+/// when building the candidate list from active conditions.
+fn owned_modifier_from_condition(
+    condition: &ActiveCondition,
+    cond_decl: &ttrpg_ast::ast::ConditionDecl,
+    clause: &ttrpg_ast::ast::ModifyClause,
+) -> OwnedModifier {
+    use crate::effect::ModifySource;
+    OwnedModifier {
+        source: ModifySource::Condition(condition.name.clone()),
+        clause: clause.clone(),
+        bearer: Some(Value::Entity(condition.bearer)),
+        receiver_name: Some(cond_decl.receiver_name.clone()),
+        condition_params: condition.params.clone(),
+        condition_id: Some(condition.id),
+        condition_duration: Some(condition.duration.clone()),
+        condition_state_fields: condition.state_fields.clone(),
+    }
+}
+
+/// Build scope bindings from a condition (receiver + params + state fields).
+///
+/// Used to build both `caller_scope` (CostEval, Caller mode) and
+/// `scope_bindings` (DeriveEval, Owned mode) during modifier collection.
+/// The caller may extend the returned vec with additional bindings
+/// (e.g. function params for Owned-mode BindingChecks).
+fn build_condition_scope_bindings(
+    cond_decl: &ttrpg_ast::ast::ConditionDecl,
+    condition: &ActiveCondition,
+) -> Vec<(Name, Value)> {
+    let mut bindings = Vec::new();
+    bindings.push((
+        cond_decl.receiver_name.clone(),
+        Value::Entity(condition.bearer),
+    ));
+    for (name, val) in &condition.params {
+        bindings.push((name.clone(), val.clone()));
+    }
+    if !condition.state_fields.is_empty() {
+        bindings.push((
+            Name::from("state"),
+            Value::Struct {
+                name: Name::from("state"),
+                fields: condition.state_fields.clone(),
+            },
+        ));
+    }
+    bindings
+}
+
+/// Bind a modifier's condition context into the current scope.
+///
+/// Binds receiver, condition params, and state fields. Used by all three
+/// modifier application phases (Cost, Phase1, Phase2) after pushing scope.
+fn bind_modifier_context(env: &mut ExecEnv, modifier: &OwnedModifier) {
+    if let (Some(receiver_name), Some(bearer)) =
+        (&modifier.receiver_name, &modifier.bearer)
+    {
+        env.bind(receiver_name.clone(), bearer.clone());
+    }
+    for (name, val) in &modifier.condition_params {
+        env.bind(name.clone(), val.clone());
+    }
+    if !modifier.condition_state_fields.is_empty() {
+        env.bind(
+            Name::from("state"),
+            Value::Struct {
+                name: Name::from("state"),
+                fields: modifier.condition_state_fields.clone(),
+            },
+        );
+    }
+}
+
+/// Result of advancing a CollectCheck phase.
+enum CollectCheckAction {
+    /// Push this BindingCheck child frame.
+    PushChild(Box<Frame>),
+    /// All candidates have been processed.
+    Done,
+}
+
+/// Advance the CollectCheck phase shared by CostEval and DeriveEval.
+///
+/// Processes the previous BindingCheck child result (if any), routes the
+/// modifier to the appropriate collection, and either pushes the next
+/// candidate's BindingCheck frame or signals completion.
+///
+/// When `route_options` is true (DeriveEval), modifiers at index >=
+/// `condition_count` are routed to `option_modifiers` instead of `collected`.
+fn advance_collect_check(
+    cs: &mut ModifierCollectState,
+    env: &mut ExecEnv,
+    route_options: bool,
+) -> Result<CollectCheckAction, RuntimeError> {
+    // Process previous child result (if any).
+    if let Some(result) = cs.child_result.take() {
+        if cs.scope_pushed {
+            env.pop_scope();
+            cs.scope_pushed = false;
+        }
+        match result {
+            Ok(Value::Bool(true)) => {
+                let candidate = &mut cs.candidates[cs.index];
+                let gained_at = candidate.gained_at;
+                if let Some(modifier) = candidate.modifier.take() {
+                    if route_options && cs.index >= cs.condition_count {
+                        cs.option_modifiers.push(modifier);
+                    } else {
+                        cs.collected.push((gained_at, modifier));
+                    }
+                }
+            }
+            Ok(Value::Bool(false)) => { /* binding check failed, skip */ }
+            Ok(other) => {
+                return Err(RuntimeError::new(format!(
+                    "BindingCheck returned non-Bool: {other:?}",
+                )));
+            }
+            Err(e) => return Err(e),
+        }
+        cs.index += 1;
+    }
+
+    // Push next candidate or finish.
+    if cs.index >= cs.candidates.len() {
+        Ok(CollectCheckAction::Done)
+    } else {
+        let candidate = &mut cs.candidates[cs.index];
+        if !candidate.caller_scope.is_empty() {
+            env.push_scope();
+            for (n, v) in &candidate.caller_scope {
+                env.bind(n.clone(), v.clone());
+            }
+            cs.scope_pushed = true;
+        }
+        let child_frame = candidate
+            .frame
+            .take()
+            .expect("CollectCheck: frame already taken");
+        Ok(CollectCheckAction::PushChild(Box::new(child_frame)))
+    }
+}
+
 // ── Action lifecycle step machine ──────────────────────────────
 
 /// Phase within the unified action lifecycle frame.
@@ -2182,7 +2333,6 @@ impl Frame {
                 match phase {
                     CostEvalPhase::CollectModifiers => {
                         // Build candidates for binding checks.
-                        use crate::effect::ModifySource;
                         use ttrpg_ast::ast::{ConditionClause, ModifyTarget};
 
                         let conditions = match sp.read_conditions(actor) {
@@ -2218,16 +2368,9 @@ impl Frame {
                                     _ => continue,
                                 }
 
-                                let owned_mod = OwnedModifier {
-                                    source: ModifySource::Condition(condition.name.clone()),
-                                    clause: clause.clone(),
-                                    bearer: Some(Value::Entity(condition.bearer)),
-                                    receiver_name: Some(cond_decl.receiver_name.clone()),
-                                    condition_params: condition.params.clone(),
-                                    condition_id: Some(condition.id),
-                                    condition_duration: Some(condition.duration.clone()),
-                                    condition_state_fields: condition.state_fields.clone(),
-                                };
+                                let owned_mod = owned_modifier_from_condition(
+                                    condition, cond_decl, clause,
+                                );
 
                                 if clause.bindings.is_empty() {
                                     collected_direct.push((condition.gained_at, owned_mod));
@@ -2243,24 +2386,8 @@ impl Frame {
                                         })
                                         .collect();
 
-                                    // Build caller-managed scope bindings.
-                                    let mut caller_scope = Vec::new();
-                                    caller_scope.push((
-                                        cond_decl.receiver_name.clone(),
-                                        Value::Entity(condition.bearer),
-                                    ));
-                                    for (name, val) in &condition.params {
-                                        caller_scope.push((name.clone(), val.clone()));
-                                    }
-                                    if !condition.state_fields.is_empty() {
-                                        caller_scope.push((
-                                            Name::from("state"),
-                                            Value::Struct {
-                                                name: Name::from("state"),
-                                                fields: condition.state_fields.clone(),
-                                            },
-                                        ));
-                                    }
+                                    let caller_scope =
+                                        build_condition_scope_bindings(cond_decl, condition);
 
                                     let frame = Frame::BindingCheck {
                                         bindings: clause.bindings.clone(),
@@ -2315,58 +2442,23 @@ impl Frame {
                         let cs = collect_state.as_mut()
                             .expect("CostEval::CollectCheck: collect_state must be set");
 
-                        // Process previous child result (if any).
-                        if let Some(result) = cs.child_result.take() {
-                            // Pop caller scope.
-                            if cs.scope_pushed {
-                                env.pop_scope();
-                                cs.scope_pushed = false;
+                        match advance_collect_check(cs, env, false) {
+                            Err(e) => Advance::Error(e),
+                            Ok(CollectCheckAction::PushChild(frame)) => {
+                                Advance::Push(*frame)
                             }
-                            match result {
-                                Ok(Value::Bool(true)) => {
-                                    let candidate = &mut cs.candidates[cs.index];
-                                    let gained_at = candidate.gained_at;
-                                    if let Some(modifier) = candidate.modifier.take() {
-                                        cs.collected.push((gained_at, modifier));
-                                    }
+                            Ok(CollectCheckAction::Done) => {
+                                let mut collected = std::mem::take(&mut cs.collected);
+                                collected.sort_by_key(|(g, _)| *g);
+                                *modifiers = collected.into_iter().map(|(_, m)| m).collect();
+                                *collect_state = None;
+                                if modifiers.is_empty() {
+                                    *phase = CostEvalPhase::BudgetPreCheck(0);
+                                } else {
+                                    *phase = CostEvalPhase::ApplyModifier(0);
                                 }
-                                Ok(Value::Bool(false)) => { /* binding check failed, skip */ }
-                                Ok(other) => {
-                                    return Advance::Error(RuntimeError::new(format!(
-                                        "BindingCheck returned non-Bool: {other:?}",
-                                    )));
-                                }
-                                Err(e) => return Advance::Error(e),
+                                Advance::Continue
                             }
-                            cs.index += 1;
-                        }
-
-                        // Push next candidate or finish.
-                        if cs.index >= cs.candidates.len() {
-                            // Done: sort and store.
-                            let mut collected = std::mem::take(&mut cs.collected);
-                            collected.sort_by_key(|(g, _)| *g);
-                            *modifiers = collected.into_iter().map(|(_, m)| m).collect();
-                            *collect_state = None;
-                            if modifiers.is_empty() {
-                                *phase = CostEvalPhase::BudgetPreCheck(0);
-                            } else {
-                                *phase = CostEvalPhase::ApplyModifier(0);
-                            }
-                            Advance::Continue
-                        } else {
-                            // Push caller scope and BindingCheck child.
-                            let candidate = &mut cs.candidates[cs.index];
-                            if !candidate.caller_scope.is_empty() {
-                                env.push_scope();
-                                for (n, v) in &candidate.caller_scope {
-                                    env.bind(n.clone(), v.clone());
-                                }
-                                cs.scope_pushed = true;
-                            }
-                            let child_frame = candidate.frame.take()
-                                .expect("CollectCheck: frame already taken");
-                            Advance::Push(child_frame)
                         }
                     }
 
@@ -2396,26 +2488,7 @@ impl Frame {
                         *modify_old_free = eff.free;
 
                         env.push_scope();
-
-                        if let (Some(receiver_name), Some(bearer)) =
-                            (&modifier.receiver_name, &modifier.bearer)
-                        {
-                            env.bind(receiver_name.clone(), bearer.clone());
-                        }
-
-                        for (name, val) in &modifier.condition_params {
-                            env.bind(name.clone(), val.clone());
-                        }
-
-                        if !modifier.condition_state_fields.is_empty() {
-                            env.bind(
-                                Name::from("state"),
-                                Value::Struct {
-                                    name: Name::from("state"),
-                                    fields: modifier.condition_state_fields.clone(),
-                                },
-                            );
-                        }
+                        bind_modifier_context(env, modifier);
 
                         // Init walker with the modifier body.
                         *modify_walker = Some(Box::new(ModifyStmtWalker::new(
@@ -3678,40 +3751,18 @@ impl Frame {
                                         _ => continue,
                                     }
 
-                                    let owned_mod = OwnedModifier {
-                                        source: ModifySource::Condition(condition.name.clone()),
-                                        clause: clause.clone(),
-                                        bearer: Some(Value::Entity(condition.bearer)),
-                                        receiver_name: Some(cond_decl.receiver_name.clone()),
-                                        condition_params: condition.params.clone(),
-                                        condition_id: Some(condition.id),
-                                        condition_duration: Some(condition.duration.clone()),
-                                        condition_state_fields: condition.state_fields.clone(),
-                                    };
+                                    let owned_mod = owned_modifier_from_condition(
+                                        condition, cond_decl, clause,
+                                    );
 
                                     if clause.bindings.is_empty() {
                                         collected_direct.push((condition.gained_at, owned_mod));
                                     } else {
                                         // Build scope bindings for Owned mode.
-                                        let mut scope_bindings = Vec::new();
-                                        scope_bindings.push((
-                                            cond_decl.receiver_name.clone(),
-                                            Value::Entity(condition.bearer),
-                                        ));
-                                        for (pname, pval) in &condition.params {
-                                            scope_bindings.push((pname.clone(), pval.clone()));
-                                        }
+                                        let mut scope_bindings =
+                                            build_condition_scope_bindings(cond_decl, condition);
                                         for (pname, pval) in &ba {
                                             scope_bindings.push((pname.clone(), pval.clone()));
-                                        }
-                                        if !condition.state_fields.is_empty() {
-                                            scope_bindings.push((
-                                                Name::from("state"),
-                                                Value::Struct {
-                                                    name: Name::from("state"),
-                                                    fields: condition.state_fields.clone(),
-                                                },
-                                            ));
                                         }
 
                                         let frame = Frame::BindingCheck {
@@ -3860,51 +3911,15 @@ impl Frame {
                         let cs = collect_state.as_mut()
                             .expect("DeriveEval::CollectCheck: collect_state must be set");
 
-                        // Process previous child result (if any).
-                        if let Some(result) = cs.child_result.take() {
-                            if cs.scope_pushed {
-                                env.pop_scope();
-                                cs.scope_pushed = false;
+                        match advance_collect_check(cs, env, true) {
+                            Err(e) => Advance::Error(e),
+                            Ok(CollectCheckAction::PushChild(frame)) => {
+                                Advance::Push(*frame)
                             }
-                            match result {
-                                Ok(Value::Bool(true)) => {
-                                    let candidate = &mut cs.candidates[cs.index];
-                                    let gained_at = candidate.gained_at;
-                                    if let Some(modifier) = candidate.modifier.take() {
-                                        if cs.index < cs.condition_count {
-                                            cs.collected.push((gained_at, modifier));
-                                        } else {
-                                            cs.option_modifiers.push(modifier);
-                                        }
-                                    }
-                                }
-                                Ok(Value::Bool(false)) => { /* skip */ }
-                                Ok(other) => {
-                                    return Advance::Error(RuntimeError::new(format!(
-                                        "BindingCheck returned non-Bool: {other:?}",
-                                    )));
-                                }
-                                Err(e) => return Advance::Error(e),
+                            Ok(CollectCheckAction::Done) => {
+                                *phase = DeriveEvalPhase::CollectDone;
+                                Advance::Continue
                             }
-                            cs.index += 1;
-                        }
-
-                        // Push next candidate or finish.
-                        if cs.index >= cs.candidates.len() {
-                            *phase = DeriveEvalPhase::CollectDone;
-                            Advance::Continue
-                        } else {
-                            let candidate = &mut cs.candidates[cs.index];
-                            if !candidate.caller_scope.is_empty() {
-                                env.push_scope();
-                                for (n, v) in &candidate.caller_scope {
-                                    env.bind(n.clone(), v.clone());
-                                }
-                                cs.scope_pushed = true;
-                            }
-                            let child_frame = candidate.frame.take()
-                                .expect("CollectCheck: frame already taken");
-                            Advance::Push(child_frame)
                         }
                     }
 
@@ -4128,31 +4143,9 @@ impl Frame {
                         let params = phase1_params.take().unwrap_or_default();
 
                         env.push_scope();
-
-                        if let (Some(bearer), Some(recv_name)) =
-                            (&modifier.bearer, &modifier.receiver_name)
-                        {
-                            env.bind(recv_name.clone(), bearer.clone());
-                        }
-
-                        for (n, val) in &modifier.condition_params {
-                            env.bind(n.clone(), val.clone());
-                        }
-
+                        bind_modifier_context(env, modifier);
                         for (n, val) in &params {
                             env.bind(n.clone(), val.clone());
-                        }
-
-                        if !modifier.condition_state_fields.is_empty() {
-                            env.bind(
-                                Name::from("state"),
-                                Value::Struct {
-                                    name: Name::from("state"),
-                                    fields: modifier
-                                        .condition_state_fields
-                                        .clone(),
-                                },
-                            );
                         }
 
                         // Store params for walker to update.
@@ -4337,33 +4330,11 @@ impl Frame {
 
                         // Set up scope (mirrors apply_phase2_modifier_native).
                         env.push_scope();
-
-                        if let (Some(bearer), Some(recv_name)) =
-                            (&modifier.bearer, &modifier.receiver_name)
-                        {
-                            env.bind(recv_name.clone(), bearer.clone());
-                        }
-
-                        for (n, val) in &modifier.condition_params {
-                            env.bind(n.clone(), val.clone());
-                        }
-
+                        bind_modifier_context(env, modifier);
                         for (n, val) in
                             bound_args.as_deref().unwrap_or(&[])
                         {
                             env.bind(n.clone(), val.clone());
-                        }
-
-                        if !modifier.condition_state_fields.is_empty() {
-                            env.bind(
-                                Name::from("state"),
-                                Value::Struct {
-                                    name: Name::from("state"),
-                                    fields: modifier
-                                        .condition_state_fields
-                                        .clone(),
-                                },
-                            );
                         }
 
                         env.bind(
