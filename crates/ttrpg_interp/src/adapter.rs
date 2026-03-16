@@ -316,7 +316,7 @@ pub struct AdaptedHandler<'a, S: WritableState, H: EffectHandler + ?Sized> {
 }
 
 /// The mutation effect kinds.
-const MUTATION_KINDS: [EffectKind; 16] = [
+pub const MUTATION_KINDS: [EffectKind; 16] = [
     EffectKind::MutateField,
     EffectKind::ApplyCondition,
     EffectKind::RemoveCondition,
@@ -335,7 +335,7 @@ const MUTATION_KINDS: [EffectKind; 16] = [
     EffectKind::TransferConditions,
 ];
 
-pub(crate) fn is_mutation(kind: EffectKind) -> bool {
+pub fn is_mutation(kind: EffectKind) -> bool {
     MUTATION_KINDS.contains(&kind)
 }
 
@@ -347,9 +347,14 @@ impl<S: WritableState, H: EffectHandler + ?Sized> EffectHandler for AdaptedHandl
 
 // ── Mutation application helpers ───────────────────────────────
 
-/// Apply a mutation effect to the writable state.
 /// Apply a SpawnEntity effect to the writable state, returning the new entity ref.
-fn apply_spawn<S: WritableState>(state: &mut S, effect: &Effect) -> EntityRef {
+///
+/// Hosts can call this after receiving a yielded `SpawnEntity` effect
+/// and deciding to apply it.
+///
+/// # Panics
+/// Panics if `effect` is not `Effect::SpawnEntity`.
+pub fn apply_spawn<S: WritableState>(state: &mut S, effect: &Effect) -> EntityRef {
     match effect {
         Effect::SpawnEntity {
             entity_type,
@@ -359,7 +364,17 @@ fn apply_spawn<S: WritableState>(state: &mut S, effect: &Effect) -> EntityRef {
     }
 }
 
-fn apply_mutation<S: WritableState>(
+/// Apply a mutation effect to the writable state.
+///
+/// Hosts can call this after receiving a yielded mutation effect and deciding
+/// to apply it. Non-mutation effects are silently ignored.
+///
+/// `condition_receiver_types` is needed for bearer type compatibility checks
+/// on `ApplyCondition` and `TransferConditions`. Pass an empty map to skip
+/// these checks.
+///
+/// For `SpawnEntity`, use [`apply_spawn`] instead (it returns the new entity ref).
+pub fn apply_mutation<S: WritableState>(
     state: &mut S,
     effect: &Effect,
     condition_receiver_types: &FxHashMap<Name, Ty>,
@@ -587,7 +602,10 @@ pub fn apply_transfer_conditions<S: WritableState>(
 /// For MutateField/MutateTurnField, the override value replaces the RHS
 /// in the computation. For ApplyCondition, it replaces the duration.
 /// For RemoveCondition, a `Str` override replaces the condition name.
-fn apply_mutation_with_override<S: WritableState>(
+///
+/// Hosts can call this after receiving a yielded mutation and responding
+/// with `Response::Override(value)`.
+pub fn apply_mutation_with_override<S: WritableState>(
     state: &mut S,
     effect: &Effect,
     override_val: &Value,
@@ -674,6 +692,50 @@ fn apply_mutation_with_override<S: WritableState>(
             apply_mutation(state, effect, &FxHashMap::default());
         }
         _ => apply_mutation(state, effect, &FxHashMap::default()),
+    }
+}
+
+/// Apply a mutation effect to state, dispatching based on the host's response.
+///
+/// This is the top-level convenience function for hosts. After receiving a
+/// yielded mutation effect and deciding on a response, call this to apply
+/// (or skip) the mutation:
+///
+/// - `Acknowledged` → apply as-is
+/// - `Override(value)` → apply with the override value
+/// - `Vetoed` → no-op
+/// - `EntitySpawned(_)` → apply spawn (for `SpawnEntity` effects)
+///
+/// Returns `true` if the mutation was applied, `false` if vetoed/skipped.
+pub fn apply_effect<S: WritableState>(
+    state: &mut S,
+    effect: &Effect,
+    response: &Response,
+    condition_receiver_types: &FxHashMap<Name, Ty>,
+) -> bool {
+    match response {
+        Response::Acknowledged => {
+            if matches!(effect, Effect::SpawnEntity { .. }) {
+                apply_spawn(state, effect);
+            } else {
+                apply_mutation(state, effect, condition_receiver_types);
+            }
+            true
+        }
+        Response::Override(override_val) => {
+            apply_mutation_with_override(state, effect, override_val);
+            true
+        }
+        Response::EntitySpawned(_) => {
+            if matches!(effect, Effect::SpawnEntity { .. }) {
+                apply_spawn(state, effect);
+                true
+            } else {
+                false
+            }
+        }
+        Response::Vetoed => false,
+        _ => false,
     }
 }
 
