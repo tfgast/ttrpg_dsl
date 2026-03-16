@@ -7784,7 +7784,13 @@ impl<S: WritableState> Execution<S> {
         }
 
         let tracker = state.mutation_tracker();
-        let poll_inner = |sp: &dyn StateProvider, eh: &mut dyn EffectHandler| {
+
+        if *raw {
+            // Raw mode: use state directly (not through AdaptedHandler) so we
+            // can auto-apply SpawnEntity while bypassing adapter for everything
+            // else.  SpawnEntity must be applied internally because subsequent
+            // GrantGroup frames need a valid EntityRef.
+            let mut handler = NoYieldHandler;
             loop {
                 if frames.is_empty() {
                     if let ProtocolState::Unwinding(e) =
@@ -7801,9 +7807,23 @@ impl<S: WritableState> Execution<S> {
                 }
 
                 let frame = frames.last_mut().unwrap();
-                let advance = frame.advance(core, env, sp, eh, tracker);
+                let advance =
+                    frame.advance(core, env, &*state, &mut handler, tracker);
 
                 match advance {
+                    Advance::Yield(effect)
+                        if matches!(&effect, Effect::SpawnEntity { .. }) =>
+                    {
+                        // Auto-apply spawn and feed EntityRef back to frame.
+                        let entity_ref = state.with_state_mut(|gs| {
+                            crate::adapter::apply_spawn(gs, &effect)
+                        });
+                        if let Some(frame) = frames.last_mut() {
+                            frame.receive_response(Response::EntitySpawned(
+                                entity_ref,
+                            ));
+                        }
+                    }
                     Advance::Yield(effect) => {
                         *pending_before_yield =
                             Some(std::mem::replace(protocol, ProtocolState::Pending));
@@ -7838,12 +7858,62 @@ impl<S: WritableState> Execution<S> {
                     }
                 }
             }
-        };
-
-        if *raw {
-            state.run_raw(&mut NoYieldHandler, poll_inner)
         } else {
-            state.run(&mut NoYieldHandler, poll_inner)
+            state.run(&mut NoYieldHandler, |sp, eh| {
+                loop {
+                    if frames.is_empty() {
+                        if let ProtocolState::Unwinding(e) =
+                            std::mem::replace(protocol, ProtocolState::Completed)
+                        {
+                            return Err(PollError::Runtime(e));
+                        }
+                        *protocol = ProtocolState::Completed;
+                        let result = final_result.take().unwrap_or(Ok(Value::Void));
+                        return match result {
+                            Ok(v) => Ok(Step::Done(v)),
+                            Err(e) => Err(PollError::Runtime(e)),
+                        };
+                    }
+
+                    let frame = frames.last_mut().unwrap();
+                    let advance = frame.advance(core, env, sp, eh, tracker);
+
+                    match advance {
+                        Advance::Yield(effect) => {
+                            *pending_before_yield =
+                                Some(std::mem::replace(protocol, ProtocolState::Pending));
+                            return Ok(Step::Yielded(Box::new(effect)));
+                        }
+                        Advance::Push(child) => {
+                            frames.push(child);
+                        }
+                        Advance::Pop(value) => {
+                            frames.pop();
+                            if let Some(parent) = frames.last_mut() {
+                                parent.receive_child_result(value);
+                            } else {
+                                *final_result = Some(Ok(value));
+                            }
+                        }
+                        Advance::Continue => {}
+                        Advance::Error(e) => {
+                            frames.pop();
+                            if let Some(parent) = frames.last_mut() {
+                                match parent.receive_child_error(e) {
+                                    Ok(()) => {}
+                                    Err(e) => {
+                                        *protocol = ProtocolState::Completed;
+                                        return Err(PollError::Runtime(e));
+                                    }
+                                }
+                            } else {
+                                *protocol = ProtocolState::Completed;
+                                return Err(PollError::Runtime(e));
+                            }
+                        }
+                    }
+                }
+            })
         }
     }
 
@@ -15489,6 +15559,71 @@ mod tests {
         assert!(!exec.is_raw());
         let exec = exec.raw();
         assert!(exec.is_raw());
+    }
+
+    #[test]
+    fn raw_mode_auto_applies_spawn_entity() {
+        let (core, _) = make_core(
+            r#"
+            system "Test" {
+                entity Creature {
+                    HP: int
+                }
+                entity Summoner {
+                    name: string
+                }
+                action Summon on actor: Summoner () {
+                    resolve {
+                        let minion = Creature { HP: 5 }
+                    }
+                }
+            }
+            "#,
+        );
+
+        let mut game = GameState::new();
+        let mut fields = FxHashMap::default();
+        fields.insert(Name::from("name"), Value::Str("Wizard".into()));
+        let summoner = game.add_entity("Summoner", fields);
+        let adapter = StateAdapter::new(game);
+
+        let mut exec = Execution::start_action(
+            core,
+            adapter,
+            "Summon",
+            summoner,
+            vec![],
+            Span::dummy(),
+        )
+        .unwrap()
+        .raw();
+
+        // ActionStarted
+        let step = exec.poll().unwrap();
+        assert!(matches!(&*unwrap_yielded(step), Effect::ActionStarted { .. }));
+        exec.respond(Response::Acknowledged).unwrap();
+
+        // SpawnEntity is NOT yielded to host — auto-applied internally.
+        // Next visible effect should be ActionCompleted (no mutation in this action).
+        let step = exec.poll().unwrap();
+        let effect = *unwrap_yielded(step);
+        assert!(
+            matches!(&effect, Effect::ActionCompleted { .. }),
+            "SpawnEntity should be silent in raw mode, expected ActionCompleted, got {:?}",
+            EffectKind::of(&effect)
+        );
+        exec.respond(Response::Acknowledged).unwrap();
+
+        // Done
+        let step = exec.poll().unwrap();
+        assert!(matches!(step, Step::Done(_)));
+
+        // Verify the spawned entity exists in state with HP=5.
+        let all = exec.state().all_entities();
+        assert_eq!(all.len(), 2, "should have summoner + spawned creature");
+        let minion = all.iter().find(|e| **e != summoner).unwrap();
+        let hp = exec.state().read_field(minion, "HP").unwrap();
+        assert_eq!(hp, Value::Int(5), "spawned entity should exist with HP=5");
     }
 
     fn unwrap_yielded(step: Step) -> Box<Effect> {
