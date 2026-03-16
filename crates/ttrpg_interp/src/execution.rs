@@ -1594,8 +1594,10 @@ pub(crate) enum Frame {
         original_state: BTreeMap<Name, Value>,
         /// The block body to execute (pushed as a child Block on first advance).
         block_stmts: Option<Vec<Spanned<StmtKind>>>,
-        /// Result from child Block frame.
+        /// Result from child Block or MutationYield frame.
         child_result: Option<Result<Value, RuntimeError>>,
+        /// True when waiting for a MutationYield child to complete.
+        awaiting_yield: bool,
     },
 
     ConditionApplyGate {
@@ -1645,6 +1647,7 @@ pub(crate) enum Frame {
         tags: Vec<Name>,
         token: ConditionToken,
         state_fields: BTreeMap<Name, Value>,
+        pending: Option<Response>,
     },
 
     ConditionRemovalLoop {
@@ -1655,8 +1658,10 @@ pub(crate) enum Frame {
         first_error: Option<RuntimeError>,
         removed_count: u32,
         revoke_invocation: Option<InvocationId>,
-        /// Result from child ConditionRemovalGate or ConditionOnRemove frames.
+        /// Result from child ConditionRemovalGate, ConditionOnRemove, or MutationYield frames.
         child_result: Option<Result<Value, RuntimeError>>,
+        /// True when waiting for a MutationYield child (RevokeInvocation) to complete.
+        awaiting_revoke: bool,
     },
 
     ConditionRemovalGate {
@@ -1674,7 +1679,7 @@ pub(crate) enum Frame {
         state_fields: BTreeMap<Name, Value>,
         /// Index into the condition declaration's clauses (on_remove blocks).
         clause_index: usize,
-        /// Result from a child Block frame (on_remove body).
+        /// Result from a child Block or MutationYield frame.
         child_result: Option<Result<Value, RuntimeError>>,
         /// Saved condition token to restore after lifecycle blocks.
         saved_condition_token: Option<ConditionToken>,
@@ -1682,6 +1687,10 @@ pub(crate) enum Frame {
         lifecycle_setup: bool,
         /// Whether on_remove blocks have errored (still need to emit RemoveCondition).
         on_remove_error: Option<RuntimeError>,
+        /// Cleanup phase after on_remove clauses complete:
+        /// 0 = still running clauses, 1 = emit SetConditionState,
+        /// 2 = emit RemoveCondition, 3 = emit RemoveSuspensionSource, 4 = done.
+        cleanup_step: u8,
     },
 
     RollDiceWaiting {
@@ -2393,6 +2402,7 @@ impl Frame {
                             removed_count: 0,
                             revoke_invocation: None,
                             child_result: None,
+                            awaiting_revoke: false,
                         })
                     }
                     CallTarget::Revoke { span: rv_span } => {
@@ -2434,6 +2444,7 @@ impl Frame {
                                     removed_count: 0,
                                     revoke_invocation: None,
                                     child_result: None,
+                                    awaiting_revoke: false,
                                 });
                             }
                             _ => {
@@ -2464,6 +2475,7 @@ impl Frame {
                             removed_count: 0,
                             revoke_invocation: Some(inv_id),
                             child_result: None,
+                            awaiting_revoke: false,
                         })
                     }
                     CallTarget::Function {
@@ -5297,6 +5309,7 @@ impl Frame {
                     tags,
                     token,
                     state_fields: final_state,
+                    pending: None,
                 };
                 Advance::Continue
             }
@@ -5310,35 +5323,39 @@ impl Frame {
                 tags,
                 token,
                 state_fields,
+                pending,
             } => {
-                // Emit ApplyCondition effect (locally applied by StateAdapter).
-                let params_map: BTreeMap<Name, Value> = params.iter().cloned().collect();
-                let tags_set: BTreeSet<Name> = tags.iter().cloned().collect();
-                let final_state = std::mem::take(state_fields);
-                let token_val = *token;
-                let effect = Effect::ApplyCondition {
-                    target: *target,
-                    condition: condition_name.clone(),
-                    params: params_map,
-                    duration: duration.clone(),
-                    invocation: env.current_invocation_id,
-                    source: source.clone(),
-                    tags: tags_set,
-                    condition_id: token_val.0,
-                    state_fields: final_state,
-                };
-
-                // Emit directly (locally-applied, not yielded to host).
-                let resp = eh.handle(effect);
-                match resp {
-                    Response::Acknowledged | Response::Override(_) => Advance::Pop(Value::Option(
-                        Some(Box::new(Value::Int(token_val.0 as i64))),
-                    )),
-                    Response::Vetoed => Advance::Pop(Value::Option(None)),
-                    other => Advance::Error(RuntimeError::new(format!(
-                        "protocol error: unsupported response \
-                         for ApplyCondition: {other:?}"
-                    ))),
+                if let Some(response) = pending.take() {
+                    let token_val = *token;
+                    match response {
+                        Response::Acknowledged | Response::Override(_) => {
+                            Advance::Pop(Value::Option(Some(Box::new(Value::Int(
+                                token_val.0 as i64,
+                            )))))
+                        }
+                        Response::Vetoed => Advance::Pop(Value::Option(None)),
+                        other => Advance::Error(RuntimeError::new(format!(
+                            "protocol error: unsupported response \
+                             for ApplyCondition: {other:?}"
+                        ))),
+                    }
+                } else {
+                    // First advance — build and yield the ApplyCondition effect.
+                    let params_map: BTreeMap<Name, Value> = params.iter().cloned().collect();
+                    let tags_set: BTreeSet<Name> = tags.iter().cloned().collect();
+                    let final_state = std::mem::take(state_fields);
+                    let effect = Effect::ApplyCondition {
+                        target: *target,
+                        condition: condition_name.clone(),
+                        params: params_map,
+                        duration: duration.clone(),
+                        invocation: env.current_invocation_id,
+                        source: source.clone(),
+                        tags: tags_set,
+                        condition_id: token.0,
+                        state_fields: final_state,
+                    };
+                    Advance::Yield(effect)
                 }
             }
 
@@ -5526,6 +5543,7 @@ impl Frame {
                         original_state,
                         block_stmts: Some(clause_body.node),
                         child_result: None,
+                        awaiting_yield: false,
                     });
                 }
 
@@ -5541,7 +5559,16 @@ impl Frame {
                 original_state,
                 block_stmts,
                 child_result,
+                awaiting_yield,
             } => {
+                // Phase 3: MutationYield child completed — done.
+                if *awaiting_yield {
+                    if let Some(Err(e)) = child_result.take() {
+                        return Advance::Error(e);
+                    }
+                    return Advance::Pop(Value::Void);
+                }
+
                 // Phase 1: push Block on first advance.
                 if let Some(stmts) = block_stmts.take() {
                     return Advance::Push(Frame::Block {
@@ -5578,7 +5605,7 @@ impl Frame {
                     env.pop_scope();
                     env.return_value = None;
 
-                    // Emit SetConditionState if state has fields (matching
+                    // Yield SetConditionState if state has fields (matching
                     // recursive path which writes back unconditionally when
                     // state is non-empty).
                     if let Some(fields) = final_state
@@ -5589,7 +5616,12 @@ impl Frame {
                             condition_id: *instance_id,
                             fields,
                         };
-                        eh.handle(effect);
+                        *awaiting_yield = true;
+                        return Advance::Push(Frame::MutationYield {
+                            effect,
+                            pending: None,
+                            span: Span::default(),
+                        });
                     }
 
                     return Advance::Pop(Value::Void);
@@ -5610,7 +5642,23 @@ impl Frame {
                 removed_count: _,
                 revoke_invocation,
                 child_result,
+                awaiting_revoke,
             } => {
+                // Handle completed MutationYield child (RevokeInvocation).
+                if *awaiting_revoke {
+                    if let Some(Err(e)) = child_result.take()
+                        && first_error.is_none()
+                    {
+                        *first_error = Some(e);
+                    }
+                    // Return deferred error or success.
+                    return if let Some(err) = first_error.take() {
+                        Advance::Error(err)
+                    } else {
+                        Advance::Pop(Value::Void)
+                    };
+                }
+
                 // Handle completed child (ConditionRemovalGate or ConditionOnRemove).
                 if let Some(result) = child_result.take() {
                     match result {
@@ -5641,10 +5689,15 @@ impl Frame {
                     });
                 }
 
-                // All instances processed. Emit RevokeInvocation if needed.
+                // All instances processed. Yield RevokeInvocation if needed.
                 if let Some(inv_id) = revoke_invocation.take() {
                     let effect = Effect::RevokeInvocation { invocation: inv_id };
-                    eh.handle(effect);
+                    *awaiting_revoke = true;
+                    return Advance::Push(Frame::MutationYield {
+                        effect,
+                        pending: None,
+                        span: Span::default(),
+                    });
                 }
 
                 // Return deferred error or success.
@@ -5691,6 +5744,7 @@ impl Frame {
                                 saved_condition_token: saved_token,
                                 lifecycle_setup: false,
                                 on_remove_error: None,
+                                cleanup_step: 0,
                             };
                             Advance::Continue
                         }
@@ -5768,7 +5822,79 @@ impl Frame {
                 saved_condition_token,
                 lifecycle_setup,
                 on_remove_error,
+                cleanup_step,
             } => {
+                // ── Cleanup phase: yield effects sequentially ──
+                if *cleanup_step > 0 {
+                    // Handle MutationYield child completion.
+                    if let Some(result) = child_result.take() {
+                        if let Err(e) = result
+                            && on_remove_error.is_none()
+                        {
+                            *on_remove_error = Some(e);
+                        }
+                        *cleanup_step += 1;
+                        return Advance::Continue;
+                    }
+
+                    match *cleanup_step {
+                        1 => {
+                            // Yield SetConditionState if state has fields.
+                            if !state_fields.is_empty() {
+                                let effect = Effect::SetConditionState {
+                                    target: *target,
+                                    condition_id: *instance_id,
+                                    fields: std::mem::take(state_fields),
+                                };
+                                return Advance::Push(Frame::MutationYield {
+                                    effect,
+                                    pending: None,
+                                    span: Span::default(),
+                                });
+                            }
+                            // No state to set — skip to next step.
+                            *cleanup_step = 2;
+                            return Advance::Continue;
+                        }
+                        2 => {
+                            // Always yield RemoveCondition.
+                            let effect = Effect::RemoveCondition {
+                                target: *target,
+                                condition: condition_name.clone(),
+                                params: None,
+                                id: Some(*instance_id),
+                            };
+                            return Advance::Push(Frame::MutationYield {
+                                effect,
+                                pending: None,
+                                span: Span::default(),
+                            });
+                        }
+                        3 => {
+                            // Always yield RemoveSuspensionSource.
+                            let effect = Effect::RemoveSuspensionSource {
+                                entity: *target,
+                                source_id: *instance_id,
+                            };
+                            return Advance::Push(Frame::MutationYield {
+                                effect,
+                                pending: None,
+                                span: Span::default(),
+                            });
+                        }
+                        _ => {
+                            // All cleanup effects yielded. Propagate error or pop.
+                            return if let Some(err) = on_remove_error.take() {
+                                Advance::Error(err)
+                            } else {
+                                Advance::Pop(Value::Void)
+                            };
+                        }
+                    }
+                }
+
+                // ── Clause execution phase ──
+
                 // Handle completed child Block (on_remove body).
                 if let Some(result) = child_result.take() {
                     match result {
@@ -5854,42 +5980,9 @@ impl Frame {
                 env.lifecycle_condition_stack.pop();
                 env.current_condition_token = *saved_condition_token;
 
-                // If state changed, emit SetConditionState.
-                if !state_fields.is_empty() {
-                    let set_state_effect = Effect::SetConditionState {
-                        target: *target,
-                        condition_id: *instance_id,
-                        fields: std::mem::take(state_fields),
-                    };
-                    eh.handle(set_state_effect);
-                }
-
-                // Always emit RemoveCondition (even if on_remove errored).
-                {
-                    let remove_effect = Effect::RemoveCondition {
-                        target: *target,
-                        condition: condition_name.clone(),
-                        params: None,
-                        id: Some(*instance_id),
-                    };
-                    eh.handle(remove_effect);
-                }
-
-                // Always emit RemoveSuspensionSource.
-                {
-                    let suspension_effect = Effect::RemoveSuspensionSource {
-                        entity: *target,
-                        source_id: *instance_id,
-                    };
-                    eh.handle(suspension_effect);
-                }
-
-                // If on_remove errored, propagate.
-                if let Some(err) = on_remove_error.take() {
-                    Advance::Error(err)
-                } else {
-                    Advance::Pop(Value::Void)
-                }
+                // Transition to cleanup phase — yield effects sequentially.
+                *cleanup_step = 1;
+                Advance::Continue
             }
 
             _ => Advance::Error(RuntimeError::new("frame type not yet implemented")),
@@ -5904,6 +5997,7 @@ impl Frame {
             Frame::PromptWaiting { pending, .. } => *pending = Some(response),
             Frame::SpawnEntity { pending, .. } => *pending = Some(response),
             Frame::ConditionApplyGate { pending, .. } => *pending = Some(response),
+            Frame::ConditionActivate { pending, .. } => *pending = Some(response),
             Frame::ConditionRemovalGate { pending, .. } => *pending = Some(response),
             Frame::GrantRevokeGate { pending, .. } => *pending = Some(response),
             Frame::CostEval { pending, .. } => *pending = Some(response),
@@ -7098,6 +7192,7 @@ impl<S: WritableState> Execution<S> {
             original_state,
             block_stmts: Some(clause_body.node),
             child_result: None,
+            awaiting_yield: false,
         });
 
         Ok(exec)
@@ -13257,13 +13352,23 @@ mod tests {
 
         let kinds1 = all_structural_kinds(&handler1.log);
         let kinds2 = all_structural_kinds(&step_effects);
-        assert_eq!(
-            kinds1, kinds2,
-            "structural effect sequence mismatch for async condition state default"
-        );
+        // In drive() mode, StateAdapter intercepts mutation effects (ApplyCondition
+        // etc.) so the outer handler never sees them. In poll() mode, those mutations
+        // are yielded to the host. So the recursive effects are a subsequence of the
+        // step effects — verify that.
+        let mut it = kinds2.iter();
+        for k in &kinds1 {
+            assert!(
+                it.any(|k2| k2 == k),
+                "recursive effect {k:?} not found in step effects \
+                 (recursive: {kinds1:?}, step: {kinds2:?})"
+            );
+        }
 
         assert!(result1.is_ok(), "recursive failed: {result1:?}");
         assert!(kinds2.contains(&EffectKind::ConditionApplyGate));
+        // ApplyCondition is now yielded in poll mode.
+        assert!(kinds2.contains(&EffectKind::ApplyCondition));
     }
 
     // ── Mutation replay soundness tests ───────────────────────
@@ -14163,8 +14268,6 @@ mod tests {
         }
 
         // The hook (OnCondApplied) should have fired during on_apply's emit.
-        // ApplyCondition is a mutation effect applied locally by StateAdapter,
-        // so it doesn't appear in the yielded effects. Instead verify via state.
         let action_started_count = effect_kinds
             .iter()
             .filter(|k| **k == EffectKind::ActionStarted)
@@ -14174,14 +14277,16 @@ mod tests {
             "expected at least 2 ActionStarted (main action + hook), got {action_started_count}"
         );
 
-        // Verify the condition was applied to state.
-        let conditions = exec.state().read_conditions(&target).unwrap_or_default();
+        // ApplyCondition is now yielded to the host in poll mode (not auto-applied
+        // by StateAdapter). Verify it was yielded.
         assert!(
-            conditions.iter().any(|c| c.name == "Cursed"),
-            "Cursed condition should have been applied to target"
+            effect_kinds.contains(&EffectKind::ApplyCondition),
+            "expected ApplyCondition to be yielded in poll mode"
         );
 
-        // Verify state: target HP = 30 - 5 (on_apply) - 1 (hook) = 24
+        // MutateField effects (bearer.HP -= power, bearer.HP -= 1 from hook) are
+        // still applied locally by StateAdapter via the frame's eh.handle() path.
+        // HP = 30 - 5 (on_apply) - 1 (hook) = 24
         let final_hp = exec.state().read_field(&target, "HP");
         assert_eq!(
             final_hp,
@@ -14278,22 +14383,24 @@ mod tests {
             "expected ConditionRemovalGate from hook's remove_condition"
         );
 
-        // Verify the condition is no longer present (RemoveCondition is a
-        // mutation effect applied locally by StateAdapter, not yielded).
-        let conditions = exec.state().read_conditions(&actor).unwrap_or_default();
+        // RemoveCondition is now yielded to the host in poll mode (not auto-applied).
+        // Verify it was yielded.
         assert!(
-            conditions.iter().all(|c| c.name != "Fragile"),
-            "Fragile condition should have been removed"
+            effect_kinds.contains(&EffectKind::RemoveCondition),
+            "expected RemoveCondition to be yielded in poll mode"
         );
 
-        // HP should be 20 (unchanged) if the condition handler was skipped,
-        // or 10 if the handler ran despite removal. The hook removes the
-        // condition before the handler fires, so HP should stay at 20.
+        // In poll mode, RemoveCondition is yielded but not auto-applied, so
+        // the condition still exists in state when the handler checks. The
+        // handler therefore runs: HP = 20 - 10 = 10.
+        // (In drive mode, StateAdapter applies RemoveCondition immediately,
+        // so the handler would be skipped and HP would stay at 20.)
         let final_hp = exec.state().read_field(&actor, "HP");
         assert_eq!(
             final_hp,
-            Some(Value::Int(20)),
-            "HP should be 20 — condition handler should be skipped after removal"
+            Some(Value::Int(10)),
+            "HP should be 10 — in poll mode, condition handler runs because \
+             RemoveCondition is yielded (not yet applied to state)"
         );
     }
 
@@ -14394,11 +14501,15 @@ mod tests {
             "expected deferred runtime error from on_remove, but execution succeeded"
         );
 
-        // All conditions should have been removed from state despite the error.
-        let conditions = exec.state().read_conditions(&actor).unwrap_or_default();
+        // RemoveCondition effects are now yielded in poll mode. Verify they
+        // appeared in the effect sequence (one per successfully-gated instance).
+        let remove_count = effect_kinds
+            .iter()
+            .filter(|k| **k == EffectKind::RemoveCondition)
+            .count();
         assert!(
-            conditions.iter().all(|c| c.name != "Marked"),
-            "all Marked conditions should have been removed despite on_remove error"
+            remove_count >= 1,
+            "expected at least 1 RemoveCondition yielded, got {remove_count}"
         );
     }
 

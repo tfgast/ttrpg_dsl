@@ -280,18 +280,24 @@ system "test" {
         Execution::start_condition_handler(core, adapter, handler_info, payload, Span::dummy())
             .expect("start_condition_handler should succeed");
 
-    let (_val, _effects) = run_to_completion(&mut exec);
+    let (_val, effects) = run_to_completion(&mut exec);
 
-    // SetConditionState is applied directly to the adapter's state (not yielded
-    // via poll). Verify the state mutation happened: ticks went from 3 to 2.
-    let state = exec.state();
-    let conditions = state.read_conditions(&EntityRef(1)).unwrap();
-    let burning = conditions.iter().find(|c| c.name == "Burning").unwrap();
-    assert_eq!(
-        burning.state_fields.get("ticks"),
-        Some(&Value::Int(2)),
-        "condition state 'ticks' should have been decremented from 3 to 2"
+    // SetConditionState is now yielded to the host in poll mode (not auto-applied
+    // by StateAdapter). Verify it was yielded with the updated ticks value.
+    let set_state = effects.iter().find(|e| {
+        matches!(e, Effect::SetConditionState { .. })
+    });
+    assert!(
+        set_state.is_some(),
+        "expected SetConditionState to be yielded in poll mode"
     );
+    if let Some(Effect::SetConditionState { fields, .. }) = set_state {
+        assert_eq!(
+            fields.get(&Name::from("ticks")),
+            Some(&Value::Int(2)),
+            "SetConditionState should carry ticks decremented from 3 to 2"
+        );
+    }
 }
 
 // ── start_condition_handlers (batch) ───────────────────────────
@@ -342,17 +348,23 @@ system "test" {
     let mut exec =
         Execution::start_condition_handlers(core, adapter, cond_result.handlers, payload);
 
-    let (_val, _effects) = run_to_completion(&mut exec);
+    let (_val, effects) = run_to_completion(&mut exec);
 
-    // Verify the state mutation: ticks went from 3 to 2
-    let state = exec.state();
-    let conditions = state.read_conditions(&EntityRef(1)).unwrap();
-    let burning = conditions.iter().find(|c| c.name == "Burning").unwrap();
-    assert_eq!(
-        burning.state_fields.get("ticks"),
-        Some(&Value::Int(2)),
-        "condition state 'ticks' should have been decremented from 3 to 2"
+    // SetConditionState is now yielded in poll mode. Verify it was yielded.
+    let set_state = effects.iter().find(|e| {
+        matches!(e, Effect::SetConditionState { .. })
+    });
+    assert!(
+        set_state.is_some(),
+        "expected SetConditionState to be yielded in poll mode"
     );
+    if let Some(Effect::SetConditionState { fields, .. }) = set_state {
+        assert_eq!(
+            fields.get(&Name::from("ticks")),
+            Some(&Value::Int(2)),
+            "SetConditionState should carry ticks decremented from 3 to 2"
+        );
+    }
 }
 
 #[test]
