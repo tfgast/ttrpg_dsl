@@ -3567,6 +3567,36 @@ impl Frame {
                             *bound_args = Some(mapped);
                         }
 
+                        // Tables with defaults: now that args are resolved,
+                        // dispatch the table lookup directly (tables have no body).
+                        if *is_table {
+                            let resolved_args: Vec<Value> = bound_args
+                                .as_ref()
+                                .unwrap()
+                                .iter()
+                                .map(|(_, v)| v.clone())
+                                .collect();
+                            let n = name.clone();
+                            let mut ctx = FrameAssignCtx {
+                                scopes: &mut env.scopes,
+                                turn_actor: env.turn_actor,
+                                core,
+                                state: sp,
+                                handler: &mut *eh,
+                                collected: Vec::new(),
+                            };
+                            let result = crate::call::dispatch_table_exec(
+                                &mut ctx,
+                                &n,
+                                resolved_args,
+                                Span::dummy(),
+                            );
+                            return match result {
+                                Ok(val) => Advance::Pop(val),
+                                Err(e) => Advance::Error(e),
+                            };
+                        }
+
                         *phase = DeriveEvalPhase::CollectModifiers;
                         Advance::Continue
                     }
