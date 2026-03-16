@@ -741,121 +741,6 @@ pub(crate) fn run_phase1(
     Ok(params)
 }
 
-/// Apply a single Phase 1 modifier: push scope, bind receiver/params/state,
-/// execute modify stmts, pop scope, collect param changes.
-///
-/// Returns `(updated_params, changes)` but does NOT emit the ModifyApplied
-/// effect — the caller is responsible for yielding/emitting it.
-#[allow(clippy::type_complexity)]
-pub(crate) fn apply_phase1_modifier(
-    env: &mut Env,
-    modifier: &OwnedModifier,
-    mut params: Vec<(Name, Value)>,
-) -> Result<(Vec<(Name, Value)>, Vec<FieldChange>), RuntimeError> {
-    let old_params: Vec<(Name, Value)> = params.clone();
-
-    env.push_scope();
-
-    // Bind receiver if condition modifier
-    if let (Some(bearer), Some(recv_name)) = (&modifier.bearer, &modifier.receiver_name) {
-        env.bind(recv_name.clone(), bearer.clone());
-    }
-
-    // Bind condition params (e.g., source, level)
-    for (name, val) in &modifier.condition_params {
-        env.bind(name.clone(), val.clone());
-    }
-
-    // Bind all params of the target function (read-only access for expressions)
-    for (name, val) in &params {
-        env.bind(name.clone(), val.clone());
-    }
-
-    // Bind state fields as read-only struct for condition modifiers
-    if !modifier.condition_state_fields.is_empty() {
-        env.bind(
-            Name::from("state"),
-            Value::Struct {
-                name: Name::from("state"),
-                fields: modifier.condition_state_fields.clone(),
-            },
-        );
-    }
-
-    // Execute modify stmts (Phase 1: param overrides only)
-    let result = exec_modify_stmts_phase1(env, &modifier.clause.body, &mut params);
-
-    env.pop_scope();
-
-    // Propagate errors after scope cleanup
-    result?;
-
-    let changes = collect_param_changes(&old_params, &params);
-    Ok((params, changes))
-}
-
-/// Apply a single Phase 2 modifier: push scope, bind receiver/params/state/result,
-/// execute modify stmts, pop scope, collect result changes.
-///
-/// Returns `(updated_result, changes)` but does NOT emit the ModifyApplied
-/// effect — the caller is responsible for yielding/emitting it.
-pub(crate) fn apply_phase2_modifier(
-    env: &mut Env,
-    fn_info: &FnInfo,
-    modifier: &OwnedModifier,
-    params: &[(Name, Value)],
-    mut result: Value,
-) -> Result<(Value, Vec<FieldChange>), RuntimeError> {
-    // Skip modifiers with no Phase 2 stmts
-    if !has_phase2_stmts(&modifier.clause.body) {
-        return Ok((result, Vec::new()));
-    }
-
-    let old_result = result.clone();
-
-    env.push_scope();
-
-    // Bind receiver if condition modifier
-    if let (Some(bearer), Some(recv_name)) = (&modifier.bearer, &modifier.receiver_name) {
-        env.bind(recv_name.clone(), bearer.clone());
-    }
-
-    // Bind condition params (e.g., source, level)
-    for (name, val) in &modifier.condition_params {
-        env.bind(name.clone(), val.clone());
-    }
-
-    // Bind all params of the target function
-    for (name, val) in params {
-        env.bind(name.clone(), val.clone());
-    }
-
-    // Bind state fields as read-only struct for condition modifiers
-    if !modifier.condition_state_fields.is_empty() {
-        env.bind(
-            Name::from("state"),
-            Value::Struct {
-                name: Name::from("state"),
-                fields: modifier.condition_state_fields.clone(),
-            },
-        );
-    }
-
-    // Bind result
-    env.bind(Name::from("result"), result.clone());
-
-    // Execute modify stmts (Phase 2: result overrides only)
-    let exec_result = exec_modify_stmts_phase2(env, &modifier.clause.body, &mut result);
-
-    env.pop_scope();
-
-    // Propagate errors after scope cleanup
-    exec_result?;
-
-    let changes = collect_result_changes(&old_result, &result, fn_info);
-    Ok((result, changes))
-}
-
 /// Execute Phase 2 of the modify pipeline: rewrite output result.
 ///
 /// For each modifier, execute its modify stmts in a temporary scope.
@@ -1151,7 +1036,7 @@ fn exec_modify_stmts_phase2(
 }
 
 /// Check if any modify stmts contain Phase 1 operations (non-result param overrides, lets).
-fn has_phase1_stmts(stmts: &[ModifyStmt]) -> bool {
+pub(crate) fn has_phase1_stmts(stmts: &[ModifyStmt]) -> bool {
     stmts.iter().any(|s| match s {
         ModifyStmt::ParamOverride { name, .. } => name != "result",
         ModifyStmt::Let { .. } => true,
@@ -1165,7 +1050,7 @@ fn has_phase1_stmts(stmts: &[ModifyStmt]) -> bool {
 }
 
 /// Check if any modify stmts contain Phase 2 operations.
-fn has_phase2_stmts(stmts: &[ModifyStmt]) -> bool {
+pub(crate) fn has_phase2_stmts(stmts: &[ModifyStmt]) -> bool {
     stmts.iter().any(|s| match s {
         ModifyStmt::ResultOverride { .. } => true,
         ModifyStmt::ParamOverride { name, .. } => name == "result",
@@ -1180,7 +1065,7 @@ fn has_phase2_stmts(stmts: &[ModifyStmt]) -> bool {
 
 // ── Change tracking ─────────────────────────────────────────────
 
-fn collect_param_changes(old: &[(Name, Value)], new: &[(Name, Value)]) -> Vec<FieldChange> {
+pub(crate) fn collect_param_changes(old: &[(Name, Value)], new: &[(Name, Value)]) -> Vec<FieldChange> {
     let mut changes = Vec::new();
     for (i, (name, old_val)) in old.iter().enumerate() {
         let new_val = &new[i].1;
@@ -1195,7 +1080,7 @@ fn collect_param_changes(old: &[(Name, Value)], new: &[(Name, Value)]) -> Vec<Fi
     changes
 }
 
-fn collect_result_changes(old: &Value, new: &Value, _fn_info: &FnInfo) -> Vec<FieldChange> {
+pub(crate) fn collect_result_changes(old: &Value, new: &Value, _fn_info: &FnInfo) -> Vec<FieldChange> {
     if old == new {
         return Vec::new();
     }

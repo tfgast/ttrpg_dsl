@@ -88,6 +88,15 @@ impl ExecEnv {
             scope.bindings.insert(name, value);
         }
     }
+
+    fn lookup(&self, name: &str) -> Option<&Value> {
+        for scope in self.scopes.iter().rev() {
+            if let Some(val) = scope.bindings.get(name) {
+                return Some(val);
+            }
+        }
+        None
+    }
 }
 
 // ── Frame-based assignment context ─────────────────────────────
@@ -1062,6 +1071,963 @@ fn bridge_run<R>(
     core.sync_counters(inv, cond);
 
     result
+}
+
+// ── Native modifier pipeline (no bridge_run) ──────────────────
+//
+// These functions mirror the Env-based modifier pipeline in pipeline.rs
+// and action.rs, but operate directly on step-based execution primitives
+// (RuntimeCore + ExecEnv + StateProvider + EffectHandler).  Expression
+// evaluation still bridges per-expression via eval_expr_via_handler,
+// but the outer bridge_run wrapper is eliminated.
+
+/// Native version of `action::collect_cost_modifiers`.
+fn collect_cost_modifiers_native(
+    core: &RuntimeCore,
+    env: &mut ExecEnv,
+    sp: &dyn StateProvider,
+    eh: &mut dyn EffectHandler,
+    actor: &EntityRef,
+    action_name: &str,
+) -> Result<Vec<OwnedModifier>, RuntimeError> {
+    use crate::effect::ModifySource;
+    use crate::eval::value_eq;
+    use ttrpg_ast::ast::{ConditionClause, ModifyTarget};
+
+    let conditions = match sp.read_conditions(actor) {
+        Some(c) => c,
+        None => return Ok(Vec::new()),
+    };
+
+    let stacking_winners =
+        crate::pipeline::compute_stacking_winners(&conditions, &core.program);
+
+    let mut cost_modifiers: Vec<(u64, OwnedModifier)> = Vec::new();
+
+    for condition in &conditions {
+        if !stacking_winners.contains(&condition.id) {
+            continue;
+        }
+
+        let cond_decl = match core.program.conditions.get(condition.name.as_str()) {
+            Some(d) => d,
+            None => continue,
+        };
+
+        for clause_item in &cond_decl.clauses {
+            let clause = match clause_item {
+                ConditionClause::Modify(c) => c,
+                ConditionClause::Suppress(_)
+                | ConditionClause::SuppressModify(_)
+                | ConditionClause::OnApply(_)
+                | ConditionClause::OnRemove(_)
+                | ConditionClause::OnEvent(_)
+                | ConditionClause::Include(_) => continue,
+            };
+
+            match &clause.target {
+                ModifyTarget::Cost(name) if name == action_name => {}
+                _ => continue,
+            }
+
+            let bindings_match = if clause.bindings.is_empty() {
+                true
+            } else {
+                let mut all_match = true;
+
+                let binding_vals: Vec<Option<Value>> = clause
+                    .bindings
+                    .iter()
+                    .map(|b| env.lookup(&b.name).cloned())
+                    .collect();
+
+                env.push_scope();
+                env.bind(
+                    cond_decl.receiver_name.clone(),
+                    Value::Entity(condition.bearer),
+                );
+                for (name, val) in &condition.params {
+                    env.bind(name.clone(), val.clone());
+                }
+                if !condition.state_fields.is_empty() {
+                    env.bind(
+                        Name::from("state"),
+                        Value::Struct {
+                            name: Name::from("state"),
+                            fields: condition.state_fields.clone(),
+                        },
+                    );
+                }
+
+                for (idx, binding) in clause.bindings.iter().enumerate() {
+                    let param_val = match &binding_vals[idx] {
+                        Some(val) => val.clone(),
+                        None => {
+                            all_match = false;
+                            break;
+                        }
+                    };
+
+                    if let Some(ref expr) = binding.value {
+                        match eval_expr_via_handler(core, env, sp, eh, expr) {
+                            Ok(val) => {
+                                if !value_eq(sp, &param_val, &val) {
+                                    all_match = false;
+                                    break;
+                                }
+                            }
+                            Err(e) => {
+                                env.pop_scope();
+                                return Err(e);
+                            }
+                        }
+                    }
+                }
+
+                env.pop_scope();
+                all_match
+            };
+
+            if bindings_match {
+                cost_modifiers.push((
+                    condition.gained_at,
+                    OwnedModifier {
+                        source: ModifySource::Condition(condition.name.clone()),
+                        clause: clause.clone(),
+                        bearer: Some(Value::Entity(condition.bearer)),
+                        receiver_name: Some(cond_decl.receiver_name.clone()),
+                        condition_params: condition.params.clone(),
+                        condition_id: Some(condition.id),
+                        condition_duration: Some(condition.duration.clone()),
+                        condition_state_fields: condition.state_fields.clone(),
+                    },
+                ));
+            }
+        }
+    }
+
+    cost_modifiers.sort_by_key(|(gained_at, _)| *gained_at);
+    Ok(cost_modifiers.into_iter().map(|(_, m)| m).collect())
+}
+
+/// Native version of `action::apply_single_cost_modifier`.
+fn apply_single_cost_modifier_native(
+    core: &RuntimeCore,
+    env: &mut ExecEnv,
+    sp: &dyn StateProvider,
+    eh: &mut dyn EffectHandler,
+    modifier: &OwnedModifier,
+    effective: &mut CostClause,
+    action_name: &str,
+) -> Result<Option<crate::effect::Effect>, RuntimeError> {
+    use crate::effect::FieldChange;
+
+    let old_tokens: Vec<String> = effective
+        .tokens
+        .iter()
+        .map(|t| t.node.to_string())
+        .collect();
+    let old_free = effective.free;
+
+    env.push_scope();
+
+    if let (Some(receiver_name), Some(bearer)) = (&modifier.receiver_name, &modifier.bearer) {
+        env.bind(receiver_name.clone(), bearer.clone());
+    }
+
+    for (name, val) in &modifier.condition_params {
+        env.bind(name.clone(), val.clone());
+    }
+
+    if !modifier.condition_state_fields.is_empty() {
+        env.bind(
+            Name::from("state"),
+            Value::Struct {
+                name: Name::from("state"),
+                fields: modifier.condition_state_fields.clone(),
+            },
+        );
+    }
+
+    let result = exec_cost_modify_stmts_native(core, env, sp, eh, &modifier.clause.body, effective);
+    env.pop_scope();
+    result?;
+
+    let new_tokens: Vec<String> = effective
+        .tokens
+        .iter()
+        .map(|t| t.node.to_string())
+        .collect();
+    if old_free != effective.free || old_tokens != new_tokens {
+        let old_desc = if old_free {
+            "free".to_string()
+        } else {
+            old_tokens.join(", ")
+        };
+        let new_desc = if effective.free {
+            "free".to_string()
+        } else {
+            new_tokens.join(", ")
+        };
+        let changes = vec![FieldChange {
+            name: Name::from("cost"),
+            old: Value::Str(old_desc),
+            new: Value::Str(new_desc),
+        }];
+        Ok(Some(crate::effect::Effect::ModifyApplied {
+            source: modifier.source.clone(),
+            target_fn: Name::from(action_name),
+            phase: Phase::Phase1,
+            changes,
+            tags: modifier.clause.tags.clone(),
+        }))
+    } else {
+        Ok(None)
+    }
+}
+
+/// Native version of `action::exec_cost_modify_stmts`.
+fn exec_cost_modify_stmts_native(
+    core: &RuntimeCore,
+    env: &mut ExecEnv,
+    sp: &dyn StateProvider,
+    eh: &mut dyn EffectHandler,
+    stmts: &[ttrpg_ast::ast::ModifyStmt],
+    effective: &mut CostClause,
+) -> Result<(), RuntimeError> {
+    use ttrpg_ast::ast::ModifyStmt;
+
+    for stmt in stmts {
+        match stmt {
+            ModifyStmt::CostOverride { tokens, free, .. } => {
+                effective.tokens.clone_from(tokens);
+                effective.free = *free;
+            }
+            ModifyStmt::Let { name, value, .. } => {
+                let val = eval_expr_via_handler(core, env, sp, eh, value)?;
+                env.bind(name.clone(), val);
+            }
+            ModifyStmt::If {
+                condition,
+                then_body,
+                else_body,
+                ..
+            } => {
+                let cond = eval_expr_via_handler(core, env, sp, eh, condition)?;
+                match cond {
+                    Value::Bool(true) => {
+                        env.push_scope();
+                        let r = exec_cost_modify_stmts_native(core, env, sp, eh, then_body, effective);
+                        env.pop_scope();
+                        r?;
+                    }
+                    Value::Bool(false) => {
+                        if let Some(else_stmts) = else_body {
+                            env.push_scope();
+                            let r = exec_cost_modify_stmts_native(core, env, sp, eh, else_stmts, effective);
+                            env.pop_scope();
+                            r?;
+                        }
+                    }
+                    _ => {
+                        return Err(RuntimeError::with_span(
+                            "cost modify if condition must be Bool",
+                            condition.span,
+                        ));
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+    Ok(())
+}
+
+/// Native version of `pipeline::collect_modifiers_owned`.
+fn collect_modifiers_owned_native(
+    core: &RuntimeCore,
+    env: &mut ExecEnv,
+    sp: &dyn StateProvider,
+    eh: &mut dyn EffectHandler,
+    fn_name: &str,
+    fn_info: &FnInfo,
+    bound_params: &[(Name, Value)],
+) -> Result<Vec<OwnedModifier>, RuntimeError> {
+    use std::collections::HashSet;
+    use crate::effect::ModifySource;
+    use ttrpg_ast::ast::{ConditionClause, ModifyTarget};
+
+    let mut condition_modifiers: Vec<(u64, OwnedModifier)> = Vec::new();
+    let mut seen_condition_ids: HashSet<u64> = HashSet::new();
+    let mut suppressions: Vec<NativeSuppressModify> = Vec::new();
+
+    // 1. For each entity-typed param, query conditions
+    for (i, param_info) in fn_info.params.iter().enumerate() {
+        if !param_info.ty.is_entity() {
+            continue;
+        }
+        let entity_ref = match &bound_params[i].1 {
+            Value::Entity(e) => *e,
+            _ => continue,
+        };
+
+        let conditions = match sp.read_conditions(&entity_ref) {
+            Some(c) => c,
+            None => {
+                return Err(RuntimeError::new(format!(
+                    "read_conditions returned None for entity {entity_ref:?} — host state out of sync",
+                )));
+            }
+        };
+
+        let stacking_winners =
+            crate::pipeline::compute_stacking_winners(&conditions, &core.program);
+
+        for condition in &conditions {
+            if !seen_condition_ids.insert(condition.id) {
+                continue;
+            }
+
+            if !stacking_winners.contains(&condition.id) {
+                continue;
+            }
+
+            let cond_decl = match core.program.conditions.get(condition.name.as_str()) {
+                Some(d) => d,
+                None => continue,
+            };
+
+            for clause_item in &cond_decl.clauses {
+                if let ConditionClause::SuppressModify(sm) = clause_item {
+                    suppressions.push(NativeSuppressModify {
+                        clause: sm.clone(),
+                        bearer: Value::Entity(condition.bearer),
+                        receiver_name: cond_decl.receiver_name.clone(),
+                        condition_params: condition.params.clone(),
+                    });
+                    continue;
+                }
+
+                let clause = match clause_item {
+                    ConditionClause::Modify(c) => c,
+                    ConditionClause::Suppress(_)
+                    | ConditionClause::SuppressModify(_)
+                    | ConditionClause::OnApply(_)
+                    | ConditionClause::OnRemove(_)
+                    | ConditionClause::OnEvent(_)
+                    | ConditionClause::Include(_) => continue,
+                };
+
+                match &clause.target {
+                    ModifyTarget::Named(name) => {
+                        if name != fn_name {
+                            continue;
+                        }
+                    }
+                    ModifyTarget::Selector(_) => {
+                        match core.type_env.selector_matches.get(&clause.id) {
+                            Some(set) if set.contains(fn_name) => {}
+                            _ => continue,
+                        }
+                    }
+                    ModifyTarget::Cost(_) => continue,
+                }
+
+                if check_modify_bindings_native(
+                    core, env, sp, eh, clause, condition,
+                    &cond_decl.receiver_name, fn_info, bound_params,
+                )? {
+                    condition_modifiers.push((
+                        condition.gained_at,
+                        OwnedModifier {
+                            source: ModifySource::Condition(condition.name.clone()),
+                            clause: clause.clone(),
+                            bearer: Some(Value::Entity(condition.bearer)),
+                            receiver_name: Some(cond_decl.receiver_name.clone()),
+                            condition_params: condition.params.clone(),
+                            condition_id: Some(condition.id),
+                            condition_duration: Some(condition.duration.clone()),
+                            condition_state_fields: condition.state_fields.clone(),
+                        },
+                    ));
+                }
+            }
+        }
+    }
+
+    condition_modifiers.sort_by_key(|(gained_at, _)| *gained_at);
+    let mut result: Vec<OwnedModifier> = condition_modifiers.into_iter().map(|(_, m)| m).collect();
+
+    // 2. Query enabled options and check their modify clauses
+    let mut enabled_options = sp.read_enabled_options();
+    let option_order = &core.program.option_order;
+    enabled_options.sort_by_key(|name| {
+        option_order
+            .iter()
+            .position(|o| *o == name.as_str())
+            .unwrap_or(usize::MAX)
+    });
+    for opt_name in &enabled_options {
+        let opt_decl = match core.program.options.get(opt_name.as_str()) {
+            Some(decl) => decl,
+            None => continue,
+        };
+
+        let clauses = match &opt_decl.when_enabled {
+            Some(clauses) => clauses,
+            None => continue,
+        };
+
+        for clause in clauses {
+            match &clause.target {
+                ModifyTarget::Named(name) => {
+                    if name != fn_name {
+                        continue;
+                    }
+                }
+                ModifyTarget::Selector(_) => {
+                    match core.type_env.selector_matches.get(&clause.id) {
+                        Some(set) if set.contains(fn_name) => {}
+                        _ => continue,
+                    }
+                }
+                ModifyTarget::Cost(_) => continue,
+            }
+
+            if check_option_modify_bindings_native(core, env, sp, eh, clause, fn_info, bound_params)? {
+                result.push(OwnedModifier {
+                    source: ModifySource::Option(opt_name.clone()),
+                    clause: clause.clone(),
+                    bearer: None,
+                    receiver_name: None,
+                    condition_params: BTreeMap::new(),
+                    condition_id: None,
+                    condition_duration: None,
+                    condition_state_fields: BTreeMap::new(),
+                });
+            }
+        }
+    }
+
+    // 3. Filter out suppressed modifiers
+    if !suppressions.is_empty() {
+        let mut filtered = Vec::with_capacity(result.len());
+        for modifier in result {
+            if !is_modifier_suppressed_native(
+                core, env, sp, eh, &modifier, fn_info, bound_params, &suppressions,
+            )? {
+                filtered.push(modifier);
+            }
+        }
+        result = filtered;
+    }
+
+    Ok(result)
+}
+
+/// Native version of `pipeline::check_modify_bindings`.
+fn check_modify_bindings_native(
+    core: &RuntimeCore,
+    env: &mut ExecEnv,
+    sp: &dyn StateProvider,
+    eh: &mut dyn EffectHandler,
+    clause: &ttrpg_ast::ast::ModifyClause,
+    condition: &ActiveCondition,
+    receiver_name: &Name,
+    _fn_info: &FnInfo,
+    bound_params: &[(Name, Value)],
+) -> Result<bool, RuntimeError> {
+    use crate::eval::value_eq;
+
+    if clause.bindings.is_empty() {
+        return Ok(true);
+    }
+
+    let receiver_name = receiver_name.clone();
+
+    for binding in &clause.bindings {
+        let param_val = match bound_params.iter().find(|(name, _)| *name == binding.name) {
+            Some((_, val)) => val.clone(),
+            None => return Ok(false),
+        };
+
+        env.push_scope();
+        env.bind(receiver_name.clone(), Value::Entity(condition.bearer));
+        for (name, val) in &condition.params {
+            env.bind(name.clone(), val.clone());
+        }
+        for (name, val) in bound_params {
+            env.bind(name.clone(), val.clone());
+        }
+        if !condition.state_fields.is_empty() {
+            env.bind(
+                Name::from("state"),
+                Value::Struct {
+                    name: Name::from("state"),
+                    fields: condition.state_fields.clone(),
+                },
+            );
+        }
+
+        let binding_val = match binding.value {
+            Some(ref expr) => eval_expr_via_handler(core, env, sp, eh, expr),
+            None => {
+                env.pop_scope();
+                continue;
+            }
+        };
+        env.pop_scope();
+
+        let val = binding_val?;
+        if !value_eq(sp, &param_val, &val) {
+            return Ok(false);
+        }
+    }
+
+    Ok(true)
+}
+
+/// Native version of `pipeline::check_option_modify_bindings`.
+fn check_option_modify_bindings_native(
+    core: &RuntimeCore,
+    env: &mut ExecEnv,
+    sp: &dyn StateProvider,
+    eh: &mut dyn EffectHandler,
+    clause: &ttrpg_ast::ast::ModifyClause,
+    _fn_info: &FnInfo,
+    bound_params: &[(Name, Value)],
+) -> Result<bool, RuntimeError> {
+    use crate::eval::value_eq;
+
+    if clause.bindings.is_empty() {
+        return Ok(true);
+    }
+
+    for binding in &clause.bindings {
+        let param_val = match bound_params.iter().find(|(name, _)| *name == binding.name) {
+            Some((_, val)) => val.clone(),
+            None => return Ok(false),
+        };
+
+        let binding_expr = match binding.value {
+            Some(ref expr) => expr,
+            None => continue,
+        };
+
+        env.push_scope();
+        for (name, val) in bound_params {
+            env.bind(name.clone(), val.clone());
+        }
+
+        let binding_val = eval_expr_via_handler(core, env, sp, eh, binding_expr);
+        env.pop_scope();
+
+        let val = binding_val?;
+        if !value_eq(sp, &param_val, &val) {
+            return Ok(false);
+        }
+    }
+
+    Ok(true)
+}
+
+/// Native version of `pipeline::is_modifier_suppressed`.
+fn is_modifier_suppressed_native<S>(
+    core: &RuntimeCore,
+    env: &mut ExecEnv,
+    sp: &dyn StateProvider,
+    eh: &mut dyn EffectHandler,
+    modifier: &OwnedModifier,
+    fn_info: &FnInfo,
+    bound_params: &[(Name, Value)],
+    suppressions: &[S],
+) -> Result<bool, RuntimeError>
+where
+    S: SuppressModifyAccess,
+{
+    use crate::eval::value_eq;
+    use ttrpg_ast::ast::SelectorPredicate;
+
+    for sup in suppressions {
+        let preds_match = sup.clause().predicates.iter().all(|pred| match pred {
+            SelectorPredicate::Tag(tag) => modifier.clause.tags.contains(tag),
+            SelectorPredicate::Returns(type_expr) => {
+                if let Some(fi) = core.type_env.functions.get(fn_info.name.as_str()) {
+                    let resolved = core.type_env.resolve_type(type_expr);
+                    fi.return_type == resolved
+                } else {
+                    false
+                }
+            }
+            SelectorPredicate::HasParam { name, ty } => fn_info.params.iter().any(|p| {
+                if p.name != *name {
+                    return false;
+                }
+                if let Some(te) = ty {
+                    let resolved = core.type_env.resolve_type(te);
+                    p.ty == resolved
+                } else {
+                    true
+                }
+            }),
+        });
+        if !preds_match {
+            continue;
+        }
+
+        if sup.clause().bindings.is_empty() {
+            return Ok(true);
+        }
+
+        env.push_scope();
+        env.bind(sup.receiver_name().clone(), sup.bearer().clone());
+        for (pname, pval) in sup.condition_params() {
+            env.bind(pname.clone(), pval.clone());
+        }
+
+        let mut bindings_match = true;
+        for binding in &sup.clause().bindings {
+            let param_val = match bound_params.iter().find(|(name, _)| *name == binding.name) {
+                Some((_, val)) => val.clone(),
+                None => {
+                    bindings_match = false;
+                    break;
+                }
+            };
+
+            if let Some(value_expr) = &binding.value {
+                let binding_val = eval_expr_via_handler(core, env, sp, eh, value_expr)?;
+                if !value_eq(sp, &param_val, &binding_val) {
+                    bindings_match = false;
+                    break;
+                }
+            }
+        }
+
+        env.pop_scope();
+
+        if bindings_match {
+            return Ok(true);
+        }
+    }
+    Ok(false)
+}
+
+/// Trait for accessing fields of an active suppress-modify entry.
+/// Avoids importing `pipeline::ActiveSuppressModify` which is private.
+trait SuppressModifyAccess {
+    fn clause(&self) -> &ttrpg_ast::ast::SuppressModifyClause;
+    fn bearer(&self) -> &Value;
+    fn receiver_name(&self) -> &Name;
+    fn condition_params(&self) -> &BTreeMap<Name, Value>;
+}
+
+/// Local suppress-modify struct for `collect_modifiers_owned_native`.
+struct NativeSuppressModify {
+    clause: ttrpg_ast::ast::SuppressModifyClause,
+    bearer: Value,
+    receiver_name: Name,
+    condition_params: BTreeMap<Name, Value>,
+}
+
+impl SuppressModifyAccess for NativeSuppressModify {
+    fn clause(&self) -> &ttrpg_ast::ast::SuppressModifyClause { &self.clause }
+    fn bearer(&self) -> &Value { &self.bearer }
+    fn receiver_name(&self) -> &Name { &self.receiver_name }
+    fn condition_params(&self) -> &BTreeMap<Name, Value> { &self.condition_params }
+}
+
+/// Native version of `pipeline::apply_phase1_modifier`.
+fn apply_phase1_modifier_native(
+    core: &RuntimeCore,
+    env: &mut ExecEnv,
+    sp: &dyn StateProvider,
+    eh: &mut dyn EffectHandler,
+    modifier: &OwnedModifier,
+    mut params: Vec<(Name, Value)>,
+) -> Result<(Vec<(Name, Value)>, Vec<crate::effect::FieldChange>), RuntimeError> {
+    let old_params: Vec<(Name, Value)> = params.clone();
+
+    env.push_scope();
+
+    if let (Some(bearer), Some(recv_name)) = (&modifier.bearer, &modifier.receiver_name) {
+        env.bind(recv_name.clone(), bearer.clone());
+    }
+
+    for (name, val) in &modifier.condition_params {
+        env.bind(name.clone(), val.clone());
+    }
+
+    for (name, val) in &params {
+        env.bind(name.clone(), val.clone());
+    }
+
+    if !modifier.condition_state_fields.is_empty() {
+        env.bind(
+            Name::from("state"),
+            Value::Struct {
+                name: Name::from("state"),
+                fields: modifier.condition_state_fields.clone(),
+            },
+        );
+    }
+
+    let result = exec_modify_stmts_phase1_native(core, env, sp, eh, &modifier.clause.body, &mut params);
+
+    env.pop_scope();
+    result?;
+
+    let changes = crate::pipeline::collect_param_changes(&old_params, &params);
+    Ok((params, changes))
+}
+
+/// Native version of `pipeline::exec_modify_stmts_phase1`.
+fn exec_modify_stmts_phase1_native(
+    core: &RuntimeCore,
+    env: &mut ExecEnv,
+    sp: &dyn StateProvider,
+    eh: &mut dyn EffectHandler,
+    stmts: &[ttrpg_ast::ast::ModifyStmt],
+    params: &mut Vec<(Name, Value)>,
+) -> Result<(), RuntimeError> {
+    use ttrpg_ast::ast::ModifyStmt;
+
+    for stmt in stmts {
+        match stmt {
+            ModifyStmt::ParamOverride { name, value, .. } => {
+                if name == "result" {
+                    continue;
+                }
+                let val = eval_expr_via_handler(core, env, sp, eh, value)?;
+                if let Some(param) = params.iter_mut().find(|(n, _)| n == name) {
+                    param.1 = val;
+                    env.bind(name.clone(), param.1.clone());
+                }
+            }
+            ModifyStmt::Let { name, value, .. } => {
+                let val = eval_expr_via_handler(core, env, sp, eh, value)?;
+                env.bind(name.clone(), val);
+            }
+            ModifyStmt::If {
+                condition,
+                then_body,
+                else_body,
+                ..
+            } => {
+                if !crate::pipeline::has_phase1_stmts(then_body)
+                    && !else_body.as_ref().is_some_and(|e| crate::pipeline::has_phase1_stmts(e))
+                {
+                    continue;
+                }
+                let cond = eval_expr_via_handler(core, env, sp, eh, condition)?;
+                match cond {
+                    Value::Bool(true) => {
+                        env.push_scope();
+                        let r = exec_modify_stmts_phase1_native(core, env, sp, eh, then_body, params);
+                        env.pop_scope();
+                        for (name, val) in params.iter() {
+                            env.bind(name.clone(), val.clone());
+                        }
+                        r?;
+                    }
+                    Value::Bool(false) => {
+                        if let Some(else_stmts) = else_body {
+                            env.push_scope();
+                            let r = exec_modify_stmts_phase1_native(core, env, sp, eh, else_stmts, params);
+                            env.pop_scope();
+                            for (name, val) in params.iter() {
+                                env.bind(name.clone(), val.clone());
+                            }
+                            r?;
+                        }
+                    }
+                    _ => {
+                        return Err(RuntimeError::with_span(
+                            "modify if condition must be Bool",
+                            condition.span,
+                        ));
+                    }
+                }
+            }
+            ModifyStmt::ResultOverride { .. } | ModifyStmt::CostOverride { .. } => {}
+        }
+    }
+    Ok(())
+}
+
+/// Native version of `pipeline::apply_phase2_modifier`.
+fn apply_phase2_modifier_native(
+    core: &RuntimeCore,
+    env: &mut ExecEnv,
+    sp: &dyn StateProvider,
+    eh: &mut dyn EffectHandler,
+    fn_info: &FnInfo,
+    modifier: &OwnedModifier,
+    params: &[(Name, Value)],
+    mut result: Value,
+) -> Result<(Value, Vec<crate::effect::FieldChange>), RuntimeError> {
+    if !crate::pipeline::has_phase2_stmts(&modifier.clause.body) {
+        return Ok((result, Vec::new()));
+    }
+
+    let old_result = result.clone();
+
+    env.push_scope();
+
+    if let (Some(bearer), Some(recv_name)) = (&modifier.bearer, &modifier.receiver_name) {
+        env.bind(recv_name.clone(), bearer.clone());
+    }
+
+    for (name, val) in &modifier.condition_params {
+        env.bind(name.clone(), val.clone());
+    }
+
+    for (name, val) in params {
+        env.bind(name.clone(), val.clone());
+    }
+
+    if !modifier.condition_state_fields.is_empty() {
+        env.bind(
+            Name::from("state"),
+            Value::Struct {
+                name: Name::from("state"),
+                fields: modifier.condition_state_fields.clone(),
+            },
+        );
+    }
+
+    env.bind(Name::from("result"), result.clone());
+
+    let exec_result = exec_modify_stmts_phase2_native(core, env, sp, eh, &modifier.clause.body, &mut result);
+
+    env.pop_scope();
+    exec_result?;
+
+    let changes = crate::pipeline::collect_result_changes(&old_result, &result, fn_info);
+    Ok((result, changes))
+}
+
+/// Native version of `pipeline::exec_modify_stmts_phase2`.
+fn exec_modify_stmts_phase2_native(
+    core: &RuntimeCore,
+    env: &mut ExecEnv,
+    sp: &dyn StateProvider,
+    eh: &mut dyn EffectHandler,
+    stmts: &[ttrpg_ast::ast::ModifyStmt],
+    result: &mut Value,
+) -> Result<(), RuntimeError> {
+    use ttrpg_ast::ast::ModifyStmt;
+
+    for stmt in stmts {
+        match stmt {
+            ModifyStmt::ParamOverride { name, value, .. } => {
+                if name == "result" {
+                    let val = eval_expr_via_handler(core, env, sp, eh, value)?;
+                    *result = val;
+                    env.bind(Name::from("result"), result.clone());
+                }
+            }
+            ModifyStmt::ResultOverride { field, value, .. } => {
+                let val = eval_expr_via_handler(core, env, sp, eh, value)?;
+                match result {
+                    Value::Struct { fields, .. } => {
+                        fields.insert(field.clone(), val);
+                    }
+                    Value::RollResult(rr) => match field.as_str() {
+                        "total" => {
+                            if let Value::Int(n) = val {
+                                rr.total = n;
+                            }
+                        }
+                        "unmodified" => {
+                            if let Value::Int(n) = val {
+                                rr.unmodified = n;
+                            }
+                        }
+                        "modifier" => {
+                            if let Value::Int(n) = val {
+                                rr.modifier = n;
+                            }
+                        }
+                        "expr" => {
+                            if let Value::DiceExpr(de) = val {
+                                rr.expr = de;
+                            }
+                        }
+                        "dice" => {
+                            if let Value::List(items) = val {
+                                rr.dice = items
+                                    .iter()
+                                    .filter_map(|v| {
+                                        if let Value::Int(n) = v {
+                                            Some(*n)
+                                        } else {
+                                            None
+                                        }
+                                    })
+                                    .collect();
+                            }
+                        }
+                        "kept" => {
+                            if let Value::List(items) = val {
+                                rr.kept = items
+                                    .iter()
+                                    .filter_map(|v| {
+                                        if let Value::Int(n) = v {
+                                            Some(*n)
+                                        } else {
+                                            None
+                                        }
+                                    })
+                                    .collect();
+                            }
+                        }
+                        _ => {}
+                    },
+                    _ => {}
+                }
+                env.bind(Name::from("result"), result.clone());
+            }
+            ModifyStmt::Let { name, value, .. } => {
+                let val = eval_expr_via_handler(core, env, sp, eh, value)?;
+                env.bind(name.clone(), val);
+            }
+            ModifyStmt::If {
+                condition,
+                then_body,
+                else_body,
+                ..
+            } => {
+                let cond = eval_expr_via_handler(core, env, sp, eh, condition)?;
+                match cond {
+                    Value::Bool(true) => {
+                        env.push_scope();
+                        let r = exec_modify_stmts_phase2_native(core, env, sp, eh, then_body, result);
+                        env.pop_scope();
+                        env.bind(Name::from("result"), result.clone());
+                        r?;
+                    }
+                    Value::Bool(false) => {
+                        if let Some(else_stmts) = else_body {
+                            env.push_scope();
+                            let r = exec_modify_stmts_phase2_native(core, env, sp, eh, else_stmts, result);
+                            env.pop_scope();
+                            env.bind(Name::from("result"), result.clone());
+                            r?;
+                        }
+                    }
+                    _ => {
+                        return Err(RuntimeError::with_span(
+                            "modify if condition must be Bool",
+                            condition.span,
+                        ));
+                    }
+                }
+            }
+            ModifyStmt::CostOverride { .. } => {}
+        }
+    }
+    Ok(())
 }
 
 // ── Action lifecycle step machine ──────────────────────────────
@@ -2247,20 +3213,9 @@ impl Frame {
 
                 match phase {
                     CostEvalPhase::CollectModifiers => {
-                        // Collect matching cost modifiers via bridge (needs
-                        // eval_expr for binding evaluation).
-                        let actor_ref = *actor;
-                        let action = action_name.as_str().to_owned();
-
-                        let collect_result = bridge_run(
-                            core,
-                            env,
-                            sp,
-                            &mut *eh,
-                            BridgeCategory::Pipeline,
-                            move |tmp_env| {
-                                crate::action::collect_cost_modifiers(tmp_env, &actor_ref, &action)
-                            },
+                        // Collect matching cost modifiers natively (no bridge_run).
+                        let collect_result = collect_cost_modifiers_native(
+                            core, env, sp, &mut *eh, actor, action_name.as_str(),
                         );
 
                         match collect_result {
@@ -2290,32 +3245,18 @@ impl Frame {
                             return Advance::Continue;
                         }
 
-                        // Apply modifier at index via bridge (needs eval_expr
-                        // for cost modify stmts).
-                        let modifier = modifiers[*idx].clone();
-                        let action = action_name.as_str().to_owned();
+                        // Apply modifier at index natively (no bridge_run).
+                        let modifier = &modifiers[*idx];
                         let mut eff_cost = effective_cost.clone().unwrap_or_else(|| cost.clone());
 
-                        let apply_result = bridge_run(
-                            core,
-                            env,
-                            sp,
-                            &mut *eh,
-                            BridgeCategory::Pipeline,
-                            move |tmp_env| {
-                                let effect = crate::action::apply_single_cost_modifier(
-                                    tmp_env,
-                                    &modifier,
-                                    &mut eff_cost,
-                                    &action,
-                                )?;
-                                Ok((eff_cost, effect))
-                            },
+                        let apply_result = apply_single_cost_modifier_native(
+                            core, env, sp, &mut *eh,
+                            modifier, &mut eff_cost, action_name.as_str(),
                         );
 
                         match apply_result {
-                            Ok((new_effective, maybe_effect)) => {
-                                *effective_cost = Some(new_effective);
+                            Ok(maybe_effect) => {
+                                *effective_cost = Some(eff_cost);
                                 if let Some(effect) = maybe_effect {
                                     *pending_modify_effect = Some(effect);
                                     *phase = CostEvalPhase::YieldModifyApplied(*idx);
@@ -3229,20 +4170,12 @@ impl Frame {
 
                     DeriveEvalPhase::CollectModifiers => {
                         let fi = fn_info_cache
-                            .clone()
+                            .as_ref()
                             .expect("DeriveEval: fn_info_cache must be set");
-                        let n = name.clone();
                         let ba = bound_args.clone().unwrap_or_default();
 
-                        let collect_result = bridge_run(
-                            core,
-                            env,
-                            sp,
-                            &mut *eh,
-                            BridgeCategory::Probe,
-                            move |tmp_env| {
-                                crate::pipeline::collect_modifiers_owned(tmp_env, &n, &fi, &ba)
-                            },
+                        let collect_result = collect_modifiers_owned_native(
+                            core, env, sp, &mut *eh, name.as_str(), fi, &ba,
                         );
 
                         match collect_result {
@@ -3270,19 +4203,12 @@ impl Frame {
                             return Advance::Continue;
                         }
 
-                        let modifier = modifiers[*idx].clone();
+                        let modifier = &modifiers[*idx];
                         let params = phase1_params.take().unwrap_or_default();
                         let fn_name = name.as_str().to_owned();
 
-                        let apply_result = bridge_run(
-                            core,
-                            env,
-                            sp,
-                            &mut *eh,
-                            BridgeCategory::Eval,
-                            move |tmp_env| {
-                                crate::pipeline::apply_phase1_modifier(tmp_env, &modifier, params)
-                            },
+                        let apply_result = apply_phase1_modifier_native(
+                            core, env, sp, &mut *eh, modifier, params,
                         );
 
                         match apply_result {
@@ -3365,25 +4291,16 @@ impl Frame {
                             return Advance::Continue;
                         }
 
-                        let modifier = modifiers[*idx].clone();
+                        let modifier = &modifiers[*idx];
                         let fi = fn_info_cache
-                            .clone()
+                            .as_ref()
                             .expect("DeriveEval: fn_info_cache must be set");
                         let params = bound_args.clone().unwrap_or_default();
                         let result_val = phase2_result.take().unwrap_or(Value::Void);
                         let fn_name = name.as_str().to_owned();
 
-                        let apply_result = bridge_run(
-                            core,
-                            env,
-                            sp,
-                            &mut *eh,
-                            BridgeCategory::Eval,
-                            move |tmp_env| {
-                                crate::pipeline::apply_phase2_modifier(
-                                    tmp_env, &fi, &modifier, &params, result_val,
-                                )
-                            },
+                        let apply_result = apply_phase2_modifier_native(
+                            core, env, sp, &mut *eh, fi, modifier, &params, result_val,
                         );
 
                         match apply_result {
@@ -5219,9 +6136,9 @@ pub(crate) enum DeriveEvalPhase {
     Init,
     /// Defaults filled: store bound_args and body, transition to CollectModifiers.
     DefaultsDone,
-    /// Collect matching modifiers via bridge_run(collect_modifiers_owned).
+    /// Collect matching modifiers via native pipeline.
     CollectModifiers,
-    /// Apply Phase 1 modifier at index via bridge_run(apply_phase1_modifier).
+    /// Apply Phase 1 modifier at index via native pipeline.
     ApplyPhase1(usize),
     /// Yield the pending ModifyApplied effect for Phase 1.
     YieldPhase1(usize),
@@ -5231,7 +6148,7 @@ pub(crate) enum DeriveEvalPhase {
     PushBody,
     /// FunctionEval child completed with body result.
     BodyDone,
-    /// Apply Phase 2 modifier at index via bridge_run(apply_phase2_modifier).
+    /// Apply Phase 2 modifier at index via native pipeline.
     ApplyPhase2(usize),
     /// Yield the pending ModifyApplied effect for Phase 2.
     YieldPhase2(usize),
