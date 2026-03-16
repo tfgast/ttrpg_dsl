@@ -3,7 +3,8 @@ use ttrpg_ast::ast::PatternKind;
 use ttrpg_ast::{Name, Spanned};
 use ttrpg_checker::env::DeclInfo;
 
-use crate::Env;
+use ttrpg_checker::env::TypeEnv;
+
 use crate::state::StateProvider;
 use crate::value::Value;
 
@@ -187,8 +188,8 @@ pub(crate) fn value_eq(state: &dyn StateProvider, a: &Value, b: &Value) -> bool 
 /// `resolved_variants` (keyed by span) instead of `variant_to_enums`,
 /// which avoids treating binding-context idents as variant matches.
 /// Returns true if the pattern matches.
-pub(super) fn match_pattern(
-    env: &Env,
+pub(crate) fn match_pattern(
+    type_env: &TypeEnv,
     pattern: &Spanned<PatternKind>,
     value: &Value,
     bindings: &mut FxHashMap<Name, Value>,
@@ -206,7 +207,7 @@ pub(super) fn match_pattern(
 
         PatternKind::Some(inner_pattern) => match value {
             Value::Option(Some(inner_val)) => {
-                match_pattern(env, inner_pattern, inner_val, bindings)
+                match_pattern(type_env, inner_pattern, inner_val, bindings)
             }
             _ => false,
         },
@@ -214,9 +215,7 @@ pub(super) fn match_pattern(
         PatternKind::Ident(name) => {
             // Checker only populates resolved_variants when this ident is a variant match.
             // Absence = binding context (for-loop, destructure, or non-variant name).
-            if env
-                .interp
-                .type_env
+            if type_env
                 .resolved_variants
                 .contains_key(&pattern.span)
             {
@@ -253,7 +252,7 @@ pub(super) fn match_pattern(
                 }
                 // Match field patterns positionally against variant field values
                 // Look up variant field names from type env
-                if let Some(DeclInfo::Enum(enum_info)) = env.interp.type_env.types.get(ty.as_str())
+                if let Some(DeclInfo::Enum(enum_info)) = type_env.types.get(ty.as_str())
                     && let Some(variant_info) =
                         enum_info.variants.iter().find(|vi| vi.name == *variant)
                 {
@@ -262,7 +261,7 @@ pub(super) fn match_pattern(
                     }
                     for (pat, (field_name, _)) in patterns.iter().zip(variant_info.fields.iter()) {
                         if let Some(field_val) = fields.get(field_name) {
-                            if !match_pattern(env, pat, field_val, bindings) {
+                            if !match_pattern(type_env, pat, field_val, bindings) {
                                 return false;
                             }
                         } else {
@@ -282,9 +281,7 @@ pub(super) fn match_pattern(
             fields: patterns,
         } => {
             // Check if this is a known enum variant
-            if env
-                .interp
-                .type_env
+            if type_env
                 .variant_to_enums
                 .contains_key(name.as_str())
             {
@@ -299,7 +296,7 @@ pub(super) fn match_pattern(
                     }
                     // Use the value's own enum_name for field info lookup
                     if let Some(DeclInfo::Enum(enum_info)) =
-                        env.interp.type_env.types.get(actual_enum.as_str())
+                        type_env.types.get(actual_enum.as_str())
                         && let Some(variant_info) =
                             enum_info.variants.iter().find(|vi| vi.name == *name)
                     {
@@ -310,7 +307,7 @@ pub(super) fn match_pattern(
                             patterns.iter().zip(variant_info.fields.iter())
                         {
                             if let Some(field_val) = fields.get(field_name) {
-                                if !match_pattern(env, pat, field_val, bindings) {
+                                if !match_pattern(type_env, pat, field_val, bindings) {
                                     return false;
                                 }
                             } else {
@@ -333,14 +330,14 @@ pub(super) fn match_pattern(
                     }
                     // Match fields positionally using struct field info
                     if let Some(DeclInfo::Struct(struct_info)) =
-                        env.interp.type_env.types.get(name.as_str())
+                        type_env.types.get(name.as_str())
                     {
                         if patterns.len() != struct_info.fields.len() {
                             return false;
                         }
                         for (pat, field_info) in patterns.iter().zip(struct_info.fields.iter()) {
                             if let Some(field_val) = fields.get(&field_info.name) {
-                                if !match_pattern(env, pat, field_val, bindings) {
+                                if !match_pattern(type_env, pat, field_val, bindings) {
                                     return false;
                                 }
                             } else {

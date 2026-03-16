@@ -97,7 +97,7 @@ pub(super) fn eval_if_let(
     let scrutinee_val = eval_expr(env, scrutinee)?;
     let mut bindings = FxHashMap::default();
 
-    if match_pattern(env, pattern, &scrutinee_val, &mut bindings) {
+    if match_pattern(env.interp.type_env, pattern, &scrutinee_val, &mut bindings) {
         env.record_branch(BranchPoint {
             parent_span,
             kind: BranchKind::IfThen,
@@ -176,7 +176,7 @@ pub(super) fn eval_for(
 
     for item in items {
         let mut bindings = FxHashMap::default();
-        if match_pattern(env, pattern, &item, &mut bindings) {
+        if match_pattern(env.interp.type_env, pattern, &item, &mut bindings) {
             env.push_scope();
             for (name, val) in bindings {
                 env.bind(name, val);
@@ -242,7 +242,7 @@ pub(super) fn eval_list_comprehension(
     let mut collected = Vec::new();
     for item in items {
         let mut bindings = FxHashMap::default();
-        if match_pattern(env, pattern, &item, &mut bindings) {
+        if match_pattern(env.interp.type_env, pattern, &item, &mut bindings) {
             env.push_scope();
             for (name, val) in bindings {
                 env.bind(name, val);

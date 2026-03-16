@@ -13,13 +13,14 @@
 
 use std::collections::BTreeMap;
 
-use ttrpg_ast::ast::{ArmBody, BinOp, ElseBranch, ExprKind, GuardKind, StmtKind, TypeExpr, UnaryOp};
+use rustc_hash::FxHashMap;
+use ttrpg_ast::ast::{ArmBody, BinOp, ElseBranch, ExprKind, GuardKind, PatternKind, StmtKind, TypeExpr, UnaryOp};
 use ttrpg_ast::{Name, Span, Spanned};
 use ttrpg_checker::env::{DeclInfo, FnKind, TypeEnv};
 
 use crate::RuntimeError;
 use crate::effect::EffectHandler;
-use crate::eval::{apply_binop_values, apply_unary_values, field_access_on_value, index_on_value};
+use crate::eval::{apply_binop_values, apply_unary_values, field_access_on_value, index_on_value, match_pattern};
 use crate::execution::{Advance, ExecEnv, Frame};
 use crate::runtime_core::RuntimeCore;
 use crate::state::StateProvider;
@@ -120,6 +121,20 @@ pub(crate) enum ExprWork {
         field_names: Vec<Name>,
         span: Span,
     },
+
+    // ── Phase 5 variants ────────────────────────────────────────
+
+    /// `if let` pattern test: pop scrutinee value, try to match against
+    /// pattern. On match: push a new scope, bind pattern variables, jump
+    /// to `then_pc`. On mismatch: jump to `else_pc`.
+    IfLetTest {
+        pattern: Box<Spanned<PatternKind>>,
+        then_pc: usize,
+        else_pc: usize,
+        span: Span,
+    },
+    /// Pop the innermost scope pushed by `IfLetTest`.
+    PopScope,
 }
 
 // ── Compilation ─────────────────────────────────────────────────
@@ -392,6 +407,51 @@ fn compile_inner(
             }
         }
 
+        ExprKind::IfLet { pattern, scrutinee, then_block, else_branch } => {
+            // Evaluate scrutinee → value on operand stack
+            compile_inner(scrutinee, type_env, program, work)?;
+
+            // IfLetTest: pop scrutinee, pattern match, branch
+            let test_idx = work.len();
+            work.push(ExprWork::IfLetTest {
+                pattern: pattern.clone(),
+                then_pc: 0,
+                else_pc: 0,
+                span,
+            }); // placeholder targets
+
+            // Then branch (runs in the scope pushed by IfLetTest)
+            let then_pc = work.len();
+            work.push(ExprWork::PushBlock(then_block.node.clone(), span));
+            work.push(ExprWork::PopScope);
+            let jump_idx = work.len();
+            work.push(ExprWork::Jump(0)); // placeholder
+
+            // Else branch
+            let else_pc = work.len();
+            match else_branch {
+                Some(ElseBranch::Block(block)) => {
+                    work.push(ExprWork::PushBlock(block.node.clone(), span));
+                }
+                Some(ElseBranch::If(if_expr)) => {
+                    compile_inner(if_expr, type_env, program, work)?;
+                }
+                None => {
+                    work.push(ExprWork::Literal(Value::Void, span));
+                }
+            }
+            let end_pc = work.len();
+
+            // Patch jump targets
+            if let ExprWork::IfLetTest { then_pc: tp, else_pc: ep, .. } = &mut work[test_idx] {
+                *tp = then_pc;
+                *ep = else_pc;
+            }
+            if let ExprWork::Jump(target) = &mut work[jump_idx] {
+                *target = end_pc;
+            }
+        }
+
         ExprKind::StructLit { name, fields, groups, base, with_conditions } => {
             // Entity construction or complex features — fall back
             if !groups.is_empty() || base.is_some() || !with_conditions.is_empty() {
@@ -442,7 +502,14 @@ pub(crate) fn advance_expr_eval(
                 operands.push(val);
                 return Advance::Continue;
             }
-            Err(e) => return Advance::Error(e),
+            Err(e) => {
+                // Clean up any scopes pushed by IfLetTest before propagating.
+                for _ in 0..*_scope_depth {
+                    env.pop_scope();
+                }
+                *_scope_depth = 0;
+                return Advance::Error(e);
+            }
         }
     }
 
@@ -687,6 +754,27 @@ pub(crate) fn advance_expr_eval(
                     fields.insert(fname.clone(), val);
                 }
                 operands.push(Value::Struct { name: name.clone(), fields });
+                *pc += 1;
+            }
+
+            // ── Phase 5: IfLet pattern matching ─────────────
+            ExprWork::IfLetTest { pattern, then_pc, else_pc, span: _ } => {
+                let scrutinee = operands.pop().unwrap();
+                let mut bindings = FxHashMap::default();
+                if match_pattern(&core.type_env, pattern, &scrutinee, &mut bindings) {
+                    env.push_scope();
+                    *_scope_depth += 1;
+                    for (name, val) in bindings {
+                        env.bind(name, val);
+                    }
+                    *pc = *then_pc;
+                } else {
+                    *pc = *else_pc;
+                }
+            }
+            ExprWork::PopScope => {
+                env.pop_scope();
+                *_scope_depth -= 1;
                 *pc += 1;
             }
         }

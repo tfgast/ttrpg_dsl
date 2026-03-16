@@ -2027,7 +2027,7 @@ fn eval_pattern_bare_variant_no_match() {
     // Try to match `red` against an Int — should not match
     let mut bindings = FxHashMap::default();
     let result = match_pattern(
-        &env,
+        env.interp.type_env,
         &Spanned {
             node: PatternKind::Ident("red".into()),
             span: Span::dummy(),
@@ -2052,7 +2052,7 @@ fn eval_pattern_binding_still_works_for_non_variant() {
 
     let mut bindings = FxHashMap::default();
     let result = match_pattern(
-        &env,
+        env.interp.type_env,
         &Spanned {
             node: PatternKind::Ident("x".into()),
             span: Span::dummy(),

@@ -13,7 +13,7 @@ mod tests;
 // Re-export the crate-visible API.
 pub(crate) use access::{field_access_on_value, index_on_value};
 pub(crate) use assign::{AssignContext, exec_assign_with_rhs};
-pub(crate) use compare::value_eq;
+pub(crate) use compare::{match_pattern, value_eq};
 pub(crate) use control::{eval_block, eval_stmt};
 pub(crate) use dispatch::eval_expr;
 pub(crate) use helpers::{

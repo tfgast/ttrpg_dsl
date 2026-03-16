@@ -158,7 +158,7 @@ pub(crate) fn eval_expr(env: &mut Env, expr: &Spanned<ExprKind>) -> Result<Value
             let scrutinee_val = eval_expr(env, scrutinee)?;
             for (i, arm) in arms.iter().enumerate() {
                 let mut bindings = FxHashMap::default();
-                if match_pattern(env, &arm.pattern, &scrutinee_val, &mut bindings) {
+                if match_pattern(env.interp.type_env, &arm.pattern, &scrutinee_val, &mut bindings) {
                     let arm_span = match &arm.body {
                         ttrpg_ast::ast::ArmBody::Expr(e) => e.span,
                         ttrpg_ast::ast::ArmBody::Block(b) => b.span,
