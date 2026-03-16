@@ -505,232 +505,6 @@ pub(crate) fn run_frame_to_completion_sync(
     }
 }
 
-/// Result of a native dispatch that pushes a child frame.
-enum NativeDispatch {
-    Push(Frame, AwaitingFn),
-}
-
-/// Try to dispatch `with_budget` natively: evaluate entity + budget fields,
-/// provision the budget, and push a Block child for the body.
-fn try_dispatch_with_budget(
-    core: &RuntimeCore,
-    env: &mut ExecEnv,
-    sp: &dyn StateProvider,
-    eh: &mut dyn EffectHandler,
-    entity_expr: &Spanned<ExprKind>,
-    budget_fields: &[(Spanned<Name>, Spanned<ExprKind>)],
-    body: &Block,
-    span: Span,
-) -> Result<NativeDispatch, RuntimeError> {
-    let entity_val = crate::expr_eval::eval_expr_step(core, env, sp, eh, entity_expr)?;
-    let actor = match entity_val {
-        Value::Entity(r) => r,
-        _ => {
-            return Err(RuntimeError::with_span(
-                "with_budget: expected entity value",
-                entity_expr.span,
-            ));
-        }
-    };
-
-    let mut budget = BTreeMap::new();
-    for (name, expr) in budget_fields {
-        let val = crate::expr_eval::eval_expr_step(core, env, sp, eh, expr)?;
-        budget.insert(name.node.clone(), val);
-    }
-
-    // Snapshot previous budget.
-    let prev_budget = sp.read_turn_budget(&actor);
-
-    // Push BudgetGuard frame which will yield ProvisionBudget,
-    // run the body, then yield restore effect.
-    Ok(NativeDispatch::Push(
-        Frame::BudgetGuard {
-            actor,
-            budget,
-            saved_budget: prev_budget,
-            body: Some(body.clone()),
-            child_result: None,
-            pending: None,
-            phase: BudgetGuardPhase::Provision,
-            span,
-        },
-        AwaitingFn::ExprStmt,
-    ))
-}
-
-/// Try to dispatch `with_budgets` natively: evaluate specs, provision
-/// budgets, and push a Block child for the body.
-fn try_dispatch_with_budgets(
-    core: &RuntimeCore,
-    env: &mut ExecEnv,
-    sp: &dyn StateProvider,
-    eh: &mut dyn EffectHandler,
-    specs_expr: &Spanned<ExprKind>,
-    body: &Block,
-    span: Span,
-) -> Result<NativeDispatch, RuntimeError> {
-    let specs_val = crate::expr_eval::eval_expr_step(core, env, sp, eh, specs_expr)?;
-    let spec_list = match specs_val {
-        Value::List(items) => items,
-        _ => {
-            return Err(RuntimeError::with_span(
-                "with_budgets: expected list of BudgetSpec",
-                specs_expr.span,
-            ));
-        }
-    };
-
-    // Extract (actor, budget) pairs from each BudgetSpec struct.
-    let mut entries = Vec::with_capacity(spec_list.len());
-    for item in &spec_list {
-        match item {
-            Value::Struct { name, fields } if name == "BudgetSpec" => {
-                let actor = match fields.get("actor") {
-                    Some(Value::Entity(r)) => *r,
-                    _ => {
-                        return Err(RuntimeError::with_span(
-                            "with_budgets: BudgetSpec missing entity `actor` field",
-                            specs_expr.span,
-                        ));
-                    }
-                };
-                let budget = match fields.get("budget") {
-                    Some(Value::Struct {
-                        name: bn,
-                        fields: bf,
-                    }) if bn == "TurnBudget" => bf.clone(),
-                    _ => {
-                        return Err(RuntimeError::with_span(
-                            "with_budgets: BudgetSpec missing TurnBudget `budget` field",
-                            specs_expr.span,
-                        ));
-                    }
-                };
-                entries.push((actor, budget));
-            }
-            _ => {
-                return Err(RuntimeError::with_span(
-                    "with_budgets: list elements must be BudgetSpec structs",
-                    specs_expr.span,
-                ));
-            }
-        }
-    }
-
-    // Snapshot previous budgets.
-    let mut snapshots: Vec<(EntityRef, Option<BTreeMap<Name, Value>>)> =
-        Vec::with_capacity(entries.len());
-    for (actor, _budget) in &entries {
-        snapshots.push((*actor, sp.read_turn_budget(actor)));
-    }
-
-    // Push MultiBudgetGuard frame which will yield each ProvisionBudget,
-    // run the body, then yield restore effects.
-    Ok(NativeDispatch::Push(
-        Frame::MultiBudgetGuard {
-            entries,
-            saved_budgets: snapshots,
-            provision_index: 0,
-            phase: MultiBudgetPhase::Provisioning,
-            body: Some(body.clone()),
-            child_result: None,
-            pending: None,
-            span,
-        },
-        AwaitingFn::ExprStmt,
-    ))
-}
-
-/// Build the `GrantGroup` effect for `grant entity.GroupName { fields }`:
-/// evaluate entity + field expressions, look up defaults, return the effect.
-fn build_grant_effect(
-    core: &RuntimeCore,
-    env: &mut ExecEnv,
-    sp: &dyn StateProvider,
-    eh: &mut dyn EffectHandler,
-    entity_expr: &Spanned<ExprKind>,
-    group_name: &Name,
-    field_inits: &[ttrpg_ast::ast::StructFieldInit],
-) -> Result<Effect, RuntimeError> {
-    let entity_val = crate::expr_eval::eval_expr_step(core, env, sp, eh, entity_expr)?;
-    let entity_ref = match entity_val {
-        Value::Entity(r) => r,
-        _ => {
-            return Err(RuntimeError::with_span(
-                "grant: expected entity value",
-                entity_expr.span,
-            ));
-        }
-    };
-
-    // Evaluate explicit field initializers.
-    let mut fields = BTreeMap::new();
-    for init in field_inits {
-        let val = crate::expr_eval::eval_expr_step(core, env, sp, eh, &init.value)?;
-        fields.insert(init.name.clone(), val);
-    }
-
-    // Collect defaults from the entity declaration's optional group.
-    let entity_type = sp.entity_type_name(&entity_ref);
-    let defaults: Vec<_> = crate::eval::find_optional_group_fields_in(
-        &core.program,
-        entity_type.as_deref(),
-        group_name,
-    )
-    .into_iter()
-    .flatten()
-    .filter_map(|fd| {
-        if fields.contains_key(&fd.name) {
-            return None;
-        }
-        fd.default.clone().map(|d| (fd.name.clone(), d))
-    })
-    .collect();
-
-    for (name, default_expr) in &defaults {
-        let val = crate::expr_eval::eval_expr_step(core, env, sp, eh, default_expr)?;
-        fields.insert(name.clone(), val);
-    }
-
-    let struct_val = Value::Struct {
-        name: group_name.clone(),
-        fields,
-    };
-
-    Ok(Effect::GrantGroup {
-        entity: entity_ref,
-        group_name: group_name.clone(),
-        fields: struct_val,
-    })
-}
-
-/// Build the `RevokeGroup` effect for `revoke entity.GroupName`:
-/// evaluate entity expression, return the effect.
-fn build_revoke_effect(
-    core: &RuntimeCore,
-    env: &mut ExecEnv,
-    sp: &dyn StateProvider,
-    eh: &mut dyn EffectHandler,
-    entity_expr: &Spanned<ExprKind>,
-    group_name: &Name,
-) -> Result<Effect, RuntimeError> {
-    let entity_val = crate::expr_eval::eval_expr_step(core, env, sp, eh, entity_expr)?;
-    let entity_ref = match entity_val {
-        Value::Entity(r) => r,
-        _ => {
-            return Err(RuntimeError::with_span(
-                "revoke: expected entity value",
-                entity_expr.span,
-            ));
-        }
-    };
-
-    Ok(Effect::RevokeGroup {
-        entity: entity_ref,
-        group_name: group_name.clone(),
-    })
-}
 
 /// Extract the expression from a Let/Assign/Expr/Return(Some) statement
 /// for ExprEval dispatch on the async path. Returns the expression
@@ -773,6 +547,70 @@ fn compile_expr_to_frame(expr: &Spanned<ExprKind>, core: &RuntimeCore) -> Frame 
             expr.span,
         )
     }
+}
+
+/// Compile an expression for ExprEval, returning an error if compilation fails.
+fn try_compile_expr_to_frame(
+    expr: &Spanned<ExprKind>,
+    core: &RuntimeCore,
+) -> Result<Frame, RuntimeError> {
+    if let Some(work) = crate::expr_eval::compile_expr(expr, &core.type_env, &core.program) {
+        Ok(Frame::ExprEval {
+            work,
+            operands: Vec::new(),
+            pc: 0,
+            child_result: None,
+            scope_depth: 0,
+        })
+    } else {
+        Err(RuntimeError::with_span(
+            "expression could not be compiled for frame-based eval",
+            expr.span,
+        ))
+    }
+}
+
+/// Parse a list of BudgetSpec struct values into (actor, budget) pairs.
+fn parse_budget_spec_entries(
+    spec_list: &[Value],
+    span: Span,
+) -> Result<Vec<(EntityRef, BTreeMap<Name, Value>)>, RuntimeError> {
+    let mut entries = Vec::with_capacity(spec_list.len());
+    for item in spec_list {
+        match item {
+            Value::Struct { name, fields } if name == "BudgetSpec" => {
+                let actor = match fields.get("actor") {
+                    Some(Value::Entity(r)) => *r,
+                    _ => {
+                        return Err(RuntimeError::with_span(
+                            "with_budgets: BudgetSpec missing entity `actor` field",
+                            span,
+                        ));
+                    }
+                };
+                let budget = match fields.get("budget") {
+                    Some(Value::Struct {
+                        name: bn,
+                        fields: bf,
+                    }) if bn == "TurnBudget" => bf.clone(),
+                    _ => {
+                        return Err(RuntimeError::with_span(
+                            "with_budgets: BudgetSpec missing TurnBudget `budget` field",
+                            span,
+                        ));
+                    }
+                };
+                entries.push((actor, budget));
+            }
+            _ => {
+                return Err(RuntimeError::with_span(
+                    "with_budgets: list elements must be BudgetSpec structs",
+                    span,
+                ));
+            }
+        }
+    }
+    Ok(entries)
 }
 
 // ── Modify-applied event helpers ───────────────────────────────
@@ -2020,6 +1858,8 @@ pub(crate) enum Frame {
         step: ActionStep,
         pending: Option<Response>,
         body_result: Option<Result<Value, RuntimeError>>,
+        /// Set to true when CostEval aborts (budget exhausted or cost vetoed).
+        cost_aborted: bool,
         // Context save (populated when gate passes)
         saved_turn_actor: Option<EntityRef>,
         saved_invocation: Option<InvocationId>,
@@ -2454,14 +2294,10 @@ impl Frame {
                 step,
                 pending,
                 body_result,
+                cost_aborted,
                 saved_turn_actor,
                 saved_invocation,
             } => {
-                let abort_value = if *has_return_type {
-                    Value::Option(None)
-                } else {
-                    Value::Void
-                };
 
                 match step {
                     ActionStep::EmitStarted => {
@@ -2565,7 +2401,12 @@ impl Frame {
                         if let Some(Err(e)) = body_result.take() {
                             return Advance::Error(e);
                         }
-                        Advance::Pop(abort_value)
+                        let abort = if *has_return_type {
+                            Value::Option(None)
+                        } else {
+                            Value::Void
+                        };
+                        Advance::Pop(abort)
                     }
 
                     ActionStep::EvalRequires => {
@@ -2634,7 +2475,12 @@ impl Frame {
                             *step = ActionStep::EvalCost;
                             Advance::Continue
                         } else {
-                            *body_result = Some(Ok(abort_value));
+                            let abort = if *has_return_type {
+                                Value::Option(None)
+                            } else {
+                                Value::Void
+                            };
+                            *body_result = Some(Ok(abort));
                             *step = ActionStep::EmitCompleted;
                             Advance::Continue
                         }
@@ -2645,11 +2491,10 @@ impl Frame {
                         if let Some(c) = cost.as_ref()
                             && !c.free
                         {
-                            let abort = if *has_return_type {
-                                Value::Option(None)
-                            } else {
-                                Value::Void
-                            };
+                            // Use Bool(false) as a universal abort sentinel:
+                            // CostEval pops Void on success, Bool(false) on abort.
+                            // receive_child_result detects this and sets cost_aborted.
+                            let abort = Value::Bool(false);
                             *step = ActionStep::AwaitCostEval;
                             return Advance::Push(Frame::CostEval {
                                 cost: c.clone(),
@@ -2672,16 +2517,21 @@ impl Frame {
 
                     ActionStep::AwaitCostEval => {
                         // CostEval child completed. Check if it aborted.
-                        match body_result.take() {
-                            Some(Ok(ref v)) if *v != Value::Void => {
-                                // Abort value — cost check failed.
-                                *body_result = Some(Ok(v.clone()));
-                                *step = ActionStep::EmitCompleted;
+                        if *cost_aborted {
+                            // Cost check failed — skip resolve, emit completed.
+                            if body_result.is_none() {
+                                let abort = if *has_return_type {
+                                    Value::Option(None)
+                                } else {
+                                    Value::Void
+                                };
+                                *body_result = Some(Ok(abort));
                             }
-                            _ => {
-                                // Cost succeeded — proceed to resolve.
-                                *step = ActionStep::RunResolve;
-                            }
+                            *step = ActionStep::EmitCompleted;
+                        } else {
+                            // Cost succeeded — proceed to resolve.
+                            body_result.take();
+                            *step = ActionStep::RunResolve;
                         }
                         Advance::Continue
                     }
@@ -2704,10 +2554,14 @@ impl Frame {
                         // Clear return_value from body (previously done in
                         // RunResolve when it ran the block synchronously).
                         env.return_value = None;
-                        let outcome = match body_result {
-                            Some(Ok(_)) => ActionOutcome::Succeeded,
-                            Some(Err(_)) => ActionOutcome::Failed,
-                            None => ActionOutcome::Succeeded,
+                        let outcome = if *cost_aborted {
+                            ActionOutcome::Failed
+                        } else {
+                            match body_result {
+                                Some(Ok(_)) => ActionOutcome::Succeeded,
+                                Some(Err(_)) => ActionOutcome::Failed,
+                                None => ActionOutcome::Succeeded,
+                            }
                         };
                         let effect = Effect::ActionCompleted {
                             name: name.clone(),
@@ -3538,10 +3392,6 @@ impl Frame {
                             env.pop_scope();
                             return Advance::Pop(ret);
                         }
-                        AwaitingFn::WithCostPayer { prev_cost_payer } => {
-                            env.cost_payer = prev_cost_payer;
-                            *result = value;
-                        }
                     }
                     *index += 1;
                     expr_cache.clear();
@@ -3594,46 +3444,48 @@ impl Frame {
                     return Advance::Pop(Value::Void);
                 }
 
-                // WithCostPayer: swap cost_payer, push Block child for body.
+                // WithCostPayer: eval entity via expr_cache, push CostPayerGuard.
                 if let StmtKind::WithCostPayer {
                     entity: ref entity_expr,
                     body: ref body_block,
                     ..
                 } = stmt.node
                 {
-                    let entity_val =
-                        crate::expr_eval::eval_expr_step(core, env, sp, &mut *eh, entity_expr);
+                    if expr_cache.is_empty() {
+                        // Push ExprEval for entity expression; result goes to expr_cache.
+                        match try_compile_expr_to_frame(entity_expr, core) {
+                            Ok(frame) => return Advance::Push(frame),
+                            Err(e) => {
+                                env.pop_scope();
+                                return Advance::Error(e);
+                            }
+                        }
+                    }
+                    // Entity value cached — extract and push CostPayerGuard.
+                    let entity_val = expr_cache[0].clone();
                     match entity_val {
-                        Ok(Value::Entity(payer)) => {
+                        Value::Entity(payer) => {
                             let prev = env.cost_payer;
                             env.cost_payer = Some(payer);
-                            *awaiting_fn = Some(AwaitingFn::WithCostPayer {
-                                prev_cost_payer: prev,
-                            });
-                            return Advance::Push(Frame::Block {
-                                stmts: body_block.node.clone(),
-                                index: 0,
-                                result: Value::Void,
-                                expr_cache: Vec::new(),
-                                awaiting_fn: None,
-                                awaiting_error: None,
+                            expr_cache.clear();
+                            *awaiting_fn = Some(AwaitingFn::ExprStmt);
+                            return Advance::Push(Frame::CostPayerGuard {
+                                saved_payer: prev,
+                                body: Some(body_block.clone()),
+                                child_result: None,
                             });
                         }
-                        Ok(_) => {
+                        _ => {
                             env.pop_scope();
                             return Advance::Error(RuntimeError::with_span(
                                 "with_cost_payer: expected entity value",
                                 entity_expr.span,
                             ));
                         }
-                        Err(e) => {
-                            env.pop_scope();
-                            return Advance::Error(e);
-                        }
                     }
                 }
 
-                // WithBudget: provision budget, push Block child for body.
+                // WithBudget: eval entity + budget fields via expr_cache, push BudgetGuard.
                 if let StmtKind::WithBudget {
                     entity: ref entity_expr,
                     budget_fields: ref budget_field_exprs,
@@ -3641,30 +3493,53 @@ impl Frame {
                     span: wb_span,
                 } = stmt.node
                 {
-                    match try_dispatch_with_budget(
-                        core,
-                        env,
-                        sp,
-                        &mut *eh,
-                        entity_expr,
-                        budget_field_exprs,
-                        body_stmts,
-                        wb_span,
-                    ) {
-                        Ok(advance) => match advance {
-                            NativeDispatch::Push(frame, awaiting) => {
-                                *awaiting_fn = Some(awaiting);
-                                return Advance::Push(frame);
+                    let needed = 1 + budget_field_exprs.len();
+                    if expr_cache.len() < needed {
+                        // Evaluate next expression: entity first, then budget fields.
+                        let next_expr = if expr_cache.is_empty() {
+                            entity_expr
+                        } else {
+                            &budget_field_exprs[expr_cache.len() - 1].1
+                        };
+                        match try_compile_expr_to_frame(next_expr, core) {
+                            Ok(frame) => return Advance::Push(frame),
+                            Err(e) => {
+                                env.pop_scope();
+                                return Advance::Error(e);
                             }
-                        },
-                        Err(e) => {
-                            env.pop_scope();
-                            return Advance::Error(e);
                         }
                     }
+                    // All values cached — build BudgetGuard.
+                    let actor = match &expr_cache[0] {
+                        Value::Entity(r) => *r,
+                        _ => {
+                            env.pop_scope();
+                            return Advance::Error(RuntimeError::with_span(
+                                "with_budget: expected entity value",
+                                entity_expr.span,
+                            ));
+                        }
+                    };
+                    let mut budget = BTreeMap::new();
+                    for (i, (name, _)) in budget_field_exprs.iter().enumerate() {
+                        budget.insert(name.node.clone(), expr_cache[1 + i].clone());
+                    }
+                    let prev_budget = sp.read_turn_budget(&actor);
+                    expr_cache.clear();
+                    *awaiting_fn = Some(AwaitingFn::ExprStmt);
+                    return Advance::Push(Frame::BudgetGuard {
+                        actor,
+                        budget,
+                        saved_budget: prev_budget,
+                        body: Some(body_stmts.clone()),
+                        child_result: None,
+                        pending: None,
+                        phase: BudgetGuardPhase::Provision,
+                        span: wb_span,
+                    });
                 }
 
-                // WithBudgets: provision budgets, push Block child for body.
+                // WithBudgets: eval specs via expr_cache, push MultiBudgetGuard.
                 if let StmtKind::WithBudgets {
                     specs: ref specs_expr,
                     body: ref body_stmts,
@@ -3672,78 +3547,185 @@ impl Frame {
                     ..
                 } = stmt.node
                 {
-                    match try_dispatch_with_budgets(
-                        core, env, sp, &mut *eh, specs_expr, body_stmts, wb_span,
-                    ) {
-                        Ok(NativeDispatch::Push(frame, awaiting)) => {
-                            *awaiting_fn = Some(awaiting);
-                            return Advance::Push(frame);
+                    if expr_cache.is_empty() {
+                        match try_compile_expr_to_frame(specs_expr, core) {
+                            Ok(frame) => return Advance::Push(frame),
+                            Err(e) => {
+                                env.pop_scope();
+                                return Advance::Error(e);
+                            }
                         }
+                    }
+                    // Specs value cached — parse and build MultiBudgetGuard.
+                    let spec_list = match &expr_cache[0] {
+                        Value::List(items) => items.clone(),
+                        _ => {
+                            env.pop_scope();
+                            return Advance::Error(RuntimeError::with_span(
+                                "with_budgets: expected list of BudgetSpec",
+                                specs_expr.span,
+                            ));
+                        }
+                    };
+                    let entries = match parse_budget_spec_entries(&spec_list, specs_expr.span) {
+                        Ok(e) => e,
                         Err(e) => {
                             env.pop_scope();
                             return Advance::Error(e);
                         }
+                    };
+                    let mut snapshots: Vec<(EntityRef, Option<BTreeMap<Name, Value>>)> =
+                        Vec::with_capacity(entries.len());
+                    for (actor, _) in &entries {
+                        snapshots.push((*actor, sp.read_turn_budget(actor)));
                     }
+                    expr_cache.clear();
+                    *awaiting_fn = Some(AwaitingFn::ExprStmt);
+                    return Advance::Push(Frame::MultiBudgetGuard {
+                        entries,
+                        saved_budgets: snapshots,
+                        provision_index: 0,
+                        phase: MultiBudgetPhase::Provisioning,
+                        body: Some(body_stmts.clone()),
+                        child_result: None,
+                        pending: None,
+                        span: wb_span,
+                    });
                 }
 
-                // Grant: evaluate entity/fields, yield GrantGroup effect.
+                // Grant: eval entity + field inits + defaults via expr_cache,
+                // then push GrantRevokeGate.
                 if let StmtKind::Grant {
                     entity: ref entity_expr,
                     group_name: ref gname,
                     fields: ref field_inits,
                 } = stmt.node
                 {
-                    match build_grant_effect(
-                        core,
-                        env,
-                        sp,
-                        &mut *eh,
-                        entity_expr,
-                        gname,
-                        field_inits,
-                    ) {
-                        Ok(effect) => {
-                            *awaiting_fn = Some(AwaitingFn::ExprStmt);
-                            return Advance::Push(Frame::GrantRevokeGate {
-                                effect,
-                                pending: None,
-                                span: stmt.span,
-                            });
-                        }
-                        Err(e) => {
-                            env.pop_scope();
-                            return Advance::Error(e);
+                    // Phase 1: entity expression.
+                    if expr_cache.is_empty() {
+                        match try_compile_expr_to_frame(entity_expr, core) {
+                            Ok(frame) => return Advance::Push(frame),
+                            Err(e) => {
+                                env.pop_scope();
+                                return Advance::Error(e);
+                            }
                         }
                     }
+                    // Phase 2: field init expressions.
+                    if expr_cache.len() < 1 + field_inits.len() {
+                        let idx = expr_cache.len() - 1;
+                        match try_compile_expr_to_frame(&field_inits[idx].value, core) {
+                            Ok(frame) => return Advance::Push(frame),
+                            Err(e) => {
+                                env.pop_scope();
+                                return Advance::Error(e);
+                            }
+                        }
+                    }
+                    // Phase 3: compute defaults list (needs entity_ref from cache[0]).
+                    let entity_ref = match &expr_cache[0] {
+                        Value::Entity(r) => *r,
+                        _ => {
+                            env.pop_scope();
+                            return Advance::Error(RuntimeError::with_span(
+                                "grant: expected entity value",
+                                entity_expr.span,
+                            ));
+                        }
+                    };
+                    let entity_type = sp.entity_type_name(&entity_ref);
+                    let defaults: Vec<_> = crate::eval::find_optional_group_fields_in(
+                        &core.program,
+                        entity_type.as_deref(),
+                        gname,
+                    )
+                    .into_iter()
+                    .flatten()
+                    .filter_map(|fd| {
+                        // Skip fields that have explicit inits.
+                        if field_inits.iter().any(|fi| fi.name == fd.name) {
+                            return None;
+                        }
+                        fd.default.clone().map(|d| (fd.name.clone(), d))
+                    })
+                    .collect();
+
+                    let total_needed = 1 + field_inits.len() + defaults.len();
+                    if expr_cache.len() < total_needed {
+                        let def_idx = expr_cache.len() - 1 - field_inits.len();
+                        match try_compile_expr_to_frame(&defaults[def_idx].1, core) {
+                            Ok(frame) => return Advance::Push(frame),
+                            Err(e) => {
+                                env.pop_scope();
+                                return Advance::Error(e);
+                            }
+                        }
+                    }
+                    // All values cached — build GrantGroup effect.
+                    let mut fields = BTreeMap::new();
+                    for (i, init) in field_inits.iter().enumerate() {
+                        fields.insert(init.name.clone(), expr_cache[1 + i].clone());
+                    }
+                    for (i, (name, _)) in defaults.iter().enumerate() {
+                        fields.insert(
+                            name.clone(),
+                            expr_cache[1 + field_inits.len() + i].clone(),
+                        );
+                    }
+                    let struct_val = Value::Struct {
+                        name: gname.clone(),
+                        fields,
+                    };
+                    let effect = Effect::GrantGroup {
+                        entity: entity_ref,
+                        group_name: gname.clone(),
+                        fields: struct_val,
+                    };
+                    expr_cache.clear();
+                    *awaiting_fn = Some(AwaitingFn::ExprStmt);
+                    return Advance::Push(Frame::GrantRevokeGate {
+                        effect,
+                        pending: None,
+                        span: stmt.span,
+                    });
                 }
 
-                // Revoke: evaluate entity, yield RevokeGroup effect.
+                // Revoke: eval entity via expr_cache, push GrantRevokeGate.
                 if let StmtKind::Revoke {
                     entity: ref entity_expr,
                     group_name: ref gname,
                 } = stmt.node
                 {
-                    match build_revoke_effect(
-                        core,
-                        env,
-                        sp,
-                        &mut *eh,
-                        entity_expr,
-                        gname,
-                    ) {
-                        Ok(effect) => {
-                            *awaiting_fn = Some(AwaitingFn::ExprStmt);
-                            return Advance::Push(Frame::GrantRevokeGate {
-                                effect,
-                                pending: None,
-                                span: stmt.span,
-                            });
-                        }
-                        Err(e) => {
-                            env.pop_scope();
-                            return Advance::Error(e);
+                    if expr_cache.is_empty() {
+                        match try_compile_expr_to_frame(entity_expr, core) {
+                            Ok(frame) => return Advance::Push(frame),
+                            Err(e) => {
+                                env.pop_scope();
+                                return Advance::Error(e);
+                            }
                         }
                     }
+                    let entity_ref = match &expr_cache[0] {
+                        Value::Entity(r) => *r,
+                        _ => {
+                            env.pop_scope();
+                            return Advance::Error(RuntimeError::with_span(
+                                "revoke: expected entity value",
+                                entity_expr.span,
+                            ));
+                        }
+                    };
+                    let effect = Effect::RevokeGroup {
+                        entity: entity_ref,
+                        group_name: gname.clone(),
+                    };
+                    expr_cache.clear();
+                    *awaiting_fn = Some(AwaitingFn::ExprStmt);
+                    return Advance::Push(Frame::GrantRevokeGate {
+                        effect,
+                        pending: None,
+                        span: stmt.span,
+                    });
                 }
 
                 // Frame-based dispatch: try specialized frames for
@@ -5343,6 +5325,7 @@ impl Frame {
                         step: ActionStep::EmitStarted,
                         pending: None,
                         body_result: None,
+                        cost_aborted: false,
                         saved_turn_actor: None,
                         saved_invocation: None,
                     });
@@ -5829,7 +5812,10 @@ impl Frame {
     fn receive_child_result(&mut self, value: Value) {
         match self {
             Frame::ActionLifecycle {
-                step, body_result, ..
+                step,
+                body_result,
+                cost_aborted,
+                ..
             } => {
                 match step {
                     ActionStep::RunResolve => {
@@ -5841,7 +5827,10 @@ impl Frame {
                         *body_result = Some(Ok(value));
                     }
                     ActionStep::AwaitCostEval => {
-                        // CostEval child completed.
+                        // CostEval child completed. Bool(false) is the abort sentinel.
+                        if value == Value::Bool(false) {
+                            *cost_aborted = true;
+                        }
                         *body_result = Some(Ok(value));
                     }
                     _ => {}
@@ -5970,13 +5959,12 @@ impl Frame {
                 Ok(())
             }
             Frame::Block {
-                awaiting_fn,
                 awaiting_error,
                 ..
-            } if awaiting_fn.is_some() => {
-                // Child FunctionEval errored while awaiting_fn is set.
-                // Store the error so advance() can propagate it after
-                // scope cleanup, matching the FunctionEval pattern.
+            } => {
+                // Child frame errored (FunctionEval via awaiting_fn, or
+                // ExprEval via expr_cache replay). Store the error so
+                // advance() can propagate it after scope cleanup.
                 *awaiting_error = Some(error);
                 Ok(())
             }
@@ -6118,8 +6106,6 @@ pub(crate) enum AwaitingFn {
     },
     /// Return statement — child result becomes the return value.
     Return,
-    /// WithCostPayer body completed — restore previous cost_payer.
-    WithCostPayer { prev_cost_payer: Option<EntityRef> },
 }
 
 /// A parameter whose default expression may need evaluation.
@@ -6409,6 +6395,7 @@ impl<S: WritableState> Execution<S> {
             step: ActionStep::EmitStarted,
             pending: None,
             body_result: None,
+            cost_aborted: false,
             saved_turn_actor: None,
             saved_invocation: None,
         });
@@ -6455,6 +6442,7 @@ impl<S: WritableState> Execution<S> {
             step: ActionStep::EmitStarted,
             pending: None,
             body_result: None,
+            cost_aborted: false,
             saved_turn_actor: None,
             saved_invocation: None,
         });
@@ -6501,6 +6489,7 @@ impl<S: WritableState> Execution<S> {
             step: ActionStep::EmitStarted,
             pending: None,
             body_result: None,
+            cost_aborted: false,
             saved_turn_actor: None,
             saved_invocation: None,
         });
@@ -14207,11 +14196,9 @@ mod tests {
         }
 
         let kinds: Vec<_> = effects.iter().map(EffectKind::of).collect();
-        // BUG: step-based path skips cost — DeductCost never emitted
         assert!(
             kinds.contains(&EffectKind::DeductCost),
-            "EXPECTED FAILURE: step-based poll/respond should emit DeductCost, \
-             but async path skips cost entirely. Got: {kinds:?}"
+            "step-based poll/respond should emit DeductCost. Got: {kinds:?}"
         );
     }
 
@@ -14281,11 +14268,10 @@ mod tests {
                 }
             )
         });
-        // BUG: step-based path skips cost pipeline, so no budget check emitted
         assert!(
             has_budget_check,
-            "EXPECTED FAILURE: step-based poll/respond should emit RequiresCheck for \
-             insufficient budget, but async path skips cost entirely. Got: {:?}",
+            "step-based poll/respond should emit RequiresCheck for \
+             insufficient budget. Got: {:?}",
             effects.iter().map(EffectKind::of).collect::<Vec<_>>()
         );
     }

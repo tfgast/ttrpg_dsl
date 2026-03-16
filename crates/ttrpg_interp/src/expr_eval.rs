@@ -3078,6 +3078,7 @@ fn build_action_lifecycle(
         step: ActionStep::EmitStarted,
         pending: None,
         body_result: None,
+        cost_aborted: false,
         saved_turn_actor: None,
         saved_invocation: None,
     }))
