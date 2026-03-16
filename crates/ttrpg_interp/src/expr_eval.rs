@@ -1489,12 +1489,10 @@ fn advance_ident(
                 scope_depth: 0,
             });
         }
-        // Const expression too complex for ExprEval — use ResumableBridge
-        return Advance::Push(Frame::ResumableBridge {
-            expr: const_decl.value.clone(),
-            expr_cache: Vec::new(),
-            span,
-        });
+        // Fallback removed (Phase 7) — compile_expr should handle all const expressions.
+        panic!(
+            "compile_expr failed for const at {span:?} — ResumableBridge fallback removed (Phase 7)",
+        );
     }
 
     // 4. Bare enum variant (fieldless)
@@ -2637,6 +2635,7 @@ fn dispatch_derive_step(
         phase1_params: None,
         phase2_result: None,
         fn_info_cache: Some(fn_info),
+        modify_hooks_result: None,
     }))
 }
 
@@ -2701,6 +2700,7 @@ fn dispatch_table_step(
         phase1_params: None,
         phase2_result: None,
         fn_info_cache: Some(fn_info),
+        modify_hooks_result: None,
     }))
 }
 
@@ -4767,10 +4767,16 @@ fn run_builtin_via_frame(
         span,
     };
 
-    let frame = Frame::ResumableBridge {
-        expr: call_expr,
-        expr_cache: Vec::new(),
-        span,
+    let work = compile_expr(&call_expr, &core.type_env, &core.program)
+        .unwrap_or_else(|| panic!(
+            "compile_expr failed for builtin '{name}' at {span:?} — ResumableBridge fallback removed (Phase 7)",
+        ));
+    let frame = Frame::ExprEval {
+        work,
+        operands: Vec::new(),
+        pc: 0,
+        child_result: None,
+        scope_depth: 0,
     };
     crate::execution::run_frame_to_completion_sync(frame, core, env, sp, eh)
 }
@@ -4912,11 +4918,9 @@ pub(crate) fn eval_expr_step(
             }
         }
     }
-    // Expression couldn't be compiled to ExprWork — run via ResumableBridge frame
-    let frame = Frame::ResumableBridge {
-        expr: expr.clone(),
-        expr_cache: Vec::new(),
-        span: expr.span,
-    };
-    crate::execution::run_frame_to_completion_sync(frame, core, env, sp, eh)
+    // Fallback removed (Phase 7) — compile_expr should handle all expressions.
+    panic!(
+        "compile_expr failed at {:?} — ResumableBridge fallback removed (Phase 7)",
+        expr.span,
+    )
 }

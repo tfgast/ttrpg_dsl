@@ -995,7 +995,7 @@ fn extract_resumable_expr(stmt: &Spanned<StmtKind>) -> Option<(Spanned<ExprKind>
 fn compile_or_bridge(
     expr: &Spanned<ExprKind>,
     core: &RuntimeCore,
-    fallback_cache: Vec<Value>,
+    _fallback_cache: Vec<Value>,
 ) -> Frame {
     if let Some(work) = crate::expr_eval::compile_expr(expr, &core.type_env, &core.program) {
         Frame::ExprEval {
@@ -1006,11 +1006,10 @@ fn compile_or_bridge(
             scope_depth: 0,
         }
     } else {
-        Frame::ResumableBridge {
-            expr: expr.clone(),
-            expr_cache: fallback_cache,
-            span: expr.span,
-        }
+        panic!(
+            "compile_expr failed at {:?} — ResumableBridge fallback removed (Phase 7)",
+            expr.span,
+        )
     }
 }
 
@@ -1160,13 +1159,147 @@ fn bridge_run<R>(
     result
 }
 
-// ── Native modifier pipeline (no bridge_run) ──────────────────
+// ── Modify-applied event helpers ───────────────────────────────
+
+/// Build modify_applied event payloads from modifiers and find matching hooks.
+///
+/// This is the pure (no-Interpreter) equivalent of the payload-building and
+/// hook-finding logic in `pipeline::emit_modify_applied_events`. Returns the
+/// hooks and payloads needed to construct an `EmitHooks` frame, or `None` if
+/// no hooks match (fast path).
+fn build_modify_hooks_frame(
+    core: &RuntimeCore,
+    sp: &dyn StateProvider,
+    env: &ExecEnv,
+    modifiers: &[OwnedModifier],
+    fn_name: &str,
+    span: Span,
+) -> Result<Option<Frame>, RuntimeError> {
+    use crate::effect::ModifySource;
+    use std::collections::HashSet;
+
+    // Fast path: skip if no hooks listen for modify_applied.
+    if !core.type_env.trigger_index.contains_key("modify_applied") {
+        return Ok(None);
+    }
+
+    // Check emit depth.
+    if env.emit_depth >= crate::MAX_EMIT_DEPTH {
+        return Err(RuntimeError::with_span(
+            format!(
+                "emit depth limit ({}) exceeded — possible circular emit chain from modify_applied",
+                crate::MAX_EMIT_DEPTH,
+            ),
+            span,
+        ));
+    }
+
+    // Deduplicate by condition_id and build payloads.
+    let mut seen_ids: HashSet<u64> = HashSet::new();
+    let mut all_hooks: Vec<HookInfo> = Vec::new();
+    let mut all_cond_handlers: Vec<ConditionHandlerInfo> = Vec::new();
+    let mut last_payload = None;
+
+    for modifier in modifiers {
+        let cond_id = match modifier.condition_id {
+            Some(id) => id,
+            None => continue,
+        };
+        if !seen_ids.insert(cond_id) {
+            continue;
+        }
+        let bearer = match &modifier.bearer {
+            Some(b) => b.clone(),
+            None => continue,
+        };
+        let condition_name = match &modifier.source {
+            ModifySource::Condition(name) => name.clone(),
+            _ => continue,
+        };
+
+        let mut cond_fields = BTreeMap::new();
+        cond_fields.insert(Name::from("name"), Value::Str(condition_name.to_string()));
+        cond_fields.insert(Name::from("id"), Value::Int(cond_id as i64));
+        cond_fields.insert(
+            Name::from("duration"),
+            modifier.condition_duration.clone().unwrap_or(Value::Void),
+        );
+        let condition_value = Value::Struct {
+            name: Name::from("ActiveCondition"),
+            fields: cond_fields,
+        };
+
+        let mut all_fields = BTreeMap::new();
+        all_fields.insert(Name::from("bearer"), bearer);
+        all_fields.insert(Name::from("condition"), condition_value);
+        all_fields.insert(Name::from("target_fn"), Value::Str(fn_name.to_string()));
+        let payload = Value::Struct {
+            name: Name::from("__event_modify_applied"),
+            fields: all_fields,
+        };
+
+        let candidates = sp.entities_in_play();
+
+        let hook_result = crate::event::find_matching_hooks(
+            &core.program,
+            &core.type_env,
+            sp,
+            "modify_applied",
+            &payload,
+            &candidates,
+        )?;
+        for h in hook_result.hooks {
+            all_hooks.push(HookInfo {
+                hook_name: h.name,
+                actor: h.target,
+            });
+        }
+
+        let cond_result = crate::event::find_matching_condition_handlers(
+            &core.program,
+            &core.type_env,
+            sp,
+            "modify_applied",
+            &payload,
+            &candidates,
+        )?;
+        for h in cond_result.handlers {
+            all_cond_handlers.push(ConditionHandlerInfo {
+                target: h.bearer,
+                condition_name: h.condition_name,
+                instance_id: h.instance_id,
+                handler_index: h.clause_index,
+            });
+        }
+
+        last_payload = Some(payload);
+    }
+
+    if all_hooks.is_empty() && all_cond_handlers.is_empty() {
+        return Ok(None);
+    }
+
+    // Use the last payload as the representative payload for hook dispatch.
+    let payload = last_payload.unwrap();
+
+    Ok(Some(Frame::EmitHooks {
+        event_name: Name::from("modify_applied"),
+        hooks: all_hooks,
+        condition_handlers: all_cond_handlers,
+        index: 0,
+        payload,
+        saved_emit_depth: env.emit_depth,
+        saved_lifecycle: env.in_lifecycle_block,
+        initialized: false,
+        child_result: None,
+    }))
+}
+
+// ── Native modifier pipeline ───────────────────────────────────
 //
 // These functions mirror the Env-based modifier pipeline in pipeline.rs
 // and action.rs, but operate directly on step-based execution primitives
-// (RuntimeCore + ExecEnv + StateProvider + EffectHandler).  Expression
-// evaluation still bridges per-expression via eval_expr_via_handler,
-// but the outer bridge_run wrapper is eliminated.
+// (RuntimeCore + ExecEnv + StateProvider + EffectHandler).
 
 /// Native version of `action::collect_cost_modifiers`.
 fn collect_cost_modifiers_native(
@@ -2203,8 +2336,10 @@ pub(crate) enum CostEvalPhase {
     YieldModifyApplied(usize),
     /// Await host acknowledgement for a yielded ModifyApplied effect.
     AwaitModifyAck(usize),
-    /// Run emit_modify_applied_events via bridge (dispatches hooks).
+    /// Build and push EmitHooks frame for modify_applied events.
     EmitModifyEvents,
+    /// Awaiting EmitHooks child frame completion.
+    AwaitModifyHooks,
     /// Budget pre-check: iterate tokens, check budget sufficiency.
     BudgetPreCheck(usize),
     /// Await budget pre-check host response.
@@ -2333,6 +2468,8 @@ pub(crate) enum Frame {
         phase2_result: Option<Value>,
         /// Cached FnInfo to avoid re-lookup across phase transitions.
         fn_info_cache: Option<FnInfo>,
+        /// Result from EmitHooks child frame (modify_applied hooks).
+        modify_hooks_result: Option<Result<Value, RuntimeError>>,
     },
 
     FunctionEval {
@@ -2569,6 +2706,8 @@ pub(crate) enum Frame {
         modifiers: Vec<crate::pipeline::OwnedModifier>,
         /// Pending ModifyApplied effect to yield (populated by ApplyModifier phase).
         pending_modify_effect: Option<Effect>,
+        /// Result from EmitHooks child frame (modify_applied hooks).
+        modify_hooks_result: Option<Result<Value, RuntimeError>>,
     },
 
     /// Evaluates call arguments one at a time via ResumableBridge children,
@@ -2908,6 +3047,7 @@ impl Frame {
                                 abort_value: abort,
                                 modifiers: Vec::new(),
                                 pending_modify_effect: None,
+                                modify_hooks_result: None,
                             });
                         }
                         // No cost or cost is free — skip to resolve.
@@ -3487,6 +3627,7 @@ impl Frame {
                 abort_value,
                 modifiers,
                 pending_modify_effect,
+                modify_hooks_result,
             } => {
                 let tokens = effective_cost.as_ref().map_or(&cost.tokens, |c| &c.tokens);
                 let expected_tokens: Vec<String> = core
@@ -3582,27 +3723,22 @@ impl Frame {
                     }
 
                     CostEvalPhase::EmitModifyEvents => {
-                        // Run emit_modify_applied_events via bridge (dispatches hooks).
-                        let mods = std::mem::take(modifiers);
-                        let action = action_name.as_str().to_owned();
+                        // Build and push EmitHooks frame for modify_applied events.
                         let span = *call_span;
-
-                        let emit_result = bridge_run(
+                        match build_modify_hooks_frame(
                             core,
-                            env,
                             sp,
-                            &mut *eh,
-                            BridgeCategory::Pipeline,
-                            move |tmp_env| {
-                                crate::pipeline::emit_modify_applied_events(
-                                    tmp_env, &mods, &action, span,
-                                )
-                            },
-                        );
-
-                        match emit_result {
-                            Ok(()) => {
-                                // Check if cost was made free.
+                            env,
+                            modifiers,
+                            action_name.as_str(),
+                            span,
+                        ) {
+                            Ok(Some(frame)) => {
+                                *phase = CostEvalPhase::AwaitModifyHooks;
+                                Advance::Push(frame)
+                            }
+                            Ok(None) => {
+                                // No hooks matched — skip directly.
                                 if effective_cost.as_ref().is_some_and(|c| c.free) {
                                     return Advance::Pop(Value::Void);
                                 }
@@ -3610,6 +3746,21 @@ impl Frame {
                                 Advance::Continue
                             }
                             Err(e) => Advance::Error(e),
+                        }
+                    }
+
+                    CostEvalPhase::AwaitModifyHooks => {
+                        // EmitHooks child completed.
+                        match modify_hooks_result.take() {
+                            Some(Ok(_)) => {
+                                if effective_cost.as_ref().is_some_and(|c| c.free) {
+                                    return Advance::Pop(Value::Void);
+                                }
+                                *phase = CostEvalPhase::BudgetPreCheck(0);
+                                Advance::Continue
+                            }
+                            Some(Err(e)) => Advance::Error(e),
+                            None => panic!("AwaitModifyHooks without result"),
                         }
                     }
 
@@ -3813,6 +3964,7 @@ impl Frame {
                             phase2_result: None,
                             fn_info_cache: None,
                             pending: None,
+                            modify_hooks_result: None,
                         })
                     }
                     BridgeCallInfo::Mechanic { name, args } => Advance::Push(Frame::DeriveEval {
@@ -3832,6 +3984,7 @@ impl Frame {
                         phase2_result: None,
                         fn_info_cache: None,
                         pending: None,
+                        modify_hooks_result: None,
                     }),
                     BridgeCallInfo::Function { name, args } => {
                         // Look up function decl and construct FunctionEval.
@@ -4240,13 +4393,11 @@ impl Frame {
                             scope_depth: 0,
                         });
                     }
-                    // Fallback to ResumableBridge for non-trivial expressions.
-                    *awaiting_fn = Some(awaiting);
-                    return Advance::Push(Frame::ResumableBridge {
-                        expr: bridge_expr,
-                        expr_cache: std::mem::take(expr_cache),
-                        span: stmt.span,
-                    });
+                    // Fallback removed (Phase 7) — compile_expr should handle all expressions.
+                    panic!(
+                        "compile_expr failed at {:?} — ResumableBridge fallback removed (Phase 7)",
+                        stmt.span,
+                    );
                 }
 
                 // All StmtKind variants are dispatched above:
@@ -4323,6 +4474,7 @@ impl Frame {
                 phase2_result,
                 fn_info_cache,
                 pending,
+                modify_hooks_result,
             } => {
                 match phase {
                     DeriveEvalPhase::Init => {
@@ -4636,31 +4788,37 @@ impl Frame {
                     }
 
                     DeriveEvalPhase::EmitModifyEvents => {
-                        let mods = std::mem::take(modifiers);
-                        let n = name.clone();
-
-                        let emit_result = bridge_run(
+                        // Build and push EmitHooks frame for modify_applied events.
+                        match build_modify_hooks_frame(
                             core,
-                            env,
                             sp,
-                            &mut *eh,
-                            BridgeCategory::Probe,
-                            move |tmp_env| {
-                                crate::pipeline::emit_modify_applied_events(
-                                    tmp_env,
-                                    &mods,
-                                    &n,
-                                    Span::dummy(),
-                                )
-                            },
-                        );
-
-                        match emit_result {
-                            Ok(()) => {
+                            env,
+                            modifiers,
+                            name.as_str(),
+                            Span::dummy(),
+                        ) {
+                            Ok(Some(frame)) => {
+                                *phase = DeriveEvalPhase::AwaitModifyHooks;
+                                Advance::Push(frame)
+                            }
+                            Ok(None) => {
+                                // No hooks matched — pop directly.
                                 let val = phase2_result.take().unwrap_or(Value::Void);
                                 Advance::Pop(val)
                             }
                             Err(e) => Advance::Error(e),
+                        }
+                    }
+
+                    DeriveEvalPhase::AwaitModifyHooks => {
+                        // EmitHooks child completed.
+                        match modify_hooks_result.take() {
+                            Some(Ok(_)) => {
+                                let val = phase2_result.take().unwrap_or(Value::Void);
+                                Advance::Pop(val)
+                            }
+                            Some(Err(e)) => Advance::Error(e),
+                            None => panic!("AwaitModifyHooks without result"),
                         }
                     }
                 }
@@ -6232,9 +6390,24 @@ impl Frame {
                 // Child frame (DeriveEval/FunctionEval/ResumableBridge) completed.
                 *result = Some(Ok(value));
             }
-            Frame::DeriveEval { base_value, .. } => {
-                // FunctionEval child completed with body result.
-                *base_value = Some(value);
+            Frame::CostEval {
+                modify_hooks_result, ..
+            } => {
+                // EmitHooks child completed for modify_applied hooks.
+                *modify_hooks_result = Some(Ok(value));
+            }
+            Frame::DeriveEval {
+                base_value,
+                phase,
+                modify_hooks_result,
+                ..
+            } => {
+                if matches!(phase, DeriveEvalPhase::AwaitModifyHooks) {
+                    *modify_hooks_result = Some(Ok(value));
+                } else {
+                    // FunctionEval child completed with body result.
+                    *base_value = Some(value);
+                }
             }
             Frame::ConditionApplyGate {
                 state_expr_cache, ..
@@ -6312,6 +6485,18 @@ impl Frame {
             }
             Frame::ListComp { child_result, .. } => {
                 *child_result = Some(Err(error));
+                Ok(())
+            }
+            Frame::CostEval {
+                modify_hooks_result, ..
+            } => {
+                *modify_hooks_result = Some(Err(error));
+                Ok(())
+            }
+            Frame::DeriveEval {
+                modify_hooks_result, ..
+            } => {
+                *modify_hooks_result = Some(Err(error));
                 Ok(())
             }
             _ => Err(error),
@@ -6470,8 +6655,10 @@ pub(crate) enum DeriveEvalPhase {
     YieldPhase2(usize),
     /// Await host ack for Phase 2 ModifyApplied.
     AwaitPhase2Ack(usize),
-    /// Emit modify_applied events (fire hooks) via bridge_run.
+    /// Build and push EmitHooks frame for modify_applied events.
     EmitModifyEvents,
+    /// Awaiting EmitHooks child frame completion.
+    AwaitModifyHooks,
 }
 
 /// Group initialization data for entity construction.
@@ -6818,6 +7005,7 @@ impl<S: WritableState> Execution<S> {
             phase2_result: None,
             fn_info_cache: None,
             pending: None,
+            modify_hooks_result: None,
         });
         Ok(exec)
     }
@@ -6850,6 +7038,7 @@ impl<S: WritableState> Execution<S> {
             phase2_result: None,
             fn_info_cache: None,
             pending: None,
+            modify_hooks_result: None,
         });
         Ok(exec)
     }
