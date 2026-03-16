@@ -49,11 +49,6 @@ pub(crate) struct ExecEnv {
     pub return_value: Option<Value>,
 }
 
-/// Deferred expression for BridgeCall entry point frames.
-pub(crate) enum BridgeCallInfo {
-    Expr { expr: Spanned<ExprKind> },
-}
-
 impl ExecEnv {
     fn new() -> Self {
         ExecEnv {
@@ -856,11 +851,7 @@ fn extract_resumable_expr(stmt: &Spanned<StmtKind>) -> Option<(Spanned<ExprKind>
 }
 
 /// Compile an expression for ExprEval. Panics if compilation fails.
-fn compile_or_bridge(
-    expr: &Spanned<ExprKind>,
-    core: &RuntimeCore,
-    _fallback_cache: Vec<Value>,
-) -> Frame {
+fn compile_expr_to_frame(expr: &Spanned<ExprKind>, core: &RuntimeCore) -> Frame {
     if let Some(work) = crate::expr_eval::compile_expr(expr, &core.type_env, &core.program) {
         Frame::ExprEval {
             work,
@@ -871,7 +862,7 @@ fn compile_or_bridge(
         }
     } else {
         panic!(
-            "compile_expr failed at {:?} — ResumableBridge fallback removed (Phase 7)",
+            "compile_expr failed at {:?} — all expressions should be compilable",
             expr.span,
         )
     }
@@ -2483,10 +2474,9 @@ pub(crate) enum Frame {
 
     /// Entry point frame for standalone expression evaluation.
     /// Used by `start_expr` and `start_expr_with_bindings`.
-    BridgeCall {
+    ExprEntry {
         result: Option<Result<Value, RuntimeError>>,
-        call_info: Option<BridgeCallInfo>,
-        expr_cache: Vec<Value>,
+        expr: Option<Spanned<ExprKind>>,
     },
 }
 
@@ -2501,7 +2491,7 @@ impl Frame {
     /// Advance the frame one step. Returns the action for the driver loop.
     ///
     /// For bridge evaluation of locally-applied effects, `NoYieldHandler` is
-    /// used. For user-facing expressions (BridgeCall, DeriveEval, etc.),
+    /// used. For user-facing expressions (ExprEntry, DeriveEval, etc.),
     /// `CachingHandler` provides replay-based yielding on the async path.
     fn advance(
         &mut self,
@@ -2661,7 +2651,7 @@ impl Frame {
                         if let Some(req_expr) = requires.as_ref() {
                             // Push ExprEval for the requires expression.
                             *step = ActionStep::AwaitRequiresEval;
-                            Advance::Push(compile_or_bridge(req_expr, core, Vec::new()))
+                            Advance::Push(compile_expr_to_frame(req_expr, core))
                         } else {
                             // No requires clause, skip to cost evaluation
                             *step = ActionStep::EvalCost;
@@ -2857,11 +2847,7 @@ impl Frame {
 
                 // Phase 1: push ExprEval for next arg.
                 if *arg_index < arg_exprs.len() {
-                    return Advance::Push(compile_or_bridge(
-                        &arg_exprs[*arg_index],
-                        core,
-                        Vec::new(),
-                    ));
+                    return Advance::Push(compile_expr_to_frame(&arg_exprs[*arg_index], core));
                 }
 
                 // Phase 2: all args evaluated — build and push target frame.
@@ -3206,8 +3192,7 @@ impl Frame {
                                     Value::Bool(true) => {
                                         // Filter passed — evaluate element expression.
                                         *phase = ListCompPhase::ElementDone;
-                                        let elem_frame =
-                                            compile_or_bridge(element, core, Vec::new());
+                                        let elem_frame = compile_expr_to_frame(element, core);
                                         return Advance::Push(elem_frame);
                                     }
                                     Value::Bool(false) => {
@@ -3250,12 +3235,12 @@ impl Frame {
                         if let Some(filter_expr) = filter {
                             // Evaluate filter expression.
                             *phase = ListCompPhase::FilterDone;
-                            let filter_frame = compile_or_bridge(filter_expr, core, Vec::new());
+                            let filter_frame = compile_expr_to_frame(filter_expr, core);
                             return Advance::Push(filter_frame);
                         }
                         // No filter — evaluate element directly.
                         *phase = ListCompPhase::ElementDone;
-                        let elem_frame = compile_or_bridge(element, core, Vec::new());
+                        let elem_frame = compile_expr_to_frame(element, core);
                         return Advance::Push(elem_frame);
                     }
                     // Pattern didn't match — skip.
@@ -3568,30 +3553,16 @@ impl Frame {
                 }
             }
 
-            Frame::BridgeCall {
-                result,
-                call_info,
-                expr_cache: _,
-            } => {
+            Frame::ExprEntry { result, expr } => {
                 if let Some(r) = result.take() {
                     return match r {
                         Ok(v) => Advance::Pop(v),
                         Err(e) => Advance::Error(e),
                     };
                 }
-                let ci = match call_info.take() {
-                    Some(ci) => ci,
-                    None => {
-                        return Advance::Error(RuntimeError::new(
-                            "BridgeCall frame has no call info",
-                        ));
-                    }
-                };
-
-                match ci {
-                    BridgeCallInfo::Expr { ref expr } => {
-                        Advance::Push(compile_or_bridge(expr, core, Vec::new()))
-                    }
+                match expr.take() {
+                    Some(ref e) => Advance::Push(compile_expr_to_frame(e, core)),
+                    None => Advance::Error(RuntimeError::new("ExprEntry frame has no expression")),
                 }
             }
 
@@ -3993,7 +3964,7 @@ impl Frame {
                     Advance::Continue
                 } else if let Some(ref default_expr) = param.default_expr {
                     // Push child frame to evaluate the default expression.
-                    Advance::Push(compile_or_bridge(default_expr, core, Vec::new()))
+                    Advance::Push(compile_expr_to_frame(default_expr, core))
                 } else {
                     // Missing required parameter.
                     Advance::Error(RuntimeError::new(format!(
@@ -4865,10 +4836,9 @@ impl Frame {
 
                         // 3. Evaluate arg expressions one at a time via child frames.
                         if *arg_index < args.len() {
-                            return Advance::Push(compile_or_bridge(
+                            return Advance::Push(compile_expr_to_frame(
                                 &args[*arg_index].value,
                                 core,
-                                Vec::new(),
                             ));
                         }
 
@@ -4926,7 +4896,7 @@ impl Frame {
                         }
 
                         let (_, ref default_expr) = param_defaults[*default_index];
-                        Advance::Push(compile_or_bridge(default_expr, core, Vec::new()))
+                        Advance::Push(compile_expr_to_frame(default_expr, core))
                     }
 
                     EmitEvalPhase::FieldDefaults => {
@@ -4948,7 +4918,7 @@ impl Frame {
                             return Advance::Continue;
                         }
 
-                        Advance::Push(compile_or_bridge(default_expr, core, Vec::new()))
+                        Advance::Push(compile_expr_to_frame(default_expr, core))
                     }
 
                     EmitEvalPhase::Ready => {
@@ -5110,7 +5080,7 @@ impl Frame {
                     }
                     *default_scope_pushed = true;
 
-                    return Advance::Push(compile_or_bridge(field_expr, core, Vec::new()));
+                    return Advance::Push(compile_expr_to_frame(field_expr, core));
                 }
 
                 // Phase 1: gate response handling.
@@ -5928,8 +5898,8 @@ impl Frame {
             Frame::ListComp { child_result, .. } => {
                 *child_result = Some(Ok(value));
             }
-            Frame::BridgeCall { result, .. } => {
-                // Child frame completed.
+            Frame::ExprEntry { result, .. } => {
+                // Child ExprEval completed.
                 *result = Some(Ok(value));
             }
             Frame::CostEval {
@@ -6013,7 +5983,7 @@ impl Frame {
                 *child_result = Some(Err(error));
                 Ok(())
             }
-            Frame::BridgeCall { result, .. } => {
+            Frame::ExprEntry { result, .. } => {
                 // Child frame errored — store for advance() to return.
                 *result = Some(Err(error));
                 Ok(())
@@ -6666,10 +6636,9 @@ impl<S: WritableState> Execution<S> {
         expr: Spanned<ExprKind>,
     ) -> Self {
         let mut exec = Self::new(core, state);
-        exec.frames.push(Frame::BridgeCall {
+        exec.frames.push(Frame::ExprEntry {
             result: None,
-            call_info: Some(BridgeCallInfo::Expr { expr }),
-            expr_cache: Vec::new(),
+            expr: Some(expr),
         });
         exec
     }
@@ -6685,10 +6654,9 @@ impl<S: WritableState> Execution<S> {
         for (name, value) in bindings {
             exec.env.bind(name, value);
         }
-        exec.frames.push(Frame::BridgeCall {
+        exec.frames.push(Frame::ExprEntry {
             result: None,
-            call_info: Some(BridgeCallInfo::Expr { expr }),
-            expr_cache: Vec::new(),
+            expr: Some(expr),
         });
         exec
     }
@@ -11763,7 +11731,7 @@ mod tests {
 
     #[test]
     fn expr_eval_poll_path() {
-        // BridgeCall now works on async path for expressions
+        // ExprEntry now works on async path for expressions
         // without host-decided effects.
         let (core, _) = make_core(
             r"
