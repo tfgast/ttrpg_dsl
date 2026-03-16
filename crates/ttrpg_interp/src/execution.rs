@@ -642,9 +642,9 @@ fn try_dispatch_with_budgets(
     ))
 }
 
-/// Dispatch `grant entity.GroupName { fields }` natively: evaluate
-/// entity + field expressions, look up defaults, emit GrantGroup.
-fn try_dispatch_grant(
+/// Build the `GrantGroup` effect for `grant entity.GroupName { fields }`:
+/// evaluate entity + field expressions, look up defaults, return the effect.
+fn build_grant_effect(
     core: &RuntimeCore,
     env: &mut ExecEnv,
     sp: &dyn StateProvider,
@@ -652,8 +652,7 @@ fn try_dispatch_grant(
     entity_expr: &Spanned<ExprKind>,
     group_name: &Name,
     field_inits: &[ttrpg_ast::ast::StructFieldInit],
-    stmt_span: Span,
-) -> Result<(), RuntimeError> {
+) -> Result<Effect, RuntimeError> {
     let entity_val = crate::expr_eval::eval_expr_step(core, env, sp, eh, entity_expr)?;
     let entity_ref = match entity_val {
         Value::Entity(r) => r,
@@ -699,31 +698,23 @@ fn try_dispatch_grant(
         fields,
     };
 
-    let resp = eh.handle(Effect::GrantGroup {
+    Ok(Effect::GrantGroup {
         entity: entity_ref,
         group_name: group_name.clone(),
         fields: struct_val,
-    });
-    if let Response::Vetoed = resp {
-        return Err(RuntimeError::with_span(
-            format!("grant {group_name} was vetoed by host"),
-            stmt_span,
-        ));
-    }
-    Ok(())
+    })
 }
 
-/// Dispatch `revoke entity.GroupName` natively: evaluate entity,
-/// emit RevokeGroup.
-fn try_dispatch_revoke_stmt(
+/// Build the `RevokeGroup` effect for `revoke entity.GroupName`:
+/// evaluate entity expression, return the effect.
+fn build_revoke_effect(
     core: &RuntimeCore,
     env: &mut ExecEnv,
     sp: &dyn StateProvider,
     eh: &mut dyn EffectHandler,
     entity_expr: &Spanned<ExprKind>,
     group_name: &Name,
-    stmt_span: Span,
-) -> Result<(), RuntimeError> {
+) -> Result<Effect, RuntimeError> {
     let entity_val = crate::expr_eval::eval_expr_step(core, env, sp, eh, entity_expr)?;
     let entity_ref = match entity_val {
         Value::Entity(r) => r,
@@ -735,17 +726,10 @@ fn try_dispatch_revoke_stmt(
         }
     };
 
-    let resp = eh.handle(Effect::RevokeGroup {
+    Ok(Effect::RevokeGroup {
         entity: entity_ref,
         group_name: group_name.clone(),
-    });
-    if let Response::Vetoed = resp {
-        return Err(RuntimeError::with_span(
-            format!("revoke {group_name} was vetoed by host"),
-            stmt_span,
-        ));
-    }
-    Ok(())
+    })
 }
 
 /// Extract the expression from a Let/Assign/Expr/Return(Some) statement
@@ -2329,6 +2313,14 @@ pub(crate) enum Frame {
         child_result: Option<Result<Value, RuntimeError>>,
     },
 
+    /// Yield a GrantGroup or RevokeGroup effect and wait for host response.
+    /// Acknowledged → Pop(Void), Vetoed → Error.
+    GrantRevokeGate {
+        effect: Effect,
+        pending: Option<Response>,
+        span: Span,
+    },
+
     /// Cost evaluation frame for the async action lifecycle.
     /// Handles the full cost pipeline: modifier collection → apply → yield → budget → deduction.
     CostEval {
@@ -3694,14 +3686,14 @@ impl Frame {
                     }
                 }
 
-                // Grant: evaluate entity/fields, emit GrantGroup effect.
+                // Grant: evaluate entity/fields, yield GrantGroup effect.
                 if let StmtKind::Grant {
                     entity: ref entity_expr,
                     group_name: ref gname,
                     fields: ref field_inits,
                 } = stmt.node
                 {
-                    match try_dispatch_grant(
+                    match build_grant_effect(
                         core,
                         env,
                         sp,
@@ -3709,11 +3701,14 @@ impl Frame {
                         entity_expr,
                         gname,
                         field_inits,
-                        stmt.span,
                     ) {
-                        Ok(()) => {
-                            *index += 1;
-                            return Advance::Continue;
+                        Ok(effect) => {
+                            *awaiting_fn = Some(AwaitingFn::ExprStmt);
+                            return Advance::Push(Frame::GrantRevokeGate {
+                                effect,
+                                pending: None,
+                                span: stmt.span,
+                            });
                         }
                         Err(e) => {
                             env.pop_scope();
@@ -3722,24 +3717,27 @@ impl Frame {
                     }
                 }
 
-                // Revoke: evaluate entity, emit RevokeGroup effect.
+                // Revoke: evaluate entity, yield RevokeGroup effect.
                 if let StmtKind::Revoke {
                     entity: ref entity_expr,
                     group_name: ref gname,
                 } = stmt.node
                 {
-                    match try_dispatch_revoke_stmt(
+                    match build_revoke_effect(
                         core,
                         env,
                         sp,
                         &mut *eh,
                         entity_expr,
                         gname,
-                        stmt.span,
                     ) {
-                        Ok(()) => {
-                            *index += 1;
-                            return Advance::Continue;
+                        Ok(effect) => {
+                            *awaiting_fn = Some(AwaitingFn::ExprStmt);
+                            return Advance::Push(Frame::GrantRevokeGate {
+                                effect,
+                                pending: None,
+                                span: stmt.span,
+                            });
                         }
                         Err(e) => {
                             env.pop_scope();
@@ -5630,6 +5628,32 @@ impl Frame {
                 }
             }
 
+            Frame::GrantRevokeGate {
+                effect,
+                pending,
+                span,
+            } => {
+                if let Some(response) = pending.take() {
+                    match response {
+                        Response::Vetoed => {
+                            let label = match effect {
+                                Effect::GrantGroup { group_name, .. } => {
+                                    format!("grant {group_name} was vetoed by host")
+                                }
+                                Effect::RevokeGroup { group_name, .. } => {
+                                    format!("revoke {group_name} was vetoed by host")
+                                }
+                                _ => "grant/revoke was vetoed by host".to_string(),
+                            };
+                            Advance::Error(RuntimeError::with_span(label, *span))
+                        }
+                        _ => Advance::Pop(Value::Void),
+                    }
+                } else {
+                    Advance::Yield(effect.clone())
+                }
+            }
+
             Frame::ConditionOnRemove {
                 target,
                 condition_name,
@@ -5778,6 +5802,7 @@ impl Frame {
             Frame::SpawnEntity { pending, .. } => *pending = Some(response),
             Frame::ConditionApplyGate { pending, .. } => *pending = Some(response),
             Frame::ConditionRemovalGate { pending, .. } => *pending = Some(response),
+            Frame::GrantRevokeGate { pending, .. } => *pending = Some(response),
             Frame::CostEval { pending, .. } => *pending = Some(response),
             Frame::DeriveEval { pending, .. } => *pending = Some(response),
             Frame::BudgetGuard { pending, .. } => *pending = Some(response),
