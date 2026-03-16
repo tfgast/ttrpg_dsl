@@ -877,142 +877,6 @@ fn collect_cost_modifiers_native(
     Ok(cost_modifiers.into_iter().map(|(_, m)| m).collect())
 }
 
-/// Native version of `action::apply_single_cost_modifier`.
-fn apply_single_cost_modifier_native(
-    core: &RuntimeCore,
-    env: &mut ExecEnv,
-    sp: &dyn StateProvider,
-    eh: &mut dyn EffectHandler,
-    modifier: &OwnedModifier,
-    effective: &mut CostClause,
-    action_name: &str,
-) -> Result<Option<crate::effect::Effect>, RuntimeError> {
-    use crate::effect::FieldChange;
-
-    let old_tokens: Vec<String> = effective
-        .tokens
-        .iter()
-        .map(|t| t.node.to_string())
-        .collect();
-    let old_free = effective.free;
-
-    env.push_scope();
-
-    if let (Some(receiver_name), Some(bearer)) = (&modifier.receiver_name, &modifier.bearer) {
-        env.bind(receiver_name.clone(), bearer.clone());
-    }
-
-    for (name, val) in &modifier.condition_params {
-        env.bind(name.clone(), val.clone());
-    }
-
-    if !modifier.condition_state_fields.is_empty() {
-        env.bind(
-            Name::from("state"),
-            Value::Struct {
-                name: Name::from("state"),
-                fields: modifier.condition_state_fields.clone(),
-            },
-        );
-    }
-
-    let result = exec_cost_modify_stmts_native(core, env, sp, eh, &modifier.clause.body, effective);
-    env.pop_scope();
-    result?;
-
-    let new_tokens: Vec<String> = effective
-        .tokens
-        .iter()
-        .map(|t| t.node.to_string())
-        .collect();
-    if old_free != effective.free || old_tokens != new_tokens {
-        let old_desc = if old_free {
-            "free".to_string()
-        } else {
-            old_tokens.join(", ")
-        };
-        let new_desc = if effective.free {
-            "free".to_string()
-        } else {
-            new_tokens.join(", ")
-        };
-        let changes = vec![FieldChange {
-            name: Name::from("cost"),
-            old: Value::Str(old_desc),
-            new: Value::Str(new_desc),
-        }];
-        Ok(Some(crate::effect::Effect::ModifyApplied {
-            source: modifier.source.clone(),
-            target_fn: Name::from(action_name),
-            phase: Phase::Phase1,
-            changes,
-            tags: modifier.clause.tags.clone(),
-        }))
-    } else {
-        Ok(None)
-    }
-}
-
-/// Native version of `action::exec_cost_modify_stmts`.
-fn exec_cost_modify_stmts_native(
-    core: &RuntimeCore,
-    env: &mut ExecEnv,
-    sp: &dyn StateProvider,
-    eh: &mut dyn EffectHandler,
-    stmts: &[ttrpg_ast::ast::ModifyStmt],
-    effective: &mut CostClause,
-) -> Result<(), RuntimeError> {
-    use ttrpg_ast::ast::ModifyStmt;
-
-    for stmt in stmts {
-        match stmt {
-            ModifyStmt::CostOverride { tokens, free, .. } => {
-                effective.tokens.clone_from(tokens);
-                effective.free = *free;
-            }
-            ModifyStmt::Let { name, value, .. } => {
-                let val = crate::expr_eval::eval_expr_step(core, env, sp, eh, value)?;
-                env.bind(name.clone(), val);
-            }
-            ModifyStmt::If {
-                condition,
-                then_body,
-                else_body,
-                ..
-            } => {
-                let cond = crate::expr_eval::eval_expr_step(core, env, sp, eh, condition)?;
-                match cond {
-                    Value::Bool(true) => {
-                        env.push_scope();
-                        let r =
-                            exec_cost_modify_stmts_native(core, env, sp, eh, then_body, effective);
-                        env.pop_scope();
-                        r?;
-                    }
-                    Value::Bool(false) => {
-                        if let Some(else_stmts) = else_body {
-                            env.push_scope();
-                            let r = exec_cost_modify_stmts_native(
-                                core, env, sp, eh, else_stmts, effective,
-                            );
-                            env.pop_scope();
-                            r?;
-                        }
-                    }
-                    _ => {
-                        return Err(RuntimeError::with_span(
-                            "cost modify if condition must be Bool",
-                            condition.span,
-                        ));
-                    }
-                }
-            }
-            _ => {}
-        }
-    }
-    Ok(())
-}
-
 /// Native version of `pipeline::collect_modifiers_owned`.
 fn collect_modifiers_owned_native(
     core: &RuntimeCore,
@@ -1421,308 +1285,52 @@ impl SuppressModifyAccess for NativeSuppressModify {
     }
 }
 
-/// Native version of `pipeline::apply_phase1_modifier`.
-#[allow(clippy::type_complexity)]
-fn apply_phase1_modifier_native(
-    core: &RuntimeCore,
-    env: &mut ExecEnv,
-    sp: &dyn StateProvider,
-    eh: &mut dyn EffectHandler,
-    modifier: &OwnedModifier,
-    mut params: Vec<(Name, Value)>,
-) -> Result<(Vec<(Name, Value)>, Vec<crate::effect::FieldChange>), RuntimeError> {
-    let old_params: Vec<(Name, Value)> = params.clone();
-
-    env.push_scope();
-
-    if let (Some(bearer), Some(recv_name)) = (&modifier.bearer, &modifier.receiver_name) {
-        env.bind(recv_name.clone(), bearer.clone());
-    }
-
-    for (name, val) in &modifier.condition_params {
-        env.bind(name.clone(), val.clone());
-    }
-
-    for (name, val) in &params {
-        env.bind(name.clone(), val.clone());
-    }
-
-    if !modifier.condition_state_fields.is_empty() {
-        env.bind(
-            Name::from("state"),
-            Value::Struct {
-                name: Name::from("state"),
-                fields: modifier.condition_state_fields.clone(),
-            },
-        );
-    }
-
-    let result =
-        exec_modify_stmts_phase1_native(core, env, sp, eh, &modifier.clause.body, &mut params);
-
-    env.pop_scope();
-    result?;
-
-    let changes = crate::pipeline::collect_param_changes(&old_params, &params);
-    Ok((params, changes))
-}
-
-/// Native version of `pipeline::exec_modify_stmts_phase1`.
-fn exec_modify_stmts_phase1_native(
-    core: &RuntimeCore,
-    env: &mut ExecEnv,
-    sp: &dyn StateProvider,
-    eh: &mut dyn EffectHandler,
-    stmts: &[ttrpg_ast::ast::ModifyStmt],
-    params: &mut Vec<(Name, Value)>,
-) -> Result<(), RuntimeError> {
-    use ttrpg_ast::ast::ModifyStmt;
-
-    for stmt in stmts {
-        match stmt {
-            ModifyStmt::ParamOverride { name, value, .. } => {
-                if name == "result" {
-                    continue;
-                }
-                let val = crate::expr_eval::eval_expr_step(core, env, sp, eh, value)?;
-                if let Some(param) = params.iter_mut().find(|(n, _)| n == name) {
-                    param.1 = val;
-                    env.bind(name.clone(), param.1.clone());
-                }
+/// Apply a value to a named field of a `RollResult`.
+/// Used by phase-2 ResultOverride handling.
+fn apply_roll_result_field(
+    rr: &mut crate::value::RollResult,
+    field: &str,
+    val: Value,
+) {
+    match field {
+        "total" => {
+            if let Value::Int(n) = val {
+                rr.total = n;
             }
-            ModifyStmt::Let { name, value, .. } => {
-                let val = crate::expr_eval::eval_expr_step(core, env, sp, eh, value)?;
-                env.bind(name.clone(), val);
-            }
-            ModifyStmt::If {
-                condition,
-                then_body,
-                else_body,
-                ..
-            } => {
-                if !crate::pipeline::has_phase1_stmts(then_body)
-                    && !else_body
-                        .as_ref()
-                        .is_some_and(|e| crate::pipeline::has_phase1_stmts(e))
-                {
-                    continue;
-                }
-                let cond = crate::expr_eval::eval_expr_step(core, env, sp, eh, condition)?;
-                match cond {
-                    Value::Bool(true) => {
-                        env.push_scope();
-                        let r =
-                            exec_modify_stmts_phase1_native(core, env, sp, eh, then_body, params);
-                        env.pop_scope();
-                        for (name, val) in params.iter() {
-                            env.bind(name.clone(), val.clone());
-                        }
-                        r?;
-                    }
-                    Value::Bool(false) => {
-                        if let Some(else_stmts) = else_body {
-                            env.push_scope();
-                            let r = exec_modify_stmts_phase1_native(
-                                core, env, sp, eh, else_stmts, params,
-                            );
-                            env.pop_scope();
-                            for (name, val) in params.iter() {
-                                env.bind(name.clone(), val.clone());
-                            }
-                            r?;
-                        }
-                    }
-                    _ => {
-                        return Err(RuntimeError::with_span(
-                            "modify if condition must be Bool",
-                            condition.span,
-                        ));
-                    }
-                }
-            }
-            ModifyStmt::ResultOverride { .. } | ModifyStmt::CostOverride { .. } => {}
         }
-    }
-    Ok(())
-}
-
-/// Native version of `pipeline::apply_phase2_modifier`.
-fn apply_phase2_modifier_native(
-    core: &RuntimeCore,
-    env: &mut ExecEnv,
-    sp: &dyn StateProvider,
-    eh: &mut dyn EffectHandler,
-    fn_info: &FnInfo,
-    modifier: &OwnedModifier,
-    params: &[(Name, Value)],
-    mut result: Value,
-) -> Result<(Value, Vec<crate::effect::FieldChange>), RuntimeError> {
-    if !crate::pipeline::has_phase2_stmts(&modifier.clause.body) {
-        return Ok((result, Vec::new()));
-    }
-
-    let old_result = result.clone();
-
-    env.push_scope();
-
-    if let (Some(bearer), Some(recv_name)) = (&modifier.bearer, &modifier.receiver_name) {
-        env.bind(recv_name.clone(), bearer.clone());
-    }
-
-    for (name, val) in &modifier.condition_params {
-        env.bind(name.clone(), val.clone());
-    }
-
-    for (name, val) in params {
-        env.bind(name.clone(), val.clone());
-    }
-
-    if !modifier.condition_state_fields.is_empty() {
-        env.bind(
-            Name::from("state"),
-            Value::Struct {
-                name: Name::from("state"),
-                fields: modifier.condition_state_fields.clone(),
-            },
-        );
-    }
-
-    env.bind(Name::from("result"), result.clone());
-
-    let exec_result =
-        exec_modify_stmts_phase2_native(core, env, sp, eh, &modifier.clause.body, &mut result);
-
-    env.pop_scope();
-    exec_result?;
-
-    let changes = crate::pipeline::collect_result_changes(&old_result, &result, fn_info);
-    Ok((result, changes))
-}
-
-/// Native version of `pipeline::exec_modify_stmts_phase2`.
-fn exec_modify_stmts_phase2_native(
-    core: &RuntimeCore,
-    env: &mut ExecEnv,
-    sp: &dyn StateProvider,
-    eh: &mut dyn EffectHandler,
-    stmts: &[ttrpg_ast::ast::ModifyStmt],
-    result: &mut Value,
-) -> Result<(), RuntimeError> {
-    use ttrpg_ast::ast::ModifyStmt;
-
-    for stmt in stmts {
-        match stmt {
-            ModifyStmt::ParamOverride { name, value, .. } => {
-                if name == "result" {
-                    let val = crate::expr_eval::eval_expr_step(core, env, sp, eh, value)?;
-                    *result = val;
-                    env.bind(Name::from("result"), result.clone());
-                }
+        "unmodified" => {
+            if let Value::Int(n) = val {
+                rr.unmodified = n;
             }
-            ModifyStmt::ResultOverride { field, value, .. } => {
-                let val = crate::expr_eval::eval_expr_step(core, env, sp, eh, value)?;
-                match result {
-                    Value::Struct { fields, .. } => {
-                        fields.insert(field.clone(), val);
-                    }
-                    Value::RollResult(rr) => match field.as_str() {
-                        "total" => {
-                            if let Value::Int(n) = val {
-                                rr.total = n;
-                            }
-                        }
-                        "unmodified" => {
-                            if let Value::Int(n) = val {
-                                rr.unmodified = n;
-                            }
-                        }
-                        "modifier" => {
-                            if let Value::Int(n) = val {
-                                rr.modifier = n;
-                            }
-                        }
-                        "expr" => {
-                            if let Value::DiceExpr(de) = val {
-                                rr.expr = de;
-                            }
-                        }
-                        "dice" => {
-                            if let Value::List(items) = val {
-                                rr.dice = items
-                                    .iter()
-                                    .filter_map(|v| {
-                                        if let Value::Int(n) = v {
-                                            Some(*n)
-                                        } else {
-                                            None
-                                        }
-                                    })
-                                    .collect();
-                            }
-                        }
-                        "kept" => {
-                            if let Value::List(items) = val {
-                                rr.kept = items
-                                    .iter()
-                                    .filter_map(|v| {
-                                        if let Value::Int(n) = v {
-                                            Some(*n)
-                                        } else {
-                                            None
-                                        }
-                                    })
-                                    .collect();
-                            }
-                        }
-                        _ => {}
-                    },
-                    _ => {}
-                }
-                env.bind(Name::from("result"), result.clone());
-            }
-            ModifyStmt::Let { name, value, .. } => {
-                let val = crate::expr_eval::eval_expr_step(core, env, sp, eh, value)?;
-                env.bind(name.clone(), val);
-            }
-            ModifyStmt::If {
-                condition,
-                then_body,
-                else_body,
-                ..
-            } => {
-                let cond = crate::expr_eval::eval_expr_step(core, env, sp, eh, condition)?;
-                match cond {
-                    Value::Bool(true) => {
-                        env.push_scope();
-                        let r =
-                            exec_modify_stmts_phase2_native(core, env, sp, eh, then_body, result);
-                        env.pop_scope();
-                        env.bind(Name::from("result"), result.clone());
-                        r?;
-                    }
-                    Value::Bool(false) => {
-                        if let Some(else_stmts) = else_body {
-                            env.push_scope();
-                            let r = exec_modify_stmts_phase2_native(
-                                core, env, sp, eh, else_stmts, result,
-                            );
-                            env.pop_scope();
-                            env.bind(Name::from("result"), result.clone());
-                            r?;
-                        }
-                    }
-                    _ => {
-                        return Err(RuntimeError::with_span(
-                            "modify if condition must be Bool",
-                            condition.span,
-                        ));
-                    }
-                }
-            }
-            ModifyStmt::CostOverride { .. } => {}
         }
+        "modifier" => {
+            if let Value::Int(n) = val {
+                rr.modifier = n;
+            }
+        }
+        "expr" => {
+            if let Value::DiceExpr(de) = val {
+                rr.expr = de;
+            }
+        }
+        "dice" => {
+            if let Value::List(items) = val {
+                rr.dice = items
+                    .iter()
+                    .filter_map(|v| if let Value::Int(n) = v { Some(*n) } else { None })
+                    .collect();
+            }
+        }
+        "kept" => {
+            if let Value::List(items) = val {
+                rr.kept = items
+                    .iter()
+                    .filter_map(|v| if let Value::Int(n) = v { Some(*n) } else { None })
+                    .collect();
+            }
+        }
+        _ => {}
     }
-    Ok(())
 }
 
 // ── Action lifecycle step machine ──────────────────────────────
@@ -1762,9 +1370,12 @@ pub(crate) enum CostEvalPhase {
     /// Collect matching cost modifiers via bridge (reads conditions,
     /// computes stacking, evaluates bindings, sorts by gained_at).
     CollectModifiers,
-    /// Apply modifier at index via bridge (exec cost modify stmts).
-    /// If the cost changed, prepares a ModifyApplied effect to yield.
+    /// Set up scope for modifier at index, init walker, save old state.
     ApplyModifier(usize),
+    /// Drive the walker: process modify stmts via ExprEval child frames.
+    ExecCostModify(usize),
+    /// Walker complete: pop scope, detect changes, build effect.
+    CostModifyDone(usize),
     /// Yield the ModifyApplied effect for the modifier that just changed cost.
     /// After ack, advances to next modifier or transitions out.
     YieldModifyApplied(usize),
@@ -1906,6 +1517,8 @@ pub(crate) enum Frame {
         fn_info_cache: Option<FnInfo>,
         /// Result from EmitHooks child frame (modify_applied hooks).
         modify_hooks_result: Option<Result<Value, RuntimeError>>,
+        /// Walker for inline modify stmt execution (Phase1/Phase2).
+        modify_walker: Option<Box<ModifyStmtWalker>>,
     },
 
     FunctionEval {
@@ -2158,6 +1771,11 @@ pub(crate) enum Frame {
         pending_modify_effect: Option<Effect>,
         /// Result from EmitHooks child frame (modify_applied hooks).
         modify_hooks_result: Option<Result<Value, RuntimeError>>,
+        /// Walker for inline cost modify stmt execution (ExecCostModify phase).
+        modify_walker: Option<Box<ModifyStmtWalker>>,
+        /// Saved old tokens/free for change detection during ExecCostModify.
+        modify_old_tokens: Vec<String>,
+        modify_old_free: bool,
     },
 
     /// Evaluates call arguments one at a time via ExprEval children,
@@ -2511,6 +2129,9 @@ impl Frame {
                                 modifiers: Vec::new(),
                                 pending_modify_effect: None,
                                 modify_hooks_result: None,
+                                modify_walker: None,
+                                modify_old_tokens: Vec::new(),
+                                modify_old_free: false,
                             });
                         }
                         // No cost or cost is free — skip to resolve.
@@ -3042,6 +2663,9 @@ impl Frame {
                 modifiers,
                 pending_modify_effect,
                 modify_hooks_result,
+                modify_walker,
+                modify_old_tokens,
+                modify_old_free,
             } => {
                 let tokens = effective_cost.as_ref().map_or(&cost.tokens, |c| &c.tokens);
                 let expected_tokens: Vec<String> = core
@@ -3090,34 +2714,148 @@ impl Frame {
                             return Advance::Continue;
                         }
 
-                        // Apply modifier at index natively (no bridge_run).
+                        // Set up scope for this modifier (mirrors
+                        // apply_single_cost_modifier_native scope setup).
                         let modifier = &modifiers[*idx];
-                        let mut eff_cost = effective_cost.clone().unwrap_or_else(|| cost.clone());
 
-                        let apply_result = apply_single_cost_modifier_native(
-                            core,
-                            env,
-                            sp,
-                            &mut *eh,
-                            modifier,
-                            &mut eff_cost,
-                            action_name.as_str(),
-                        );
+                        // Save old cost state for change detection.
+                        let eff = effective_cost.as_ref().unwrap_or(cost);
+                        *modify_old_tokens = eff
+                            .tokens
+                            .iter()
+                            .map(|t| t.node.to_string())
+                            .collect();
+                        *modify_old_free = eff.free;
 
-                        match apply_result {
-                            Ok(maybe_effect) => {
-                                *effective_cost = Some(eff_cost);
-                                if let Some(effect) = maybe_effect {
-                                    *pending_modify_effect = Some(effect);
-                                    *phase = CostEvalPhase::YieldModifyApplied(*idx);
-                                } else {
-                                    // No change — advance to next modifier.
-                                    *phase = CostEvalPhase::ApplyModifier(*idx + 1);
-                                }
+                        env.push_scope();
+
+                        if let (Some(receiver_name), Some(bearer)) =
+                            (&modifier.receiver_name, &modifier.bearer)
+                        {
+                            env.bind(receiver_name.clone(), bearer.clone());
+                        }
+
+                        for (name, val) in &modifier.condition_params {
+                            env.bind(name.clone(), val.clone());
+                        }
+
+                        if !modifier.condition_state_fields.is_empty() {
+                            env.bind(
+                                Name::from("state"),
+                                Value::Struct {
+                                    name: Name::from("state"),
+                                    fields: modifier.condition_state_fields.clone(),
+                                },
+                            );
+                        }
+
+                        // Init walker with the modifier body.
+                        *modify_walker = Some(Box::new(ModifyStmtWalker::new(
+                            modifier.clause.body.clone(),
+                            ModifyWalkerMode::Cost,
+                        )));
+                        *phase = CostEvalPhase::ExecCostModify(*idx);
+                        Advance::Continue
+                    }
+
+                    CostEvalPhase::ExecCostModify(idx) => {
+                        let walker = modify_walker
+                            .as_mut()
+                            .expect("ExecCostModify without walker");
+
+                        match walker.step(core) {
+                            WalkerStep::PushExpr(frame) => Advance::Push(frame),
+                            WalkerStep::Bind(name, val) => {
+                                env.bind(name, val);
                                 Advance::Continue
                             }
-                            Err(e) => Advance::Error(e),
+                            WalkerStep::CostOverride { tokens: t, free: f } => {
+                                let eff = effective_cost
+                                    .get_or_insert_with(|| cost.clone());
+                                eff.tokens = t;
+                                eff.free = f;
+                                Advance::Continue
+                            }
+                            WalkerStep::EnterBody => {
+                                // Walker already pushed stack and set body.
+                                // Parent just manages scope.
+                                env.push_scope();
+                                Advance::Continue
+                            }
+                            WalkerStep::ExitBody => {
+                                env.pop_scope();
+                                // Cost mode: no rebinding needed after If body.
+                                walker.exit_body();
+                                Advance::Continue
+                            }
+                            WalkerStep::Complete => {
+                                *phase = CostEvalPhase::CostModifyDone(*idx);
+                                Advance::Continue
+                            }
+                            WalkerStep::Continue => Advance::Continue,
+                            WalkerStep::Error(e) => {
+                                // Clean up scope before propagating.
+                                env.pop_scope();
+                                *modify_walker = None;
+                                Advance::Error(e)
+                            }
+                            // These are not produced in Cost mode.
+                            WalkerStep::ParamOverride(..)
+                            | WalkerStep::ResultOverride(..)
+                            | WalkerStep::ResultParamOverride(..) => {
+                                unreachable!(
+                                    "Cost walker produced non-cost step"
+                                )
+                            }
                         }
+                    }
+
+                    CostEvalPhase::CostModifyDone(idx) => {
+                        // Pop the modifier scope.
+                        env.pop_scope();
+                        *modify_walker = None;
+
+                        // Detect changes and build ModifyApplied effect.
+                        let eff = effective_cost.as_ref().unwrap_or(cost);
+                        let new_tokens: Vec<String> = eff
+                            .tokens
+                            .iter()
+                            .map(|t| t.node.to_string())
+                            .collect();
+
+                        if *modify_old_free != eff.free
+                            || *modify_old_tokens != new_tokens
+                        {
+                            let old_desc = if *modify_old_free {
+                                "free".to_string()
+                            } else {
+                                modify_old_tokens.join(", ")
+                            };
+                            let new_desc = if eff.free {
+                                "free".to_string()
+                            } else {
+                                new_tokens.join(", ")
+                            };
+                            let changes = vec![crate::effect::FieldChange {
+                                name: Name::from("cost"),
+                                old: Value::Str(old_desc),
+                                new: Value::Str(new_desc),
+                            }];
+                            *pending_modify_effect =
+                                Some(Effect::ModifyApplied {
+                                    source: modifiers[*idx].source.clone(),
+                                    target_fn: Name::from(
+                                        action_name.as_str(),
+                                    ),
+                                    phase: Phase::Phase1,
+                                    changes,
+                                    tags: modifiers[*idx].clause.tags.clone(),
+                                });
+                            *phase = CostEvalPhase::YieldModifyApplied(*idx);
+                        } else {
+                            *phase = CostEvalPhase::ApplyModifier(*idx + 1);
+                        }
+                        Advance::Continue
                     }
 
                     CostEvalPhase::YieldModifyApplied(idx) => {
@@ -3958,6 +3696,7 @@ impl Frame {
                 fn_info_cache,
                 pending,
                 modify_hooks_result,
+                modify_walker,
             } => {
                 match phase {
                     DeriveEvalPhase::Init => {
@@ -4135,32 +3874,138 @@ impl Frame {
                             return Advance::Continue;
                         }
 
+                        // Set up scope for this modifier (mirrors
+                        // apply_phase1_modifier_native scope setup).
                         let modifier = &modifiers[*idx];
                         let params = phase1_params.take().unwrap_or_default();
-                        let fn_name = name.as_str().to_owned();
 
-                        let apply_result =
-                            apply_phase1_modifier_native(core, env, sp, &mut *eh, modifier, params);
+                        env.push_scope();
 
-                        match apply_result {
-                            Ok((updated_params, changes)) => {
-                                *phase1_params = Some(updated_params);
-                                if !changes.is_empty() {
-                                    *pending_modify_effect = Some(Effect::ModifyApplied {
-                                        source: modifiers[*idx].source.clone(),
-                                        target_fn: Name::from(fn_name.as_str()),
-                                        phase: Phase::Phase1,
-                                        changes,
-                                        tags: modifiers[*idx].clause.tags.clone(),
-                                    });
-                                    *phase = DeriveEvalPhase::YieldPhase1(*idx);
-                                } else {
-                                    *phase = DeriveEvalPhase::ApplyPhase1(*idx + 1);
+                        if let (Some(bearer), Some(recv_name)) =
+                            (&modifier.bearer, &modifier.receiver_name)
+                        {
+                            env.bind(recv_name.clone(), bearer.clone());
+                        }
+
+                        for (n, val) in &modifier.condition_params {
+                            env.bind(n.clone(), val.clone());
+                        }
+
+                        for (n, val) in &params {
+                            env.bind(n.clone(), val.clone());
+                        }
+
+                        if !modifier.condition_state_fields.is_empty() {
+                            env.bind(
+                                Name::from("state"),
+                                Value::Struct {
+                                    name: Name::from("state"),
+                                    fields: modifier
+                                        .condition_state_fields
+                                        .clone(),
+                                },
+                            );
+                        }
+
+                        // Store params for walker to update.
+                        *phase1_params = Some(params);
+
+                        // Init walker with Phase1 mode.
+                        *modify_walker = Some(Box::new(ModifyStmtWalker::new(
+                            modifier.clause.body.clone(),
+                            ModifyWalkerMode::Phase1,
+                        )));
+                        *phase = DeriveEvalPhase::ExecPhase1Modify(*idx);
+                        Advance::Continue
+                    }
+
+                    DeriveEvalPhase::ExecPhase1Modify(idx) => {
+                        let walker = modify_walker
+                            .as_mut()
+                            .expect("ExecPhase1Modify without walker");
+                        let p1 = phase1_params.as_mut().expect(
+                            "ExecPhase1Modify without phase1_params",
+                        );
+
+                        match walker.step(core) {
+                            WalkerStep::PushExpr(frame) => Advance::Push(frame),
+                            WalkerStep::Bind(n, val) => {
+                                env.bind(n, val);
+                                Advance::Continue
+                            }
+                            WalkerStep::ParamOverride(n, val) => {
+                                // Update params vec and env binding.
+                                if let Some(param) =
+                                    p1.iter_mut().find(|(pn, _)| *pn == n)
+                                {
+                                    param.1 = val;
+                                    env.bind(n, param.1.clone());
                                 }
                                 Advance::Continue
                             }
-                            Err(e) => Advance::Error(e),
+                            WalkerStep::EnterBody => {
+                                env.push_scope();
+                                Advance::Continue
+                            }
+                            WalkerStep::ExitBody => {
+                                env.pop_scope();
+                                // Phase 1: rebind all params after branch.
+                                for (n, val) in p1.iter() {
+                                    env.bind(n.clone(), val.clone());
+                                }
+                                walker.exit_body();
+                                Advance::Continue
+                            }
+                            WalkerStep::Complete => {
+                                *phase =
+                                    DeriveEvalPhase::Phase1ModifyDone(*idx);
+                                Advance::Continue
+                            }
+                            WalkerStep::Continue => Advance::Continue,
+                            WalkerStep::Error(e) => {
+                                env.pop_scope();
+                                *modify_walker = None;
+                                Advance::Error(e)
+                            }
+                            // Not produced in Phase1 mode.
+                            WalkerStep::CostOverride { .. }
+                            | WalkerStep::ResultOverride(..)
+                            | WalkerStep::ResultParamOverride(..) => {
+                                unreachable!(
+                                    "Phase1 walker produced non-Phase1 step"
+                                )
+                            }
                         }
+                    }
+
+                    DeriveEvalPhase::Phase1ModifyDone(idx) => {
+                        // Pop the modifier scope.
+                        env.pop_scope();
+                        *modify_walker = None;
+
+                        // Detect changes.
+                        let old_params = bound_args.clone().unwrap_or_default();
+                        let new_params =
+                            phase1_params.as_ref().cloned().unwrap_or_default();
+                        let changes = crate::pipeline::collect_param_changes(
+                            &old_params,
+                            &new_params,
+                        );
+
+                        if !changes.is_empty() {
+                            *pending_modify_effect =
+                                Some(Effect::ModifyApplied {
+                                    source: modifiers[*idx].source.clone(),
+                                    target_fn: name.clone(),
+                                    phase: Phase::Phase1,
+                                    changes,
+                                    tags: modifiers[*idx].clause.tags.clone(),
+                                });
+                            *phase = DeriveEvalPhase::YieldPhase1(*idx);
+                        } else {
+                            *phase = DeriveEvalPhase::ApplyPhase1(*idx + 1);
+                        }
+                        Advance::Continue
                     }
 
                     DeriveEvalPhase::YieldPhase1(idx) => {
@@ -4229,36 +4074,182 @@ impl Frame {
                         }
 
                         let modifier = &modifiers[*idx];
-                        let fi = fn_info_cache
-                            .as_ref()
-                            .expect("DeriveEval: fn_info_cache must be set");
-                        let params = bound_args.clone().unwrap_or_default();
-                        let result_val = phase2_result.take().unwrap_or(Value::Void);
-                        let fn_name = name.as_str().to_owned();
 
-                        let apply_result = apply_phase2_modifier_native(
-                            core, env, sp, &mut *eh, fi, modifier, &params, result_val,
+                        // Skip modifiers with no phase2 stmts.
+                        if !crate::pipeline::has_phase2_stmts(
+                            &modifier.clause.body,
+                        ) {
+                            *phase = DeriveEvalPhase::ApplyPhase2(*idx + 1);
+                            return Advance::Continue;
+                        }
+
+                        let result_val = phase2_result
+                            .take()
+                            .unwrap_or(Value::Void);
+
+                        // Set up scope (mirrors apply_phase2_modifier_native).
+                        env.push_scope();
+
+                        if let (Some(bearer), Some(recv_name)) =
+                            (&modifier.bearer, &modifier.receiver_name)
+                        {
+                            env.bind(recv_name.clone(), bearer.clone());
+                        }
+
+                        for (n, val) in &modifier.condition_params {
+                            env.bind(n.clone(), val.clone());
+                        }
+
+                        for (n, val) in
+                            bound_args.as_deref().unwrap_or(&[])
+                        {
+                            env.bind(n.clone(), val.clone());
+                        }
+
+                        if !modifier.condition_state_fields.is_empty() {
+                            env.bind(
+                                Name::from("state"),
+                                Value::Struct {
+                                    name: Name::from("state"),
+                                    fields: modifier
+                                        .condition_state_fields
+                                        .clone(),
+                                },
+                            );
+                        }
+
+                        env.bind(
+                            Name::from("result"),
+                            result_val.clone(),
                         );
 
-                        match apply_result {
-                            Ok((updated_result, changes)) => {
-                                *phase2_result = Some(updated_result);
-                                if !changes.is_empty() {
-                                    *pending_modify_effect = Some(Effect::ModifyApplied {
-                                        source: modifiers[*idx].source.clone(),
-                                        target_fn: Name::from(fn_name.as_str()),
-                                        phase: Phase::Phase2,
-                                        changes,
-                                        tags: modifiers[*idx].clause.tags.clone(),
-                                    });
-                                    *phase = DeriveEvalPhase::YieldPhase2(*idx);
-                                } else {
-                                    *phase = DeriveEvalPhase::ApplyPhase2(*idx + 1);
-                                }
+                        // Store result for walker to update.
+                        *phase2_result = Some(result_val.clone());
+                        // Snapshot old result for change detection in Phase2ModifyDone.
+                        *base_value = Some(result_val);
+
+                        // Init walker with Phase2 mode.
+                        *modify_walker = Some(Box::new(ModifyStmtWalker::new(
+                            modifier.clause.body.clone(),
+                            ModifyWalkerMode::Phase2,
+                        )));
+                        *phase = DeriveEvalPhase::ExecPhase2Modify(*idx);
+                        Advance::Continue
+                    }
+
+                    DeriveEvalPhase::ExecPhase2Modify(idx) => {
+                        let walker = modify_walker
+                            .as_mut()
+                            .expect("ExecPhase2Modify without walker");
+                        let result = phase2_result
+                            .as_mut()
+                            .expect("ExecPhase2Modify without phase2_result");
+
+                        match walker.step(core) {
+                            WalkerStep::PushExpr(frame) => Advance::Push(frame),
+                            WalkerStep::Bind(n, val) => {
+                                env.bind(n, val);
                                 Advance::Continue
                             }
-                            Err(e) => Advance::Error(e),
+                            WalkerStep::ResultParamOverride(val) => {
+                                // result = expr
+                                *result = val;
+                                env.bind(
+                                    Name::from("result"),
+                                    result.clone(),
+                                );
+                                Advance::Continue
+                            }
+                            WalkerStep::ResultOverride(field, val) => {
+                                // result.field = expr
+                                match result {
+                                    Value::Struct { fields, .. } => {
+                                        fields.insert(field, val);
+                                    }
+                                    Value::RollResult(rr) => {
+                                        apply_roll_result_field(
+                                            rr,
+                                            field.as_str(),
+                                            val,
+                                        );
+                                    }
+                                    _ => {}
+                                }
+                                env.bind(
+                                    Name::from("result"),
+                                    result.clone(),
+                                );
+                                Advance::Continue
+                            }
+                            WalkerStep::EnterBody => {
+                                env.push_scope();
+                                Advance::Continue
+                            }
+                            WalkerStep::ExitBody => {
+                                env.pop_scope();
+                                // Phase 2: rebind result after branch.
+                                env.bind(
+                                    Name::from("result"),
+                                    result.clone(),
+                                );
+                                walker.exit_body();
+                                Advance::Continue
+                            }
+                            WalkerStep::Complete => {
+                                *phase =
+                                    DeriveEvalPhase::Phase2ModifyDone(*idx);
+                                Advance::Continue
+                            }
+                            WalkerStep::Continue => Advance::Continue,
+                            WalkerStep::Error(e) => {
+                                env.pop_scope();
+                                *modify_walker = None;
+                                Advance::Error(e)
+                            }
+                            // Not produced in Phase2 mode.
+                            WalkerStep::CostOverride { .. }
+                            | WalkerStep::ParamOverride(..) => {
+                                unreachable!(
+                                    "Phase2 walker produced non-Phase2 step"
+                                )
+                            }
                         }
+                    }
+
+                    DeriveEvalPhase::Phase2ModifyDone(idx) => {
+                        // Pop the modifier scope.
+                        env.pop_scope();
+                        *modify_walker = None;
+
+                        // Detect changes using the snapshot saved in
+                        // ApplyPhase2 (stored in base_value).
+                        let fi = fn_info_cache.as_ref().expect(
+                            "DeriveEval: fn_info_cache must be set",
+                        );
+                        let old_result =
+                            base_value.take().unwrap_or(Value::Void);
+                        let new_result = phase2_result
+                            .clone()
+                            .unwrap_or(Value::Void);
+                        let changes =
+                            crate::pipeline::collect_result_changes(
+                                &old_result, &new_result, fi,
+                            );
+
+                        if !changes.is_empty() {
+                            *pending_modify_effect =
+                                Some(Effect::ModifyApplied {
+                                    source: modifiers[*idx].source.clone(),
+                                    target_fn: name.clone(),
+                                    phase: Phase::Phase2,
+                                    changes,
+                                    tags: modifiers[*idx].clause.tags.clone(),
+                                });
+                            *phase = DeriveEvalPhase::YieldPhase2(*idx);
+                        } else {
+                            *phase = DeriveEvalPhase::ApplyPhase2(*idx + 1);
+                        }
+                        Advance::Continue
                     }
 
                     DeriveEvalPhase::YieldPhase2(idx) => {
@@ -6003,19 +5994,38 @@ impl Frame {
                 *child_result = Some(Ok(value));
             }
             Frame::CostEval {
+                phase,
                 modify_hooks_result,
+                modify_walker,
                 ..
             } => {
-                // EmitHooks child completed for modify_applied hooks.
-                *modify_hooks_result = Some(Ok(value));
+                if matches!(phase, CostEvalPhase::ExecCostModify(_)) {
+                    // ExprEval child completed for walker.
+                    if let Some(walker) = modify_walker.as_mut() {
+                        walker.receive_child(Ok(value));
+                    }
+                } else {
+                    // EmitHooks child completed for modify_applied hooks.
+                    *modify_hooks_result = Some(Ok(value));
+                }
             }
             Frame::DeriveEval {
                 base_value,
                 phase,
                 modify_hooks_result,
+                modify_walker,
                 ..
             } => {
-                if matches!(phase, DeriveEvalPhase::AwaitModifyHooks) {
+                if matches!(
+                    phase,
+                    DeriveEvalPhase::ExecPhase1Modify(_)
+                        | DeriveEvalPhase::ExecPhase2Modify(_)
+                ) {
+                    // ExprEval child completed for walker.
+                    if let Some(walker) = modify_walker.as_mut() {
+                        walker.receive_child(Ok(value));
+                    }
+                } else if matches!(phase, DeriveEvalPhase::AwaitModifyHooks) {
                     *modify_hooks_result = Some(Ok(value));
                 } else {
                     // FunctionEval child completed with body result.
@@ -6101,17 +6111,39 @@ impl Frame {
                 Ok(())
             }
             Frame::CostEval {
+                phase,
                 modify_hooks_result,
+                modify_walker,
                 ..
             } => {
-                *modify_hooks_result = Some(Err(error));
+                if matches!(phase, CostEvalPhase::ExecCostModify(_)) {
+                    // ExprEval child errored during walker execution.
+                    if let Some(walker) = modify_walker.as_mut() {
+                        walker.receive_child(Err(error));
+                    }
+                } else {
+                    *modify_hooks_result = Some(Err(error));
+                }
                 Ok(())
             }
             Frame::DeriveEval {
+                phase,
                 modify_hooks_result,
+                modify_walker,
                 ..
             } => {
-                *modify_hooks_result = Some(Err(error));
+                if matches!(
+                    phase,
+                    DeriveEvalPhase::ExecPhase1Modify(_)
+                        | DeriveEvalPhase::ExecPhase2Modify(_)
+                ) {
+                    // ExprEval child errored during walker execution.
+                    if let Some(walker) = modify_walker.as_mut() {
+                        walker.receive_child(Err(error));
+                    }
+                } else {
+                    *modify_hooks_result = Some(Err(error));
+                }
                 Ok(())
             }
             _ => Err(error),
@@ -6241,8 +6273,12 @@ pub(crate) enum DeriveEvalPhase {
     DefaultsDone,
     /// Collect matching modifiers via native pipeline.
     CollectModifiers,
-    /// Apply Phase 1 modifier at index via native pipeline.
+    /// Set up scope for Phase 1 modifier at index, init walker.
     ApplyPhase1(usize),
+    /// Drive walker for Phase 1 modify stmts.
+    ExecPhase1Modify(usize),
+    /// Walker complete: pop scope, detect changes, build effect.
+    Phase1ModifyDone(usize),
     /// Yield the pending ModifyApplied effect for Phase 1.
     YieldPhase1(usize),
     /// Await host ack for Phase 1 ModifyApplied.
@@ -6251,8 +6287,12 @@ pub(crate) enum DeriveEvalPhase {
     PushBody,
     /// FunctionEval child completed with body result.
     BodyDone,
-    /// Apply Phase 2 modifier at index via native pipeline.
+    /// Set up scope for Phase 2 modifier at index, init walker.
     ApplyPhase2(usize),
+    /// Drive walker for Phase 2 modify stmts.
+    ExecPhase2Modify(usize),
+    /// Walker complete: pop scope, detect changes, build effect.
+    Phase2ModifyDone(usize),
     /// Yield the pending ModifyApplied effect for Phase 2.
     YieldPhase2(usize),
     /// Await host ack for Phase 2 ModifyApplied.
@@ -6261,6 +6301,301 @@ pub(crate) enum DeriveEvalPhase {
     EmitModifyEvents,
     /// Awaiting EmitHooks child frame completion.
     AwaitModifyHooks,
+}
+
+// ── ModifyStmtWalker ───────────────────────────────────────────
+//
+// Shared state machine for walking `ModifyStmt` lists. Owned as a field
+// inside parent frames (CostEval, DeriveEval). Handles statement iteration,
+// If-body recursion via an explicit stack, and ExprEval child result
+// tracking. The parent interprets mode-specific results.
+
+/// Which modifier pipeline the walker is serving.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum ModifyWalkerMode {
+    Cost,
+    Phase1,
+    Phase2,
+}
+
+/// What the walker is waiting for after pushing an ExprEval child.
+#[derive(Debug, Clone)]
+enum ModifyWalkerAwait {
+    /// Not waiting — ready to process next stmt.
+    Ready,
+    /// Waiting for ExprEval result for a Let binding value.
+    LetExpr(Name),
+    /// Waiting for ExprEval result for an If condition.
+    IfCondition,
+    /// Waiting for ExprEval result for a ParamOverride value.
+    ParamOverride(Name),
+    /// Waiting for ExprEval result for a ResultOverride field value.
+    ResultOverride(Name),
+    /// Waiting for ExprEval result for `result = expr` (phase2 ParamOverride).
+    ResultParamOverride,
+}
+
+/// Actions produced by the walker for the parent frame to execute.
+pub(crate) enum WalkerStep {
+    /// Push this ExprEval frame as a child. Return `Advance::Push(frame)`.
+    PushExpr(Frame),
+    /// Let binding evaluated — parent should `env.bind(name, value)`.
+    Bind(Name, Value),
+    /// Cost override (pure data) — parent applies to CostClause.
+    CostOverride {
+        tokens: Vec<Spanned<Name>>,
+        free: bool,
+    },
+    /// ParamOverride evaluated — parent updates params vec + env.bind.
+    ParamOverride(Name, Value),
+    /// ResultOverride field evaluated — parent updates result fields + env.bind.
+    ResultOverride(Name, Value),
+    /// `result = expr` evaluated — parent replaces result + env.bind.
+    ResultParamOverride(Value),
+    /// If condition evaluated — entering chosen body. The walker has already
+    /// pushed the parent stmts to its stack and set up the body. Parent
+    /// should `env.push_scope()`.
+    EnterBody,
+    /// Current If body is done. Parent should `env.pop_scope()`, do
+    /// mode-specific rebinding. The walker has already restored parent state.
+    ExitBody,
+    /// All statements complete (stack empty). Walker is finished.
+    Complete,
+    /// Continue to the next step (stmt was skipped / irrelevant to mode).
+    Continue,
+    /// Error occurred.
+    Error(RuntimeError),
+}
+
+/// Shared state machine for walking `ModifyStmt` lists.
+#[derive(Debug, Clone)]
+pub(crate) struct ModifyStmtWalker {
+    /// Current statement list being processed.
+    stmts: Vec<ttrpg_ast::ast::ModifyStmt>,
+    /// Index into current stmts.
+    index: usize,
+    /// Saved (stmts, next_index) for parent contexts when inside If bodies.
+    stack: Vec<(Vec<ttrpg_ast::ast::ModifyStmt>, usize)>,
+    /// Result from a pushed ExprEval child frame.
+    child_result: Option<Result<Value, RuntimeError>>,
+    /// What the walker is waiting for.
+    awaiting: ModifyWalkerAwait,
+    /// Mode (determines which stmts to process/skip).
+    mode: ModifyWalkerMode,
+}
+
+impl ModifyStmtWalker {
+    pub(crate) fn new(
+        stmts: Vec<ttrpg_ast::ast::ModifyStmt>,
+        mode: ModifyWalkerMode,
+    ) -> Self {
+        ModifyStmtWalker {
+            stmts,
+            index: 0,
+            stack: Vec::new(),
+            child_result: None,
+            awaiting: ModifyWalkerAwait::Ready,
+            mode,
+        }
+    }
+
+    /// Deliver a child frame result (ExprEval completed).
+    pub(crate) fn receive_child(&mut self, result: Result<Value, RuntimeError>) {
+        self.child_result = Some(result);
+    }
+
+    /// Drive one step. Returns what the parent should do.
+    pub(crate) fn step(&mut self, core: &RuntimeCore) -> WalkerStep {
+        use ttrpg_ast::ast::ModifyStmt;
+
+        // 1. Handle pending child result.
+        if let Some(result) = self.child_result.take() {
+            let val = match result {
+                Ok(v) => v,
+                Err(e) => return WalkerStep::Error(e),
+            };
+            match std::mem::replace(&mut self.awaiting, ModifyWalkerAwait::Ready) {
+                ModifyWalkerAwait::LetExpr(name) => {
+                    self.index += 1;
+                    return WalkerStep::Bind(name, val);
+                }
+                ModifyWalkerAwait::IfCondition => {
+                    return match val {
+                        Value::Bool(b) => {
+                            // Pick the body to enter.
+                            let stmt = &self.stmts[self.index];
+                            if let ModifyStmt::If {
+                                then_body,
+                                else_body,
+                                ..
+                            } = stmt
+                            {
+                                let body = if b {
+                                    Some(then_body.clone())
+                                } else {
+                                    else_body.clone()
+                                };
+                                match body {
+                                    Some(body_stmts) => {
+                                        // Push current context to stack and
+                                        // switch to the chosen body.
+                                        let parent_stmts = std::mem::replace(
+                                            &mut self.stmts,
+                                            body_stmts,
+                                        );
+                                        self.stack
+                                            .push((parent_stmts, self.index + 1));
+                                        self.index = 0;
+                                        WalkerStep::EnterBody
+                                    }
+                                    None => {
+                                        // false with no else — skip.
+                                        self.index += 1;
+                                        WalkerStep::Continue
+                                    }
+                                }
+                            } else {
+                                WalkerStep::Error(RuntimeError::new(
+                                    "internal: IfCondition on non-If stmt",
+                                ))
+                            }
+                        }
+                        _ => WalkerStep::Error(RuntimeError::new(
+                            "modify if condition must be Bool",
+                        )),
+                    };
+                }
+                ModifyWalkerAwait::ParamOverride(name) => {
+                    self.index += 1;
+                    return WalkerStep::ParamOverride(name, val);
+                }
+                ModifyWalkerAwait::ResultOverride(field) => {
+                    self.index += 1;
+                    return WalkerStep::ResultOverride(field, val);
+                }
+                ModifyWalkerAwait::ResultParamOverride => {
+                    self.index += 1;
+                    return WalkerStep::ResultParamOverride(val);
+                }
+                ModifyWalkerAwait::Ready => {
+                    // Shouldn't happen — child result without awaiting.
+                    return WalkerStep::Error(RuntimeError::new(
+                        "internal: ModifyStmtWalker received child result while not awaiting",
+                    ));
+                }
+            }
+        }
+
+        // 2. Check if current body is done.
+        if self.index >= self.stmts.len() {
+            if self.stack.is_empty() {
+                return WalkerStep::Complete;
+            } else {
+                return WalkerStep::ExitBody;
+            }
+        }
+
+        // 3. Process current statement.
+        let stmt = &self.stmts[self.index];
+        match stmt {
+            // ── Let: shared across all modes ──
+            ModifyStmt::Let { name, value, .. } => {
+                self.awaiting = ModifyWalkerAwait::LetExpr(name.clone());
+                WalkerStep::PushExpr(compile_expr_to_frame(value, core))
+            }
+
+            // ── If: shared across all modes (with phase1 skip optimization) ──
+            ModifyStmt::If {
+                condition,
+                then_body,
+                else_body,
+                ..
+            } => {
+                // Phase1 optimization: skip If when neither branch has phase1 stmts.
+                if self.mode == ModifyWalkerMode::Phase1
+                    && !crate::pipeline::has_phase1_stmts(then_body)
+                    && !else_body
+                        .as_ref()
+                        .is_some_and(|e| crate::pipeline::has_phase1_stmts(e))
+                {
+                    self.index += 1;
+                    return WalkerStep::Continue;
+                }
+                self.awaiting = ModifyWalkerAwait::IfCondition;
+                WalkerStep::PushExpr(compile_expr_to_frame(condition, core))
+            }
+
+            // ── CostOverride: cost mode only, pure data ──
+            ModifyStmt::CostOverride { tokens, free, .. } => {
+                if self.mode == ModifyWalkerMode::Cost {
+                    let t = tokens.clone();
+                    let f = *free;
+                    self.index += 1;
+                    WalkerStep::CostOverride { tokens: t, free: f }
+                } else {
+                    // Irrelevant to this mode.
+                    self.index += 1;
+                    WalkerStep::Continue
+                }
+            }
+
+            // ── ParamOverride: mode-specific ──
+            ModifyStmt::ParamOverride { name, value, .. } => {
+                match self.mode {
+                    ModifyWalkerMode::Phase1 => {
+                        if name == "result" {
+                            // Phase1 skips result overrides.
+                            self.index += 1;
+                            WalkerStep::Continue
+                        } else {
+                            self.awaiting =
+                                ModifyWalkerAwait::ParamOverride(name.clone());
+                            WalkerStep::PushExpr(compile_expr_to_frame(value, core))
+                        }
+                    }
+                    ModifyWalkerMode::Phase2 => {
+                        if name == "result" {
+                            self.awaiting = ModifyWalkerAwait::ResultParamOverride;
+                            WalkerStep::PushExpr(compile_expr_to_frame(value, core))
+                        } else {
+                            // Phase2 ignores non-result param overrides.
+                            self.index += 1;
+                            WalkerStep::Continue
+                        }
+                    }
+                    ModifyWalkerMode::Cost => {
+                        // Cost mode doesn't handle param overrides.
+                        self.index += 1;
+                        WalkerStep::Continue
+                    }
+                }
+            }
+
+            // ── ResultOverride: phase2 only ──
+            ModifyStmt::ResultOverride { field, value, .. } => {
+                if self.mode == ModifyWalkerMode::Phase2 {
+                    self.awaiting =
+                        ModifyWalkerAwait::ResultOverride(field.clone());
+                    WalkerStep::PushExpr(compile_expr_to_frame(value, core))
+                } else {
+                    self.index += 1;
+                    WalkerStep::Continue
+                }
+            }
+        }
+    }
+
+    /// Exit an If body. Called by parent after `WalkerStep::ExitBody`.
+    /// The parent has already called `env.pop_scope()` and done mode-specific rebinding.
+    /// Restores the parent stmt list and index from the stack.
+    pub(crate) fn exit_body(&mut self) {
+        let (parent_stmts, parent_idx) = self
+            .stack
+            .pop()
+            .expect("exit_body with empty stack");
+        self.stmts = parent_stmts;
+        self.index = parent_idx;
+    }
 }
 
 /// Group initialization data for entity construction.
@@ -6818,6 +7153,7 @@ impl<S: WritableState> Execution<S> {
             fn_info_cache: None,
             pending: None,
             modify_hooks_result: None,
+            modify_walker: None,
         });
         Ok(exec)
     }
@@ -6851,6 +7187,7 @@ impl<S: WritableState> Execution<S> {
             fn_info_cache: None,
             pending: None,
             modify_hooks_result: None,
+            modify_walker: None,
         });
         Ok(exec)
     }

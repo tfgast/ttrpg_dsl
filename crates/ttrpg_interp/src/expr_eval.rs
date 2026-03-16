@@ -2720,6 +2720,7 @@ fn dispatch_derive_step(
         phase2_result: None,
         fn_info_cache: Some(fn_info),
         modify_hooks_result: None,
+        modify_walker: None,
     }))
 }
 
@@ -2785,6 +2786,7 @@ fn dispatch_table_step(
         phase2_result: None,
         fn_info_cache: Some(fn_info),
         modify_hooks_result: None,
+        modify_walker: None,
     }))
 }
 
