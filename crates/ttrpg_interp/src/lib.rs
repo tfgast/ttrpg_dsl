@@ -7,6 +7,7 @@ pub mod effect;
 pub mod eval;
 pub mod event;
 pub mod execution;
+pub(crate) mod expr_eval;
 pub mod handle_registry;
 pub mod pipeline;
 pub mod reference_state;

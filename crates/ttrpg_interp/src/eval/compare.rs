@@ -29,7 +29,7 @@ pub(super) fn int_float_eq(i: i64, f: f64) -> bool {
 }
 
 /// Exact ordering between i64 and f64 without lossy `i64 as f64` cast.
-pub(super) fn int_float_cmp(i: i64, f: f64) -> Option<std::cmp::Ordering> {
+pub(crate) fn int_float_cmp(i: i64, f: f64) -> Option<std::cmp::Ordering> {
     if !f.is_finite() {
         // NaN → no ordering
         if f.is_nan() {

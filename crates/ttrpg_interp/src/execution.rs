@@ -75,21 +75,21 @@ impl ExecEnv {
         }
     }
 
-    fn push_scope(&mut self) {
+    pub(crate) fn push_scope(&mut self) {
         self.scopes.push(Scope::new());
     }
 
-    fn pop_scope(&mut self) {
+    pub(crate) fn pop_scope(&mut self) {
         self.scopes.pop();
     }
 
-    fn bind(&mut self, name: Name, value: Value) {
+    pub(crate) fn bind(&mut self, name: Name, value: Value) {
         if let Some(scope) = self.scopes.last_mut() {
             scope.bindings.insert(name, value);
         }
     }
 
-    fn lookup(&self, name: &str) -> Option<&Value> {
+    pub(crate) fn lookup(&self, name: &str) -> Option<&Value> {
         for scope in self.scopes.iter().rev() {
             if let Some(val) = scope.bindings.get(name) {
                 return Some(val);
@@ -610,7 +610,7 @@ fn restore_awaiting_budget(handler: &mut dyn EffectHandler, awaiting: &AwaitingF
 /// Evaluate a single expression using the handler if available, or
 /// NoYieldHandler if not. Used by the native statement dispatch path
 /// for sub-expressions.
-fn eval_expr_via_handler(
+pub(crate) fn eval_expr_via_handler(
     core: &RuntimeCore,
     env: &mut ExecEnv,
     sp: &dyn StateProvider,
@@ -619,6 +619,23 @@ fn eval_expr_via_handler(
 ) -> Result<Value, RuntimeError> {
     bridge_eval_with(core, env, sp, eh, BridgeCategory::Eval, |tmp_env| {
         crate::eval::eval_expr(tmp_env, expr)
+    })
+}
+
+/// Evaluate a builtin function call via bridge for builtins that need
+/// full Env context (apply_condition, remove_condition, etc.).
+pub(crate) fn bridge_call_builtin(
+    core: &RuntimeCore,
+    env: &mut ExecEnv,
+    sp: &dyn StateProvider,
+    eh: &mut dyn EffectHandler,
+    name: &str,
+    args: Vec<Value>,
+    span: Span,
+) -> Result<Value, RuntimeError> {
+    let name = name.to_string();
+    bridge_eval_with(core, env, sp, eh, BridgeCategory::Dispatch, move |tmp_env| {
+        crate::builtins::call_builtin(tmp_env, &name, args, span)
     })
 }
 
@@ -639,7 +656,7 @@ fn try_dispatch_with_budget(
     body: &Block,
     span: Span,
 ) -> Result<NativeDispatch, RuntimeError> {
-    let entity_val = eval_expr_via_handler(core, env, sp, eh, entity_expr)?;
+    let entity_val = crate::expr_eval::eval_expr_step(core, env, sp, eh, entity_expr)?;
     let actor = match entity_val {
         Value::Entity(r) => r,
         _ => {
@@ -652,7 +669,7 @@ fn try_dispatch_with_budget(
 
     let mut budget = BTreeMap::new();
     for (name, expr) in budget_fields {
-        let val = eval_expr_via_handler(core, env, sp, eh, expr)?;
+        let val = crate::expr_eval::eval_expr_step(core, env, sp, eh, expr)?;
         budget.insert(name.node.clone(), val);
     }
 
@@ -696,7 +713,7 @@ fn try_dispatch_with_budgets(
     body: &Block,
     span: Span,
 ) -> Result<NativeDispatch, RuntimeError> {
-    let specs_val = eval_expr_via_handler(core, env, sp, eh, specs_expr)?;
+    let specs_val = crate::expr_eval::eval_expr_step(core, env, sp, eh, specs_expr)?;
     let spec_list = match specs_val {
         Value::List(items) => items,
         _ => {
@@ -791,7 +808,7 @@ fn try_dispatch_grant(
     field_inits: &[ttrpg_ast::ast::StructFieldInit],
     stmt_span: Span,
 ) -> Result<(), RuntimeError> {
-    let entity_val = eval_expr_via_handler(core, env, sp, eh, entity_expr)?;
+    let entity_val = crate::expr_eval::eval_expr_step(core, env, sp, eh, entity_expr)?;
     let entity_ref = match entity_val {
         Value::Entity(r) => r,
         _ => {
@@ -805,7 +822,7 @@ fn try_dispatch_grant(
     // Evaluate explicit field initializers.
     let mut fields = BTreeMap::new();
     for init in field_inits {
-        let val = eval_expr_via_handler(core, env, sp, eh, &init.value)?;
+        let val = crate::expr_eval::eval_expr_step(core, env, sp, eh, &init.value)?;
         fields.insert(init.name.clone(), val);
     }
 
@@ -827,7 +844,7 @@ fn try_dispatch_grant(
     .collect();
 
     for (name, default_expr) in &defaults {
-        let val = eval_expr_via_handler(core, env, sp, eh, default_expr)?;
+        let val = crate::expr_eval::eval_expr_step(core, env, sp, eh, default_expr)?;
         fields.insert(name.clone(), val);
     }
 
@@ -861,7 +878,7 @@ fn try_dispatch_revoke_stmt(
     group_name: &Name,
     stmt_span: Span,
 ) -> Result<(), RuntimeError> {
-    let entity_val = eval_expr_via_handler(core, env, sp, eh, entity_expr)?;
+    let entity_val = crate::expr_eval::eval_expr_step(core, env, sp, eh, entity_expr)?;
     let entity_ref = match entity_val {
         Value::Entity(r) => r,
         _ => {
@@ -907,6 +924,29 @@ fn extract_resumable_expr(stmt: &Spanned<StmtKind>) -> Option<(Spanned<ExprKind>
         )),
         StmtKind::Return(Some(expr)) => Some((expr.clone(), AwaitingFn::Return)),
         _ => None,
+    }
+}
+
+/// Try to compile an expression for ExprEval, falling back to ResumableBridge.
+fn compile_or_bridge(
+    expr: &Spanned<ExprKind>,
+    core: &RuntimeCore,
+    fallback_cache: Vec<Value>,
+) -> Frame {
+    if let Some(work) = crate::expr_eval::compile_expr(expr, &core.type_env, &core.program) {
+        Frame::ExprEval {
+            work,
+            operands: Vec::new(),
+            pc: 0,
+            child_result: None,
+            scope_depth: 0,
+        }
+    } else {
+        Frame::ResumableBridge {
+            expr: expr.clone(),
+            expr_cache: fallback_cache,
+            span: expr.span,
+        }
     }
 }
 
@@ -1169,7 +1209,7 @@ fn collect_cost_modifiers_native(
                     };
 
                     if let Some(ref expr) = binding.value {
-                        match eval_expr_via_handler(core, env, sp, eh, expr) {
+                        match crate::expr_eval::eval_expr_step(core, env, sp, eh, expr) {
                             Ok(val) => {
                                 if !value_eq(sp, &param_val, &val) {
                                     all_match = false;
@@ -1304,7 +1344,7 @@ fn exec_cost_modify_stmts_native(
                 effective.free = *free;
             }
             ModifyStmt::Let { name, value, .. } => {
-                let val = eval_expr_via_handler(core, env, sp, eh, value)?;
+                let val = crate::expr_eval::eval_expr_step(core, env, sp, eh, value)?;
                 env.bind(name.clone(), val);
             }
             ModifyStmt::If {
@@ -1313,7 +1353,7 @@ fn exec_cost_modify_stmts_native(
                 else_body,
                 ..
             } => {
-                let cond = eval_expr_via_handler(core, env, sp, eh, condition)?;
+                let cond = crate::expr_eval::eval_expr_step(core, env, sp, eh, condition)?;
                 match cond {
                     Value::Bool(true) => {
                         env.push_scope();
@@ -1570,7 +1610,7 @@ fn check_modify_bindings_native(
         }
 
         let binding_val = match binding.value {
-            Some(ref expr) => eval_expr_via_handler(core, env, sp, eh, expr),
+            Some(ref expr) => crate::expr_eval::eval_expr_step(core, env, sp, eh, expr),
             None => {
                 env.pop_scope();
                 continue;
@@ -1619,7 +1659,7 @@ fn check_option_modify_bindings_native(
             env.bind(name.clone(), val.clone());
         }
 
-        let binding_val = eval_expr_via_handler(core, env, sp, eh, binding_expr);
+        let binding_val = crate::expr_eval::eval_expr_step(core, env, sp, eh, binding_expr);
         env.pop_scope();
 
         let val = binding_val?;
@@ -1696,7 +1736,7 @@ where
             };
 
             if let Some(value_expr) = &binding.value {
-                let binding_val = eval_expr_via_handler(core, env, sp, eh, value_expr)?;
+                let binding_val = crate::expr_eval::eval_expr_step(core, env, sp, eh, value_expr)?;
                 if !value_eq(sp, &param_val, &binding_val) {
                     bindings_match = false;
                     break;
@@ -1798,14 +1838,14 @@ fn exec_modify_stmts_phase1_native(
                 if name == "result" {
                     continue;
                 }
-                let val = eval_expr_via_handler(core, env, sp, eh, value)?;
+                let val = crate::expr_eval::eval_expr_step(core, env, sp, eh, value)?;
                 if let Some(param) = params.iter_mut().find(|(n, _)| n == name) {
                     param.1 = val;
                     env.bind(name.clone(), param.1.clone());
                 }
             }
             ModifyStmt::Let { name, value, .. } => {
-                let val = eval_expr_via_handler(core, env, sp, eh, value)?;
+                let val = crate::expr_eval::eval_expr_step(core, env, sp, eh, value)?;
                 env.bind(name.clone(), val);
             }
             ModifyStmt::If {
@@ -1819,7 +1859,7 @@ fn exec_modify_stmts_phase1_native(
                 {
                     continue;
                 }
-                let cond = eval_expr_via_handler(core, env, sp, eh, condition)?;
+                let cond = crate::expr_eval::eval_expr_step(core, env, sp, eh, condition)?;
                 match cond {
                     Value::Bool(true) => {
                         env.push_scope();
@@ -1922,13 +1962,13 @@ fn exec_modify_stmts_phase2_native(
         match stmt {
             ModifyStmt::ParamOverride { name, value, .. } => {
                 if name == "result" {
-                    let val = eval_expr_via_handler(core, env, sp, eh, value)?;
+                    let val = crate::expr_eval::eval_expr_step(core, env, sp, eh, value)?;
                     *result = val;
                     env.bind(Name::from("result"), result.clone());
                 }
             }
             ModifyStmt::ResultOverride { field, value, .. } => {
-                let val = eval_expr_via_handler(core, env, sp, eh, value)?;
+                let val = crate::expr_eval::eval_expr_step(core, env, sp, eh, value)?;
                 match result {
                     Value::Struct { fields, .. } => {
                         fields.insert(field.clone(), val);
@@ -1989,7 +2029,7 @@ fn exec_modify_stmts_phase2_native(
                 env.bind(Name::from("result"), result.clone());
             }
             ModifyStmt::Let { name, value, .. } => {
-                let val = eval_expr_via_handler(core, env, sp, eh, value)?;
+                let val = crate::expr_eval::eval_expr_step(core, env, sp, eh, value)?;
                 env.bind(name.clone(), val);
             }
             ModifyStmt::If {
@@ -1998,7 +2038,7 @@ fn exec_modify_stmts_phase2_native(
                 else_body,
                 ..
             } => {
-                let cond = eval_expr_via_handler(core, env, sp, eh, condition)?;
+                let cond = crate::expr_eval::eval_expr_step(core, env, sp, eh, condition)?;
                 match cond {
                     Value::Bool(true) => {
                         env.push_scope();
@@ -2458,6 +2498,16 @@ pub(crate) enum Frame {
         span: Span,
     },
 
+    /// Step-based expression evaluator. Replaces ResumableBridge for
+    /// expressions that can be compiled to a work sequence.
+    ExprEval {
+        work: Vec<crate::expr_eval::ExprWork>,
+        operands: Vec<Value>,
+        pc: usize,
+        child_result: Option<Result<Value, RuntimeError>>,
+        scope_depth: usize,
+    },
+
     /// Resumable bridge evaluation frame. Evaluates an expression through
     /// the recursive evaluator with CachingHandler replay support. Pushes
     /// yield frames (RollDiceWaiting, PromptWaiting) when host-decided
@@ -2666,11 +2716,7 @@ impl Frame {
                             // Both sync and async paths use the same frame-based
                             // dispatch (ResumableBridge handles sync via real handler).
                             *step = ActionStep::AwaitRequiresEval;
-                            Advance::Push(Frame::ResumableBridge {
-                                expr: req_expr.clone(),
-                                expr_cache: Vec::new(),
-                                span: req_expr.span,
-                            })
+                            Advance::Push(compile_or_bridge(req_expr, core, Vec::new()))
                         } else {
                             // No requires clause, skip to cost evaluation
                             *step = ActionStep::EvalCost;
@@ -2865,11 +2911,7 @@ impl Frame {
 
                 // Phase 1: push ResumableBridge for next arg.
                 if *arg_index < arg_exprs.len() {
-                    return Advance::Push(Frame::ResumableBridge {
-                        expr: arg_exprs[*arg_index].clone(),
-                        expr_cache: Vec::new(),
-                        span: *span,
-                    });
+                    return Advance::Push(compile_or_bridge(&arg_exprs[*arg_index], core, Vec::new()));
                 }
 
                 // Phase 2: all args evaluated — build and push target frame.
@@ -3120,6 +3162,19 @@ impl Frame {
                         })
                     }
                 }
+            }
+
+            Frame::ExprEval {
+                work,
+                operands,
+                pc,
+                child_result,
+                scope_depth,
+            } => {
+                crate::expr_eval::advance_expr_eval(
+                    work, operands, pc, child_result, scope_depth,
+                    core, env, sp, &mut *eh,
+                )
             }
 
             Frame::ResumableBridge {
@@ -3595,11 +3650,7 @@ impl Frame {
                             child_result: None,
                         })
                     }
-                    BridgeCallInfo::Expr { expr } => Advance::Push(Frame::ResumableBridge {
-                        expr,
-                        expr_cache: Vec::new(),
-                        span: Span::dummy(),
-                    }),
+                    BridgeCallInfo::Expr { ref expr } => Advance::Push(compile_or_bridge(expr, core, Vec::new())),
                 }
             }
 
@@ -3741,7 +3792,7 @@ impl Frame {
                     ..
                 } = stmt.node
                 {
-                    let entity_val = eval_expr_via_handler(core, env, sp, &mut *eh, entity_expr);
+                    let entity_val = crate::expr_eval::eval_expr_step(core, env, sp, &mut *eh, entity_expr);
                     match entity_val {
                         Ok(Value::Entity(payer)) => {
                             let prev = env.cost_payer;
@@ -3942,9 +3993,21 @@ impl Frame {
                     return Advance::Push(emit_frame);
                 }
 
-                // Let/Assign/Expr with non-call expressions: push
+                // Let/Assign/Expr with non-call expressions: try ExprEval
+                // for trivially-pure expressions, then fall back to
                 // ResumableBridge for frame-based async evaluation.
                 if let Some((bridge_expr, awaiting)) = extract_resumable_expr(&stmt) {
+                    if let Some(work) = crate::expr_eval::compile_expr(&bridge_expr, &core.type_env, &core.program) {
+                        *awaiting_fn = Some(awaiting);
+                        return Advance::Push(Frame::ExprEval {
+                            work,
+                            operands: Vec::new(),
+                            pc: 0,
+                            child_result: None,
+                            scope_depth: 0,
+                        });
+                    }
+                    // Fallback to ResumableBridge for non-trivial expressions.
                     *awaiting_fn = Some(awaiting);
                     return Advance::Push(Frame::ResumableBridge {
                         expr: bridge_expr,
@@ -3999,13 +4062,8 @@ impl Frame {
                     *index += 1;
                     Advance::Continue
                 } else if let Some(ref default_expr) = param.default_expr {
-                    // Push ResumableBridge child to evaluate the default expression.
-                    let expr = default_expr.clone();
-                    Advance::Push(Frame::ResumableBridge {
-                        expr,
-                        expr_cache: Vec::new(),
-                        span: Span::dummy(),
-                    })
+                    // Push child frame to evaluate the default expression.
+                    Advance::Push(compile_or_bridge(default_expr, core, Vec::new()))
                 } else {
                     // Missing required parameter.
                     Advance::Error(RuntimeError::new(format!(
@@ -4861,12 +4919,7 @@ impl Frame {
 
                         // 3. Evaluate arg expressions one at a time via child frames.
                         if *arg_index < args.len() {
-                            let expr = args[*arg_index].value.clone();
-                            return Advance::Push(Frame::ResumableBridge {
-                                expr,
-                                expr_cache: Vec::new(),
-                                span: Span::dummy(),
-                            });
+                            return Advance::Push(compile_or_bridge(&args[*arg_index].value, core, Vec::new()));
                         }
 
                         // All args evaluated — look up EventDecl and collect defaults.
@@ -4923,12 +4976,7 @@ impl Frame {
                         }
 
                         let (_, ref default_expr) = param_defaults[*default_index];
-                        let expr = default_expr.clone();
-                        Advance::Push(Frame::ResumableBridge {
-                            expr,
-                            expr_cache: Vec::new(),
-                            span: Span::dummy(),
-                        })
+                        Advance::Push(compile_or_bridge(default_expr, core, Vec::new()))
                     }
 
                     EmitEvalPhase::FieldDefaults => {
@@ -4950,12 +4998,7 @@ impl Frame {
                             return Advance::Continue;
                         }
 
-                        let expr = default_expr.clone();
-                        Advance::Push(Frame::ResumableBridge {
-                            expr,
-                            expr_cache: Vec::new(),
-                            span: Span::dummy(),
-                        })
+                        Advance::Push(compile_or_bridge(default_expr, core, Vec::new()))
                     }
 
                     EmitEvalPhase::Ready => {
@@ -5109,7 +5152,6 @@ impl Frame {
                     }
 
                     let (_, ref field_expr) = defaults[*state_defaults_idx];
-                    let expr = field_expr.clone();
 
                     // Push scope with condition params for default evaluation.
                     env.push_scope();
@@ -5118,11 +5160,7 @@ impl Frame {
                     }
                     *default_scope_pushed = true;
 
-                    return Advance::Push(Frame::ResumableBridge {
-                        expr,
-                        expr_cache: Vec::new(),
-                        span: Span::dummy(),
-                    });
+                    return Advance::Push(compile_or_bridge(field_expr, core, Vec::new()));
                 }
 
                 // Phase 1: gate response handling.
@@ -5931,6 +5969,9 @@ impl Frame {
             Frame::CallSetup { child_result, .. } => {
                 *child_result = Some(Ok(value));
             }
+            Frame::ExprEval { child_result, .. } => {
+                *child_result = Some(Ok(value));
+            }
             Frame::ResumableBridge { expr_cache, .. } => {
                 // Yield frame child completed — cache for replay.
                 expr_cache.push(value);
@@ -6007,6 +6048,10 @@ impl Frame {
             Frame::BridgeCall { result, .. } => {
                 // Child frame errored — store for advance() to return.
                 *result = Some(Err(error));
+                Ok(())
+            }
+            Frame::ExprEval { child_result, .. } => {
+                *child_result = Some(Err(error));
                 Ok(())
             }
             _ => Err(error),
@@ -12837,10 +12882,10 @@ mod tests {
     }
 
     #[test]
-    fn mutation_and_yield_in_arg_probe_is_hard_error() {
+    fn mutation_and_yield_in_arg_dispatches_via_child_frame() {
         // When a function arg expression both mutates state AND yields
-        // a host-decided effect, that's the double-mutation bug in arg
-        // probing — should be a hard RuntimeError, not a fallback.
+        // a host-decided effect, the ExprEval path dispatches the call
+        // as a child frame instead of probing — so it yields normally.
         let (core, _) = make_core(
             r#"
             system Test {
@@ -12864,8 +12909,8 @@ mod tests {
 
         let result = exec.poll();
         assert!(
-            matches!(&result, Err(PollError::Runtime(_))),
-            "expected hard RuntimeError for mutation+yield in arg probe, got {result:?}"
+            matches!(&result, Ok(Step::Yielded(e)) if matches!(**e, crate::Effect::RollDice { .. })),
+            "expected RollDice yield from child frame dispatch, got {result:?}"
         );
     }
 

@@ -156,7 +156,7 @@ pub(super) fn eval_binop(
 }
 
 /// Coerce RollResult to Int via .total for arithmetic/comparison contexts.
-pub(super) fn coerce_roll_result(val: Value) -> Value {
+pub(crate) fn coerce_roll_result(val: Value) -> Value {
     match val {
         Value::RollResult(r) => Value::Int(r.total),
         other => other,
@@ -570,6 +570,15 @@ fn eval_in(
     state: &dyn StateProvider,
     expr: &Spanned<ExprKind>,
 ) -> Result<Value, RuntimeError> {
+    eval_in_at_span(lhs, rhs, state, expr.span)
+}
+
+fn eval_in_at_span(
+    lhs: &Value,
+    rhs: &Value,
+    state: &dyn StateProvider,
+    span: ttrpg_ast::Span,
+) -> Result<Value, RuntimeError> {
     match rhs {
         Value::List(items) => {
             let found = items.iter().any(|item| value_eq(state, lhs, item));
@@ -588,7 +597,91 @@ fn eval_in(
                 "'in' requires List, Set, or Map on right side, got {:?}",
                 type_name(rhs)
             ),
-            expr.span,
+            span,
+        )),
+    }
+}
+
+// ── Value-level wrappers for ExprEval frame ─────────────────────
+
+/// Apply a binary operator to two already-evaluated values.
+/// Short-circuit ops (And/Or) should never reach this function.
+pub(crate) fn apply_binop_values(
+    op: BinOp,
+    lhs: Value,
+    rhs: Value,
+    span: ttrpg_ast::Span,
+    type_env: &ttrpg_checker::env::TypeEnv,
+    state: &dyn crate::state::StateProvider,
+) -> Result<Value, RuntimeError> {
+    let dummy_expr = Spanned::new(ExprKind::NoneLit, span);
+    match op {
+        BinOp::And | BinOp::Or => unreachable!("short-circuit ops handled separately"),
+        BinOp::Add | BinOp::Sub | BinOp::Mul | BinOp::Div | BinOp::FloorDiv | BinOp::Mod => {
+            let lhs = coerce_roll_result(lhs);
+            let rhs = coerce_roll_result(rhs);
+            match op {
+                BinOp::Add => eval_add(&lhs, &rhs, type_env, &dummy_expr),
+                BinOp::Sub => eval_sub(&lhs, &rhs, type_env, &dummy_expr),
+                BinOp::Mul => eval_mul(&lhs, &rhs, type_env, &dummy_expr),
+                BinOp::Div => eval_div(&lhs, &rhs, type_env, &dummy_expr),
+                BinOp::FloorDiv => eval_floor_div(&lhs, &rhs, type_env, &dummy_expr),
+                BinOp::Mod => eval_mod(&lhs, &rhs, &dummy_expr),
+                _ => unreachable!(),
+            }
+        }
+        BinOp::Lt | BinOp::LtEq | BinOp::Gt | BinOp::GtEq => {
+            let lhs = coerce_roll_result(lhs);
+            let rhs = coerce_roll_result(rhs);
+            match op {
+                BinOp::Lt => eval_comparison(&lhs, &rhs, |o| o.is_lt(), type_env, &dummy_expr),
+                BinOp::LtEq => eval_comparison(&lhs, &rhs, |o| o.is_le(), type_env, &dummy_expr),
+                BinOp::Gt => eval_comparison(&lhs, &rhs, |o| o.is_gt(), type_env, &dummy_expr),
+                BinOp::GtEq => eval_comparison(&lhs, &rhs, |o| o.is_ge(), type_env, &dummy_expr),
+                _ => unreachable!(),
+            }
+        }
+        BinOp::Eq => {
+            let lhs = coerce_roll_result(lhs);
+            let rhs = coerce_roll_result(rhs);
+            Ok(Value::Bool(value_eq(state, &lhs, &rhs)))
+        }
+        BinOp::NotEq => {
+            let lhs = coerce_roll_result(lhs);
+            let rhs = coerce_roll_result(rhs);
+            Ok(Value::Bool(!value_eq(state, &lhs, &rhs)))
+        }
+        BinOp::In => eval_in_at_span(&lhs, &rhs, state, span),
+    }
+}
+
+/// Apply a unary operator to an already-evaluated value.
+pub(crate) fn apply_unary_values(
+    op: UnaryOp,
+    val: &Value,
+    span: ttrpg_ast::Span,
+    type_env: &ttrpg_checker::env::TypeEnv,
+) -> Result<Value, RuntimeError> {
+    let dummy_expr = Spanned::new(ExprKind::NoneLit, span);
+    // Unit type negation
+    if op == UnaryOp::Neg
+        && let Some((name, field, n)) = as_unit_value(val, type_env)
+    {
+        let result = n.checked_neg().ok_or_else(|| {
+            RuntimeError::with_span("integer overflow in unit negation", span)
+        })?;
+        return Ok(make_unit_value(name, field, result));
+    }
+    match (op, val) {
+        (UnaryOp::Neg, Value::Int(n)) => n
+            .checked_neg()
+            .map(Value::Int)
+            .ok_or_else(|| RuntimeError::with_span("integer overflow in negation", span)),
+        (UnaryOp::Neg, Value::Float(f)) => Ok(Value::Float(-f)),
+        (UnaryOp::Not, Value::Bool(b)) => Ok(Value::Bool(!b)),
+        _ => Err(RuntimeError::with_span(
+            format!("invalid unary {:?} on {:?}", op, type_name(val)),
+            dummy_expr.span,
         )),
     }
 }
