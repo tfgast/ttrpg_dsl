@@ -135,6 +135,13 @@ pub(crate) enum ExprWork {
     },
     /// Pop the innermost scope pushed by `IfLetTest`.
     PopScope,
+
+    // ── Phase 6 variants ────────────────────────────────────────
+
+    /// Duplicate the top of the operand stack.
+    Dup,
+    /// No pattern arm matched in a `match` expression — emit runtime error.
+    MatchFail(Span),
 }
 
 // ── Compilation ─────────────────────────────────────────────────
@@ -472,6 +479,61 @@ fn compile_inner(
             work.push(ExprWork::MakeStruct { name: name.clone(), field_names, span });
         }
 
+        // ── Phase 6: PatternMatch ──────────────────────────────
+        ExprKind::PatternMatch { scrutinee, arms } => {
+            // Compile scrutinee — its value stays on the stack as long as
+            // we keep testing arms, removed by Pop once we commit to a body.
+            compile_inner(scrutinee, type_env, program, work)?;
+
+            let mut jump_patches = Vec::new(); // Jump-to-end after each arm body
+
+            for arm in arms {
+                // Dup scrutinee for this arm's pattern test
+                work.push(ExprWork::Dup);
+                let test_idx = work.len();
+                work.push(ExprWork::IfLetTest {
+                    pattern: Box::new(arm.pattern.clone()),
+                    then_pc: 0,
+                    else_pc: 0,
+                    span: arm.span,
+                });
+
+                // ── Match succeeded: remove original scrutinee, run body ──
+                let then_pc = work.len();
+                work.push(ExprWork::Pop); // pop original scrutinee
+                match &arm.body {
+                    ArmBody::Block(block) => {
+                        work.push(ExprWork::PushBlock(block.node.clone(), arm.span));
+                    }
+                    ArmBody::Expr(expr) => {
+                        compile_inner(expr, type_env, program, work)?;
+                    }
+                }
+                work.push(ExprWork::PopScope);
+                jump_patches.push(work.len());
+                work.push(ExprWork::Jump(0)); // placeholder: jump to end
+
+                // Patch IfLetTest targets
+                let else_pc = work.len();
+                if let ExprWork::IfLetTest { then_pc: tp, else_pc: ep, .. } = &mut work[test_idx] {
+                    *tp = then_pc;
+                    *ep = else_pc;
+                }
+            }
+
+            // No arm matched: pop scrutinee and error
+            work.push(ExprWork::Pop);
+            work.push(ExprWork::MatchFail(span));
+
+            // Patch all arm-end jumps to skip past the error
+            let end_pc = work.len();
+            for idx in jump_patches {
+                if let ExprWork::Jump(target) = &mut work[idx] {
+                    *target = end_pc;
+                }
+            }
+        }
+
         // Everything else is non-trivial for this phase.
         _ => return None,
     }
@@ -776,6 +838,23 @@ pub(crate) fn advance_expr_eval(
                 env.pop_scope();
                 *_scope_depth -= 1;
                 *pc += 1;
+            }
+
+            // ── Phase 6: PatternMatch support ───────────────
+            ExprWork::Dup => {
+                let val = operands.last().unwrap().clone();
+                operands.push(val);
+                *pc += 1;
+            }
+            ExprWork::MatchFail(span) => {
+                for _ in 0..*_scope_depth {
+                    env.pop_scope();
+                }
+                *_scope_depth = 0;
+                return Advance::Error(RuntimeError::with_span(
+                    "no pattern matched in match expression",
+                    *span,
+                ));
             }
         }
     }
