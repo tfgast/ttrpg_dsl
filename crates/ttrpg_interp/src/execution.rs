@@ -667,7 +667,7 @@ pub(crate) fn run_frame_to_completion_sync(
         }
 
         let frame = frames.last_mut().unwrap();
-        let advance = frame.advance_sync(core, env, sp, eh, &tracker);
+        let advance = frame.advance(core, env, sp, eh, &tracker);
 
         match advance {
             Advance::Yield(effect) => {
@@ -1028,23 +1028,6 @@ fn bridge_eval_block(
 ) -> Result<Value, RuntimeError> {
     bridge_eval_with(core, env, sp, eh, BridgeCategory::Eval, |tmp_env| {
         crate::eval::eval_block(tmp_env, block)
-    })
-}
-
-/// Evaluate a single statement using the existing recursive evaluator.
-///
-/// When `handler` is `Some`, host-decided effects inside the statement are
-/// forwarded to it. When `None`, host-decided effects panic.
-fn bridge_eval_stmt(
-    core: &RuntimeCore,
-    env: &mut ExecEnv,
-    sp: &dyn StateProvider,
-    eh: &mut dyn EffectHandler,
-    stmt: &Spanned<StmtKind>,
-) -> Result<Value, RuntimeError> {
-    let stmt = stmt.clone();
-    bridge_eval_with(core, env, sp, eh, BridgeCategory::Eval, |tmp_env| {
-        crate::eval::eval_stmt(tmp_env, &stmt)
     })
 }
 
@@ -2683,26 +2666,13 @@ impl Frame {
         eh: &mut dyn EffectHandler,
         tracker: &MutationTracker,
     ) -> Advance {
-        Self::advance_action(self, core, env, sp, eh, tracker, false)
+        Self::advance_action(self, core, env, sp, eh, tracker)
     }
 
-    /// Advance with a handler for synchronous bridge evaluation.
-    fn advance_sync(
-        &mut self,
-        core: &RuntimeCore,
-        env: &mut ExecEnv,
-        sp: &dyn StateProvider,
-        eh: &mut dyn EffectHandler,
-        tracker: &MutationTracker,
-    ) -> Advance {
-        Self::advance_action(self, core, env, sp, eh, tracker, true)
-    }
-
-    /// Shared advance implementation. Bridge evaluation forwards
-    /// host-decided effects to `eh`. When `sync` is true, bridge
-    /// evaluation uses `eh` directly for all effects. When false,
-    /// frame-based async dispatch is used for statements that may
-    /// contain host-decided effects.
+    /// Advance the frame by one step. Uses frame-based dispatch for
+    /// statements that may contain host-decided effects: function calls
+    /// dispatch via CallSetup, emit statements via EmitEval, and all
+    /// other expressions via ExprEval (with ResumableBridge fallback).
     fn advance_action(
         frame: &mut Frame,
         core: &RuntimeCore,
@@ -2710,7 +2680,6 @@ impl Frame {
         sp: &dyn StateProvider,
         eh: &mut dyn EffectHandler,
         tracker: &MutationTracker,
-        sync: bool,
     ) -> Advance {
         match frame {
             Frame::ActionLifecycle {
@@ -3461,23 +3430,7 @@ impl Frame {
             } => {
                 let e = expr.clone();
 
-                if sync {
-                    // Sync path — use eh directly.
-                    let eval_result = bridge_eval_with(
-                        core,
-                        env,
-                        sp,
-                        &mut *eh,
-                        BridgeCategory::Eval,
-                        |tmp_env| crate::eval::eval_expr(tmp_env, &e),
-                    );
-                    return match eval_result {
-                        Ok(val) => Advance::Pop(val),
-                        Err(err) => Advance::Error(err),
-                    };
-                }
-
-                // Async path — CachingHandler with replay support.
+                // CachingHandler with replay support.
                 tracker.reset();
                 let mut caching = CachingHandler::from_expr_cache(expr_cache);
                 let eval_result = bridge_eval_with(
@@ -4063,9 +4016,18 @@ impl Frame {
                 // Evaluate the current statement.
                 let stmt = stmts[*index].clone();
 
+                // Record coverage hit for this statement.
+                if let Some(ref cov) = core.coverage
+                    && !stmt.span.is_dummy()
+                {
+                    cov.borrow_mut()
+                        .hit_spans
+                        .insert((stmt.span.file.0, stmt.span.start));
+                }
+
                 // ── Path-independent native dispatch ────────────────
                 // These statements have no sub-expressions that could
-                // yield, so they work identically on sync and async paths.
+                // yield, so they are dispatched directly without child frames.
 
                 // Return(None): bare `return;` — no expression to evaluate.
                 if let StmtKind::Return(None) = &stmt.node {
@@ -4220,28 +4182,7 @@ impl Frame {
                     }
                 }
 
-                if sync {
-                    // Sync path: bridge evaluation with eh directly.
-                    let eval_result = bridge_eval_stmt(core, env, sp, &mut *eh, &stmt);
-                    match eval_result {
-                        Ok(val) => {
-                            *result = val;
-                            *index += 1;
-                            if env.return_value.is_some() {
-                                let ret = env.return_value.clone().unwrap();
-                                env.pop_scope();
-                                return Advance::Pop(ret);
-                            }
-                            return Advance::Continue;
-                        }
-                        Err(e) => {
-                            env.pop_scope();
-                            return Advance::Error(e);
-                        }
-                    }
-                }
-
-                // Async frame-based dispatch: try specialized frames for
+                // Frame-based dispatch: try specialized frames for
                 // function calls, emit statements, and resumable expressions.
                 match try_frame_dispatch_stmt(core, env, sp, &mut *eh, tracker, &stmt) {
                     Ok(Some((fn_frame, awaiting))) => {
@@ -4772,6 +4713,10 @@ impl Frame {
 
                 // Phase 1: push scope, bind args, then evaluate defaults.
                 if body.is_some() {
+                    // Record function entry for coverage.
+                    if let Some(ref cov) = core.coverage {
+                        cov.borrow_mut().hit_functions.insert(name.to_string());
+                    }
                     env.push_scope();
                     for (pname, pval) in args.drain(..) {
                         env.bind(pname, pval);
@@ -7157,7 +7102,7 @@ impl<S: WritableState> Execution<S> {
                 }
 
                 let frame = frames.last_mut().unwrap();
-                let advance = frame.advance_sync(core, env, sp, eh, tracker);
+                let advance = frame.advance(core, env, sp, eh, tracker);
 
                 match advance {
                     Advance::Yield(effect) => {
