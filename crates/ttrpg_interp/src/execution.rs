@@ -634,9 +634,73 @@ pub(crate) fn bridge_call_builtin(
     span: Span,
 ) -> Result<Value, RuntimeError> {
     let name = name.to_string();
-    bridge_eval_with(core, env, sp, eh, BridgeCategory::Dispatch, move |tmp_env| {
-        crate::builtins::call_builtin(tmp_env, &name, args, span)
-    })
+    bridge_eval_with(
+        core,
+        env,
+        sp,
+        eh,
+        BridgeCategory::Dispatch,
+        move |tmp_env| crate::builtins::call_builtin(tmp_env, &name, args, span),
+    )
+}
+
+/// Run a frame (and any children it pushes) to completion synchronously.
+///
+/// This is the same loop as `Execution::drive()` but operates on a standalone
+/// frame stack with borrowed `RuntimeCore`/`ExecEnv`/`StateProvider`/`EffectHandler`.
+/// Used by `expr_eval::eval_expr_step` to eliminate direct bridge calls while
+/// still supporting child frames (DeriveEval, FunctionEval, etc.).
+pub(crate) fn run_frame_to_completion_sync(
+    initial: Frame,
+    core: &RuntimeCore,
+    env: &mut ExecEnv,
+    sp: &dyn StateProvider,
+    eh: &mut dyn EffectHandler,
+) -> Result<Value, RuntimeError> {
+    let tracker = MutationTracker::new();
+    let mut frames: Vec<Frame> = vec![initial];
+    let mut final_result: Option<Result<Value, RuntimeError>> = None;
+
+    loop {
+        if frames.is_empty() {
+            return final_result.unwrap_or(Ok(Value::Void));
+        }
+
+        let frame = frames.last_mut().unwrap();
+        let advance = frame.advance_sync(core, env, sp, eh, &tracker);
+
+        match advance {
+            Advance::Yield(effect) => {
+                let response = eh.handle(effect);
+                if let Some(frame) = frames.last_mut() {
+                    frame.receive_response(response);
+                }
+            }
+            Advance::Push(child) => {
+                frames.push(child);
+            }
+            Advance::Pop(value) => {
+                frames.pop();
+                if let Some(parent) = frames.last_mut() {
+                    parent.receive_child_result(value);
+                } else {
+                    final_result = Some(Ok(value));
+                }
+            }
+            Advance::Continue => {}
+            Advance::Error(e) => {
+                frames.pop();
+                if let Some(parent) = frames.last_mut() {
+                    match parent.receive_child_error(e) {
+                        Ok(()) => {}
+                        Err(e) => return Err(e),
+                    }
+                } else {
+                    return Err(e);
+                }
+            }
+        }
+    }
 }
 
 /// Result of a native dispatch that pushes a child frame.
@@ -1139,8 +1203,7 @@ fn collect_cost_modifiers_native(
         None => return Ok(Vec::new()),
     };
 
-    let stacking_winners =
-        crate::pipeline::compute_stacking_winners(&conditions, &core.program);
+    let stacking_winners = crate::pipeline::compute_stacking_winners(&conditions, &core.program);
 
     let mut cost_modifiers: Vec<(u64, OwnedModifier)> = Vec::new();
 
@@ -1357,14 +1420,17 @@ fn exec_cost_modify_stmts_native(
                 match cond {
                     Value::Bool(true) => {
                         env.push_scope();
-                        let r = exec_cost_modify_stmts_native(core, env, sp, eh, then_body, effective);
+                        let r =
+                            exec_cost_modify_stmts_native(core, env, sp, eh, then_body, effective);
                         env.pop_scope();
                         r?;
                     }
                     Value::Bool(false) => {
                         if let Some(else_stmts) = else_body {
                             env.push_scope();
-                            let r = exec_cost_modify_stmts_native(core, env, sp, eh, else_stmts, effective);
+                            let r = exec_cost_modify_stmts_native(
+                                core, env, sp, eh, else_stmts, effective,
+                            );
                             env.pop_scope();
                             r?;
                         }
@@ -1393,8 +1459,8 @@ fn collect_modifiers_owned_native(
     fn_info: &FnInfo,
     bound_params: &[(Name, Value)],
 ) -> Result<Vec<OwnedModifier>, RuntimeError> {
-    use std::collections::HashSet;
     use crate::effect::ModifySource;
+    use std::collections::HashSet;
     use ttrpg_ast::ast::{ConditionClause, ModifyTarget};
 
     let mut condition_modifiers: Vec<(u64, OwnedModifier)> = Vec::new();
@@ -1474,8 +1540,15 @@ fn collect_modifiers_owned_native(
                 }
 
                 if check_modify_bindings_native(
-                    core, env, sp, eh, clause, condition,
-                    &cond_decl.receiver_name, fn_info, bound_params,
+                    core,
+                    env,
+                    sp,
+                    eh,
+                    clause,
+                    condition,
+                    &cond_decl.receiver_name,
+                    fn_info,
+                    bound_params,
                 )? {
                     condition_modifiers.push((
                         condition.gained_at,
@@ -1525,16 +1598,22 @@ fn collect_modifiers_owned_native(
                         continue;
                     }
                 }
-                ModifyTarget::Selector(_) => {
-                    match core.type_env.selector_matches.get(&clause.id) {
-                        Some(set) if set.contains(fn_name) => {}
-                        _ => continue,
-                    }
-                }
+                ModifyTarget::Selector(_) => match core.type_env.selector_matches.get(&clause.id) {
+                    Some(set) if set.contains(fn_name) => {}
+                    _ => continue,
+                },
                 ModifyTarget::Cost(_) => continue,
             }
 
-            if check_option_modify_bindings_native(core, env, sp, eh, clause, fn_info, bound_params)? {
+            if check_option_modify_bindings_native(
+                core,
+                env,
+                sp,
+                eh,
+                clause,
+                fn_info,
+                bound_params,
+            )? {
                 result.push(OwnedModifier {
                     source: ModifySource::Option(opt_name.clone()),
                     clause: clause.clone(),
@@ -1554,7 +1633,14 @@ fn collect_modifiers_owned_native(
         let mut filtered = Vec::with_capacity(result.len());
         for modifier in result {
             if !is_modifier_suppressed_native(
-                core, env, sp, eh, &modifier, fn_info, bound_params, &suppressions,
+                core,
+                env,
+                sp,
+                eh,
+                &modifier,
+                fn_info,
+                bound_params,
+                &suppressions,
             )? {
                 filtered.push(modifier);
             }
@@ -1771,10 +1857,18 @@ struct NativeSuppressModify {
 }
 
 impl SuppressModifyAccess for NativeSuppressModify {
-    fn clause(&self) -> &ttrpg_ast::ast::SuppressModifyClause { &self.clause }
-    fn bearer(&self) -> &Value { &self.bearer }
-    fn receiver_name(&self) -> &Name { &self.receiver_name }
-    fn condition_params(&self) -> &BTreeMap<Name, Value> { &self.condition_params }
+    fn clause(&self) -> &ttrpg_ast::ast::SuppressModifyClause {
+        &self.clause
+    }
+    fn bearer(&self) -> &Value {
+        &self.bearer
+    }
+    fn receiver_name(&self) -> &Name {
+        &self.receiver_name
+    }
+    fn condition_params(&self) -> &BTreeMap<Name, Value> {
+        &self.condition_params
+    }
 }
 
 /// Native version of `pipeline::apply_phase1_modifier`.
@@ -1812,7 +1906,8 @@ fn apply_phase1_modifier_native(
         );
     }
 
-    let result = exec_modify_stmts_phase1_native(core, env, sp, eh, &modifier.clause.body, &mut params);
+    let result =
+        exec_modify_stmts_phase1_native(core, env, sp, eh, &modifier.clause.body, &mut params);
 
     env.pop_scope();
     result?;
@@ -1855,7 +1950,9 @@ fn exec_modify_stmts_phase1_native(
                 ..
             } => {
                 if !crate::pipeline::has_phase1_stmts(then_body)
-                    && !else_body.as_ref().is_some_and(|e| crate::pipeline::has_phase1_stmts(e))
+                    && !else_body
+                        .as_ref()
+                        .is_some_and(|e| crate::pipeline::has_phase1_stmts(e))
                 {
                     continue;
                 }
@@ -1863,7 +1960,8 @@ fn exec_modify_stmts_phase1_native(
                 match cond {
                     Value::Bool(true) => {
                         env.push_scope();
-                        let r = exec_modify_stmts_phase1_native(core, env, sp, eh, then_body, params);
+                        let r =
+                            exec_modify_stmts_phase1_native(core, env, sp, eh, then_body, params);
                         env.pop_scope();
                         for (name, val) in params.iter() {
                             env.bind(name.clone(), val.clone());
@@ -1873,7 +1971,9 @@ fn exec_modify_stmts_phase1_native(
                     Value::Bool(false) => {
                         if let Some(else_stmts) = else_body {
                             env.push_scope();
-                            let r = exec_modify_stmts_phase1_native(core, env, sp, eh, else_stmts, params);
+                            let r = exec_modify_stmts_phase1_native(
+                                core, env, sp, eh, else_stmts, params,
+                            );
                             env.pop_scope();
                             for (name, val) in params.iter() {
                                 env.bind(name.clone(), val.clone());
@@ -1938,7 +2038,8 @@ fn apply_phase2_modifier_native(
 
     env.bind(Name::from("result"), result.clone());
 
-    let exec_result = exec_modify_stmts_phase2_native(core, env, sp, eh, &modifier.clause.body, &mut result);
+    let exec_result =
+        exec_modify_stmts_phase2_native(core, env, sp, eh, &modifier.clause.body, &mut result);
 
     env.pop_scope();
     exec_result?;
@@ -2042,7 +2143,8 @@ fn exec_modify_stmts_phase2_native(
                 match cond {
                     Value::Bool(true) => {
                         env.push_scope();
-                        let r = exec_modify_stmts_phase2_native(core, env, sp, eh, then_body, result);
+                        let r =
+                            exec_modify_stmts_phase2_native(core, env, sp, eh, then_body, result);
                         env.pop_scope();
                         env.bind(Name::from("result"), result.clone());
                         r?;
@@ -2050,7 +2152,9 @@ fn exec_modify_stmts_phase2_native(
                     Value::Bool(false) => {
                         if let Some(else_stmts) = else_body {
                             env.push_scope();
-                            let r = exec_modify_stmts_phase2_native(core, env, sp, eh, else_stmts, result);
+                            let r = exec_modify_stmts_phase2_native(
+                                core, env, sp, eh, else_stmts, result,
+                            );
                             env.pop_scope();
                             env.bind(Name::from("result"), result.clone());
                             r?;
@@ -2939,7 +3043,11 @@ impl Frame {
 
                 // Phase 1: push ResumableBridge for next arg.
                 if *arg_index < arg_exprs.len() {
-                    return Advance::Push(compile_or_bridge(&arg_exprs[*arg_index], core, Vec::new()));
+                    return Advance::Push(compile_or_bridge(
+                        &arg_exprs[*arg_index],
+                        core,
+                        Vec::new(),
+                    ));
                 }
 
                 // Phase 2: all args evaluated — build and push target frame.
@@ -3198,12 +3306,17 @@ impl Frame {
                 pc,
                 child_result,
                 scope_depth,
-            } => {
-                crate::expr_eval::advance_expr_eval(
-                    work, operands, pc, child_result, scope_depth,
-                    core, env, sp, &mut *eh,
-                )
-            }
+            } => crate::expr_eval::advance_expr_eval(
+                work,
+                operands,
+                pc,
+                child_result,
+                scope_depth,
+                core,
+                env,
+                sp,
+                &mut *eh,
+            ),
 
             Frame::ForLoop {
                 items,
@@ -3279,7 +3392,8 @@ impl Frame {
                                     Value::Bool(true) => {
                                         // Filter passed — evaluate element expression.
                                         *phase = ListCompPhase::ElementDone;
-                                        let elem_frame = compile_or_bridge(element, core, Vec::new());
+                                        let elem_frame =
+                                            compile_or_bridge(element, core, Vec::new());
                                         return Advance::Push(elem_frame);
                                     }
                                     Value::Bool(false) => {
@@ -3433,7 +3547,12 @@ impl Frame {
                     CostEvalPhase::CollectModifiers => {
                         // Collect matching cost modifiers natively (no bridge_run).
                         let collect_result = collect_cost_modifiers_native(
-                            core, env, sp, &mut *eh, actor, action_name.as_str(),
+                            core,
+                            env,
+                            sp,
+                            &mut *eh,
+                            actor,
+                            action_name.as_str(),
                         );
 
                         match collect_result {
@@ -3468,8 +3587,13 @@ impl Frame {
                         let mut eff_cost = effective_cost.clone().unwrap_or_else(|| cost.clone());
 
                         let apply_result = apply_single_cost_modifier_native(
-                            core, env, sp, &mut *eh,
-                            modifier, &mut eff_cost, action_name.as_str(),
+                            core,
+                            env,
+                            sp,
+                            &mut *eh,
+                            modifier,
+                            &mut eff_cost,
+                            action_name.as_str(),
                         );
 
                         match apply_result {
@@ -3813,7 +3937,9 @@ impl Frame {
                             child_result: None,
                         })
                     }
-                    BridgeCallInfo::Expr { ref expr } => Advance::Push(compile_or_bridge(expr, core, Vec::new())),
+                    BridgeCallInfo::Expr { ref expr } => {
+                        Advance::Push(compile_or_bridge(expr, core, Vec::new()))
+                    }
                 }
             }
 
@@ -3955,7 +4081,8 @@ impl Frame {
                     ..
                 } = stmt.node
                 {
-                    let entity_val = crate::expr_eval::eval_expr_step(core, env, sp, &mut *eh, entity_expr);
+                    let entity_val =
+                        crate::expr_eval::eval_expr_step(core, env, sp, &mut *eh, entity_expr);
                     match entity_val {
                         Ok(Value::Entity(payer)) => {
                             let prev = env.cost_payer;
@@ -4160,7 +4287,9 @@ impl Frame {
                 // for trivially-pure expressions, then fall back to
                 // ResumableBridge for frame-based async evaluation.
                 if let Some((bridge_expr, awaiting)) = extract_resumable_expr(&stmt) {
-                    if let Some(work) = crate::expr_eval::compile_expr(&bridge_expr, &core.type_env, &core.program) {
+                    if let Some(work) =
+                        crate::expr_eval::compile_expr(&bridge_expr, &core.type_env, &core.program)
+                    {
                         *awaiting_fn = Some(awaiting);
                         return Advance::Push(Frame::ExprEval {
                             work,
@@ -4396,7 +4525,13 @@ impl Frame {
                         let ba = bound_args.clone().unwrap_or_default();
 
                         let collect_result = collect_modifiers_owned_native(
-                            core, env, sp, &mut *eh, name.as_str(), fi, &ba,
+                            core,
+                            env,
+                            sp,
+                            &mut *eh,
+                            name.as_str(),
+                            fi,
+                            &ba,
                         );
 
                         match collect_result {
@@ -4428,9 +4563,8 @@ impl Frame {
                         let params = phase1_params.take().unwrap_or_default();
                         let fn_name = name.as_str().to_owned();
 
-                        let apply_result = apply_phase1_modifier_native(
-                            core, env, sp, &mut *eh, modifier, params,
-                        );
+                        let apply_result =
+                            apply_phase1_modifier_native(core, env, sp, &mut *eh, modifier, params);
 
                         match apply_result {
                             Ok((updated_params, changes)) => {
@@ -5082,7 +5216,11 @@ impl Frame {
 
                         // 3. Evaluate arg expressions one at a time via child frames.
                         if *arg_index < args.len() {
-                            return Advance::Push(compile_or_bridge(&args[*arg_index].value, core, Vec::new()));
+                            return Advance::Push(compile_or_bridge(
+                                &args[*arg_index].value,
+                                core,
+                                Vec::new(),
+                            ));
                         }
 
                         // All args evaluated — look up EventDecl and collect defaults.

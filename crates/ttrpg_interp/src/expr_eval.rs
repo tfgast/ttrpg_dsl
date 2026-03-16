@@ -14,13 +14,18 @@
 use std::collections::BTreeMap;
 
 use rustc_hash::FxHashMap;
-use ttrpg_ast::ast::{ArmBody, BinOp, ElseBranch, ExprKind, ForIterable, GuardKind, PatternKind, StmtKind, TypeExpr, UnaryOp};
+use ttrpg_ast::ast::{
+    ArmBody, BinOp, ElseBranch, ExprKind, ForIterable, GuardKind, PatternKind, StmtKind, TypeExpr,
+    UnaryOp,
+};
 use ttrpg_ast::{Name, Span, Spanned};
 use ttrpg_checker::env::{DeclInfo, FnKind, TypeEnv};
 
 use crate::RuntimeError;
-use crate::effect::EffectHandler;
-use crate::eval::{apply_binop_values, apply_unary_values, field_access_on_value, index_on_value, match_pattern};
+use crate::effect::{Effect, EffectHandler, Response};
+use crate::eval::{
+    apply_binop_values, apply_unary_values, field_access_on_value, index_on_value, match_pattern,
+};
 use crate::execution::{Advance, ExecEnv, Frame};
 use crate::runtime_core::RuntimeCore;
 use crate::state::StateProvider;
@@ -56,7 +61,6 @@ pub(crate) enum ExprWork {
     Pop,
 
     // ── Phase 2 variants ────────────────────────────────────────
-
     /// Resolve an identifier. Handles scope lookup, cached const,
     /// lazy const eval (pushes child ExprEval), bare enum variants,
     /// condition names, fn refs, enum namespaces, module aliases, turn.
@@ -83,10 +87,12 @@ pub(crate) enum ExprWork {
     /// `entity has GroupName` — pop entity, push bool.
     Has { group: Name, span: Span },
     /// `expr is Type` — pop value, push bool.
-    Is { target_type: Spanned<TypeExpr>, span: Span },
+    Is {
+        target_type: Spanned<TypeExpr>,
+        span: Span,
+    },
 
     // ── Phase 3 variants ────────────────────────────────────────
-
     /// Field-access call: `receiver.method(args)`. Receiver is on operand
     /// stack below the args.
     CallMethod {
@@ -97,18 +103,22 @@ pub(crate) enum ExprWork {
 
     /// Callable-value call: `callee_value(args)` where callee_value is on
     /// operand stack below args. Used for FnRef calls.
-    CallValue {
-        arg_meta: Vec<ArgMeta>,
+    CallValue { arg_meta: Vec<ArgMeta>, span: Span },
+
+    // ── Phase 4 variants ────────────────────────────────────────
+    /// Short-circuit: LHS on stack. Check bool, maybe skip RHS.
+    ShortCircuit {
+        op: BinOp,
+        skip_to: usize,
         span: Span,
     },
 
-    // ── Phase 4 variants ────────────────────────────────────────
-
-    /// Short-circuit: LHS on stack. Check bool, maybe skip RHS.
-    ShortCircuit { op: BinOp, skip_to: usize, span: Span },
-
     /// Conditional branch: pop condition, jump to then_pc or else_pc.
-    Branch { then_pc: usize, else_pc: usize, span: Span },
+    Branch {
+        then_pc: usize,
+        else_pc: usize,
+        span: Span,
+    },
     /// Unconditional jump.
     Jump(usize),
     /// Push a Block child frame for a branch body. Result → operand stack.
@@ -123,7 +133,6 @@ pub(crate) enum ExprWork {
     },
 
     // ── Phase 5 variants ────────────────────────────────────────
-
     /// `if let` pattern test: pop scrutinee value, try to match against
     /// pattern. On match: push a new scope, bind pattern variables, jump
     /// to `then_pc`. On mismatch: jump to `else_pc`.
@@ -137,14 +146,12 @@ pub(crate) enum ExprWork {
     PopScope,
 
     // ── Phase 6 variants ────────────────────────────────────────
-
     /// Duplicate the top of the operand stack.
     Dup,
     /// No pattern arm matched in a `match` expression — emit runtime error.
     MatchFail(Span),
 
     // ── Phase 7 variants ────────────────────────────────────────
-
     /// For loop: pop iterable (collection or range start+end), materialize,
     /// push ForLoop child frame.
     PushForLoop {
@@ -166,7 +173,6 @@ pub(crate) enum ExprWork {
     },
 
     // ── Phase 8 variants ────────────────────────────────────────
-
     /// Entity construction: pop field + group field values from the operand
     /// stack, build a `Frame::SpawnEntity` child frame and push it.
     /// After the child frame completes the entity ref sits on the operand
@@ -254,7 +260,11 @@ fn compile_inner(
                 BinOp::And | BinOp::Or => {
                     compile_inner(lhs, type_env, program, work)?;
                     let sc_idx = work.len();
-                    work.push(ExprWork::ShortCircuit { op: *op, skip_to: 0, span }); // placeholder
+                    work.push(ExprWork::ShortCircuit {
+                        op: *op,
+                        skip_to: 0,
+                        span,
+                    }); // placeholder
                     compile_inner(rhs, type_env, program, work)?;
                     // Patch skip_to to point past the RHS
                     let end = work.len();
@@ -284,7 +294,6 @@ fn compile_inner(
         }
 
         // ── Phase 2 cases ───────────────────────────────────────
-
         ExprKind::Ident(name) => {
             work.push(ExprWork::Ident(name.clone(), span));
             // If it's a const, emit ConstWriteback right after
@@ -364,22 +373,42 @@ fn compile_inner(
             work.push(ExprWork::MakeMap(entries.len(), span));
         }
 
-        ExprKind::Has { entity, group_name, alias: _ } => {
+        ExprKind::Has {
+            entity,
+            group_name,
+            alias: _,
+        } => {
             compile_inner(entity, type_env, program, work)?;
-            work.push(ExprWork::Has { group: group_name.clone(), span });
+            work.push(ExprWork::Has {
+                group: group_name.clone(),
+                span,
+            });
         }
 
-        ExprKind::Is { expr: inner, target_type } => {
+        ExprKind::Is {
+            expr: inner,
+            target_type,
+        } => {
             compile_inner(inner, type_env, program, work)?;
-            work.push(ExprWork::Is { target_type: target_type.clone(), span });
+            work.push(ExprWork::Is {
+                target_type: target_type.clone(),
+                span,
+            });
         }
 
         // ── Phase 4 cases ───────────────────────────────────────
-
-        ExprKind::If { condition, then_block, else_branch } => {
+        ExprKind::If {
+            condition,
+            then_block,
+            else_branch,
+        } => {
             compile_inner(condition, type_env, program, work)?;
             let branch_idx = work.len();
-            work.push(ExprWork::Branch { then_pc: 0, else_pc: 0, span }); // placeholder
+            work.push(ExprWork::Branch {
+                then_pc: 0,
+                else_pc: 0,
+                span,
+            }); // placeholder
 
             // Then branch
             let then_pc = work.len();
@@ -404,7 +433,12 @@ fn compile_inner(
             let end_pc = work.len();
 
             // Patch
-            if let ExprWork::Branch { then_pc: tp, else_pc: ep, .. } = &mut work[branch_idx] {
+            if let ExprWork::Branch {
+                then_pc: tp,
+                else_pc: ep,
+                ..
+            } = &mut work[branch_idx]
+            {
                 *tp = then_pc;
                 *ep = else_pc;
             }
@@ -425,7 +459,11 @@ fn compile_inner(
                     }
                 }
                 let branch_idx = work.len();
-                work.push(ExprWork::Branch { then_pc: 0, else_pc: 0, span: arm.span });
+                work.push(ExprWork::Branch {
+                    then_pc: 0,
+                    else_pc: 0,
+                    span: arm.span,
+                });
                 let then_pc = work.len();
                 match &arm.body {
                     ArmBody::Block(block) => {
@@ -438,7 +476,12 @@ fn compile_inner(
                 jump_patches.push(work.len());
                 work.push(ExprWork::Jump(0)); // placeholder
                 let else_pc = work.len();
-                if let ExprWork::Branch { then_pc: tp, else_pc: ep, .. } = &mut work[branch_idx] {
+                if let ExprWork::Branch {
+                    then_pc: tp,
+                    else_pc: ep,
+                    ..
+                } = &mut work[branch_idx]
+                {
                     *tp = then_pc;
                     *ep = else_pc;
                 }
@@ -452,7 +495,12 @@ fn compile_inner(
             }
         }
 
-        ExprKind::IfLet { pattern, scrutinee, then_block, else_branch } => {
+        ExprKind::IfLet {
+            pattern,
+            scrutinee,
+            then_block,
+            else_branch,
+        } => {
             // Evaluate scrutinee → value on operand stack
             compile_inner(scrutinee, type_env, program, work)?;
 
@@ -488,7 +536,12 @@ fn compile_inner(
             let end_pc = work.len();
 
             // Patch jump targets
-            if let ExprWork::IfLetTest { then_pc: tp, else_pc: ep, .. } = &mut work[test_idx] {
+            if let ExprWork::IfLetTest {
+                then_pc: tp,
+                else_pc: ep,
+                ..
+            } = &mut work[test_idx]
+            {
                 *tp = then_pc;
                 *ep = else_pc;
             }
@@ -497,11 +550,14 @@ fn compile_inner(
             }
         }
 
-        ExprKind::StructLit { name, fields, groups, base, with_conditions } => {
-            let is_entity = matches!(
-                type_env.types.get(name.as_str()),
-                Some(DeclInfo::Entity(_))
-            );
+        ExprKind::StructLit {
+            name,
+            fields,
+            groups,
+            base,
+            with_conditions,
+        } => {
+            let is_entity = matches!(type_env.types.get(name.as_str()), Some(DeclInfo::Entity(_)));
 
             if is_entity {
                 // ..base spread not yet supported for entity construction
@@ -509,8 +565,14 @@ fn compile_inner(
                     return None;
                 }
                 compile_entity_struct_lit(
-                    name, fields, groups, with_conditions, span,
-                    type_env, program, work,
+                    name,
+                    fields,
+                    groups,
+                    with_conditions,
+                    span,
+                    type_env,
+                    program,
+                    work,
                 )?;
             } else {
                 // Non-entity: groups/base/with_conditions → fall back
@@ -523,18 +585,30 @@ fn compile_inner(
                     compile_inner(&field.value, type_env, program, work)?;
                     field_names.push(field.name.clone());
                 }
-                work.push(ExprWork::MakeStruct { name: name.clone(), field_names, span });
+                work.push(ExprWork::MakeStruct {
+                    name: name.clone(),
+                    field_names,
+                    span,
+                });
             }
         }
 
         // ── Phase 7: For loop ──────────────────────────────────
-        ExprKind::For { pattern, iterable, body } => {
+        ExprKind::For {
+            pattern,
+            iterable,
+            body,
+        } => {
             let (range, inclusive) = match iterable {
                 ForIterable::Collection(expr) => {
                     compile_inner(expr, type_env, program, work)?;
                     (false, false)
                 }
-                ForIterable::Range { start, end, inclusive } => {
+                ForIterable::Range {
+                    start,
+                    end,
+                    inclusive,
+                } => {
                     compile_inner(start, type_env, program, work)?;
                     compile_inner(end, type_env, program, work)?;
                     (true, *inclusive)
@@ -551,13 +625,22 @@ fn compile_inner(
         }
 
         // ── Phase 7: List comprehension ─────────────────────────
-        ExprKind::ListComprehension { element, pattern, iterable, filter } => {
+        ExprKind::ListComprehension {
+            element,
+            pattern,
+            iterable,
+            filter,
+        } => {
             let (range, inclusive) = match iterable {
                 ForIterable::Collection(expr) => {
                     compile_inner(expr, type_env, program, work)?;
                     (false, false)
                 }
-                ForIterable::Range { start, end, inclusive } => {
+                ForIterable::Range {
+                    start,
+                    end,
+                    inclusive,
+                } => {
                     compile_inner(start, type_env, program, work)?;
                     compile_inner(end, type_env, program, work)?;
                     (true, *inclusive)
@@ -609,7 +692,12 @@ fn compile_inner(
 
                 // Patch IfLetTest targets
                 let else_pc = work.len();
-                if let ExprWork::IfLetTest { then_pc: tp, else_pc: ep, .. } = &mut work[test_idx] {
+                if let ExprWork::IfLetTest {
+                    then_pc: tp,
+                    else_pc: ep,
+                    ..
+                } = &mut work[test_idx]
+                {
                     *tp = then_pc;
                     *ep = else_pc;
                 }
@@ -750,9 +838,18 @@ fn compile_entity_struct_lit(
         work.push(ExprWork::CallNamed {
             callee: Name::from("apply_condition"),
             arg_meta: vec![
-                ArgMeta { name: None, span: cond_expr.span },
-                ArgMeta { name: None, span: cond_expr.span },
-                ArgMeta { name: None, span: cond_expr.span },
+                ArgMeta {
+                    name: None,
+                    span: cond_expr.span,
+                },
+                ArgMeta {
+                    name: None,
+                    span: cond_expr.span,
+                },
+                ArgMeta {
+                    name: None,
+                    span: cond_expr.span,
+                },
             ],
             span: cond_expr.span,
         });
@@ -913,7 +1010,6 @@ pub(crate) fn advance_expr_eval(
             }
 
             // ── Phase 2: Identifier resolution ──────────────────
-
             ExprWork::Ident(name, span) => {
                 return advance_ident(name, *span, work, operands, pc, core, env, sp, eh);
             }
@@ -933,13 +1029,17 @@ pub(crate) fn advance_expr_eval(
             }
 
             // ── Phase 2: Call dispatch ───────────────────────────
-
-            ExprWork::CallNamed { callee, arg_meta, span } => {
-                return advance_call_named(callee, arg_meta, *span, operands, pc, core, env, sp, eh);
+            ExprWork::CallNamed {
+                callee,
+                arg_meta,
+                span,
+            } => {
+                return advance_call_named(
+                    callee, arg_meta, *span, operands, pc, core, env, sp, eh,
+                );
             }
 
             // ── Phase 2: Collection constructors ────────────────
-
             ExprWork::MakeList(count, _) => {
                 let start = operands.len().saturating_sub(*count);
                 let elements = operands.split_off(start);
@@ -958,7 +1058,6 @@ pub(crate) fn advance_expr_eval(
             }
 
             // ── Phase 2: Has / Is ───────────────────────────────
-
             ExprWork::Has { group, span } => {
                 let entity = operands.pop().unwrap();
                 match &entity {
@@ -983,13 +1082,27 @@ pub(crate) fn advance_expr_eval(
             }
 
             // ── Phase 3: Method call ───────────────────────────
-            ExprWork::CallMethod { method, arg_meta, span } => {
+            ExprWork::CallMethod {
+                method,
+                arg_meta,
+                span,
+            } => {
                 let start = operands.len().saturating_sub(arg_meta.len());
                 let arg_values = operands.split_off(start);
                 let receiver = operands.pop().unwrap();
                 *pc += 1;
 
-                match resolve_call_method(receiver, method, arg_meta, &arg_values, *span, core, env, sp, eh) {
+                match resolve_call_method(
+                    receiver,
+                    method,
+                    arg_meta,
+                    &arg_values,
+                    *span,
+                    core,
+                    env,
+                    sp,
+                    eh,
+                ) {
                     Ok(CallResult::Value(val)) => {
                         operands.push(val);
                         // stay in loop
@@ -1010,7 +1123,16 @@ pub(crate) fn advance_expr_eval(
 
                 match callee_val {
                     Value::FnRef(fn_name) => {
-                        match dispatch_fn_ref_step(&fn_name, arg_meta, &arg_values, *span, core, env, sp, eh) {
+                        match dispatch_fn_ref_step(
+                            &fn_name,
+                            arg_meta,
+                            &arg_values,
+                            *span,
+                            core,
+                            env,
+                            sp,
+                            eh,
+                        ) {
                             Ok(CallResult::Value(val)) => {
                                 operands.push(val);
                             }
@@ -1065,13 +1187,21 @@ pub(crate) fn advance_expr_eval(
             }
 
             // ── Phase 4: If / GuardMatch control flow ─────────
-            ExprWork::Branch { then_pc, else_pc, span } => {
+            ExprWork::Branch {
+                then_pc,
+                else_pc,
+                span,
+            } => {
                 let cond = operands.pop().unwrap();
                 match cond {
                     Value::Bool(true) => *pc = *then_pc,
                     Value::Bool(false) => *pc = *else_pc,
-                    _ => return Advance::Error(RuntimeError::with_span(
-                        "condition must be a boolean", *span)),
+                    _ => {
+                        return Advance::Error(RuntimeError::with_span(
+                            "condition must be a boolean",
+                            *span,
+                        ));
+                    }
                 }
             }
             ExprWork::Jump(target) => {
@@ -1090,18 +1220,30 @@ pub(crate) fn advance_expr_eval(
             }
 
             // ── Phase 4: Struct literal ───────────────────────
-            ExprWork::MakeStruct { name, field_names, span: _ } => {
+            ExprWork::MakeStruct {
+                name,
+                field_names,
+                span: _,
+            } => {
                 let values = operands.split_off(operands.len() - field_names.len());
                 let mut fields = BTreeMap::new();
                 for (fname, val) in field_names.iter().zip(values) {
                     fields.insert(fname.clone(), val);
                 }
-                operands.push(Value::Struct { name: name.clone(), fields });
+                operands.push(Value::Struct {
+                    name: name.clone(),
+                    fields,
+                });
                 *pc += 1;
             }
 
             // ── Phase 5: IfLet pattern matching ─────────────
-            ExprWork::IfLetTest { pattern, then_pc, else_pc, span: _ } => {
+            ExprWork::IfLetTest {
+                pattern,
+                then_pc,
+                else_pc,
+                span: _,
+            } => {
                 let scrutinee = operands.pop().unwrap();
                 let mut bindings = FxHashMap::default();
                 if match_pattern(&core.type_env, pattern, &scrutinee, &mut bindings) {
@@ -1139,9 +1281,15 @@ pub(crate) fn advance_expr_eval(
             }
 
             // ── Phase 7: For loop / List comprehension ──────
-            ExprWork::PushForLoop { pattern, body, body_span, range, inclusive, span } => {
-                let items = match materialize_iterable(operands, *range, *inclusive, *span)
-                {
+            ExprWork::PushForLoop {
+                pattern,
+                body,
+                body_span,
+                range,
+                inclusive,
+                span,
+            } => {
+                let items = match materialize_iterable(operands, *range, *inclusive, *span) {
                     Ok(v) => v,
                     Err(e) => return Advance::Error(e),
                 };
@@ -1155,9 +1303,15 @@ pub(crate) fn advance_expr_eval(
                     child_result: None,
                 });
             }
-            ExprWork::PushListComp { pattern, element, filter, range, inclusive, span } => {
-                let items = match materialize_iterable(operands, *range, *inclusive, *span)
-                {
+            ExprWork::PushListComp {
+                pattern,
+                element,
+                filter,
+                range,
+                inclusive,
+                span,
+            } => {
+                let items = match materialize_iterable(operands, *range, *inclusive, *span) {
                     Ok(v) => v,
                     Err(e) => return Advance::Error(e),
                 };
@@ -1176,7 +1330,12 @@ pub(crate) fn advance_expr_eval(
             }
 
             // ── Phase 8: Entity construction ─────────────────────
-            ExprWork::PushSpawnEntity { entity_type, field_names, group_specs, span } => {
+            ExprWork::PushSpawnEntity {
+                entity_type,
+                field_names,
+                group_specs,
+                span,
+            } => {
                 // Pop base field values from operand stack (reverse order)
                 let total_group_fields: usize =
                     group_specs.iter().map(|(_, names)| names.len()).sum();
@@ -1367,7 +1526,7 @@ fn advance_ident(
         // Evaluate default expressions for all params
         for param in &cond_decl.params {
             if let Some(ref default_expr) = param.default {
-                match crate::execution::eval_expr_via_handler(core, env, sp, eh, default_expr) {
+                match eval_expr_step(core, env, sp, eh, default_expr) {
                     Ok(val) => {
                         args.insert(param.name.clone(), val);
                     }
@@ -1430,7 +1589,7 @@ fn advance_ident(
                 return Advance::Error(RuntimeError::with_span(
                     "cannot access `turn` outside of turn context",
                     span,
-                ))
+                ));
             }
         };
         let budget = match sp.read_turn_budget(&actor) {
@@ -1439,7 +1598,7 @@ fn advance_ident(
                 return Advance::Error(RuntimeError::with_span(
                     "no turn budget provisioned for actor",
                     span,
-                ))
+                ));
             }
         };
         operands.push(Value::Struct {
@@ -1520,7 +1679,17 @@ fn resolve_call_named(
             .get(callee.as_str())
             .map(|ci| ci.params.clone())
             .unwrap_or_default();
-        let bound = bind_args_from_values(&param_infos, arg_meta, arg_values, Some(&cond_decl.params), core, env, sp, eh, span)?;
+        let bound = bind_args_from_values(
+            &param_infos,
+            arg_meta,
+            arg_values,
+            Some(&cond_decl.params),
+            core,
+            env,
+            sp,
+            eh,
+            span,
+        )?;
         let cond_args: BTreeMap<Name, Value> = bound.into_iter().collect();
         return Ok(CallResult::Value(Value::Condition {
             name: callee.clone(),
@@ -1621,7 +1790,16 @@ fn dispatch_fn_ref_step(
     if let Some(fn_info) = core.type_env.lookup_fn(fn_name) {
         let fn_info = fn_info.clone();
         if fn_info.kind == FnKind::Function {
-            return dispatch_function_step(&fn_info.name, arg_meta, arg_values, span, core, env, sp, eh);
+            return dispatch_function_step(
+                &fn_info.name,
+                arg_meta,
+                arg_values,
+                span,
+                core,
+                env,
+                sp,
+                eh,
+            );
         }
         return Err(RuntimeError::with_span(
             format!(
@@ -1667,7 +1845,9 @@ fn resolve_call_method(
 
     // 2. Module alias: dispatch alias-qualified call
     if let Value::ModuleAlias(ref alias_name) = receiver {
-        return dispatch_alias_call_step(alias_name, method, arg_meta, arg_values, span, core, env, sp, eh);
+        return dispatch_alias_call_step(
+            alias_name, method, arg_meta, arg_values, span, core, env, sp, eh,
+        );
     }
 
     // 3. Action method call: entity.ActionName(args)
@@ -1708,12 +1888,8 @@ fn dispatch_method_step(
         Value::List(_) => {
             step_list_method(receiver, method, arg_values, span).map(CallResult::Value)
         }
-        Value::Set(_) => {
-            step_set_method(receiver, method, arg_values, span).map(CallResult::Value)
-        }
-        Value::Map(_) => {
-            step_map_method(receiver, method, span).map(CallResult::Value)
-        }
+        Value::Set(_) => step_set_method(receiver, method, arg_values, span).map(CallResult::Value),
+        Value::Map(_) => step_map_method(receiver, method, span).map(CallResult::Value),
         Value::DiceExpr(_) => step_dice_method(receiver, method, arg_values, span),
         Value::Str(_) => {
             step_string_method(receiver, method, arg_values, span).map(CallResult::Value)
@@ -1821,10 +1997,7 @@ fn step_list_method(
                     Ok(Value::List(v))
                 }
                 other => Err(RuntimeError::with_span(
-                    format!(
-                        "concat() argument must be a list, got {}",
-                        type_name(other)
-                    ),
+                    format!("concat() argument must be a list, got {}", type_name(other)),
                     span,
                 )),
             }
@@ -2121,10 +2294,7 @@ fn step_dice_method(
                     })))
                 }
                 other => Err(RuntimeError::with_span(
-                    format!(
-                        "multiply() factor must be int, got {}",
-                        type_name(other)
-                    ),
+                    format!("multiply() factor must be int, got {}", type_name(other)),
                     span,
                 )),
             }
@@ -2211,7 +2381,15 @@ fn dispatch_alias_call_step(
             .map(|ci| ci.params.clone())
             .unwrap_or_default();
         let bound = bind_args_from_values(
-            &param_infos, arg_meta, arg_values, Some(&cond_decl.params), core, env, sp, eh, span,
+            &param_infos,
+            arg_meta,
+            arg_values,
+            Some(&cond_decl.params),
+            core,
+            env,
+            sp,
+            eh,
+            span,
         )?;
         let cond_args: BTreeMap<Name, Value> = bound.into_iter().collect();
         return Ok(CallResult::Value(Value::Condition {
@@ -2256,7 +2434,7 @@ fn dispatch_alias_call_step(
     ))
 }
 
-/// Dispatch an action method call via bridge (action dispatch is complex).
+/// Dispatch an action method call natively by building an ActionLifecycle frame.
 fn dispatch_action_method_step(
     receiver: &Value,
     method: &Name,
@@ -2266,48 +2444,19 @@ fn dispatch_action_method_step(
     core: &RuntimeCore,
     env: &mut ExecEnv,
     sp: &dyn StateProvider,
-    eh: &mut dyn EffectHandler,
+    _eh: &mut dyn EffectHandler,
 ) -> Result<CallResult, RuntimeError> {
-    // Build synthetic FieldAccess call expression and evaluate via bridge.
-    // This is needed because action dispatch has complex lifecycle management.
-    use ttrpg_ast::ast::Arg;
-
-    let receiver_expr = Spanned {
-        node: value_to_expr(receiver),
-        span,
-    };
-    let args: Vec<Arg> = arg_meta
-        .iter()
-        .zip(arg_values.iter())
-        .map(|(meta, val)| Arg {
-            name: meta.name.clone(),
-            value: Spanned {
-                node: value_to_expr(val),
-                span: meta.span,
-            },
-            span: meta.span,
-        })
-        .collect();
-
-    let callee_expr = Spanned {
-        node: ExprKind::FieldAccess {
-            object: Box::new(receiver_expr),
-            field: method.clone(),
-        },
-        span,
-    };
-    let call_expr = Spanned {
-        node: ExprKind::Call {
-            callee: Box::new(callee_expr),
-            args,
-        },
-        span,
+    let actor = match receiver {
+        Value::Entity(eref) => *eref,
+        other => {
+            return Err(RuntimeError::with_span(
+                format!("action '{method}' receiver must be an entity, got {other:?}"),
+                span,
+            ));
+        }
     };
 
-    match crate::execution::eval_expr_via_handler(core, env, sp, eh, &call_expr) {
-        Ok(val) => Ok(CallResult::Value(val)),
-        Err(e) => Err(e),
-    }
+    build_action_lifecycle(method, actor, arg_meta, arg_values, span, core, env, sp)
 }
 
 /// Dispatch by FnKind.
@@ -2330,19 +2479,36 @@ fn dispatch_fn_step(
         }
         FnKind::Builtin => {
             // Builtins have no defaults — bind positional/named args
-            let bound = bind_args_from_values(&fn_info.params, arg_meta, arg_values, None, core, env, sp, eh, span)?;
+            let bound = bind_args_from_values(
+                &fn_info.params,
+                arg_meta,
+                arg_values,
+                None,
+                core,
+                env,
+                sp,
+                eh,
+                span,
+            )?;
             let vals: Vec<Value> = bound.into_iter().map(|(_, v)| v).collect();
             call_builtin_step_full(&fn_info.name, vals, span, core, env, sp, eh)
         }
-        FnKind::Table => {
-            dispatch_table_step(&fn_info.name, &fn_info.params, arg_meta, arg_values, span, core, env, sp, eh)
-        }
+        FnKind::Table => dispatch_table_step(
+            &fn_info.name,
+            &fn_info.params,
+            arg_meta,
+            arg_values,
+            span,
+            core,
+            env,
+            sp,
+            eh,
+        ),
         FnKind::Prompt => {
             dispatch_prompt_step(&fn_info.name, arg_meta, arg_values, span, core, env, sp, eh)
         }
         FnKind::Action => {
-            // Actions from ExprEval must go through bridge; they have complex lifecycle
-            dispatch_bridge_call(core, env, sp, eh, &fn_info.name, arg_meta, arg_values, span)
+            dispatch_action_named_step(&fn_info.name, arg_meta, arg_values, span, core, env, sp)
         }
         FnKind::Reaction | FnKind::Hook => Err(RuntimeError::with_span(
             "internal error: reactions and hooks cannot be called directly",
@@ -2383,7 +2549,17 @@ fn dispatch_function_step(
         })?
         .clone();
 
-    let bound = bind_args_from_values(&fn_info.params, arg_meta, arg_values, Some(&ast_params), core, env, sp, eh, span)?;
+    let bound = bind_args_from_values(
+        &fn_info.params,
+        arg_meta,
+        arg_values,
+        Some(&ast_params),
+        core,
+        env,
+        sp,
+        eh,
+        span,
+    )?;
 
     // All args (including defaults) are already evaluated by bind_args_from_values.
     // Push FunctionEval with all args bound and no remaining defaults.
@@ -2425,14 +2601,21 @@ fn dispatch_derive_step(
         .type_env
         .lookup_fn(name)
         .ok_or_else(|| {
-            RuntimeError::with_span(
-                format!("internal error: no type info for '{name}'"),
-                span,
-            )
+            RuntimeError::with_span(format!("internal error: no type info for '{name}'"), span)
         })?
         .clone();
 
-    let bound = bind_args_from_values(&fn_info.params, arg_meta, arg_values, Some(&fn_decl.params), core, env, sp, eh, span)?;
+    let bound = bind_args_from_values(
+        &fn_info.params,
+        arg_meta,
+        arg_values,
+        Some(&fn_decl.params),
+        core,
+        env,
+        sp,
+        eh,
+        span,
+    )?;
 
     // Convert bound to positional Vec<Value> for DeriveEval
     let bound_values: Vec<Value> = bound.iter().map(|(_, v)| v.clone()).collect();
@@ -2470,8 +2653,55 @@ fn dispatch_table_step(
     sp: &dyn StateProvider,
     eh: &mut dyn EffectHandler,
 ) -> Result<CallResult, RuntimeError> {
-    // Tables have complex entry matching logic; use bridge for now
-    dispatch_bridge_call(core, env, sp, eh, name, arg_meta, arg_values, span)
+    let fn_info = core
+        .type_env
+        .lookup_fn(name)
+        .ok_or_else(|| {
+            RuntimeError::with_span(
+                format!("internal error: no type info for table '{name}'"),
+                span,
+            )
+        })?
+        .clone();
+
+    let table_decl = core.program.tables.get(name).ok_or_else(|| {
+        RuntimeError::with_span(
+            format!("internal error: no declaration found for table '{name}'"),
+            span,
+        )
+    })?;
+
+    let bound = bind_args_from_values(
+        &fn_info.params,
+        arg_meta,
+        arg_values,
+        Some(&table_decl.params),
+        core,
+        env,
+        sp,
+        eh,
+        span,
+    )?;
+    let bound_values: Vec<Value> = bound.iter().map(|(_, v)| v.clone()).collect();
+
+    Ok(CallResult::PushChild(Frame::DeriveEval {
+        name: Name::from(name),
+        args: bound_values,
+        is_table: true,
+        base_value: None,
+        modify_hooks: Vec::new(),
+        hook_index: 0,
+        expr_cache: Vec::new(),
+        phase: crate::execution::DeriveEvalPhase::Init,
+        bound_args: Some(bound),
+        modifiers: Vec::new(),
+        body: None,
+        pending_modify_effect: None,
+        pending: None,
+        phase1_params: None,
+        phase2_result: None,
+        fn_info_cache: Some(fn_info),
+    }))
 }
 
 // ── Prompt dispatch ─────────────────────────────────────────────
@@ -2509,8 +2739,15 @@ fn dispatch_prompt_step(
         .clone();
 
     let bound = bind_args_from_values(
-        &fn_info.params, arg_meta, arg_values,
-        Some(&prompt_decl.params), core, env, sp, eh, span,
+        &fn_info.params,
+        arg_meta,
+        arg_values,
+        Some(&prompt_decl.params),
+        core,
+        env,
+        sp,
+        eh,
+        span,
     )?;
 
     // Evaluate suggest expression if present
@@ -2520,7 +2757,7 @@ fn dispatch_prompt_step(
             for (pn, pv) in &bound {
                 env.bind(pn.clone(), pv.clone());
             }
-            let result = crate::execution::eval_expr_via_handler(core, env, sp, eh, expr);
+            let result = eval_expr_step(core, env, sp, eh, expr);
             env.pop_scope();
             Some(result?)
         }
@@ -2540,57 +2777,232 @@ fn dispatch_prompt_step(
     }))
 }
 
-// ── Bridge fallback for complex calls ───────────────────────────
+// ── Native action dispatch ──────────────────────────────────────
 
-fn dispatch_bridge_call(
-    core: &RuntimeCore,
-    env: &mut ExecEnv,
-    sp: &dyn StateProvider,
-    eh: &mut dyn EffectHandler,
+/// Dispatch a named action call (e.g., `MeleeAttack(actor, target)`) by
+/// building an ActionLifecycle frame. The first positional arg (or named arg
+/// matching the receiver name) is the receiver entity.
+fn dispatch_action_named_step(
     name: &str,
     arg_meta: &[ArgMeta],
     arg_values: &[Value],
     span: Span,
+    core: &RuntimeCore,
+    env: &mut ExecEnv,
+    sp: &dyn StateProvider,
 ) -> Result<CallResult, RuntimeError> {
-    // Reconstruct Arg AST nodes with literal expressions wrapping pre-evaluated values.
-    // This is a bridge approach: we create synthetic expressions that will re-evaluate
-    // to the same values when the recursive evaluator runs.
-    use ttrpg_ast::ast::Arg;
-    let args: Vec<Arg> = arg_meta
+    // Get receiver info from type env
+    let fn_info = core.type_env.lookup_fn(name).ok_or_else(|| {
+        RuntimeError::with_span(
+            format!("internal error: no type info for action '{name}'"),
+            span,
+        )
+    })?;
+    let receiver_info = fn_info.receiver.as_ref().ok_or_else(|| {
+        RuntimeError::with_span(
+            format!("internal error: action '{name}' has no receiver info"),
+            span,
+        )
+    })?;
+    let receiver_param_name = receiver_info.name.clone();
+
+    // Find receiver: first positional arg, or named arg matching receiver name
+    let (receiver_idx, receiver_val) = arg_meta
         .iter()
         .zip(arg_values.iter())
-        .map(|(meta, val)| {
-            Arg {
-                name: meta.name.clone(),
-                value: Spanned {
-                    node: value_to_expr(val),
-                    span: meta.span,
-                },
-                span: meta.span,
-            }
+        .enumerate()
+        .find(|(_, (meta, _))| meta.name.is_none())
+        .or_else(|| {
+            arg_meta
+                .iter()
+                .zip(arg_values.iter())
+                .enumerate()
+                .find(|(_, (meta, _))| meta.name.as_ref() == Some(&receiver_param_name))
         })
+        .map(|(i, (_, val))| (i, val.clone()))
+        .ok_or_else(|| {
+            RuntimeError::with_span(
+                format!("action '{name}' requires a receiver argument"),
+                span,
+            )
+        })?;
+
+    let actor = match &receiver_val {
+        Value::Entity(eref) => *eref,
+        other => {
+            return Err(RuntimeError::with_span(
+                format!(
+                    "action '{name}' receiver must be an entity, got {:?}",
+                    other
+                ),
+                span,
+            ));
+        }
+    };
+
+    // Remaining args (excluding receiver)
+    let remaining_meta: Vec<_> = arg_meta
+        .iter()
+        .enumerate()
+        .filter(|(i, _)| *i != receiver_idx)
+        .map(|(_, m)| m.clone())
+        .collect();
+    let remaining_values: Vec<_> = arg_values
+        .iter()
+        .enumerate()
+        .filter(|(i, _)| *i != receiver_idx)
+        .map(|(_, v)| v.clone())
         .collect();
 
-    // Build a synthetic Call expression and evaluate via bridge
-    let callee_expr = Spanned {
-        node: ExprKind::Ident(Name::from(name)),
+    build_action_lifecycle(
+        name,
+        actor,
+        &remaining_meta,
+        &remaining_values,
         span,
-    };
-    let call_expr = Spanned {
-        node: ExprKind::Call {
-            callee: Box::new(callee_expr),
-            args,
-        },
-        span,
-    };
-
-    match crate::execution::eval_expr_via_handler(core, env, sp, eh, &call_expr) {
-        Ok(val) => Ok(CallResult::Value(val)),
-        Err(e) => Err(e),
-    }
+        core,
+        env,
+        sp,
+    )
 }
 
-/// Convert a Value back to an ExprKind for bridge calls.
+/// Build an ActionLifecycle frame for an action dispatch.
+///
+/// Handles overload resolution, argument binding, and default parameter
+/// collection. Returns `CallResult::PushChild` with the lifecycle frame.
+fn build_action_lifecycle(
+    name: &str,
+    actor: crate::state::EntityRef,
+    arg_meta: &[ArgMeta],
+    arg_values: &[Value],
+    span: Span,
+    core: &RuntimeCore,
+    _env: &mut ExecEnv,
+    sp: &dyn StateProvider,
+) -> Result<CallResult, RuntimeError> {
+    use crate::effect::ActionKind;
+    use crate::execution::ActionStep;
+    use crate::state::InvocationId;
+    use ttrpg_checker::ty::Ty;
+
+    // Resolve overload based on entity type
+    let entity_type = sp.entity_type_name(&actor);
+    let overloads = core.program.actions.get(name).ok_or_else(|| {
+        RuntimeError::with_span(
+            format!("internal error: no declaration found for action '{name}'"),
+            span,
+        )
+    })?;
+    let action_decl = crate::select_action_overload(overloads, entity_type.as_ref())
+        .cloned()
+        .ok_or_else(|| {
+            RuntimeError::with_span(
+                format!(
+                    "no matching overload for action '{}' on entity type '{}'",
+                    name,
+                    entity_type.as_ref().map_or("unknown", |n| n.as_str())
+                ),
+                span,
+            )
+        })?;
+
+    // Get correct overload's FnInfo for param types
+    let recv_ty = entity_type.map_or(Ty::AnyEntity, Ty::Entity);
+    let correct_fn_info = core
+        .type_env
+        .lookup_action_overload(name, &recv_ty)
+        .ok_or_else(|| {
+            RuntimeError::with_span(
+                format!(
+                    "no matching overload for action '{}' on type '{}'",
+                    name,
+                    recv_ty.display()
+                ),
+                span,
+            )
+        })?
+        .clone();
+
+    // Map positional and named args to param slots
+    let mut bindings: Vec<(Name, Value)> = Vec::new();
+    let mut bound_indices = vec![false; correct_fn_info.params.len()];
+    let mut next_positional = 0usize;
+
+    for (meta, val) in arg_meta.iter().zip(arg_values.iter()) {
+        if let Some(ref param_name) = meta.name {
+            // Named arg: find matching param
+            let pos = correct_fn_info
+                .params
+                .iter()
+                .position(|p| p.name == *param_name)
+                .ok_or_else(|| {
+                    RuntimeError::with_span(format!("unknown parameter '{param_name}'"), meta.span)
+                })?;
+            bound_indices[pos] = true;
+            bindings.push((param_name.clone(), val.clone()));
+        } else {
+            // Positional arg: skip to next unbound param
+            while next_positional < correct_fn_info.params.len() && bound_indices[next_positional] {
+                next_positional += 1;
+            }
+            if next_positional >= correct_fn_info.params.len() {
+                return Err(RuntimeError::with_span(
+                    "too many positional arguments",
+                    meta.span,
+                ));
+            }
+            bound_indices[next_positional] = true;
+            bindings.push((
+                correct_fn_info.params[next_positional].name.clone(),
+                val.clone(),
+            ));
+            next_positional += 1;
+        }
+    }
+
+    // Collect default expressions for any unbound optional params
+    let mut default_params = Vec::new();
+    for (i, param) in correct_fn_info.params.iter().enumerate() {
+        if !bound_indices[i] {
+            if param.has_default {
+                if let Some(ast_param) = action_decl.params.get(i)
+                    && let Some(ref default_expr) = ast_param.default
+                {
+                    default_params.push((param.name.clone(), default_expr.clone()));
+                }
+            } else {
+                return Err(RuntimeError::with_span(
+                    format!("missing required argument '{}'", param.name),
+                    span,
+                ));
+            }
+        }
+    }
+
+    let inv_id = InvocationId(core.alloc_invocation_id()?);
+
+    Ok(CallResult::PushChild(Frame::ActionLifecycle {
+        name: action_decl.name.clone(),
+        actor,
+        action_kind: ActionKind::Action,
+        call_span: span,
+        has_return_type: action_decl.return_type.is_some(),
+        inv_id,
+        requires: action_decl.requires.clone(),
+        cost: action_decl.cost.clone(),
+        resolve: action_decl.resolve.clone(),
+        receiver_name: action_decl.receiver_name.clone(),
+        bindings,
+        default_params,
+        step: ActionStep::EmitStarted,
+        pending: None,
+        body_result: None,
+        saved_turn_actor: None,
+        saved_invocation: None,
+    }))
+}
+
+/// Convert a Value back to an ExprKind for synthetic expressions.
 /// Only needs to handle values that can appear as call arguments.
 fn value_to_expr(val: &Value) -> ExprKind {
     match val {
@@ -2598,11 +3010,6 @@ fn value_to_expr(val: &Value) -> ExprKind {
         Value::Bool(b) => ExprKind::BoolLit(*b),
         Value::Str(s) => ExprKind::StringLit(s.clone()),
         Value::Void => ExprKind::NoneLit,
-        // For complex values, wrap in a list-of-one trick won't work.
-        // Instead, use the Ident approach: this won't actually be evaluated,
-        // the bridge will get the value from the cache.
-        // Actually, we need a different strategy. Let's just use the bridge
-        // eval path directly with pre-evaluated values.
         _ => ExprKind::NoneLit, // fallback — should be unreachable in practice
     }
 }
@@ -2667,7 +3074,16 @@ fn bind_args_from_values(
         }
     }
 
-    let outcome = fill_defaults_step(params, &mut result, ast_params, core, env, sp, eh, call_span);
+    let outcome = fill_defaults_step(
+        params,
+        &mut result,
+        ast_params,
+        core,
+        env,
+        sp,
+        eh,
+        call_span,
+    );
 
     if needs_defaults {
         env.pop_scope();
@@ -2695,9 +3111,7 @@ fn fill_defaults_step(
                     let default_val = if let Some(ast_ps) = ast_params {
                         if let Some(ast_param) = ast_ps.get(i) {
                             if let Some(ref default_expr) = ast_param.default {
-                                let val = crate::execution::eval_expr_via_handler(
-                                    core, env, sp, eh, default_expr,
-                                )?;
+                                let val = eval_expr_step(core, env, sp, eh, default_expr)?;
                                 // Bind into scope so later defaults can see it
                                 env.bind(param.name.clone(), val.clone());
                                 val
@@ -2754,7 +3168,10 @@ fn eval_len_values(args: &[Value], span: Span) -> Result<Value, RuntimeError> {
         Value::Set(s) => Ok(Value::Int(s.len() as i64)),
         Value::Map(m) => Ok(Value::Int(m.len() as i64)),
         _ => Err(RuntimeError::with_span(
-            format!("len() expects a list, set, or map, got {}", type_name(&args[0])),
+            format!(
+                "len() expects a list, set, or map, got {}",
+                type_name(&args[0])
+            ),
             span,
         )),
     }
@@ -2800,9 +3217,9 @@ fn eval_first_values(args: &[Value], span: Span) -> Result<Value, RuntimeError> 
         ));
     }
     match &args[0] {
-        Value::List(v) => Ok(v
-            .first()
-            .map_or(Value::Option(None), |v| Value::Option(Some(Box::new(v.clone()))))),
+        Value::List(v) => Ok(v.first().map_or(Value::Option(None), |v| {
+            Value::Option(Some(Box::new(v.clone())))
+        })),
         _ => Err(RuntimeError::with_span(
             format!("first() expects a list, got {}", type_name(&args[0])),
             span,
@@ -2818,9 +3235,9 @@ fn eval_last_values(args: &[Value], span: Span) -> Result<Value, RuntimeError> {
         ));
     }
     match &args[0] {
-        Value::List(v) => Ok(v
-            .last()
-            .map_or(Value::Option(None), |v| Value::Option(Some(Box::new(v.clone()))))),
+        Value::List(v) => Ok(v.last().map_or(Value::Option(None), |v| {
+            Value::Option(Some(Box::new(v.clone())))
+        })),
         _ => Err(RuntimeError::with_span(
             format!("last() expects a list, got {}", type_name(&args[0])),
             span,
@@ -3098,61 +3515,57 @@ fn eval_min_max_values(
     combine: fn(i64, i64) -> i64,
 ) -> Result<Value, RuntimeError> {
     match args.len() {
-        2 => {
-            match (&args[0], &args[1]) {
-                (Value::Int(x), Value::Int(y)) => Ok(Value::Int(combine(*x, *y))),
-                _ => Err(RuntimeError::with_span(
-                    format!(
-                        "{name}() expects (int, int) or (list<int>), got ({}, {})",
-                        type_name(&args[0]),
-                        type_name(&args[1])
-                    ),
-                    span,
-                )),
-            }
-        }
-        1 => {
-            match &args[0] {
-                Value::List(items) => {
-                    let mut iter = items.iter();
-                    let first = match iter.next() {
-                        Some(Value::Int(n)) => *n,
-                        Some(other) => {
+        2 => match (&args[0], &args[1]) {
+            (Value::Int(x), Value::Int(y)) => Ok(Value::Int(combine(*x, *y))),
+            _ => Err(RuntimeError::with_span(
+                format!(
+                    "{name}() expects (int, int) or (list<int>), got ({}, {})",
+                    type_name(&args[0]),
+                    type_name(&args[1])
+                ),
+                span,
+            )),
+        },
+        1 => match &args[0] {
+            Value::List(items) => {
+                let mut iter = items.iter();
+                let first = match iter.next() {
+                    Some(Value::Int(n)) => *n,
+                    Some(other) => {
+                        return Err(RuntimeError::with_span(
+                            format!("{name}() list contains non-int: {}", type_name(other)),
+                            span,
+                        ));
+                    }
+                    None => {
+                        return Err(RuntimeError::with_span(
+                            format!("{name}() called on empty list"),
+                            span,
+                        ));
+                    }
+                };
+                let mut result = first;
+                for item in iter {
+                    match item {
+                        Value::Int(n) => result = combine(result, *n),
+                        other => {
                             return Err(RuntimeError::with_span(
                                 format!("{name}() list contains non-int: {}", type_name(other)),
                                 span,
                             ));
                         }
-                        None => {
-                            return Err(RuntimeError::with_span(
-                                format!("{name}() called on empty list"),
-                                span,
-                            ));
-                        }
-                    };
-                    let mut result = first;
-                    for item in iter {
-                        match item {
-                            Value::Int(n) => result = combine(result, *n),
-                            other => {
-                                return Err(RuntimeError::with_span(
-                                    format!("{name}() list contains non-int: {}", type_name(other)),
-                                    span,
-                                ));
-                            }
-                        }
                     }
-                    Ok(Value::Int(result))
                 }
-                _ => Err(RuntimeError::with_span(
-                    format!(
-                        "{name}() expects (int, int) or (list<int>), got ({})",
-                        type_name(&args[0])
-                    ),
-                    span,
-                )),
+                Ok(Value::Int(result))
             }
-        }
+            _ => Err(RuntimeError::with_span(
+                format!(
+                    "{name}() expects (int, int) or (list<int>), got ({})",
+                    type_name(&args[0])
+                ),
+                span,
+            )),
+        },
         _ => Err(RuntimeError::with_span(
             format!("{name}() requires 1 or 2 arguments, got {}", args.len()),
             span,
@@ -3162,7 +3575,11 @@ fn eval_min_max_values(
 
 // ── Ordinal builtins (value-level) ──────────────────────────────
 
-fn eval_ordinal_step(args: &[Value], span: Span, core: &RuntimeCore) -> Result<Value, RuntimeError> {
+fn eval_ordinal_step(
+    args: &[Value],
+    span: Span,
+    core: &RuntimeCore,
+) -> Result<Value, RuntimeError> {
     if args.is_empty() {
         return Err(RuntimeError::with_span(
             "ordinal() requires 1 argument",
@@ -3173,8 +3590,8 @@ fn eval_ordinal_step(args: &[Value], span: Span, core: &RuntimeCore) -> Result<V
         Value::EnumVariant {
             enum_name, variant, ..
         } => {
-            let ordinal =
-                crate::eval::variant_ordinal(&core.type_env, enum_name, variant).ok_or_else(|| {
+            let ordinal = crate::eval::variant_ordinal(&core.type_env, enum_name, variant)
+                .ok_or_else(|| {
                     RuntimeError::with_span(
                         format!("unknown variant `{variant}` of enum `{enum_name}`"),
                         span,
@@ -3183,13 +3600,20 @@ fn eval_ordinal_step(args: &[Value], span: Span, core: &RuntimeCore) -> Result<V
             Ok(Value::Int(ordinal as i64))
         }
         _ => Err(RuntimeError::with_span(
-            format!("ordinal() expects an enum variant, got {}", type_name(&args[0])),
+            format!(
+                "ordinal() expects an enum variant, got {}",
+                type_name(&args[0])
+            ),
             span,
         )),
     }
 }
 
-fn eval_from_ordinal_step(args: &[Value], span: Span, core: &RuntimeCore) -> Result<Value, RuntimeError> {
+fn eval_from_ordinal_step(
+    args: &[Value],
+    span: Span,
+    core: &RuntimeCore,
+) -> Result<Value, RuntimeError> {
     if args.len() < 2 {
         return Err(RuntimeError::with_span(
             "from_ordinal() requires 2 arguments",
@@ -3264,7 +3688,11 @@ fn eval_from_ordinal_step(args: &[Value], span: Span, core: &RuntimeCore) -> Res
     })
 }
 
-fn eval_try_from_ordinal_step(args: &[Value], span: Span, core: &RuntimeCore) -> Result<Value, RuntimeError> {
+fn eval_try_from_ordinal_step(
+    args: &[Value],
+    span: Span,
+    core: &RuntimeCore,
+) -> Result<Value, RuntimeError> {
     if args.len() < 2 {
         return Err(RuntimeError::with_span(
             "try_from_ordinal() requires 2 arguments",
@@ -3382,7 +3810,11 @@ fn construct_enum_variant_step(
 
     // If any field has a default, look up the AST to get default expressions
     let ast_params = if has_any_default {
-        Some(find_variant_ast_fields(&core.program, enum_name, variant_name))
+        Some(find_variant_ast_fields(
+            &core.program,
+            enum_name,
+            variant_name,
+        ))
     } else {
         None
     };
@@ -3507,35 +3939,39 @@ fn call_builtin_step_full(
 ) -> Result<CallResult, RuntimeError> {
     match name {
         // Effectful builtins that need child frames
-        "roll" => {
-            match args.first() {
-                Some(Value::DiceExpr(expr)) => {
-                    Ok(CallResult::PushChild(Frame::RollDiceWaiting {
-                        dice_expr: expr.clone(),
-                        span,
-                        pending: None,
-                    }))
-                }
-                Some(other) => Err(RuntimeError::with_span(
-                    format!("roll() expects DiceExpr, got {}", type_name(other)),
-                    span,
-                )),
-                None => Err(RuntimeError::with_span("roll() requires 1 argument", span)),
-            }
+        "roll" => match args.first() {
+            Some(Value::DiceExpr(expr)) => Ok(CallResult::PushChild(Frame::RollDiceWaiting {
+                dice_expr: expr.clone(),
+                span,
+                pending: None,
+            })),
+            Some(other) => Err(RuntimeError::with_span(
+                format!("roll() expects DiceExpr, got {}", type_name(other)),
+                span,
+            )),
+            None => Err(RuntimeError::with_span("roll() requires 1 argument", span)),
+        },
+        // Env-context builtins: implemented natively using ExecEnv + EffectHandler
+        "invocation" => builtin_invocation_step(env, &args, span).map(CallResult::Value),
+        "condition_token" => builtin_condition_token_step(env, &args, span).map(CallResult::Value),
+        "advance_time" => builtin_advance_time_step(env, &args, span, eh).map(CallResult::Value),
+        "despawn" => builtin_despawn_step(&args, span, eh).map(CallResult::Value),
+        "suspend" => builtin_suspend_step(env, &args, span, eh).map(CallResult::Value),
+        "suspend_with_source" => {
+            builtin_suspend_with_source_step(&args, span, eh).map(CallResult::Value)
         }
-        // Builtins that need env context — use bridge
-        "apply_condition" | "remove_condition" | "revoke"
-        | "advance_time" | "despawn" | "suspend" | "suspend_with_source"
-        | "remove_suspension_source" | "condition_token" | "transfer_conditions"
-        | "invocation" => {
-            // These mutate state or need env context; use bridge
-            let result = crate::execution::bridge_call_builtin(core, env, sp, eh, name, args, span)?;
-            Ok(CallResult::Value(result))
+        "remove_suspension_source" => {
+            builtin_remove_suspension_source_step(&args, span, eh).map(CallResult::Value)
+        }
+        "transfer_conditions" => {
+            builtin_transfer_conditions_step(env, &args, span, core, eh).map(CallResult::Value)
+        }
+        // Complex lifecycle builtins — run via frame-based execution
+        "apply_condition" | "remove_condition" | "revoke" => {
+            run_builtin_via_frame(name, args, span, core, env, sp, eh).map(CallResult::Value)
         }
         // Pure/state-reading builtins
-        _ => {
-            call_builtin_step(name, &args, span, core, sp).map(CallResult::Value)
-        }
+        _ => call_builtin_step(name, &args, span, core, sp).map(CallResult::Value),
     }
 }
 
@@ -3593,14 +4029,17 @@ fn builtin_ceil_step(args: &[Value], span: Span) -> Result<Value, RuntimeError> 
     }
 }
 
-fn builtin_distance_step(args: &[Value], span: Span, sp: &dyn StateProvider) -> Result<Value, RuntimeError> {
+fn builtin_distance_step(
+    args: &[Value],
+    span: Span,
+    sp: &dyn StateProvider,
+) -> Result<Value, RuntimeError> {
     match (args.first(), args.get(1)) {
-        (Some(Value::Position(pa)), Some(Value::Position(pb))) => sp
-            .distance(pa.0, pb.0)
-            .map(Value::Int)
-            .ok_or_else(|| {
+        (Some(Value::Position(pa)), Some(Value::Position(pb))) => {
+            sp.distance(pa.0, pb.0).map(Value::Int).ok_or_else(|| {
                 RuntimeError::with_span("distance() received invalid position values", span)
-            }),
+            })
+        }
         (Some(a), Some(b)) => Err(RuntimeError::with_span(
             format!(
                 "distance() expects (Position, Position), got ({}, {})",
@@ -3616,7 +4055,11 @@ fn builtin_distance_step(args: &[Value], span: Span, sp: &dyn StateProvider) -> 
     }
 }
 
-fn builtin_conditions_step(args: &[Value], span: Span, sp: &dyn StateProvider) -> Result<Value, RuntimeError> {
+fn builtin_conditions_step(
+    args: &[Value],
+    span: Span,
+    sp: &dyn StateProvider,
+) -> Result<Value, RuntimeError> {
     let entity = match args.first() {
         Some(Value::Entity(entity)) => entity,
         Some(other) => {
@@ -3641,7 +4084,10 @@ fn builtin_conditions_step(args: &[Value], span: Span, sp: &dyn StateProvider) -
             ));
         }
     };
-    if let Some(Value::Condition { name: cond_name, .. }) = args.get(1) {
+    if let Some(Value::Condition {
+        name: cond_name, ..
+    }) = args.get(1)
+    {
         let values = conditions
             .iter()
             .filter(|c| c.name == *cond_name)
@@ -3653,11 +4099,17 @@ fn builtin_conditions_step(args: &[Value], span: Span, sp: &dyn StateProvider) -
     Ok(Value::List(values))
 }
 
-fn builtin_has_condition_step(args: &[Value], span: Span, sp: &dyn StateProvider) -> Result<Value, RuntimeError> {
+fn builtin_has_condition_step(
+    args: &[Value],
+    span: Span,
+    sp: &dyn StateProvider,
+) -> Result<Value, RuntimeError> {
     match (args.first(), args.get(1)) {
         (
             Some(Value::Entity(entity)),
-            Some(Value::Condition { name: cond_name, .. }),
+            Some(Value::Condition {
+                name: cond_name, ..
+            }),
         ) => match sp.read_conditions(entity) {
             Some(conditions) => {
                 let has_it = conditions.iter().any(|c| c.name == *cond_name);
@@ -3710,7 +4162,9 @@ fn builtin_dice_step(args: &[Value], span: Span) -> Result<Value, RuntimeError> 
             let sides_u32 = u32::try_from(*sides).map_err(|_| {
                 RuntimeError::with_span(format!("dice() sides {sides} overflows u32"), span)
             })?;
-            Ok(Value::DiceExpr(DiceExpr::single(count_u32, sides_u32, None, 0)))
+            Ok(Value::DiceExpr(DiceExpr::single(
+                count_u32, sides_u32, None, 0,
+            )))
         }
         (Some(a), Some(b)) => Err(RuntimeError::with_span(
             format!(
@@ -3874,7 +4328,11 @@ fn builtin_error_step(args: &[Value], span: Span) -> Result<Value, RuntimeError>
     }
 }
 
-fn builtin_game_time_step(args: &[Value], span: Span, sp: &dyn StateProvider) -> Result<Value, RuntimeError> {
+fn builtin_game_time_step(
+    args: &[Value],
+    span: Span,
+    sp: &dyn StateProvider,
+) -> Result<Value, RuntimeError> {
     if !args.is_empty() {
         return Err(RuntimeError::with_span(
             format!("game_time() requires 0 arguments, got {}", args.len()),
@@ -3884,7 +4342,11 @@ fn builtin_game_time_step(args: &[Value], span: Span, sp: &dyn StateProvider) ->
     Ok(Value::Int(sp.read_game_time() as i64))
 }
 
-fn builtin_budget_of_step(args: &[Value], span: Span, sp: &dyn StateProvider) -> Result<Value, RuntimeError> {
+fn builtin_budget_of_step(
+    args: &[Value],
+    span: Span,
+    sp: &dyn StateProvider,
+) -> Result<Value, RuntimeError> {
     match args.first() {
         Some(Value::Entity(eref)) => {
             let budget = sp.read_turn_budget(eref).ok_or_else(|| {
@@ -3909,7 +4371,11 @@ fn builtin_budget_of_step(args: &[Value], span: Span, sp: &dyn StateProvider) ->
     }
 }
 
-fn builtin_is_suspended_step(args: &[Value], span: Span, sp: &dyn StateProvider) -> Result<Value, RuntimeError> {
+fn builtin_is_suspended_step(
+    args: &[Value],
+    span: Span,
+    sp: &dyn StateProvider,
+) -> Result<Value, RuntimeError> {
     match args.first() {
         Some(Value::Entity(eref)) => Ok(Value::Bool(sp.is_suspended(eref))),
         Some(other) => Err(RuntimeError::with_span(
@@ -3923,7 +4389,11 @@ fn builtin_is_suspended_step(args: &[Value], span: Span, sp: &dyn StateProvider)
     }
 }
 
-fn builtin_is_off_board_step(args: &[Value], span: Span, sp: &dyn StateProvider) -> Result<Value, RuntimeError> {
+fn builtin_is_off_board_step(
+    args: &[Value],
+    span: Span,
+    sp: &dyn StateProvider,
+) -> Result<Value, RuntimeError> {
     match args.first() {
         Some(Value::Entity(eref)) => Ok(Value::Bool(sp.is_off_board(eref))),
         Some(other) => Err(RuntimeError::with_span(
@@ -3937,11 +4407,18 @@ fn builtin_is_off_board_step(args: &[Value], span: Span, sp: &dyn StateProvider)
     }
 }
 
-fn builtin_are_turns_frozen_step(args: &[Value], span: Span, sp: &dyn StateProvider) -> Result<Value, RuntimeError> {
+fn builtin_are_turns_frozen_step(
+    args: &[Value],
+    span: Span,
+    sp: &dyn StateProvider,
+) -> Result<Value, RuntimeError> {
     match args.first() {
         Some(Value::Entity(eref)) => Ok(Value::Bool(sp.are_turns_frozen(eref))),
         Some(other) => Err(RuntimeError::with_span(
-            format!("are_turns_frozen() expects Entity, got {}", type_name(other)),
+            format!(
+                "are_turns_frozen() expects Entity, got {}",
+                type_name(other)
+            ),
             span,
         )),
         None => Err(RuntimeError::with_span(
@@ -3951,11 +4428,18 @@ fn builtin_are_turns_frozen_step(args: &[Value], span: Span, sp: &dyn StateProvi
     }
 }
 
-fn builtin_are_durations_frozen_step(args: &[Value], span: Span, sp: &dyn StateProvider) -> Result<Value, RuntimeError> {
+fn builtin_are_durations_frozen_step(
+    args: &[Value],
+    span: Span,
+    sp: &dyn StateProvider,
+) -> Result<Value, RuntimeError> {
     match args.first() {
         Some(Value::Entity(eref)) => Ok(Value::Bool(sp.are_durations_frozen(eref))),
         Some(other) => Err(RuntimeError::with_span(
-            format!("are_durations_frozen() expects Entity, got {}", type_name(other)),
+            format!(
+                "are_durations_frozen() expects Entity, got {}",
+                type_name(other)
+            ),
             span,
         )),
         None => Err(RuntimeError::with_span(
@@ -3963,6 +4447,333 @@ fn builtin_are_durations_frozen_step(args: &[Value], span: Span, sp: &dyn StateP
             span,
         )),
     }
+}
+
+// ── Effectful builtins (native implementations) ─────────────────
+
+fn builtin_invocation_step(
+    env: &ExecEnv,
+    args: &[Value],
+    span: Span,
+) -> Result<Value, RuntimeError> {
+    if !args.is_empty() {
+        return Err(RuntimeError::with_span(
+            "invocation() takes no arguments",
+            span,
+        ));
+    }
+    match env.current_invocation_id {
+        Some(id) => Ok(Value::Invocation(id)),
+        None => Err(RuntimeError::with_span(
+            "invocation() called outside of action/reaction/hook scope",
+            span,
+        )),
+    }
+}
+
+fn builtin_condition_token_step(
+    env: &ExecEnv,
+    args: &[Value],
+    span: Span,
+) -> Result<Value, RuntimeError> {
+    if !args.is_empty() {
+        return Err(RuntimeError::with_span(
+            "condition_token() takes no arguments",
+            span,
+        ));
+    }
+    match env.current_condition_token {
+        Some(token) => Ok(Value::Int(token.0 as i64)),
+        None => Err(RuntimeError::with_span(
+            "condition_token() requires an active condition token (only valid in lifecycle blocks)",
+            span,
+        )),
+    }
+}
+
+fn builtin_advance_time_step(
+    env: &ExecEnv,
+    args: &[Value],
+    span: Span,
+    eh: &mut dyn EffectHandler,
+) -> Result<Value, RuntimeError> {
+    if env.current_invocation_id.is_some() {
+        return Err(RuntimeError::with_span(
+            "advance_time() cannot be called during action/reaction/hook execution",
+            span,
+        ));
+    }
+    match args.first() {
+        Some(Value::Int(amount)) if *amount > 0 => {
+            let effect = Effect::AdvanceTime {
+                amount: *amount as u64,
+            };
+            validate_mutation_response(eh.handle(effect), "AdvanceTime", span)?;
+            Ok(Value::Void)
+        }
+        Some(Value::Int(0)) => Err(RuntimeError::with_span(
+            "advance_time() amount must be positive, got 0",
+            span,
+        )),
+        Some(Value::Int(amount)) => Err(RuntimeError::with_span(
+            format!("advance_time() amount must be positive, got {amount}"),
+            span,
+        )),
+        Some(other) => Err(RuntimeError::with_span(
+            format!("advance_time() expects Int, got {}", type_name(other)),
+            span,
+        )),
+        None => Err(RuntimeError::with_span(
+            "advance_time() requires 1 argument",
+            span,
+        )),
+    }
+}
+
+fn builtin_despawn_step(
+    args: &[Value],
+    span: Span,
+    eh: &mut dyn EffectHandler,
+) -> Result<Value, RuntimeError> {
+    match args.first() {
+        Some(Value::Entity(entity)) => {
+            let effect = Effect::RemoveEntity { entity: *entity };
+            validate_mutation_response(eh.handle(effect), "RemoveEntity", span)?;
+            Ok(Value::Void)
+        }
+        Some(other) => Err(RuntimeError::with_span(
+            format!("despawn() expects entity, got {}", type_name(other)),
+            span,
+        )),
+        None => Err(RuntimeError::with_span(
+            "despawn() requires 1 argument",
+            span,
+        )),
+    }
+}
+
+fn parse_presence_step(val: &Value, span: Span) -> Result<crate::state::Presence, RuntimeError> {
+    match val {
+        Value::EnumVariant {
+            enum_name, variant, ..
+        } if enum_name == "Presence" => match variant.as_str() {
+            "OnMap" => Ok(crate::state::Presence::OnMap),
+            "OffBoard" => Ok(crate::state::Presence::OffBoard),
+            _ => Err(RuntimeError::with_span(
+                format!("unknown Presence variant '{variant}'"),
+                span,
+            )),
+        },
+        _ => Err(RuntimeError::with_span(
+            format!("expected Presence enum, got {}", type_name(val)),
+            span,
+        )),
+    }
+}
+
+fn builtin_suspend_step(
+    env: &ExecEnv,
+    args: &[Value],
+    span: Span,
+    eh: &mut dyn EffectHandler,
+) -> Result<Value, RuntimeError> {
+    if env.in_lifecycle_block == 0 {
+        return Err(RuntimeError::with_span(
+            "suspend() can only be called inside on_apply/on_remove blocks. \
+             Use suspend_with_source() for explicit source keying outside lifecycle blocks.",
+            span,
+        ));
+    }
+    let token = env.current_condition_token.ok_or_else(|| {
+        RuntimeError::with_span(
+            "suspend() requires a condition token (no condition being applied/removed)",
+            span,
+        )
+    })?;
+    match (args.first(), args.get(1), args.get(2), args.get(3)) {
+        (
+            Some(Value::Entity(entity)),
+            Some(presence_val),
+            Some(Value::Bool(freeze_turns)),
+            Some(Value::Bool(freeze_durations)),
+        ) => {
+            let presence = parse_presence_step(presence_val, span)?;
+            let effect = Effect::AddSuspension {
+                entity: *entity,
+                source_id: token.0,
+                presence,
+                freeze_turns: *freeze_turns,
+                freeze_durations: *freeze_durations,
+            };
+            validate_mutation_response(eh.handle(effect), "AddSuspension", span)?;
+            Ok(Value::Void)
+        }
+        _ => Err(RuntimeError::with_span(
+            "suspend() requires 4 arguments: (entity, Presence, bool, bool)",
+            span,
+        )),
+    }
+}
+
+fn builtin_suspend_with_source_step(
+    args: &[Value],
+    span: Span,
+    eh: &mut dyn EffectHandler,
+) -> Result<Value, RuntimeError> {
+    match (
+        args.first(),
+        args.get(1),
+        args.get(2),
+        args.get(3),
+        args.get(4),
+    ) {
+        (
+            Some(Value::Entity(entity)),
+            Some(Value::Int(source_id)),
+            Some(presence_val),
+            Some(Value::Bool(freeze_turns)),
+            Some(Value::Bool(freeze_durations)),
+        ) if *source_id >= 0 => {
+            let presence = parse_presence_step(presence_val, span)?;
+            let effect = Effect::AddSuspension {
+                entity: *entity,
+                source_id: *source_id as u64,
+                presence,
+                freeze_turns: *freeze_turns,
+                freeze_durations: *freeze_durations,
+            };
+            validate_mutation_response(eh.handle(effect), "AddSuspension", span)?;
+            Ok(Value::Void)
+        }
+        _ => Err(RuntimeError::with_span(
+            "suspend_with_source() requires 5 arguments: (entity, int, Presence, bool, bool)",
+            span,
+        )),
+    }
+}
+
+fn builtin_remove_suspension_source_step(
+    args: &[Value],
+    span: Span,
+    eh: &mut dyn EffectHandler,
+) -> Result<Value, RuntimeError> {
+    match (args.first(), args.get(1)) {
+        (Some(Value::Entity(entity)), Some(Value::Int(source_id))) if *source_id >= 0 => {
+            let effect = Effect::RemoveSuspensionSource {
+                entity: *entity,
+                source_id: *source_id as u64,
+            };
+            validate_mutation_response(eh.handle(effect), "RemoveSuspensionSource", span)?;
+            Ok(Value::Void)
+        }
+        _ => Err(RuntimeError::with_span(
+            "remove_suspension_source() requires 2 arguments: (entity, int)",
+            span,
+        )),
+    }
+}
+
+fn builtin_transfer_conditions_step(
+    env: &ExecEnv,
+    args: &[Value],
+    span: Span,
+    core: &RuntimeCore,
+    eh: &mut dyn EffectHandler,
+) -> Result<Value, RuntimeError> {
+    let (from, to, tag) = match (args.first(), args.get(1), args.get(2)) {
+        (Some(Value::Entity(from)), Some(Value::Entity(to)), Some(Value::Str(tag))) => {
+            (*from, *to, tag.clone())
+        }
+        _ => {
+            return Err(RuntimeError::with_span(
+                "transfer_conditions() requires (entity, entity, string)",
+                span,
+            ));
+        }
+    };
+
+    if !core.program.tags.contains(tag.as_str()) {
+        return Err(RuntimeError::with_span(
+            format!(
+                "transfer_conditions: unknown tag `{tag}` — \
+                 no `tag {tag}` declaration found in the program"
+            ),
+            span,
+        ));
+    }
+
+    let exclude_instance = env.lifecycle_condition_stack.last().copied();
+    let effect = Effect::TransferConditions {
+        from,
+        to,
+        tag: Name::from(tag.as_str()),
+        exclude_instance,
+    };
+    validate_mutation_response(eh.handle(effect), "TransferConditions", span)?;
+    Ok(Value::Void)
+}
+
+/// Validate a response to a mutation effect.
+fn validate_mutation_response(
+    response: Response,
+    effect_name: &str,
+    span: Span,
+) -> Result<(), RuntimeError> {
+    match response {
+        Response::Acknowledged | Response::Override(_) | Response::Vetoed => Ok(()),
+        _ => Err(RuntimeError::with_span(
+            format!("protocol error: unsupported response for {effect_name}: {response:?}"),
+            span,
+        )),
+    }
+}
+
+/// Run a complex lifecycle builtin (apply_condition, remove_condition, revoke)
+/// by constructing a synthetic call expression and evaluating it via a
+/// ResumableBridge frame. This avoids a direct bridge_call_builtin call from
+/// expr_eval.rs while preserving full lifecycle semantics.
+fn run_builtin_via_frame(
+    name: &str,
+    args: Vec<Value>,
+    span: Span,
+    core: &RuntimeCore,
+    env: &mut ExecEnv,
+    sp: &dyn StateProvider,
+    eh: &mut dyn EffectHandler,
+) -> Result<Value, RuntimeError> {
+    use ttrpg_ast::ast::Arg;
+
+    // Build synthetic literal arguments from pre-evaluated values
+    let ast_args: Vec<Arg> = args
+        .iter()
+        .map(|val| Arg {
+            name: None,
+            value: Spanned {
+                node: value_to_expr(val),
+                span,
+            },
+            span,
+        })
+        .collect();
+
+    let callee_expr = Spanned {
+        node: ExprKind::Ident(Name::from(name)),
+        span,
+    };
+    let call_expr = Spanned {
+        node: ExprKind::Call {
+            callee: Box::new(callee_expr),
+            args: ast_args,
+        },
+        span,
+    };
+
+    let frame = Frame::ResumableBridge {
+        expr: call_expr,
+        expr_cache: Vec::new(),
+        span,
+    };
+    crate::execution::run_frame_to_completion_sync(frame, core, env, sp, eh)
 }
 
 // ── Is-check implementation ─────────────────────────────────────
@@ -4023,7 +4834,10 @@ fn value_matches_type_step(val: &Value, ty: &TypeExpr, sp: &dyn StateProvider) -
         // Opaque built-in types
         (Value::Condition { .. }, TypeExpr::Condition) => true,
         (
-            Value::Struct { name: sname, fields },
+            Value::Struct {
+                name: sname,
+                fields,
+            },
             TypeExpr::TypedActiveCondition(cond_name),
         ) if sname.as_ref() == "ActiveCondition" => {
             matches!(fields.get(&Name::from("name")), Some(Value::Str(n)) if n == cond_name.as_ref())
@@ -4037,10 +4851,13 @@ fn value_matches_type_step(val: &Value, ty: &TypeExpr, sp: &dyn StateProvider) -
 
 // ── Inline step evaluator ──────────────────────────────────────
 
-/// Try to evaluate an expression using the ExprEval machinery inline.
-/// If the expression compiles and completes without needing child frames,
-/// returns the result without bridge overhead. Falls back to the bridge
-/// for expressions that can't be compiled or need child frames.
+/// Evaluate an expression using the step-based ExprEval machinery.
+///
+/// Tries to compile the expression into ExprWork instructions and run them
+/// inline. If the expression can't be compiled, falls back to a
+/// ResumableBridge frame. Child frames (DeriveEval, FunctionEval, etc.)
+/// and host effects (dice rolls, prompts) are handled by running the
+/// frame to completion synchronously via `run_frame_to_completion_sync`.
 pub(crate) fn eval_expr_step(
     core: &RuntimeCore,
     env: &mut ExecEnv,
@@ -4048,14 +4865,15 @@ pub(crate) fn eval_expr_step(
     eh: &mut dyn EffectHandler,
     expr: &Spanned<ExprKind>,
 ) -> Result<Value, RuntimeError> {
-    if let Some(work) = compile_expr(expr, &core.type_env, &core.program) {
+    // Try fast inline path first: compile + step without frame overhead
+    if let Some(ref work) = compile_expr(expr, &core.type_env, &core.program) {
         let mut operands = Vec::new();
         let mut pc = 0;
         let mut child_result = None;
         let mut scope_depth = 0;
         loop {
             match advance_expr_eval(
-                &work,
+                work,
                 &mut operands,
                 &mut pc,
                 &mut child_result,
@@ -4068,14 +4886,38 @@ pub(crate) fn eval_expr_step(
                 Advance::Pop(val) => return Ok(val),
                 Advance::Continue => continue,
                 Advance::Error(e) => return Err(e),
-                Advance::Push(_) | Advance::Yield(_) => {
-                    // Expression needs a child frame or host effect —
-                    // can't handle inline. Fall through to bridge.
-                    break;
+                Advance::Push(child_frame) => {
+                    // Run the child frame synchronously, then feed result back
+                    match crate::execution::run_frame_to_completion_sync(
+                        child_frame,
+                        core,
+                        env,
+                        sp,
+                        eh,
+                    ) {
+                        Ok(val) => {
+                            child_result = Some(Ok(val));
+                        }
+                        Err(e) => {
+                            child_result = Some(Err(e));
+                        }
+                    }
+                }
+                Advance::Yield(effect) => {
+                    // Forward the effect to the handler (e.g., dice roll, mutation)
+                    let _response = eh.handle(effect);
+                    // ExprEval itself doesn't yield — this shouldn't occur.
+                    // If it does, it means a work item emitted a yield directly,
+                    // which is a bug. Continue and let the next step handle it.
                 }
             }
         }
     }
-    // Fallback to bridge
-    crate::execution::eval_expr_via_handler(core, env, sp, eh, expr)
+    // Expression couldn't be compiled to ExprWork — run via ResumableBridge frame
+    let frame = Frame::ResumableBridge {
+        expr: expr.clone(),
+        expr_cache: Vec::new(),
+        span: expr.span,
+    };
+    crate::execution::run_frame_to_completion_sync(frame, core, env, sp, eh)
 }
