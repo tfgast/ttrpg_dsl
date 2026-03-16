@@ -2831,9 +2831,7 @@ fn dispatch_action_named_step(
         Value::Entity(eref) => *eref,
         other => {
             return Err(RuntimeError::with_span(
-                format!(
-                    "action '{name}' receiver must be an entity, got {other:?}"
-                ),
+                format!("action '{name}' receiver must be an entity, got {other:?}"),
                 span,
             ));
         }
@@ -4889,7 +4887,7 @@ pub(crate) fn eval_expr_step(
                 eh,
             ) {
                 Advance::Pop(val) => return Ok(val),
-                Advance::Continue => {},
+                Advance::Continue => {}
                 Advance::Error(e) => return Err(e),
                 Advance::Push(child_frame) => {
                     // Run the child frame synchronously, then feed result back

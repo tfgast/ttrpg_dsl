@@ -15,12 +15,12 @@ use rustc_hash::FxHashMap;
 use ttrpg_ast::ast::{Arg, AssignOp, Block, CostClause, ExprKind, LValue, PatternKind, StmtKind};
 use ttrpg_ast::{Name, Span, Spanned};
 
-use crate::adapter::{MutationTracker, StateAdapter, is_mutation};
+use crate::adapter::{MutationTracker, StateAdapter};
 use crate::effect::{
     ActionKind, ActionOutcome, Effect, EffectHandler, EffectKind, Phase, Response, Step,
 };
 use crate::pipeline::OwnedModifier;
-use crate::runtime_core::{BridgeCategory, RuntimeCore};
+use crate::runtime_core::RuntimeCore;
 use crate::select_action_overload;
 use crate::state::{
     ActiveCondition, ConditionToken, EntityRef, InvocationId, StateProvider, WritableState,
@@ -47,15 +47,10 @@ pub(crate) struct ExecEnv {
     pub lifecycle_condition_stack: Vec<u64>,
     pub current_condition_token: Option<ConditionToken>,
     pub return_value: Option<Value>,
-    /// Deferred bridge call info for non-action entry points.
-    pub bridge_call: Option<BridgeCallInfo>,
 }
 
-/// Information about a deferred bridge call (for non-action entry points).
+/// Deferred expression for BridgeCall entry point frames.
 pub(crate) enum BridgeCallInfo {
-    Derive { name: Name, args: Vec<Value> },
-    Mechanic { name: Name, args: Vec<Value> },
-    Function { name: Name, args: Vec<Value> },
     Expr { expr: Spanned<ExprKind> },
 }
 
@@ -71,7 +66,6 @@ impl ExecEnv {
             lifecycle_condition_stack: Vec::new(),
             current_condition_token: None,
             return_value: None,
-            bridge_call: None,
         }
     }
 
@@ -202,99 +196,6 @@ impl crate::eval::AssignContext for FrameAssignCtx<'_> {
     }
 }
 
-// ── Bridge evaluation ──────────────────────────────────────────
-
-/// Handler that panics on any forwarded (host-decided) effect.
-/// Used for bridge evaluation sites where only locally-applied
-/// effects are expected (e.g., budget provisioning, condition
-/// state writeback). Sites that may encounter host-decided effects
-/// use `CachingHandler` instead for replay-based yielding.
-struct NoYieldHandler;
-impl EffectHandler for NoYieldHandler {
-    fn handle(&mut self, effect: Effect) -> Response {
-        panic!(
-            "unexpected forwarded effect in bridge evaluation: {:?}",
-            EffectKind::of(&effect)
-        )
-    }
-}
-
-/// Handler that replays cached responses for previously-resolved
-/// host-decided effects and captures the first uncached one.
-///
-/// Used by the Block frame on the async path to support expressions
-/// that contain effectful builtins (roll, prompt, etc.). When a
-/// host-decided effect is captured, the handler returns `Vetoed`
-/// which causes the evaluator to error; the Block frame detects
-/// this via the `captured` field and pushes a yield frame instead
-/// of propagating the error.
-struct CachingHandler {
-    /// Cached responses to replay (converted from expr_cache values).
-    cache: Vec<Response>,
-    /// Index into cache for the next replay.
-    cache_idx: usize,
-    /// The first uncached host-decided effect, if captured.
-    captured: Option<Effect>,
-}
-
-impl CachingHandler {
-    fn from_expr_cache(cache: &[Value]) -> Self {
-        let responses = cache
-            .iter()
-            .map(|v| match v {
-                Value::RollResult(rr) => Response::Rolled(rr.clone()),
-                other => Response::Override(other.clone()),
-            })
-            .collect();
-        CachingHandler {
-            cache: responses,
-            cache_idx: 0,
-            captured: None,
-        }
-    }
-}
-
-impl EffectHandler for CachingHandler {
-    fn handle(&mut self, effect: Effect) -> Response {
-        if self.captured.is_some() {
-            // Already captured one effect — subsequent effects get
-            // a sentinel that will cause the evaluator to error.
-            return Response::Vetoed;
-        }
-        if self.cache_idx < self.cache.len() {
-            let response = self.cache[self.cache_idx].clone();
-            self.cache_idx += 1;
-            response
-        } else {
-            // First uncached host-decided effect — capture it.
-            self.captured = Some(effect);
-            Response::Vetoed
-        }
-    }
-}
-
-/// Handler that routes mutations through an already-adapted handler
-/// and non-mutations through a custom handler (CachingHandler, etc.).
-///
-/// This allows bridge calls with custom handlers to work with trait objects,
-/// without needing direct access to StateAdapter. The adapted handler
-/// intercepts mutations, while the custom handler handles host-decided effects.
-struct ComposedHandler<'a> {
-    adapted: &'a mut dyn EffectHandler,
-    custom: &'a mut dyn EffectHandler,
-}
-
-impl EffectHandler for ComposedHandler<'_> {
-    fn handle(&mut self, effect: Effect) -> Response {
-        let kind = EffectKind::of(&effect);
-        if is_mutation(kind) || kind == EffectKind::DeductCost {
-            self.adapted.handle(effect)
-        } else {
-            self.custom.handle(effect)
-        }
-    }
-}
-
 /// Convert a captured host-decided effect into the appropriate yield frame.
 fn effect_to_yield_frame(
     effect: Effect,
@@ -343,7 +244,7 @@ fn effect_to_yield_frame(
 /// Dispatch an `apply_condition(...)` call as a `CallSetup` frame.
 ///
 /// Collects argument expressions and returns a `CallSetup` that will
-/// evaluate them one at a time via `ResumableBridge` children.
+/// evaluate them one at a time via ExprEval children.
 fn try_dispatch_apply_condition(
     args: &[ttrpg_ast::ast::Arg],
     span: Span,
@@ -408,7 +309,7 @@ fn try_dispatch_revoke(
 /// statement is a bare function call or a let binding whose value is
 /// a function call that can be dispatched via `CallSetup`/`FunctionEval`.
 ///
-/// Arguments are evaluated one at a time via `ResumableBridge` children
+/// Arguments are evaluated one at a time via ExprEval children
 /// inside a `CallSetup` frame, avoiding the probe-then-build pattern.
 fn try_frame_dispatch_stmt(
     core: &RuntimeCore,
@@ -605,43 +506,6 @@ fn restore_awaiting_budget(handler: &mut dyn EffectHandler, awaiting: &AwaitingF
         }
         _ => {}
     }
-}
-
-/// Evaluate a single expression using the handler if available, or
-/// NoYieldHandler if not. Used by the native statement dispatch path
-/// for sub-expressions.
-pub(crate) fn eval_expr_via_handler(
-    core: &RuntimeCore,
-    env: &mut ExecEnv,
-    sp: &dyn StateProvider,
-    eh: &mut dyn EffectHandler,
-    expr: &Spanned<ExprKind>,
-) -> Result<Value, RuntimeError> {
-    bridge_eval_with(core, env, sp, eh, BridgeCategory::Eval, |tmp_env| {
-        crate::eval::eval_expr(tmp_env, expr)
-    })
-}
-
-/// Evaluate a builtin function call via bridge for builtins that need
-/// full Env context (apply_condition, remove_condition, etc.).
-pub(crate) fn bridge_call_builtin(
-    core: &RuntimeCore,
-    env: &mut ExecEnv,
-    sp: &dyn StateProvider,
-    eh: &mut dyn EffectHandler,
-    name: &str,
-    args: Vec<Value>,
-    span: Span,
-) -> Result<Value, RuntimeError> {
-    let name = name.to_string();
-    bridge_eval_with(
-        core,
-        env,
-        sp,
-        eh,
-        BridgeCategory::Dispatch,
-        move |tmp_env| crate::builtins::call_builtin(tmp_env, &name, args, span),
-    )
 }
 
 /// Run a frame (and any children it pushes) to completion synchronously.
@@ -967,7 +831,7 @@ fn try_dispatch_revoke_stmt(
 }
 
 /// Extract the expression from a Let/Assign/Expr/Return(Some) statement
-/// for ResumableBridge dispatch on the async path. Returns the expression
+/// for ExprEval dispatch on the async path. Returns the expression
 /// to evaluate and the AwaitingFn to apply on completion.
 ///
 /// Called only after `try_frame_dispatch_stmt` returns `Ok(None)`, so
@@ -991,7 +855,7 @@ fn extract_resumable_expr(stmt: &Spanned<StmtKind>) -> Option<(Spanned<ExprKind>
     }
 }
 
-/// Try to compile an expression for ExprEval, falling back to ResumableBridge.
+/// Compile an expression for ExprEval. Panics if compilation fails.
 fn compile_or_bridge(
     expr: &Spanned<ExprKind>,
     core: &RuntimeCore,
@@ -1011,152 +875,6 @@ fn compile_or_bridge(
             expr.span,
         )
     }
-}
-
-/// Creates a temporary `Interpreter` and `Env` backed by the step-based
-/// context, runs `eval_block`, and syncs state back. Locally-applied
-/// mutation effects are handled by the `StateAdapter`; host-decided
-/// effects will panic (async `poll()` path). For synchronous execution,
-/// use `bridge_eval_block_with_handler` instead.
-fn bridge_eval_block(
-    core: &RuntimeCore,
-    env: &mut ExecEnv,
-    sp: &dyn StateProvider,
-    eh: &mut dyn EffectHandler,
-    block: &Block,
-) -> Result<Value, RuntimeError> {
-    bridge_eval_with(core, env, sp, eh, BridgeCategory::Eval, |tmp_env| {
-        crate::eval::eval_block(tmp_env, block)
-    })
-}
-
-/// Evaluate a single expression using the existing recursive evaluator.
-fn bridge_eval_expr(
-    core: &RuntimeCore,
-    env: &mut ExecEnv,
-    sp: &dyn StateProvider,
-    eh: &mut dyn EffectHandler,
-    expr: &Spanned<ExprKind>,
-) -> Result<Value, RuntimeError> {
-    bridge_eval_with(core, env, sp, eh, BridgeCategory::Eval, |tmp_env| {
-        crate::eval::eval_expr(tmp_env, expr)
-    })
-}
-
-/// Bridge setup: takes already-adapted `&dyn StateProvider` +
-/// `&mut dyn EffectHandler`. No `state.run()` call — the caller is
-/// responsible for providing correctly adapted trait objects.
-fn bridge_eval_with(
-    core: &RuntimeCore,
-    env: &mut ExecEnv,
-    sp: &dyn StateProvider,
-    eh: &mut dyn EffectHandler,
-    category: BridgeCategory,
-    f: impl FnOnce(&mut Env) -> Result<Value, RuntimeError>,
-) -> Result<Value, RuntimeError> {
-    core.bridge_stats().increment(category);
-    let interp = Interpreter::bridge(
-        &core.program,
-        &core.type_env,
-        core.counters().0,
-        core.counters().1,
-        core.coverage.clone(),
-    );
-
-    // Snapshot all ExecEnv state so the closure doesn't need &mut env.
-    let scopes = std::mem::take(&mut env.scopes);
-    let lc_stack = std::mem::take(&mut env.lifecycle_condition_stack);
-    let ret_val = env.return_value.take();
-    let turn_actor = env.turn_actor;
-    let cost_payer = env.cost_payer;
-    let invocation_id = env.current_invocation_id;
-    let emit_depth = env.emit_depth;
-    let in_lifecycle = env.in_lifecycle_block;
-    let condition_token = env.current_condition_token;
-
-    let mut tmp_env = Env {
-        state: sp,
-        handler: eh,
-        interp: &interp,
-        scopes,
-        turn_actor,
-        cost_payer,
-        current_invocation_id: invocation_id,
-        emit_depth,
-        in_lifecycle_block: in_lifecycle,
-        lifecycle_condition_stack: lc_stack,
-        current_condition_token: condition_token,
-        return_value: ret_val,
-    };
-
-    let result = f(&mut tmp_env);
-
-    // Restore ExecEnv state
-    env.scopes = std::mem::take(&mut tmp_env.scopes);
-    env.lifecycle_condition_stack = std::mem::take(&mut tmp_env.lifecycle_condition_stack);
-    env.return_value = tmp_env.return_value.take();
-
-    // Sync ID counters back to RuntimeCore
-    let (inv, cond) = interp.id_counters();
-    core.sync_counters(inv, cond);
-
-    result
-}
-
-/// Bridge run: takes already-adapted `&dyn StateProvider` +
-/// `&mut dyn EffectHandler`. Returns an arbitrary `R`.
-fn bridge_run<R>(
-    core: &RuntimeCore,
-    env: &mut ExecEnv,
-    sp: &dyn StateProvider,
-    eh: &mut dyn EffectHandler,
-    category: BridgeCategory,
-    f: impl FnOnce(&mut Env) -> Result<R, RuntimeError>,
-) -> Result<R, RuntimeError> {
-    core.bridge_stats().increment(category);
-    let interp = Interpreter::bridge(
-        &core.program,
-        &core.type_env,
-        core.counters().0,
-        core.counters().1,
-        core.coverage.clone(),
-    );
-
-    let scopes = std::mem::take(&mut env.scopes);
-    let lc_stack = std::mem::take(&mut env.lifecycle_condition_stack);
-    let ret_val = env.return_value.take();
-    let turn_actor = env.turn_actor;
-    let cost_payer = env.cost_payer;
-    let invocation_id = env.current_invocation_id;
-    let emit_depth = env.emit_depth;
-    let in_lifecycle = env.in_lifecycle_block;
-    let condition_token = env.current_condition_token;
-
-    let mut tmp_env = Env {
-        state: sp,
-        handler: eh,
-        interp: &interp,
-        scopes,
-        turn_actor,
-        cost_payer,
-        current_invocation_id: invocation_id,
-        emit_depth,
-        in_lifecycle_block: in_lifecycle,
-        lifecycle_condition_stack: lc_stack,
-        current_condition_token: condition_token,
-        return_value: ret_val,
-    };
-
-    let result = f(&mut tmp_env);
-
-    env.scopes = std::mem::take(&mut tmp_env.scopes);
-    env.lifecycle_condition_stack = std::mem::take(&mut tmp_env.lifecycle_condition_stack);
-    env.return_value = tmp_env.return_value.take();
-
-    let (inv, cond) = interp.id_counters();
-    core.sync_counters(inv, cond);
-
-    result
 }
 
 // ── Modify-applied event helpers ───────────────────────────────
@@ -2304,7 +2022,7 @@ pub(crate) enum ActionStep {
     EmitVetoedCompleted,
     /// Vetoed completion ack received: pop with abort value.
     AwaitVetoedAck,
-    /// Evaluate requires clause (if present) via ResumableBridge child frame.
+    /// Evaluate requires clause (if present) via ExprEval child frame.
     EvalRequires,
     /// Requires expression evaluated; emit RequiresCheck with result.
     AwaitRequiresEval,
@@ -2436,7 +2154,7 @@ pub(crate) enum Frame {
         params: Vec<DefaultParam>,
         resolved: Vec<(Name, Value)>,
         index: usize,
-        /// Result from a ResumableBridge child evaluating a default expression.
+        /// Result from ExprEval child evaluating a default expression.
         child_result: Option<Value>,
     },
 
@@ -2509,7 +2227,7 @@ pub(crate) enum Frame {
         saved_lifecycle: u32,
         /// Whether a scope was pushed for field default evaluation.
         scope_pushed: bool,
-        /// Result from child frame (EmitHooks/ResumableBridge/etc.).
+        /// Result from child frame (EmitHooks/ExprEval/etc.).
         child_result: Option<Result<Value, RuntimeError>>,
     },
 
@@ -2710,7 +2428,7 @@ pub(crate) enum Frame {
         modify_hooks_result: Option<Result<Value, RuntimeError>>,
     },
 
-    /// Evaluates call arguments one at a time via ResumableBridge children,
+    /// Evaluates call arguments one at a time via ExprEval children,
     /// then constructs and pushes the target frame (ConditionApplyGate,
     /// ConditionRemovalLoop, FunctionEval). Replaces the probe-then-build
     /// pattern that used TryEvalHandler.
@@ -2725,7 +2443,7 @@ pub(crate) enum Frame {
         span: Span,
     },
 
-    /// Step-based expression evaluator. Replaces ResumableBridge for
+    /// Step-based expression evaluator. Handles
     /// expressions that can be compiled to a work sequence.
     ExprEval {
         work: Vec<crate::expr_eval::ExprWork>,
@@ -2763,20 +2481,8 @@ pub(crate) enum Frame {
         child_result: Option<Result<Value, RuntimeError>>,
     },
 
-    /// Resumable bridge evaluation frame. Evaluates an expression through
-    /// the recursive evaluator with CachingHandler replay support. Pushes
-    /// yield frames (RollDiceWaiting, PromptWaiting) when host-decided
-    /// effects are captured, and retries with cached responses.
-    ResumableBridge {
-        expr: Spanned<ExprKind>,
-        expr_cache: Vec<Value>,
-        span: Span,
-    },
-
-    /// Bridge call frame for non-action entry points (derive, mechanic,
-    /// function, expr). On the synchronous path the result is computed
-    /// directly and stored here. On the async path, uses CachingHandler
-    /// with replay support for host-decided effects.
+    /// Entry point frame for standalone expression evaluation.
+    /// Used by `start_expr` and `start_expr_with_bindings`.
     BridgeCall {
         result: Option<Result<Value, RuntimeError>>,
         call_info: Option<BridgeCallInfo>,
@@ -2811,7 +2517,7 @@ impl Frame {
     /// Advance the frame by one step. Uses frame-based dispatch for
     /// statements that may contain host-decided effects: function calls
     /// dispatch via CallSetup, emit statements via EmitEval, and all
-    /// other expressions via ExprEval (with ResumableBridge fallback).
+    /// other expressions via ExprEval.
     fn advance_action(
         frame: &mut Frame,
         core: &RuntimeCore,
@@ -2953,9 +2659,7 @@ impl Frame {
 
                     ActionStep::EvalRequires => {
                         if let Some(req_expr) = requires.as_ref() {
-                            // Push ResumableBridge for the requires expression.
-                            // Both sync and async paths use the same frame-based
-                            // dispatch (ResumableBridge handles sync via real handler).
+                            // Push ExprEval for the requires expression.
                             *step = ActionStep::AwaitRequiresEval;
                             Advance::Push(compile_or_bridge(req_expr, core, Vec::new()))
                         } else {
@@ -2966,7 +2670,7 @@ impl Frame {
                     }
 
                     ActionStep::AwaitRequiresEval => {
-                        // ResumableBridge child completed with the requires
+                        // ExprEval child completed with the requires
                         // expression result.
                         let val = body_result.take().unwrap_or(Ok(Value::Bool(true)));
                         match val {
@@ -3151,7 +2855,7 @@ impl Frame {
                     }
                 }
 
-                // Phase 1: push ResumableBridge for next arg.
+                // Phase 1: push ExprEval for next arg.
                 if *arg_index < arg_exprs.len() {
                     return Advance::Push(compile_or_bridge(
                         &arg_exprs[*arg_index],
@@ -3563,59 +3267,6 @@ impl Frame {
                 Advance::Pop(Value::List(result))
             }
 
-            Frame::ResumableBridge {
-                expr,
-                expr_cache,
-                span,
-            } => {
-                let e = expr.clone();
-
-                // CachingHandler with replay support.
-                tracker.reset();
-                let mut caching = CachingHandler::from_expr_cache(expr_cache);
-                let eval_result = bridge_eval_with(
-                    core,
-                    env,
-                    sp,
-                    &mut ComposedHandler {
-                        adapted: &mut *eh,
-                        custom: &mut caching,
-                    },
-                    BridgeCategory::Eval,
-                    |tmp_env| crate::eval::eval_expr(tmp_env, &e),
-                );
-
-                if let Some(effect) = caching.captured {
-                    // Containment guard: if a local mutation was applied
-                    // during this bridge run AND the handler captured a
-                    // host-decided effect, replaying would re-apply the
-                    // mutation. Fail fast.
-                    if tracker.applied() {
-                        return Advance::Error(RuntimeError::new(format!(
-                            "async replay unsound: local mutation applied \
-                             before host-decided effect {:?} in ResumableBridge \
-                             at {:?}; cannot safely replay",
-                            EffectKind::of(&effect),
-                            *span,
-                        )));
-                    }
-
-                    // Push a yield frame; don't pop — retry on next advance.
-                    if let Some(yield_frame) = effect_to_yield_frame(effect, *span, core, env) {
-                        return Advance::Push(yield_frame);
-                    }
-                    // Unknown host-decided effect — fall through to error.
-                }
-
-                match eval_result {
-                    Ok(val) => {
-                        expr_cache.clear();
-                        Advance::Pop(val)
-                    }
-                    Err(err) => Advance::Error(err),
-                }
-            }
-
             Frame::CostEval {
                 cost,
                 actor,
@@ -3928,12 +3579,6 @@ impl Frame {
                         Err(e) => Advance::Error(e),
                     };
                 }
-                // Take call_info from env on first advance, then keep in frame.
-                if call_info.is_none()
-                    && let Some(ci) = env.bridge_call.take()
-                {
-                    *call_info = Some(ci);
-                }
                 let ci = match call_info.take() {
                     Some(ci) => ci,
                     None => {
@@ -3943,106 +3588,7 @@ impl Frame {
                     }
                 };
 
-                // Push appropriate child frame based on call type.
                 match ci {
-                    BridgeCallInfo::Derive { name, args } => {
-                        let is_table = core.program.tables.contains_key(name.as_ref());
-                        Advance::Push(Frame::DeriveEval {
-                            name,
-                            args,
-                            is_table,
-                            base_value: None,
-                            modify_hooks: Vec::new(),
-                            hook_index: 0,
-                            expr_cache: Vec::new(),
-                            phase: DeriveEvalPhase::Init,
-                            bound_args: None,
-                            modifiers: Vec::new(),
-                            body: None,
-                            pending_modify_effect: None,
-                            phase1_params: None,
-                            phase2_result: None,
-                            fn_info_cache: None,
-                            pending: None,
-                            modify_hooks_result: None,
-                        })
-                    }
-                    BridgeCallInfo::Mechanic { name, args } => Advance::Push(Frame::DeriveEval {
-                        name,
-                        args,
-                        is_table: false,
-                        base_value: None,
-                        modify_hooks: Vec::new(),
-                        hook_index: 0,
-                        expr_cache: Vec::new(),
-                        phase: DeriveEvalPhase::Init,
-                        bound_args: None,
-                        modifiers: Vec::new(),
-                        body: None,
-                        pending_modify_effect: None,
-                        phase1_params: None,
-                        phase2_result: None,
-                        fn_info_cache: None,
-                        pending: None,
-                        modify_hooks_result: None,
-                    }),
-                    BridgeCallInfo::Function { name, args } => {
-                        // Look up function decl and construct FunctionEval.
-                        let fn_decl = match core.program.functions.get(name.as_ref()) {
-                            Some(d) => d.clone(),
-                            None => {
-                                return Advance::Error(RuntimeError::new(format!(
-                                    "undefined function '{name}'"
-                                )));
-                            }
-                        };
-                        let fn_info = match core.type_env.lookup_fn(name.as_ref()) {
-                            Some(fi) => fi.clone(),
-                            None => {
-                                return Advance::Error(RuntimeError::new(format!(
-                                    "internal error: no type info for function '{name}'"
-                                )));
-                            }
-                        };
-                        if args.len() > fn_info.params.len() {
-                            return Advance::Error(RuntimeError::new(format!(
-                                "too many arguments: '{}' takes {} params, got {}",
-                                name,
-                                fn_info.params.len(),
-                                args.len()
-                            )));
-                        }
-                        let mut bound: Vec<(Name, Value)> = Vec::new();
-                        for (i, val) in args.into_iter().enumerate() {
-                            bound.push((fn_info.params[i].name.clone(), val));
-                        }
-                        let mut default_params = Vec::new();
-                        for i in bound.len()..fn_info.params.len() {
-                            if fn_info.params[i].has_default {
-                                if let Some(default_expr) =
-                                    fn_decl.params.get(i).and_then(|p| p.default.as_ref())
-                                {
-                                    default_params.push((
-                                        fn_info.params[i].name.clone(),
-                                        default_expr.clone(),
-                                    ));
-                                }
-                            } else {
-                                return Advance::Error(RuntimeError::new(format!(
-                                    "missing required argument '{}' for '{}'",
-                                    fn_info.params[i].name, name
-                                )));
-                            }
-                        }
-                        Advance::Push(Frame::FunctionEval {
-                            name,
-                            args: bound,
-                            default_params,
-                            body: Some(fn_decl.body.clone()),
-                            defaults_done: false,
-                            child_result: None,
-                        })
-                    }
                     BridgeCallInfo::Expr { ref expr } => {
                         Advance::Push(compile_or_bridge(expr, core, Vec::new()))
                     }
@@ -4379,7 +3925,7 @@ impl Frame {
 
                 // Let/Assign/Expr with non-call expressions: try ExprEval
                 // for trivially-pure expressions, then fall back to
-                // ResumableBridge for frame-based async evaluation.
+                // ExprEval for frame-based async evaluation.
                 if let Some((bridge_expr, awaiting)) = extract_resumable_expr(&stmt) {
                     if let Some(work) =
                         crate::expr_eval::compile_expr(&bridge_expr, &core.type_env, &core.program)
@@ -4425,7 +3971,7 @@ impl Frame {
                 index,
                 child_result,
             } => {
-                // Handle child ResumableBridge result (default expr evaluated).
+                // Handle child ExprEval result (default expr evaluated).
                 if let Some(val) = child_result.take() {
                     let param = &params[*index];
                     env.bind(param.name.clone(), val);
@@ -5250,7 +4796,7 @@ impl Frame {
                 if let Some(result) = child_result.take() {
                     match phase {
                         EmitEvalPhase::Args => {
-                            // ResumableBridge child completed for arg evaluation.
+                            // ExprEval child completed for arg evaluation.
                             match result {
                                 Ok(val) => {
                                     let arg = &args[*arg_index];
@@ -5264,7 +4810,7 @@ impl Frame {
                             }
                         }
                         EmitEvalPhase::ParamDefaults => {
-                            // ResumableBridge child completed for param default.
+                            // ExprEval child completed for param default.
                             match result {
                                 Ok(val) => {
                                     let (ref pname, _) = param_defaults[*default_index];
@@ -5275,7 +4821,7 @@ impl Frame {
                             }
                         }
                         EmitEvalPhase::FieldDefaults => {
-                            // ResumableBridge child completed for field default.
+                            // ExprEval child completed for field default.
                             match result {
                                 Ok(val) => {
                                     let (ref fname, _) = field_defaults[*default_index];
@@ -5512,7 +5058,7 @@ impl Frame {
                 state_expr_cache,
                 default_scope_pushed,
             } => {
-                // Handle ResumableBridge child result for state default.
+                // Handle ExprEval child result for state default.
                 if *default_scope_pushed && let Some(val) = state_expr_cache.pop() {
                     env.pop_scope();
                     *default_scope_pushed = false;
@@ -6298,7 +5844,7 @@ impl Frame {
                         *step = ActionStep::EmitCompleted;
                     }
                     ActionStep::AwaitRequiresEval => {
-                        // ResumableBridge child completed with requires result.
+                        // ExprEval child completed with requires result.
                         *body_result = Some(Ok(value));
                     }
                     ActionStep::AwaitCostEval => {
@@ -6333,7 +5879,7 @@ impl Frame {
                 *result = Some(value);
             }
             Frame::FillDefaults { child_result, .. } => {
-                // ResumableBridge child completed with default value.
+                // ExprEval child completed with default value.
                 *child_result = Some(value);
             }
             Frame::FunctionEval { child_result, .. } => {
@@ -6382,16 +5928,13 @@ impl Frame {
             Frame::ListComp { child_result, .. } => {
                 *child_result = Some(Ok(value));
             }
-            Frame::ResumableBridge { expr_cache, .. } => {
-                // Yield frame child completed — cache for replay.
-                expr_cache.push(value);
-            }
             Frame::BridgeCall { result, .. } => {
-                // Child frame (DeriveEval/FunctionEval/ResumableBridge) completed.
+                // Child frame completed.
                 *result = Some(Ok(value));
             }
             Frame::CostEval {
-                modify_hooks_result, ..
+                modify_hooks_result,
+                ..
             } => {
                 // EmitHooks child completed for modify_applied hooks.
                 *modify_hooks_result = Some(Ok(value));
@@ -6412,7 +5955,7 @@ impl Frame {
             Frame::ConditionApplyGate {
                 state_expr_cache, ..
             } => {
-                // ResumableBridge child completed for state default evaluation.
+                // ExprEval child completed for state default evaluation.
                 // Store result; advance() will pop scope and process.
                 state_expr_cache.push(value);
             }
@@ -6488,13 +6031,15 @@ impl Frame {
                 Ok(())
             }
             Frame::CostEval {
-                modify_hooks_result, ..
+                modify_hooks_result,
+                ..
             } => {
                 *modify_hooks_result = Some(Err(error));
                 Ok(())
             }
             Frame::DeriveEval {
-                modify_hooks_result, ..
+                modify_hooks_result,
+                ..
             } => {
                 *modify_hooks_result = Some(Err(error));
                 Ok(())
@@ -7172,6 +6717,17 @@ impl<S: WritableState> Execution<S> {
             pending_before_yield,
             ..
         } = self;
+        /// Handler that panics on host-decided effects (used for synchronous poll).
+        struct NoYieldHandler;
+        impl EffectHandler for NoYieldHandler {
+            fn handle(&mut self, effect: Effect) -> Response {
+                panic!(
+                    "unexpected host-decided effect in synchronous poll: {:?}",
+                    EffectKind::of(&effect)
+                )
+            }
+        }
+
         let tracker = state.mutation_tracker();
         state.run(&mut NoYieldHandler, |sp, eh| {
             loop {
@@ -8045,10 +7601,11 @@ mod tests {
 
         // Verify the ActionCompleted outcome matches
         if let Effect::ActionCompleted { outcome: o1, .. } = &handler1.log[1]
-            && let Effect::ActionCompleted { outcome: o2, .. } = &handler2.log[1] {
-                assert_eq!(o1, o2, "ActionCompleted outcome mismatch");
-                assert_eq!(*o1, ActionOutcome::Vetoed);
-            }
+            && let Effect::ActionCompleted { outcome: o2, .. } = &handler2.log[1]
+        {
+            assert_eq!(o1, o2, "ActionCompleted outcome mismatch");
+            assert_eq!(*o1, ActionOutcome::Vetoed);
+        }
     }
 
     #[test]
@@ -8277,10 +7834,11 @@ mod tests {
 
         // Verify RequiresCheck shows passed=false (original) in both
         if let Effect::RequiresCheck { passed: p1, .. } = &handler1.log[1]
-            && let Effect::RequiresCheck { passed: p2, .. } = &handler2.log[1] {
-                assert_eq!(p1, p2);
-                assert!(!p1, "requires should have originally failed");
-            }
+            && let Effect::RequiresCheck { passed: p2, .. } = &handler2.log[1]
+        {
+            assert_eq!(p1, p2);
+            assert!(!p1, "requires should have originally failed");
+        }
     }
 
     #[test]
@@ -8351,17 +7909,19 @@ mod tests {
 
         // Verify RequiresCheck shows passed=true (original) in both
         if let Effect::RequiresCheck { passed: p1, .. } = &handler1.log[1]
-            && let Effect::RequiresCheck { passed: p2, .. } = &handler2.log[1] {
-                assert_eq!(p1, p2);
-                assert!(*p1, "requires should have originally passed");
-            }
+            && let Effect::RequiresCheck { passed: p2, .. } = &handler2.log[1]
+        {
+            assert_eq!(p1, p2);
+            assert!(*p1, "requires should have originally passed");
+        }
 
         // ActionCompleted outcome should match — Succeeded because abort is not an error
         if let Effect::ActionCompleted { outcome: o1, .. } = handler1.log.last().unwrap()
-            && let Effect::ActionCompleted { outcome: o2, .. } = handler2.log.last().unwrap() {
-                assert_eq!(o1, o2);
-                assert_eq!(*o1, ActionOutcome::Succeeded);
-            }
+            && let Effect::ActionCompleted { outcome: o2, .. } = handler2.log.last().unwrap()
+        {
+            assert_eq!(o1, o2);
+            assert_eq!(*o1, ActionOutcome::Succeeded);
+        }
     }
 
     #[test]
@@ -8492,10 +8052,11 @@ mod tests {
 
         // Verify both have Vetoed outcome
         if let Effect::ActionCompleted { outcome: o1, .. } = &handler1.log[1]
-            && let Effect::ActionCompleted { outcome: o2, .. } = &handler2.log[1] {
-                assert_eq!(o1, o2);
-                assert_eq!(*o1, ActionOutcome::Vetoed);
-            }
+            && let Effect::ActionCompleted { outcome: o2, .. } = &handler2.log[1]
+        {
+            assert_eq!(o1, o2);
+            assert_eq!(*o1, ActionOutcome::Vetoed);
+        }
     }
 
     #[test]
@@ -8562,10 +8123,11 @@ mod tests {
         assert_eq!(kinds1.len(), 2);
 
         if let Effect::ActionCompleted { outcome: o1, .. } = &handler1.log[1]
-            && let Effect::ActionCompleted { outcome: o2, .. } = &handler2.log[1] {
-                assert_eq!(o1, o2);
-                assert_eq!(*o1, ActionOutcome::Vetoed);
-            }
+            && let Effect::ActionCompleted { outcome: o2, .. } = &handler2.log[1]
+        {
+            assert_eq!(o1, o2);
+            assert_eq!(*o1, ActionOutcome::Vetoed);
+        }
     }
 
     #[test]
@@ -8865,10 +8427,11 @@ mod tests {
 
         // ActionCompleted should be Succeeded (abort is Ok(Void), not Err)
         if let Effect::ActionCompleted { outcome: o1, .. } = handler1.log.last().unwrap()
-            && let Effect::ActionCompleted { outcome: o2, .. } = handler2.log.last().unwrap() {
-                assert_eq!(o1, o2);
-                assert_eq!(*o1, ActionOutcome::Succeeded);
-            }
+            && let Effect::ActionCompleted { outcome: o2, .. } = handler2.log.last().unwrap()
+        {
+            assert_eq!(o1, o2);
+            assert_eq!(*o1, ActionOutcome::Succeeded);
+        }
     }
 
     // ── Remaining differential tests (from design doc matrix) ──
@@ -14514,8 +14077,6 @@ mod tests {
         let mut handler = ScriptedHandler::always_ack();
         let result = exec.run_with_handler(&mut handler).unwrap();
         assert_eq!(result, Value::Int(20));
-        core.bridge_stats().assert_no_dispatch_bridges();
-        core.bridge_stats().assert_no_effect_emission_bridges();
     }
 
     #[test]
@@ -14544,7 +14105,6 @@ mod tests {
         let mut handler = ScriptedHandler::always_ack();
         let result = exec.run_with_handler(&mut handler).unwrap();
         assert_eq!(result, Value::Int(8));
-        core.bridge_stats().assert_no_dispatch_bridges();
     }
 
     #[test]
@@ -14575,6 +14135,5 @@ mod tests {
         let mut handler = ScriptedHandler::always_ack();
         let result = exec.run_with_handler(&mut handler).unwrap();
         assert_eq!(result, Value::Str("medium".into()));
-        core.bridge_stats().assert_no_dispatch_bridges();
     }
 }
