@@ -9,8 +9,6 @@
 //! Phase 2: adds identifier resolution, list/map literals, and call dispatch
 //! (named calls only; method calls deferred to Phase 3).
 
-#![allow(dead_code)]
-
 use std::collections::BTreeMap;
 
 use rustc_hash::FxHashMap;
@@ -45,7 +43,9 @@ pub(crate) struct ArgMeta {
 /// Micro-instruction for the ExprEval frame.
 ///
 /// Note: Does not derive Debug because `TypeExpr` (used in `Is`) does not implement Debug.
+// Span fields on some variants are retained for future error-reporting use.
 #[derive(Clone)]
+#[allow(dead_code)]
 pub(crate) enum ExprWork {
     /// Push a literal value onto the operand stack.
     Literal(Value, Span),
@@ -157,7 +157,6 @@ pub(crate) enum ExprWork {
     PushForLoop {
         pattern: Box<Spanned<PatternKind>>,
         body: Vec<Spanned<StmtKind>>,
-        body_span: Span,
         range: bool,
         inclusive: bool,
         span: Span,
@@ -685,7 +684,6 @@ fn compile_inner(
             work.push(ExprWork::PushForLoop {
                 pattern: pattern.clone(),
                 body: body.node.clone(),
-                body_span: body.span,
                 range,
                 inclusive,
                 span,
@@ -1366,7 +1364,6 @@ pub(crate) fn advance_expr_eval(
             ExprWork::PushForLoop {
                 pattern,
                 body,
-                body_span,
                 range,
                 inclusive,
                 span,
@@ -1381,7 +1378,6 @@ pub(crate) fn advance_expr_eval(
                     index: 0,
                     pattern: pattern.clone(),
                     body: body.clone(),
-                    body_span: *body_span,
                     child_result: None,
                 });
             }
@@ -2707,9 +2703,6 @@ fn dispatch_derive_step(
         args: bound_values,
         is_table: false,
         base_value: None,
-        modify_hooks: Vec::new(),
-        hook_index: 0,
-        expr_cache: Vec::new(),
         phase: crate::execution::DeriveEvalPhase::Init,
         bound_args: Some(bound),
         modifiers: Vec::new(),
@@ -2773,9 +2766,6 @@ fn dispatch_table_step(
         args: bound_values,
         is_table: true,
         base_value: None,
-        modify_hooks: Vec::new(),
-        hook_index: 0,
-        expr_cache: Vec::new(),
         phase: crate::execution::DeriveEvalPhase::Init,
         bound_args: Some(bound),
         modifiers: Vec::new(),

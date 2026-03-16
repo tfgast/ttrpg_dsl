@@ -5,8 +5,6 @@
 //! This is the complement to the callback-based `Interpreter` + `EffectHandler`
 //! API, targeting async hosts, non-Rust embeddings, and step-debugging.
 
-#![allow(dead_code)]
-
 use std::collections::{BTreeMap, BTreeSet};
 use std::rc::Rc;
 
@@ -188,51 +186,6 @@ impl crate::eval::AssignContext for FrameAssignCtx<'_> {
     }
     fn scopes_mut_and_state(&mut self) -> (&mut Vec<Scope>, &dyn StateProvider) {
         (self.scopes, self.state)
-    }
-}
-
-/// Convert a captured host-decided effect into the appropriate yield frame.
-fn effect_to_yield_frame(
-    effect: Effect,
-    span: Span,
-    core: &RuntimeCore,
-    _env: &ExecEnv,
-) -> Option<Frame> {
-    match effect {
-        Effect::RollDice { expr } => Some(Frame::RollDiceWaiting {
-            dice_expr: expr,
-            span,
-            pending: None,
-        }),
-        Effect::ResolvePrompt {
-            name,
-            params,
-            return_type,
-            hint,
-            suggest,
-            has_default: _,
-        } => {
-            // Look up the prompt declaration to recover the default block,
-            // which isn't carried in the Effect.
-            let default_block = core
-                .program
-                .prompts
-                .get(name.as_str())
-                .and_then(|decl| decl.default.clone());
-
-            Some(Frame::PromptWaiting {
-                prompt_name: name,
-                params,
-                return_type,
-                hint,
-                suggest,
-                default_block,
-                span,
-                pending: None,
-                result: None,
-            })
-        }
-        _ => None,
     }
 }
 
@@ -737,13 +690,10 @@ fn build_modify_hooks_frame(
     let payload = last_payload.unwrap();
 
     Ok(Some(Frame::EmitHooks {
-        event_name: Name::from("modify_applied"),
         hooks: all_hooks,
         condition_handlers: all_cond_handlers,
         index: 0,
         payload,
-        saved_emit_depth: env.emit_depth,
-        saved_lifecycle: env.in_lifecycle_block,
         initialized: false,
         child_result: None,
     }))
@@ -1456,8 +1406,8 @@ pub(crate) enum Frame {
         saved_invocation: Option<InvocationId>,
     },
 
-    // ── Placeholder variants for Phases 4-5 ─────────────────
-    /// Block execution (Phase 4).
+    // ── Block / statement execution ─────────────────────────
+    /// Block execution.
     Block {
         stmts: Vec<Spanned<StmtKind>>,
         index: usize,
@@ -1474,14 +1424,8 @@ pub(crate) enum Frame {
         awaiting_error: Option<RuntimeError>,
     },
 
-    StmtResume {
-        kind: StmtResumeKind,
-        expr_cache: Vec<Value>,
-    },
-
     FillDefaults {
         params: Vec<DefaultParam>,
-        resolved: Vec<(Name, Value)>,
         index: usize,
         /// Result from ExprEval child evaluating a default expression.
         child_result: Option<Value>,
@@ -1493,10 +1437,6 @@ pub(crate) enum Frame {
         /// Whether this is a table (vs derive/mechanic).
         is_table: bool,
         base_value: Option<Value>,
-        modify_hooks: Vec<HookInfo>,
-        hook_index: usize,
-        /// Cache for replaying host-decided effects (async path).
-        expr_cache: Vec<Value>,
         /// Phase of derive evaluation.
         phase: DeriveEvalPhase,
         /// Bound args (name→value) after mapping positional args.
@@ -1563,13 +1503,10 @@ pub(crate) enum Frame {
     },
 
     EmitHooks {
-        event_name: Name,
         hooks: Vec<HookInfo>,
         condition_handlers: Vec<ConditionHandlerInfo>,
         index: usize,
         payload: Value,
-        saved_emit_depth: u32,
-        saved_lifecycle: u32,
         /// Whether emit_depth/lifecycle have been set up on first entry.
         initialized: bool,
         /// Result from child ActionLifecycle frame (hook execution).
@@ -1589,7 +1526,6 @@ pub(crate) enum Frame {
     /// if changed. Pushed by EmitConditionHandlers as a parent of Block.
     ConditionHandlerEpilogue {
         target: EntityRef,
-        condition_name: Name,
         instance_id: u64,
         original_state: BTreeMap<Name, Value>,
         /// The block body to execute (pushed as a child Block on first advance).
@@ -1651,12 +1587,9 @@ pub(crate) enum Frame {
     },
 
     ConditionRemovalLoop {
-        target: EntityRef,
-        condition_name: Name,
         instances: Vec<(EntityRef, ActiveCondition)>,
         index: usize,
         first_error: Option<RuntimeError>,
-        removed_count: u32,
         revoke_invocation: Option<InvocationId>,
         /// Result from child ConditionRemovalGate, ConditionOnRemove, or MutationYield frames.
         child_result: Option<Result<Value, RuntimeError>>,
@@ -1722,8 +1655,6 @@ pub(crate) enum Frame {
         entity_ref: Option<EntityRef>,
         span: Span,
     },
-
-    ScopeGuard,
 
     BudgetGuard {
         actor: EntityRef,
@@ -1827,7 +1758,6 @@ pub(crate) enum Frame {
         index: usize,
         pattern: Box<Spanned<PatternKind>>,
         body: Vec<Spanned<StmtKind>>,
-        body_span: Span,
         /// Result from child Block frame executing the loop body.
         child_result: Option<Result<Value, RuntimeError>>,
     },
@@ -1985,7 +1915,6 @@ impl Frame {
                                         .collect();
                                     return Advance::Push(Frame::FillDefaults {
                                         params: fill_params,
-                                        resolved: Vec::new(),
                                         index: 0,
                                         child_result: None,
                                     });
@@ -2391,15 +2320,9 @@ impl Frame {
                             instances.into_iter().map(|c| (target_ref, c)).collect();
                         sorted.sort_by_key(|(_, c)| c.gained_at);
                         Advance::Push(Frame::ConditionRemovalLoop {
-                            target: target_ref,
-                            condition_name: sorted
-                                .first()
-                                .map(|(_, c)| c.name.clone())
-                                .unwrap_or_default(),
                             instances: sorted,
                             index: 0,
                             first_error: None,
-                            removed_count: 0,
                             revoke_invocation: None,
                             child_result: None,
                             awaiting_revoke: false,
@@ -2436,12 +2359,9 @@ impl Frame {
                             Value::Option(None) | Value::Void => {
                                 // No-op: nothing to revoke.
                                 return Advance::Push(Frame::ConditionRemovalLoop {
-                                    target: EntityRef(0),
-                                    condition_name: Name::from(""),
                                     instances: Vec::new(),
                                     index: 0,
                                     first_error: None,
-                                    removed_count: 0,
                                     revoke_invocation: None,
                                     child_result: None,
                                     awaiting_revoke: false,
@@ -2467,12 +2387,9 @@ impl Frame {
                         }
                         matching.sort_by_key(|(_, c)| c.gained_at);
                         Advance::Push(Frame::ConditionRemovalLoop {
-                            target: matching.first().map_or(EntityRef(0), |(t, _)| *t),
-                            condition_name: Name::from(""),
                             instances: matching,
                             index: 0,
                             first_error: None,
-                            removed_count: 0,
                             revoke_invocation: Some(inv_id),
                             child_result: None,
                             awaiting_revoke: false,
@@ -2542,7 +2459,6 @@ impl Frame {
                 index,
                 pattern,
                 body,
-                body_span: _,
                 child_result,
             } => {
                 // Handle completed child Block frame.
@@ -3662,7 +3578,6 @@ impl Frame {
 
             Frame::FillDefaults {
                 params,
-                resolved: _,
                 index,
                 child_result,
             } => {
@@ -3703,9 +3618,6 @@ impl Frame {
                 args,
                 is_table,
                 base_value,
-                modify_hooks: _,
-                hook_index: _,
-                expr_cache: _,
                 phase,
                 bound_args,
                 modifiers,
@@ -3813,7 +3725,6 @@ impl Frame {
                         if fill_params.iter().any(|p| p.default_expr.is_some()) {
                             return Advance::Push(Frame::FillDefaults {
                                 params: fill_params,
-                                resolved: Vec::new(),
                                 index: 0,
                                 child_result: None,
                             });
@@ -4399,7 +4310,6 @@ impl Frame {
                     *defaults_done = true;
                     return Advance::Push(Frame::FillDefaults {
                         params: fill_params,
-                        resolved: Vec::new(),
                         index: 0,
                         child_result: None,
                     });
@@ -5068,21 +4978,16 @@ impl Frame {
                         // in_lifecycle_block; this frame restores them
                         // when it receives the child result.
                         Advance::Push(Frame::EmitHooks {
-                            event_name: event_name.clone(),
                             hooks: exec_hooks,
                             condition_handlers: exec_handlers,
                             index: 0,
                             payload,
-                            saved_emit_depth: *saved_emit_depth,
-                            saved_lifecycle: *saved_lifecycle,
                             initialized: false,
                             child_result: None,
                         })
                     }
                 }
             }
-
-            Frame::ScopeGuard => Advance::Pop(Value::Void),
 
             // ── Condition apply frames (Phase 5.3) ──────────────
             Frame::ConditionApplyGate {
@@ -5361,13 +5266,10 @@ impl Frame {
 
             // ── EmitHooks frame (Phase 5.2) ──────────────────────────
             Frame::EmitHooks {
-                event_name: _,
                 hooks,
                 condition_handlers,
                 index,
                 payload,
-                saved_emit_depth: _,
-                saved_lifecycle: _,
                 initialized,
                 child_result,
             } => {
@@ -5538,7 +5440,6 @@ impl Frame {
                     // pops itself. Its result then comes back here.
                     return Advance::Push(Frame::ConditionHandlerEpilogue {
                         target: bearer,
-                        condition_name: handler_info.condition_name.clone(),
                         instance_id: handler_info.instance_id,
                         original_state,
                         block_stmts: Some(clause_body.node),
@@ -5554,7 +5455,6 @@ impl Frame {
             // ── ConditionHandlerEpilogue frame (Phase 5.2) ──────────
             Frame::ConditionHandlerEpilogue {
                 target,
-                condition_name: _,
                 instance_id,
                 original_state,
                 block_stmts,
@@ -5634,12 +5534,9 @@ impl Frame {
 
             // ── Condition removal frames (Phase 5.4) ──────────────
             Frame::ConditionRemovalLoop {
-                target: _,
-                condition_name: _,
                 instances,
                 index,
                 first_error,
-                removed_count: _,
                 revoke_invocation,
                 child_result,
                 awaiting_revoke,
@@ -5985,7 +5882,6 @@ impl Frame {
                 Advance::Continue
             }
 
-            _ => Advance::Error(RuntimeError::new("frame type not yet implemented")),
         }
     }
 
@@ -6277,53 +6173,6 @@ impl Frame {
 }
 
 // ── Supporting types for Frame variants ────────────────────────
-
-/// Phase within the action body pipeline.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum ActionBodyPhase {
-    Requires,
-    Cost,
-    Resolve,
-}
-
-/// A cost token to be deducted during ActionCost processing.
-#[derive(Debug, Clone)]
-pub(crate) struct CostToken {
-    pub name: Name,
-    pub span: Span,
-}
-
-/// Continuation data for a statement that yielded mid-evaluation.
-#[derive(Debug)]
-pub(crate) enum StmtResumeKind {
-    Grant {
-        entity: EntityRef,
-        group_name: Name,
-        fields: BTreeMap<Name, Value>,
-        span: Span,
-    },
-    Revoke {
-        entity: EntityRef,
-        group_name: Name,
-        span: Span,
-    },
-    Assign {
-        segments: Vec<Name>,
-        span: Span,
-    },
-    BudgetProvision {
-        actor: EntityRef,
-        budget: BTreeMap<Name, Value>,
-    },
-    BudgetClear {
-        actor: EntityRef,
-    },
-    Spawn {
-        entity_type: Name,
-        fields: BTreeMap<Name, Value>,
-        span: Span,
-    },
-}
 
 /// Phase within a list comprehension iteration.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -6786,6 +6635,7 @@ enum ProtocolState {
     /// poll() yielded an effect. Host must call respond().
     Pending,
     /// Unwinding after an error. Cleanup frames may still yield effects.
+    #[allow(dead_code)]
     Unwinding(RuntimeError),
     /// Execution has completed (Done or Error). No further calls.
     Completed,
@@ -7078,13 +6928,10 @@ impl<S: WritableState> Execution<S> {
             });
         } else {
             exec.frames.push(Frame::EmitHooks {
-                event_name: Name::from("__batch"),
                 hooks: exec_hooks,
                 condition_handlers: Vec::new(),
                 index: 0,
                 payload: event_payload,
-                saved_emit_depth: 0,
-                saved_lifecycle: 0,
                 initialized: false,
                 child_result: None,
             });
@@ -7187,7 +7034,6 @@ impl<S: WritableState> Execution<S> {
         // advance, then does the state-diff + SetConditionState emit.
         exec.frames.push(Frame::ConditionHandlerEpilogue {
             target: handler_info.bearer,
-            condition_name: handler_info.condition_name.clone(),
             instance_id: handler_info.instance_id,
             original_state,
             block_stmts: Some(clause_body.node),
@@ -7266,9 +7112,6 @@ impl<S: WritableState> Execution<S> {
             args,
             is_table,
             base_value: None,
-            modify_hooks: Vec::new(),
-            hook_index: 0,
-            expr_cache: Vec::new(),
             phase: DeriveEvalPhase::Init,
             bound_args: None,
             modifiers: Vec::new(),
@@ -7300,9 +7143,6 @@ impl<S: WritableState> Execution<S> {
             args,
             is_table: false,
             base_value: None,
-            modify_hooks: Vec::new(),
-            hook_index: 0,
-            expr_cache: Vec::new(),
             phase: DeriveEvalPhase::Init,
             bound_args: None,
             modifiers: Vec::new(),
@@ -14602,9 +14442,9 @@ mod tests {
 
     #[test]
     fn prompt_use_default_via_caching_handler_path() {
-        // Phase 3 target: when a prompt with default block is captured by
-        // CachingHandler and turned into PromptWaiting via effect_to_yield_frame,
-        // UseDefault should work (not error "no default block").
+        // When a prompt with default block is captured by CachingHandler
+        // and turned into PromptWaiting, UseDefault should work
+        // (not error "no default block").
         let source = r#"
             system Test {
                 entity Creature { HP: int }
@@ -14684,10 +14524,8 @@ mod tests {
                 }
                 Ok(Step::Done(_)) => break,
                 Err(PollError::Runtime(e)) => {
-                    // BUG: currently errors with "no default block"
                     panic!(
-                        "EXPECTED FAILURE: prompt UseDefault should work via \
-                         effect_to_yield_frame, but default_block is None: {e}"
+                        "prompt UseDefault should work but default_block is None: {e}"
                     );
                 }
                 Err(e) => panic!("unexpected error: {e:?}"),

@@ -4,9 +4,6 @@
 //! A single instance is shared (via `Rc`) across sequential `Execution` instances
 //! on the same thread.
 
-// Fields and methods defined here are used by Execution in later phases.
-#![allow(dead_code)]
-
 use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 use std::sync::Arc;
