@@ -3002,7 +3002,7 @@ impl Frame {
                 }
 
                 // Let/Assign/Expr with non-call expressions: push
-                // ResumableBridge instead of using CachingHandler.
+                // ResumableBridge for frame-based async evaluation.
                 if let Some((bridge_expr, awaiting)) = extract_resumable_expr(&stmt) {
                     *awaiting_fn = Some(awaiting);
                     return Advance::Push(Frame::ResumableBridge {
@@ -3012,67 +3012,22 @@ impl Frame {
                     });
                 }
 
-                // Fall back to CachingHandler bridge for statements
-                // that aren't function calls (or can't be resolved).
-                tracker.reset();
-                let mut caching = CachingHandler::from_expr_cache(expr_cache);
-                let eval_result = bridge_eval_with(
-                    core,
-                    env,
-                    sp,
-                    &mut ComposedHandler {
-                        adapted: &mut *eh,
-                        custom: &mut caching,
-                    },
-                    BridgeCategory::Eval,
-                    |tmp_env| crate::eval::eval_stmt(tmp_env, &stmt),
-                );
-
-                if let Some(effect) = caching.captured {
-                    // Containment guard: if a local mutation was
-                    // applied during this bridge run AND the handler
-                    // captured a host-decided effect, replaying the
-                    // statement would re-apply the mutation. Fail
-                    // fast instead of silently corrupting state.
-                    if tracker.applied() {
-                        env.pop_scope();
-                        return Advance::Error(RuntimeError::new(format!(
-                            "async replay unsound: local mutation \
-                                 applied before host-decided effect \
-                                 {:?} in statement at {:?}; \
-                                 StmtResume not yet implemented for \
-                                 this pattern",
-                            EffectKind::of(&effect),
-                            stmt.span,
-                        )));
-                    }
-
-                    // Statement suspended on a host-decided effect.
-                    // Push a yield frame; don't advance index.
-                    if let Some(yield_frame) = effect_to_yield_frame(effect, stmt.span, core, env) {
-                        return Advance::Push(yield_frame);
-                    }
-                    // Unknown host-decided effect — fall through
-                    // to the error from the bridge evaluation.
-                }
-
-                match eval_result {
-                    Ok(val) => {
-                        expr_cache.clear();
-                        *result = val;
-                        *index += 1;
-                        if env.return_value.is_some() {
-                            let ret = env.return_value.clone().unwrap();
-                            env.pop_scope();
-                            Advance::Pop(ret)
-                        } else {
-                            Advance::Continue
-                        }
-                    }
-                    Err(e) => {
-                        env.pop_scope();
-                        Advance::Error(e)
-                    }
+                // All StmtKind variants are dispatched above:
+                // - Return(None), WithCostPayer, WithBudget, WithBudgets,
+                //   Grant, Revoke: native dispatch (path-independent)
+                // - Expr/Let/Assign/Return(Some) with call: try_frame_dispatch_stmt
+                // - Emit: EmitEval frame
+                // - Expr/Let/Assign/Return(Some) non-call: extract_resumable_expr
+                //
+                // If we reach here, a new StmtKind variant was added without
+                // a corresponding native dispatch path.
+                {
+                    env.pop_scope();
+                    Advance::Error(RuntimeError::with_span(
+                        "async Block: undispatched statement variant \
+                         (missing native frame dispatch)",
+                        stmt.span,
+                    ))
                 }
             }
 
