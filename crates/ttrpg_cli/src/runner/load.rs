@@ -152,6 +152,61 @@ impl Runner {
     /// The source resolver follows `import` directives transitively, so callers
     /// only need to provide entrypoint paths.
     pub(super) fn load_paths(&mut self, resolved_paths: Vec<PathBuf>) -> Result<(), CliError> {
+        // Canonicalize paths for cache key comparison.
+        let cache_key: Vec<PathBuf> = resolved_paths
+            .iter()
+            .map(|p| std::fs::canonicalize(p).unwrap_or_else(|_| p.clone()))
+            .collect();
+
+        // Check program cache first — extract data with a short borrow, then apply.
+        if let Some(ref cache_rc) = self.program_cache {
+            let hit = {
+                let cache = cache_rc.borrow();
+                cache.entries.get(&cache_key).map(|cached| {
+                    (
+                        cached.has_errors,
+                        Arc::clone(&cached.program),
+                        Arc::clone(&cached.type_env),
+                        cached.module_map.clone(),
+                        cached.sources.clone(),
+                        cached.diagnostics.clone(),
+                        cached.loaded_label.clone(),
+                        cached.error_label.clone(),
+                    )
+                })
+            };
+            if let Some((has_errors, program, type_env, module_map, sources, diagnostics, loaded_label, error_label)) = hit {
+                if has_errors {
+                    self.clear_state(resolved_paths);
+                    self.diagnostics = diagnostics;
+                    self.source_map = Some(MultiSourceMap::new(sources));
+                    self.output.push("use 'errors' to see diagnostics".into());
+                    return Err(CliError::Message(format!(
+                        "failed to load {error_label} (cached)"
+                    )));
+                }
+                // Cache hit — reuse parsed+checked program, create fresh game state.
+                self.program = program;
+                self.type_env = type_env;
+                self.unit_suffixes = crate::format::build_unit_suffixes(&self.type_env);
+                self.module_map = module_map;
+                let mut gs = GameState::new();
+                for (name, decl) in &self.program.options {
+                    if decl.default_on == Some(true) {
+                        gs.enable_option(name.as_str());
+                    }
+                }
+                self.game_state = RefCell::new(gs);
+                self.diagnostics = diagnostics;
+                self.source_map = Some(MultiSourceMap::new(sources));
+                self.last_paths = resolved_paths;
+                self.handles.clear();
+                self.variables.retain(|_, v| !matches!(v, Value::Entity(_)));
+                self.output.push(format!("{loaded_label} (cached)"));
+                return Ok(());
+            }
+        }
+
         // Resolve imports transitively: reads all files, follows `import` edges,
         // deduplicates, and returns a stable load order.
         let resolved =
@@ -196,37 +251,89 @@ impl Runner {
                 .join(", ")
         };
 
-        if error_count == 0 && !result.has_errors {
-            self.program = Arc::new(result.program);
-            self.type_env = Arc::new(check_result.env);
-            self.unit_suffixes = crate::format::build_unit_suffixes(&self.type_env);
-            self.module_map = result.module_map;
-            let mut gs = GameState::new();
-            // Auto-enable options declared with `default: on`
-            for (name, decl) in &self.program.options {
-                if decl.default_on == Some(true) {
-                    gs.enable_option(name.as_str());
+        let success = error_count == 0 && !result.has_errors;
+
+        // Store in cache if we have one.
+        if let Some(ref cache_rc) = self.program_cache {
+            let program = Arc::new(result.program);
+            let type_env = Arc::new(check_result.env);
+            let module_map = result.module_map;
+            let cached = super::CachedProgram {
+                program: Arc::clone(&program),
+                type_env: Arc::clone(&type_env),
+                module_map: module_map.clone(),
+                sources: sources.clone(),
+                diagnostics: all_diags.clone(),
+                has_errors: !success,
+                loaded_label: loaded_label.clone(),
+                error_label: error_label.clone(),
+            };
+            cache_rc.borrow_mut().entries.insert(cache_key, cached);
+
+            if success {
+                self.program = program;
+                self.type_env = type_env;
+                self.unit_suffixes = crate::format::build_unit_suffixes(&self.type_env);
+                self.module_map = module_map;
+                let mut gs = GameState::new();
+                for (name, decl) in &self.program.options {
+                    if decl.default_on == Some(true) {
+                        gs.enable_option(name.as_str());
+                    }
                 }
+                self.game_state = RefCell::new(gs);
+                self.diagnostics = all_diags;
+                self.source_map = Some(MultiSourceMap::new(sources));
+                self.last_paths = resolved_paths;
+                self.handles.clear();
+                self.variables.retain(|_, v| !matches!(v, Value::Entity(_)));
+                self.output.push(loaded_label);
+                Ok(())
+            } else {
+                self.clear_state(resolved_paths);
+                self.diagnostics = all_diags;
+                self.source_map = Some(MultiSourceMap::new(sources));
+                self.output.push("use 'errors' to see diagnostics".into());
+                Err(CliError::Message(format!(
+                    "failed to load {}: {} error{}",
+                    error_label,
+                    error_count,
+                    if error_count == 1 { "" } else { "s" }
+                )))
             }
-            self.game_state = RefCell::new(gs);
-            self.diagnostics = all_diags;
-            self.source_map = Some(MultiSourceMap::new(sources));
-            self.last_paths = resolved_paths;
-            self.handles.clear();
-            self.variables.retain(|_, v| !matches!(v, Value::Entity(_)));
-            self.output.push(loaded_label);
-            Ok(())
         } else {
-            self.clear_state(resolved_paths);
-            self.diagnostics = all_diags;
-            self.source_map = Some(MultiSourceMap::new(sources));
-            self.output.push("use 'errors' to see diagnostics".into());
-            Err(CliError::Message(format!(
-                "failed to load {}: {} error{}",
-                error_label,
-                error_count,
-                if error_count == 1 { "" } else { "s" }
-            )))
+            // No cache — original behavior.
+            if success {
+                self.program = Arc::new(result.program);
+                self.type_env = Arc::new(check_result.env);
+                self.unit_suffixes = crate::format::build_unit_suffixes(&self.type_env);
+                self.module_map = result.module_map;
+                let mut gs = GameState::new();
+                for (name, decl) in &self.program.options {
+                    if decl.default_on == Some(true) {
+                        gs.enable_option(name.as_str());
+                    }
+                }
+                self.game_state = RefCell::new(gs);
+                self.diagnostics = all_diags;
+                self.source_map = Some(MultiSourceMap::new(sources));
+                self.last_paths = resolved_paths;
+                self.handles.clear();
+                self.variables.retain(|_, v| !matches!(v, Value::Entity(_)));
+                self.output.push(loaded_label);
+                Ok(())
+            } else {
+                self.clear_state(resolved_paths);
+                self.diagnostics = all_diags;
+                self.source_map = Some(MultiSourceMap::new(sources));
+                self.output.push("use 'errors' to see diagnostics".into());
+                Err(CliError::Message(format!(
+                    "failed to load {}: {} error{}",
+                    error_label,
+                    error_count,
+                    if error_count == 1 { "" } else { "s" }
+                )))
+            }
         }
     }
 

@@ -1,10 +1,11 @@
 use std::io::{self, BufRead, IsTerminal};
 use std::path::PathBuf;
 use std::process;
+use std::rc::Rc;
 
 use ttrpg_ast::diagnostic::{MultiSourceMap, Severity};
 use ttrpg_checker::env::TypeEnv;
-use ttrpg_cli::runner::Runner;
+use ttrpg_cli::runner::{ProgramCache, Runner};
 
 fn main() {
     let args: Vec<String> = std::env::args().skip(1).collect();
@@ -50,6 +51,14 @@ fn main() {
                 }
                 run_script(args[1], coverage_mode, quiet_mode);
             }
+        }
+        Some("run-batch") => {
+            let scripts: Vec<&str> = args[1..].to_vec();
+            if scripts.is_empty() {
+                eprintln!("usage: ttrpg run-batch <script1.ttrpg-cli> [script2.ttrpg-cli ...]");
+                process::exit(1);
+            }
+            run_batch(&scripts, coverage_mode, quiet_mode);
         }
         Some("check") => {
             // Strip -s / --snippet and --format json flags
@@ -133,6 +142,112 @@ fn main() {
                 run_pipe(coverage_mode, quiet_mode);
             }
         }
+    }
+}
+
+/// Run multiple test scripts in a single process with program caching.
+fn run_batch(scripts: &[&str], coverage: bool, quiet: bool) {
+    let cache = Rc::new(std::cell::RefCell::new(ProgramCache::new()));
+    let exec_mode = std::env::var("TTRPG_EXEC_MODE");
+    let step_mode = exec_mode.as_deref() == Ok("step");
+
+    let mut total = 0;
+    let mut passed = 0;
+    let mut failed = 0;
+    let mut failed_scripts: Vec<String> = Vec::new();
+
+    for script in scripts {
+        let content = match std::fs::read_to_string(script) {
+            Ok(c) => c,
+            Err(e) => {
+                eprintln!("cannot read '{script}': {e}");
+                failed += 1;
+                total += 1;
+                failed_scripts.push(script.to_string());
+                continue;
+            }
+        };
+
+        total += 1;
+        let mode_label = if step_mode { " (step)" } else { "" };
+        println!("── {script}{mode_label} ──");
+
+        let mut runner = Runner::with_cache(Rc::clone(&cache));
+        if coverage {
+            runner.enable_coverage();
+        }
+        runner.set_quiet(quiet);
+        if step_mode {
+            runner.set_exec_mode(ttrpg_cli::runner::ExecutionMode::StepBased);
+        }
+
+        let mut had_error = false;
+        for (lineno, line) in content.lines().enumerate() {
+            let result = runner.exec(line);
+
+            for out in runner.take_output() {
+                println!("{out}");
+            }
+
+            if let Err(e) = result {
+                if e.is_pending() {
+                    // next line provides the response
+                } else if e.is_rendered() {
+                    eprintln!("{e}");
+                    had_error = true;
+                } else {
+                    eprintln!("{}:{}: error: {}", script, lineno + 1, e);
+                    had_error = true;
+                }
+            }
+        }
+
+        if runner.in_heredoc() {
+            eprintln!("{script}: error: unclosed source heredoc at end of input");
+            had_error = true;
+        }
+        if runner.in_continuation() {
+            eprintln!("{script}: error: unclosed continuation at end of input");
+            had_error = true;
+        }
+        if runner.in_loop() {
+            eprintln!("{script}: error: unclosed loop block at end of input");
+            had_error = true;
+        }
+        if runner.in_gate() {
+            eprintln!("{script}: error: pending GM gate at end of input");
+            had_error = true;
+        }
+
+        if had_error {
+            println!("  FAIL");
+            failed += 1;
+            failed_scripts.push(script.to_string());
+        } else {
+            println!("  PASS");
+            passed += 1;
+        }
+    }
+
+    // Summary
+    println!();
+    println!("═══════════════════════════════════════");
+    if failed == 0 {
+        let mode_name = if step_mode { "step-based" } else { "recursive" };
+        println!("  ✓ All {total} test scripts passed ({mode_name})");
+    } else {
+        let mode_name = if step_mode { "step-based" } else { "recursive" };
+        println!("  {passed} passed, {failed} failed out of {total} test scripts ({mode_name})");
+        println!();
+        println!("  Failed:");
+        for s in &failed_scripts {
+            println!("    • {s}");
+        }
+    }
+    println!("═══════════════════════════════════════");
+
+    if failed > 0 {
+        process::exit(1);
     }
 }
 

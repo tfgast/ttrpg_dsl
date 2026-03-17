@@ -48,80 +48,32 @@ run *ARGS:
     cargo run --release -- {{ARGS}}
 
 # Run .ttrpg-cli integration test scripts (both execution modes)
-test-scripts: test-scripts-recursive test-scripts-step
+test-scripts: _build-cli test-scripts-recursive test-scripts-step
+
+# Build the CLI binary once (used by test-scripts recipes)
+_build-cli:
+    cargo build --quiet --bin ttrpg
 
 # Run .ttrpg-cli integration test scripts (recursive mode only)
-test-scripts-recursive:
+test-scripts-recursive: _build-cli
     #!/usr/bin/env bash
     set -euo pipefail
-    total=0
-    passed=0
-    failed=0
-    failed_scripts=()
+    scripts=()
     for script in osric/tests/*.ttrpg-cli ose/tests/*.ttrpg-cli tests/*.ttrpg-cli; do
-        [ -f "$script" ] || continue
-        total=$((total + 1))
-        echo "── $script ──"
-        if cargo run --quiet --bin ttrpg -- --quiet run "$script"; then
-            echo "  PASS"
-            passed=$((passed + 1))
-        else
-            echo "  FAIL"
-            failed=$((failed + 1))
-            failed_scripts+=("$script")
-        fi
+        [ -f "$script" ] && scripts+=("$script")
     done
-    echo ""
-    echo "═══════════════════════════════════════"
-    if [ $failed -eq 0 ]; then
-        echo "  ✓ All $total test scripts passed (recursive)"
-    else
-        echo "  $passed passed, $failed failed out of $total test scripts (recursive)"
-        echo ""
-        echo "  Failed:"
-        for s in "${failed_scripts[@]}"; do
-            echo "    • $s"
-        done
-    fi
-    echo "═══════════════════════════════════════"
-    [ $failed -eq 0 ]
+    exec ./target/debug/ttrpg --quiet run-batch "${scripts[@]}"
 
 # Run .ttrpg-cli integration test scripts (step-based mode only)
-test-scripts-step:
+test-scripts-step: _build-cli
     #!/usr/bin/env bash
     set -euo pipefail
     export TTRPG_EXEC_MODE=step
-    total=0
-    passed=0
-    failed=0
-    failed_scripts=()
+    scripts=()
     for script in osric/tests/*.ttrpg-cli ose/tests/*.ttrpg-cli tests/*.ttrpg-cli; do
-        [ -f "$script" ] || continue
-        total=$((total + 1))
-        echo "── $script (step) ──"
-        if cargo run --quiet --bin ttrpg -- --quiet run "$script"; then
-            echo "  PASS"
-            passed=$((passed + 1))
-        else
-            echo "  FAIL"
-            failed=$((failed + 1))
-            failed_scripts+=("$script")
-        fi
+        [ -f "$script" ] && scripts+=("$script")
     done
-    echo ""
-    echo "═══════════════════════════════════════"
-    if [ $failed -eq 0 ]; then
-        echo "  ✓ All $total test scripts passed (step-based)"
-    else
-        echo "  $passed passed, $failed failed out of $total test scripts (step-based)"
-        echo ""
-        echo "  Failed:"
-        for s in "${failed_scripts[@]}"; do
-            echo "    • $s"
-        done
-    fi
-    echo "═══════════════════════════════════════"
-    [ $failed -eq 0 ]
+    exec ./target/debug/ttrpg --quiet run-batch "${scripts[@]}"
 
 # ── Fuzzing ──────────────────────────────────────────────────────
 # Use malloc_limit_mb instead of rss_limit_mb to avoid false-positive

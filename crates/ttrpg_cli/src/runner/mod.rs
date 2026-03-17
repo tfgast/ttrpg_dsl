@@ -48,6 +48,31 @@ use ttrpg_interp::RuntimeError;
 
 use util::*;
 
+/// Cache of parsed+checked programs keyed by canonical file paths.
+/// Shared across multiple Runner instances in batch mode to avoid
+/// redundant parsing and type-checking of the same file sets.
+#[derive(Default)]
+pub struct ProgramCache {
+    entries: HashMap<Vec<PathBuf>, CachedProgram>,
+}
+
+struct CachedProgram {
+    program: Arc<Program>,
+    type_env: Arc<TypeEnv>,
+    module_map: ModuleMap,
+    sources: Vec<(String, String)>,
+    diagnostics: Vec<Diagnostic>,
+    has_errors: bool,
+    loaded_label: String,
+    error_label: String,
+}
+
+impl ProgramCache {
+    pub fn new() -> Self {
+        Self::default()
+    }
+}
+
 /// Errors produced by Runner operations.
 #[derive(Debug)]
 pub enum CliError {
@@ -242,6 +267,7 @@ pub struct Runner {
     module_map: ModuleMap,
     game_state: RefCell<GameState>,
     last_paths: Vec<PathBuf>,
+    program_cache: Option<Rc<RefCell<ProgramCache>>>,
     diagnostics: Vec<Diagnostic>,
     source_map: Option<MultiSourceMap>,
     output: Vec<String>,
@@ -299,7 +325,16 @@ impl Runner {
             pending_prompt: None,
             gm_gates: HashSet::new(),
             pending_gate: None,
+            program_cache: None,
         }
+    }
+
+    /// Create a new runner that shares a program cache with other runners.
+    /// Used in batch mode to avoid re-parsing the same files.
+    pub fn with_cache(cache: Rc<RefCell<ProgramCache>>) -> Self {
+        let mut runner = Self::new();
+        runner.program_cache = Some(cache);
+        runner
     }
 
     /// Returns all handle names (for tab completion).
