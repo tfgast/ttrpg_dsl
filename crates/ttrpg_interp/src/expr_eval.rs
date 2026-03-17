@@ -1057,6 +1057,53 @@ fn find_external_group_fields<'a>(
     None
 }
 
+// ── Operand stack helpers ────────────────────────────────────────
+
+/// Pop a value from the operand stack, returning an `Advance::Error` on underflow.
+macro_rules! pop_operand {
+    ($operands:expr, $span:expr) => {
+        match $operands.pop() {
+            Some(v) => v,
+            None => {
+                return Advance::Error(RuntimeError::with_span(
+                    "internal error: operand stack underflow",
+                    $span,
+                ));
+            }
+        }
+    };
+}
+
+/// Peek at the top of the operand stack, returning an `Advance::Error` on underflow.
+macro_rules! peek_operand {
+    ($operands:expr, $span:expr) => {
+        match $operands.last() {
+            Some(v) => v,
+            None => {
+                return Advance::Error(RuntimeError::with_span(
+                    "internal error: operand stack underflow",
+                    $span,
+                ));
+            }
+        }
+    };
+}
+
+/// Pop a value from the operand stack, returning `Err(RuntimeError)` on underflow.
+macro_rules! pop_operand_result {
+    ($operands:expr, $span:expr) => {
+        match $operands.pop() {
+            Some(v) => v,
+            None => {
+                return Err(RuntimeError::with_span(
+                    "internal error: operand stack underflow",
+                    $span,
+                ));
+            }
+        }
+    };
+}
+
 // ── Advance loop ────────────────────────────────────────────────
 
 /// Execute ExprEval micro-instructions in a tight loop.
@@ -1102,8 +1149,8 @@ pub(crate) fn advance_expr_eval(
                 *pc += 1;
             }
             ExprWork::BinOp(op, span) => {
-                let rhs = operands.pop().unwrap();
-                let lhs = operands.pop().unwrap();
+                let rhs = pop_operand!(operands, *span);
+                let lhs = pop_operand!(operands, *span);
                 match apply_binop_values(*op, lhs, rhs, *span, &core.type_env, sp) {
                     Ok(val) => {
                         operands.push(val);
@@ -1113,7 +1160,7 @@ pub(crate) fn advance_expr_eval(
                 }
             }
             ExprWork::UnaryOp(op, span) => {
-                let val = operands.pop().unwrap();
+                let val = pop_operand!(operands, *span);
                 match apply_unary_values(*op, &val, *span, &core.type_env) {
                     Ok(result) => {
                         operands.push(result);
@@ -1123,7 +1170,7 @@ pub(crate) fn advance_expr_eval(
                 }
             }
             ExprWork::Field(field, span) => {
-                let object = operands.pop().unwrap();
+                let object = pop_operand!(operands, *span);
                 match field_access_on_value(&object, field, *span, &core.type_env, sp) {
                     Ok(val) => {
                         operands.push(val);
@@ -1133,8 +1180,8 @@ pub(crate) fn advance_expr_eval(
                 }
             }
             ExprWork::Index(span) => {
-                let index = operands.pop().unwrap();
-                let object = operands.pop().unwrap();
+                let index = pop_operand!(operands, *span);
+                let object = pop_operand!(operands, *span);
                 match index_on_value(&object, &index, *span, sp) {
                     Ok(val) => {
                         operands.push(val);
@@ -1198,7 +1245,7 @@ pub(crate) fn advance_expr_eval(
 
             // ── Phase 2: Has / Is ───────────────────────────────
             ExprWork::Has { group, span } => {
-                let entity = operands.pop().unwrap();
+                let entity = pop_operand!(operands, *span);
                 match &entity {
                     Value::Entity(eref) => {
                         let has = sp.read_field(eref, group).is_some();
@@ -1214,7 +1261,7 @@ pub(crate) fn advance_expr_eval(
                 }
             }
             ExprWork::Is { target_type, span } => {
-                let val = operands.pop().unwrap();
+                let val = pop_operand!(operands, *span);
                 let result = eval_is_check(&val, target_type, *span, core, sp);
                 operands.push(Value::Bool(result));
                 *pc += 1;
@@ -1238,7 +1285,7 @@ pub(crate) fn advance_expr_eval(
 
             // ── Phase 4: Short-circuit And/Or ─────────────────
             ExprWork::ShortCircuit { op, skip_to, span } => {
-                let val = operands.last().unwrap();
+                let val = peek_operand!(operands, *span);
                 match (op, val) {
                     (BinOp::And, Value::Bool(false)) => {
                         // LHS is false, short-circuit: skip RHS, keep false on stack
@@ -1274,7 +1321,7 @@ pub(crate) fn advance_expr_eval(
                 else_pc,
                 span,
             } => {
-                let cond = operands.pop().unwrap();
+                let cond = pop_operand!(operands, *span);
                 match cond {
                     Value::Bool(true) => *pc = *then_pc,
                     Value::Bool(false) => *pc = *else_pc,
@@ -1327,9 +1374,9 @@ pub(crate) fn advance_expr_eval(
                 pattern,
                 then_pc,
                 else_pc,
-                span: _,
+                span,
             } => {
-                let scrutinee = operands.pop().unwrap();
+                let scrutinee = pop_operand!(operands, *span);
                 let mut bindings = FxHashMap::default();
                 if match_pattern(&core.type_env, pattern, &scrutinee, &mut bindings) {
                     env.push_scope();
@@ -1350,7 +1397,7 @@ pub(crate) fn advance_expr_eval(
 
             // ── Phase 6: PatternMatch support ───────────────
             ExprWork::Dup => {
-                let val = operands.last().unwrap().clone();
+                let val = peek_operand!(operands, Span::dummy()).clone();
                 operands.push(val);
                 *pc += 1;
             }
@@ -1440,8 +1487,8 @@ fn materialize_iterable(
     span: Span,
 ) -> Result<Vec<Value>, RuntimeError> {
     if range {
-        let end_val = operands.pop().unwrap();
-        let start_val = operands.pop().unwrap();
+        let end_val = pop_operand_result!(operands, span);
+        let start_val = pop_operand_result!(operands, span);
         let s = match start_val {
             Value::Int(n) => n,
             other => {
@@ -1468,7 +1515,7 @@ fn materialize_iterable(
         };
         crate::eval::collect_range(s, e, inclusive, span)
     } else {
-        let collection = operands.pop().unwrap();
+        let collection = pop_operand_result!(operands, span);
         match collection {
             Value::List(items) => Ok(items),
             Value::Set(items) => Ok(items.into_iter().collect()),
@@ -1734,7 +1781,7 @@ fn advance_call_method(
 ) -> Advance {
     let start = operands.len().saturating_sub(arg_meta.len());
     let arg_values = operands.split_off(start);
-    let receiver = operands.pop().unwrap();
+    let receiver = pop_operand!(operands, span);
     *pc += 1;
 
     match resolve_call_method(
@@ -1769,7 +1816,7 @@ fn advance_call_value(
 ) -> Advance {
     let start = operands.len().saturating_sub(arg_meta.len());
     let arg_values = operands.split_off(start);
-    let callee_val = operands.pop().unwrap();
+    let callee_val = pop_operand!(operands, span);
     *pc += 1;
 
     match callee_val {
