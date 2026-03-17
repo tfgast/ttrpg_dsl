@@ -1,6 +1,79 @@
+use ttrpg_interp::effect::EffectKind;
+
 use super::*;
 
 impl Runner {
+    pub(super) fn cmd_gm(&mut self, tail: &str) -> Result<(), CliError> {
+        let (sub, rest) = split_first_token(tail.trim());
+        match sub {
+            "gate" => self.cmd_gm_gate(rest),
+            "accept" => self.submit_gate(Response::Acknowledged),
+            "veto" => self.submit_gate(Response::Vetoed),
+            "override" => {
+                let rest = rest.trim();
+                if rest.is_empty() {
+                    return Err(CliError::Message(
+                        "gm override requires a value expression".into(),
+                    ));
+                }
+                let val = self.eval(rest)?;
+                self.submit_gate(Response::Override(val))
+            }
+            _ => Err(CliError::Message(format!(
+                "unknown gm subcommand: {sub}. Use: gate, accept, veto, override"
+            ))),
+        }
+    }
+
+    fn cmd_gm_gate(&mut self, tail: &str) -> Result<(), CliError> {
+        let (kind_str, on_off) = split_first_token(tail.trim());
+        let on = match on_off.trim() {
+            "on" => true,
+            "off" => false,
+            other => {
+                return Err(CliError::Message(format!(
+                    "expected 'on' or 'off', got '{other}'"
+                )));
+            }
+        };
+
+        let kinds: Vec<EffectKind> = match kind_str {
+            "actions" => vec![EffectKind::ActionStarted],
+            "conditions" => vec![
+                EffectKind::ConditionApplyGate,
+                EffectKind::ConditionRemovalGate,
+            ],
+            "all" => vec![
+                EffectKind::ActionStarted,
+                EffectKind::ConditionApplyGate,
+                EffectKind::ConditionRemovalGate,
+            ],
+            _ => {
+                return Err(CliError::Message(format!(
+                    "unknown gate kind: {kind_str}. Use: actions, conditions, all"
+                )));
+            }
+        };
+
+        for kind in &kinds {
+            if on {
+                self.gm_gates.insert(*kind);
+            } else {
+                self.gm_gates.remove(kind);
+            }
+        }
+
+        // GM gates require step-based execution to pause mid-action.
+        if on && self.exec_mode != super::ExecutionMode::StepBased {
+            self.exec_mode = super::ExecutionMode::StepBased;
+        }
+
+        let state = if on { "enabled" } else { "disabled" };
+        self.output
+            .push(format!("gm gate {kind_str} {state}"));
+        Ok(())
+    }
+
     pub(super) fn cmd_seed(&mut self, tail: &str) -> Result<(), CliError> {
         let seed: u64 = tail
             .trim()

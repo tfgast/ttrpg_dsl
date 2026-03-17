@@ -165,12 +165,15 @@ fn run_pipe(coverage: bool, quiet: bool) {
         }
 
         if let Err(e) = result {
-            if e.is_rendered() {
+            if e.is_pending() {
+                // Execution paused — next line provides the response.
+            } else if e.is_rendered() {
                 eprintln!("{e}");
+                had_error = true;
             } else {
                 eprintln!("error: {e}");
+                had_error = true;
             }
-            had_error = true;
         }
     }
 
@@ -225,12 +228,16 @@ fn exec_commands(label: &str, content: &str, coverage: bool, quiet: bool) {
         }
 
         if let Err(e) = result {
-            if e.is_rendered() {
+            if e.is_pending() {
+                // Execution paused at prompt or GM gate — not an error,
+                // next line should provide the response.
+            } else if e.is_rendered() {
                 eprintln!("{e}");
+                had_error = true;
             } else {
                 eprintln!("{}:{}: error: {}", label, lineno + 1, e);
+                had_error = true;
             }
-            had_error = true;
         }
     }
 
@@ -244,6 +251,10 @@ fn exec_commands(label: &str, content: &str, coverage: bool, quiet: bool) {
     }
     if runner.in_loop() {
         eprintln!("{label}: error: unclosed loop block at end of input");
+        had_error = true;
+    }
+    if runner.in_gate() {
+        eprintln!("{label}: error: pending GM gate at end of input (missing gm accept/veto/override)");
         had_error = true;
     }
 

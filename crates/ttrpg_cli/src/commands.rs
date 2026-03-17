@@ -56,6 +56,8 @@ pub enum Command {
     // Loops
     Repeat(String),
     For(String),
+    // GM gates
+    Gm(String),
     // Help
     Help(Option<String>),
     Unknown(String),
@@ -341,6 +343,14 @@ pub fn parse_command(line: &str) -> Option<Command> {
                 Some(Command::Unknown("for".into()))
             } else {
                 Some(Command::For(s.into()))
+            }
+        }
+        "gm" => {
+            let s = strip_comment(tail).trim();
+            if s.is_empty() {
+                Some(Command::Unknown("gm".into()))
+            } else {
+                Some(Command::Gm(s.into()))
             }
         }
         "coverage" => {

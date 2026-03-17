@@ -16,7 +16,7 @@ use ttrpg_checker::ty::Ty;
 use ttrpg_interp::Interpreter;
 use ttrpg_interp::adapter::StateAdapter;
 use ttrpg_interp::coverage::{self, CoverageData};
-use ttrpg_interp::effect::{Effect, EffectHandler, FieldPathSegment, Response, Step};
+use ttrpg_interp::effect::{Effect, EffectHandler, EffectKind, FieldPathSegment, Response, Step};
 use ttrpg_interp::execution::{Execution, PollError};
 use ttrpg_interp::handle_registry::HandleRegistry;
 use ttrpg_interp::reference_state::GameState;
@@ -58,6 +58,9 @@ pub enum CliError {
     /// Execution paused waiting for the REPL to collect a prompt response.
     /// Not a real error — signals the REPL to enter prompt mode.
     PromptPending,
+    /// Execution paused at a GM gate waiting for accept/veto/override.
+    /// Not a real error — signals the REPL to enter gate mode.
+    GatePending,
 }
 
 impl CliError {
@@ -70,6 +73,16 @@ impl CliError {
     pub fn is_prompt_pending(&self) -> bool {
         matches!(self, CliError::PromptPending)
     }
+
+    /// Returns `true` if this is a gate-pending signal (not a real error).
+    pub fn is_gate_pending(&self) -> bool {
+        matches!(self, CliError::GatePending)
+    }
+
+    /// Returns `true` if this is any kind of pause signal (not a real error).
+    pub fn is_pending(&self) -> bool {
+        self.is_prompt_pending() || self.is_gate_pending()
+    }
 }
 
 impl std::fmt::Display for CliError {
@@ -77,6 +90,7 @@ impl std::fmt::Display for CliError {
         match self {
             CliError::Message(msg) | CliError::Rendered(msg) => write!(f, "{msg}"),
             CliError::PromptPending => write!(f, "(prompt pending)"),
+            CliError::GatePending => write!(f, "(gm gate pending)"),
         }
     }
 }
@@ -94,6 +108,55 @@ pub(super) fn render_runtime_error(
         return CliError::Rendered(sm.render(&diag));
     }
     CliError::Message(format!("runtime error: {}", e.message))
+}
+
+/// Format a gate effect for display.
+fn format_gate_effect(effect: &Effect, handles: &HandleRegistry) -> String {
+    let entity_name = |e: &EntityRef| -> String {
+        handles
+            .name_of(e)
+            .map_or_else(|| format!("Entity({})", e.0), |n| n.to_string())
+    };
+    match effect {
+        Effect::ActionStarted {
+            name, actor, kind, ..
+        } => {
+            let kind_str = match kind {
+                ttrpg_interp::effect::ActionKind::Action => "Action",
+                ttrpg_interp::effect::ActionKind::Reaction { .. } => "Reaction",
+                ttrpg_interp::effect::ActionKind::Hook { .. } => "Hook",
+            };
+            format!(
+                "ActionStarted: {} {}({})",
+                kind_str,
+                name,
+                entity_name(actor),
+            )
+        }
+        Effect::ConditionApplyGate {
+            target,
+            condition,
+            duration,
+            ..
+        } => {
+            format!(
+                "ConditionApplyGate: {} on {} (duration: {})",
+                condition,
+                entity_name(target),
+                format_value(duration, &UnitSuffixes::default()),
+            )
+        }
+        Effect::ConditionRemovalGate {
+            target, condition, ..
+        } => {
+            format!(
+                "ConditionRemovalGate: {} on {}",
+                condition,
+                entity_name(target),
+            )
+        }
+        other => format!("{:?}", EffectKind::of(other)),
+    }
 }
 
 /// State for accumulating a multi-line `source <<DELIM ... DELIM` block.
@@ -138,6 +201,18 @@ pub enum ExecutionMode {
     Recursive,
     /// Use the step-based `Execution` frame stack with `run_with_handler`.
     StepBased,
+}
+
+/// A paused execution waiting for a GM gate decision (accept/veto/override).
+pub(crate) struct PendingGate {
+    pub exec: Execution<GameState>,
+    pub core: Rc<RuntimeCore>,
+    pub effect: Effect,
+}
+
+/// Information about a pending GM gate, for the REPL to display.
+pub struct GateDisplay {
+    pub summary: String,
 }
 
 /// A paused execution waiting for user input to resolve a prompt.
@@ -189,6 +264,10 @@ pub struct Runner {
     exec_mode: ExecutionMode,
     /// A paused step-based execution waiting for a prompt response.
     pending_prompt: Option<PendingPrompt>,
+    /// Which effect kinds are gated for GM intervention.
+    gm_gates: HashSet<EffectKind>,
+    /// A paused step-based execution waiting for a GM gate decision.
+    pending_gate: Option<PendingGate>,
 }
 
 impl Runner {
@@ -218,6 +297,8 @@ impl Runner {
             loop_state: None,
             zone_membership: HashSet::new(),
             pending_prompt: None,
+            gm_gates: HashSet::new(),
+            pending_gate: None,
         }
     }
 
@@ -638,6 +719,13 @@ impl Runner {
             None => return Ok(()), // blank or comment-only line
         };
 
+        // If a GM gate is pending, only `gm` commands are allowed.
+        if self.pending_gate.is_some() && !matches!(cmd, Command::Gm(_)) {
+            return Err(CliError::Message(
+                "execution paused at GM gate — respond with: gm accept, gm veto, or gm override <value>".into(),
+            ));
+        }
+
         match cmd {
             Command::Load(path) => self.cmd_load(&path),
             Command::Eval(expr_str) => self.cmd_eval(&expr_str),
@@ -691,6 +779,8 @@ impl Runner {
             Command::Seed(tail) => self.cmd_seed(&tail),
             Command::Rolls(tail) => self.cmd_rolls(&tail),
             Command::Prompts(tail) => self.cmd_prompts(&tail),
+            // GM gates
+            Command::Gm(tail) => self.cmd_gm(&tail),
             // Help
             Command::Help(topic) => self.cmd_help(topic.as_deref()),
             // Loops
@@ -894,7 +984,33 @@ impl Runner {
                         return Err(CliError::PromptPending);
                     }
 
+                    // Check if this effect is gated for GM intervention
+                    if self.exec_mode == ExecutionMode::StepBased
+                        && self.gm_gates.contains(&EffectKind::of(&effect))
+                    {
+                        if !self.quiet {
+                            self.output.push(format!(
+                                "[GM Gate] {}",
+                                format_gate_effect(&effect, &self.handles),
+                            ));
+                        }
+                        self.pending_gate = Some(PendingGate {
+                            exec,
+                            core,
+                            effect: *effect,
+                        });
+                        return Err(CliError::GatePending);
+                    }
+
                     // Handle all other effects via CliHandler
+                    let is_mutation = ttrpg_interp::adapter::is_mutation(
+                        EffectKind::of(&effect),
+                    );
+                    let effect_for_apply = if is_mutation {
+                        Some((*effect).clone())
+                    } else {
+                        None
+                    };
                     let response = {
                         let mut handler = CliHandler::new(
                             &self.game_state,
@@ -915,6 +1031,26 @@ impl Runner {
 
                         response
                     };
+
+                    // Apply mutations to the execution's owned state so they
+                    // persist after finish_execution transfers it back.
+                    if let Some(ref eff) = effect_for_apply {
+                        match &response {
+                            Response::Acknowledged => {
+                                exec.state().with_state_mut(|gs| {
+                                    ttrpg_interp::adapter::apply_mutation(
+                                        gs,
+                                        eff,
+                                        &rustc_hash::FxHashMap::default(),
+                                    );
+                                });
+                            }
+                            Response::Vetoed => {
+                                // Vetoed — don't apply
+                            }
+                            _ => {}
+                        }
+                    }
 
                     exec.respond(response).map_err(|pe| {
                         CliError::Message(format!("protocol error: {pe}"))
@@ -1038,6 +1174,79 @@ impl Runner {
     /// Cancel the pending prompt (e.g., on Ctrl-C), vetoing the execution.
     pub fn cancel_prompt(&mut self) {
         if let Some(pending) = self.pending_prompt.take() {
+            self.finish_execution(pending.exec, &pending.core);
+        }
+    }
+
+    // ── GM gate handling ──────────────────────────────────────────
+
+    /// Returns `true` when execution is paused at a GM gate.
+    pub fn in_gate(&self) -> bool {
+        self.pending_gate.is_some()
+    }
+
+    /// Returns display info about the pending GM gate (for REPL formatting).
+    pub fn gate_display(&self) -> Option<GateDisplay> {
+        let g = self.pending_gate.as_ref()?;
+        Some(GateDisplay {
+            summary: format_gate_effect(&g.effect, &self.handles),
+        })
+    }
+
+    /// Submit a GM response to the pending gate and resume execution.
+    fn submit_gate(&mut self, response: Response) -> Result<(), CliError> {
+        let pending = self
+            .pending_gate
+            .take()
+            .ok_or_else(|| CliError::Message("no GM gate pending".into()))?;
+
+        let response_label = match &response {
+            Response::Acknowledged => "accept",
+            Response::Vetoed => "veto",
+            Response::Override(v) => {
+                if !self.quiet {
+                    self.output.push(format!(
+                        "[GM Gate] -> override({})",
+                        format_value(v, &self.unit_suffixes),
+                    ));
+                }
+                "override"
+            }
+            _ => "respond",
+        };
+
+        if !self.quiet && !matches!(response, Response::Override(_)) {
+            self.output.push(format!("[GM Gate] -> {response_label}"));
+        }
+
+        let mut exec = pending.exec;
+        let core = pending.core;
+
+        // For vetoed mutations, we still need to handle them through CliHandler
+        // so state changes are properly skipped. For gates (ActionStarted,
+        // ConditionApplyGate, etc.), the interpreter handles Vetoed directly.
+        exec.respond(response)
+            .map_err(|pe| CliError::Message(format!("protocol error: {pe}")))?;
+
+        match self.drive_execution(exec, core) {
+            Ok(value) => {
+                if !matches!(value, Value::Void) {
+                    self.output
+                        .push(crate::format::format_value(&value, &self.unit_suffixes));
+                }
+                Ok(())
+            }
+            Err(e) if e.is_pending() => {
+                // Another gate or prompt in the same execution
+                Err(e)
+            }
+            Err(e) => Err(e),
+        }
+    }
+
+    /// Cancel the pending gate (e.g., on Ctrl-C), dropping the execution.
+    pub fn cancel_gate(&mut self) {
+        if let Some(pending) = self.pending_gate.take() {
             self.finish_execution(pending.exec, &pending.core);
         }
     }

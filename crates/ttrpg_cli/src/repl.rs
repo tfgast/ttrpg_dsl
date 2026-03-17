@@ -26,6 +26,10 @@ enum PromptMode {
         type_hint: &'static str,
         suggest: Option<String>,
     },
+    /// Waiting for a GM gate decision (accept/veto/override).
+    Gate {
+        summary: String,
+    },
 }
 
 /// Custom prompt for the TTRPG REPL.
@@ -44,6 +48,9 @@ impl Prompt for TtrpgPrompt {
             }
             PromptMode::Prompt { name, .. } => {
                 std::borrow::Cow::Owned(Color::Yellow.bold().paint(name.as_str()).to_string())
+            }
+            PromptMode::Gate { .. } => {
+                std::borrow::Cow::Owned(Color::Magenta.bold().paint("gm").to_string())
             }
         }
     }
@@ -66,6 +73,13 @@ impl Prompt for TtrpgPrompt {
                     parts.push(dim.paint(format!("[default: {s}]")).to_string());
                 }
                 std::borrow::Cow::Owned(parts.join(" "))
+            }
+            PromptMode::Gate { summary } => {
+                let dim = Color::DarkGray;
+                std::borrow::Cow::Owned(
+                    dim.paint(format!("[accept | veto | override <value>] {summary}"))
+                        .to_string(),
+                )
             }
             _ => std::borrow::Cow::Borrowed(""),
         }
@@ -221,6 +235,12 @@ pub fn run_repl(vi_mode: bool, coverage: bool, interactive: bool) {
                     suggest: info.suggest,
                 };
             }
+        } else if runner.in_gate() {
+            if let Some(info) = runner.gate_display() {
+                prompt.mode = PromptMode::Gate {
+                    summary: info.summary,
+                };
+            }
         } else if runner.in_heredoc() || runner.in_continuation() {
             prompt.mode = PromptMode::Continuation;
         } else {
@@ -231,6 +251,14 @@ pub fn run_repl(vi_mode: bool, coverage: bool, interactive: bool) {
             Ok(Signal::Success(buffer)) => {
                 let result = if runner.in_prompt() {
                     runner.submit_prompt(&buffer)
+                } else if runner.in_gate() {
+                    // In gate mode, prefix "gm " to interpret bare accept/veto/override
+                    let trimmed = buffer.trim();
+                    if trimmed == "accept" || trimmed == "veto" || trimmed.starts_with("override") {
+                        runner.exec(&format!("gm {trimmed}"))
+                    } else {
+                        runner.exec(&buffer)
+                    }
                 } else {
                     runner.exec(&buffer)
                 };
@@ -240,8 +268,8 @@ pub fn run_repl(vi_mode: bool, coverage: bool, interactive: bool) {
                 }
 
                 if let Err(e) = result {
-                    if e.is_prompt_pending() {
-                        // Not a real error — execution paused for prompt input
+                    if e.is_pending() {
+                        // Not a real error — execution paused for prompt/gate input
                     } else if e.is_rendered() {
                         eprintln!("{e}");
                     } else {
@@ -250,13 +278,15 @@ pub fn run_repl(vi_mode: bool, coverage: bool, interactive: bool) {
                 }
 
                 // Refresh completion context after each command
-                if !runner.in_prompt() {
+                if !runner.in_prompt() && !runner.in_gate() {
                     refresh_completions(&runner, &completion_ctx);
                 }
             }
             Ok(Signal::CtrlC) => {
                 if runner.in_prompt() {
                     runner.cancel_prompt();
+                } else if runner.in_gate() {
+                    runner.cancel_gate();
                 } else {
                     runner.cancel_continuation();
                 }
@@ -264,6 +294,8 @@ pub fn run_repl(vi_mode: bool, coverage: bool, interactive: bool) {
             Ok(Signal::CtrlD) => {
                 if runner.in_prompt() {
                     runner.cancel_prompt();
+                } else if runner.in_gate() {
+                    runner.cancel_gate();
                 } else {
                     break;
                 }

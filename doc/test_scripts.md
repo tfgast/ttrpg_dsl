@@ -173,6 +173,49 @@ body (if present) or its `suggest` value. Values are parsed at queue
 time, so syntax errors like `prompts @@@` are caught immediately rather
 than during execution.
 
+### GM gates
+
+GM gates pause execution at specific effect types so you can accept,
+veto, or override the effect before execution continues. This tests
+how DSL code responds to host decisions.
+
+```
+gm gate actions on       # Pause at ActionStarted effects
+gm gate conditions on    # Pause at ConditionApplyGate + ConditionRemovalGate
+gm gate all on           # Enable all gates
+gm gate all off          # Disable all gates
+```
+
+When a gate fires, the very next command must be a GM response:
+
+```
+gm accept                # Acknowledge — proceed normally
+gm veto                  # Block the effect
+gm override <value>      # Substitute a different value
+```
+
+Any other command while a gate is pending is an error.
+
+```
+gm gate actions on
+do MeleeAttack(attacker, target)
+gm accept                        # ActionStarted gate — proceed
+assert_eq target.hp, 25          # action body ran
+
+do MeleeAttack(attacker, target)
+gm veto                          # ActionStarted gate — block
+assert_eq target.hp, 25          # body never ran, hp unchanged
+
+gm gate conditions on
+do PoisonStrike(attacker, target)
+gm veto                          # ConditionApplyGate — block Poisoned
+assert_no_condition target, Poisoned
+```
+
+When both action and condition gates are active, each fires in
+sequence — the action gate fires first, then the condition gate fires
+during the action body (if the action was accepted).
+
 ### Spawning entities
 
 ```

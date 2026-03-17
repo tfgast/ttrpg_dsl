@@ -449,6 +449,22 @@ const COMMANDS: &[CommandInfo] = &[
         ],
         category: "Loops",
     },
+    // GM Gates
+    CommandInfo {
+        name: "gm",
+        syntax: "gm gate <kind> on|off",
+        description: "Configure GM gates or respond to a pending gate",
+        detail: "GM gates pause execution at specific effect types so you can\n  accept, veto, or override the effect before execution continues.\n  Gate kinds: actions, conditions, all.\n\n  When paused at a gate, respond with:\n    gm accept     — acknowledge the effect (proceed normally)\n    gm veto       — block the effect\n    gm override <value> — substitute a different value\n\n  In test scripts, the gm response must be the very next command\n  after the command that triggered the gate. Any other command\n  while a gate is pending is an error.",
+        examples: &[
+            "gm gate actions on",
+            "gm gate conditions on",
+            "gm gate all off",
+            "gm accept",
+            "gm veto",
+            "gm override 20",
+        ],
+        category: "GM Gates",
+    },
     // Help
     CommandInfo {
         name: "help",
@@ -472,6 +488,7 @@ const CATEGORIES: &[&str] = &[
     "Dice Control",
     "Loops",
     "Host Simulation",
+    "GM Gates",
     "Help",
 ];
 
