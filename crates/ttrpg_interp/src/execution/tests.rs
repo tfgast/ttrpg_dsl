@@ -7608,13 +7608,7 @@ fn differential_return_in_expr_cache_with_budget() {
     let mut game2 = GameState::new();
     let c2 = add_character(&mut game2, 10);
     let adapter2 = StateAdapter::new(game2);
-    let exec = Execution::start_function(
-        core,
-        adapter2,
-        "buggy",
-        vec![Value::Entity(c2)],
-    )
-    .unwrap();
+    let exec = Execution::start_function(core, adapter2, "buggy", vec![Value::Entity(c2)]).unwrap();
     let mut handler2 = ScriptedHandler::always_ack();
     let result2 = exec.run_with_handler(&mut handler2);
 
@@ -7623,9 +7617,7 @@ fn differential_return_in_expr_cache_with_budget() {
     match (&result1, &result2) {
         (Ok(v1), Ok(v2)) => assert_eq!(v1, v2, "values diverge"),
         (Err(_), Err(_)) => {} // both error — OK
-        _ => panic!(
-            "DIVERGENCE: recursive={result1:?}, step={result2:?}"
-        ),
+        _ => panic!("DIVERGENCE: recursive={result1:?}, step={result2:?}"),
     }
 }
 
@@ -7671,9 +7663,7 @@ fn differential_return_in_match_arm_block_let() {
     match (&result1, &result2) {
         (Ok(v1), Ok(v2)) => assert_eq!(v1, v2, "values diverge"),
         (Err(_), Err(_)) => {}
-        _ => panic!(
-            "DIVERGENCE: recursive={result1:?}, step={result2:?}"
-        ),
+        _ => panic!("DIVERGENCE: recursive={result1:?}, step={result2:?}"),
     }
 }
 
@@ -7779,8 +7769,6 @@ fn differential_unknown_unit_suffix_errors_consistently() {
     // Both paths must produce an error (not diverge).
     match (&result1, &result2) {
         (Err(_), Err(_)) => {} // both error — OK
-        _ => panic!(
-            "DIVERGENCE: recursive={result1:?}, step={result2:?}"
-        ),
+        _ => panic!("DIVERGENCE: recursive={result1:?}, step={result2:?}"),
     }
 }

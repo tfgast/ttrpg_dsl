@@ -135,9 +135,7 @@ impl RuntimeCore {
             return Some(cached.clone());
         }
         let work = crate::expr_eval::compile_expr(expr, &self.type_env, &self.program)?;
-        self.compiled_exprs
-            .borrow_mut()
-            .insert(span, work.clone());
+        self.compiled_exprs.borrow_mut().insert(span, work.clone());
         Some(work)
     }
 }

@@ -100,6 +100,161 @@ impl Checker<'_> {
         }
     }
 
+    /// Check a `should_apply` clause inside a condition. Validates:
+    /// - Target is Named or Cost (not Selector)
+    /// - Target function exists and is derive/mechanic (or action/reaction for .cost)
+    /// - A matching `modify` clause exists in the same condition
+    /// - Body type-checks to bool
+    pub fn check_should_apply_clause(
+        &mut self,
+        sa: &ShouldApplyClause,
+        cond: &ConditionDecl,
+        state_fields: &[(Name, Ty)],
+    ) {
+        // Reject selector targets
+        if matches!(&sa.target, ModifyTarget::Selector(_)) {
+            self.error(
+                "`should_apply` cannot use selector syntax; target a specific function",
+                sa.span,
+            );
+            return;
+        }
+
+        // Extract target name
+        let target_name = match &sa.target {
+            ModifyTarget::Named(n) | ModifyTarget::Cost(n) => n,
+            ModifyTarget::Selector(_) => unreachable!(),
+        };
+
+        // Verify a matching modify clause exists in this condition
+        let has_matching_modify = cond.clauses.iter().any(|clause| match clause {
+            ConditionClause::Modify(m) => match (&sa.target, &m.target) {
+                (ModifyTarget::Named(sa_name), ModifyTarget::Named(m_name)) => sa_name == m_name,
+                (ModifyTarget::Cost(sa_name), ModifyTarget::Cost(m_name)) => sa_name == m_name,
+                _ => false,
+            },
+            _ => false,
+        });
+        if !has_matching_modify {
+            self.error(
+                format!(
+                    "`should_apply` for `{target_name}` has no matching `modify` clause in this condition"
+                ),
+                sa.span,
+            );
+            return;
+        }
+
+        // Look up the target function
+        let fn_info = match &sa.target {
+            ModifyTarget::Named(_) => match self.env.lookup_fn(target_name) {
+                Some(info) => {
+                    if info.kind != FnKind::Derive && info.kind != FnKind::Mechanic {
+                        self.error(
+                            format!(
+                                "`should_apply` target `{target_name}` must be a derive or mechanic"
+                            ),
+                            sa.span,
+                        );
+                        return;
+                    }
+                    info.clone()
+                }
+                None => {
+                    self.error(
+                        format!("`should_apply` target `{target_name}` is not a defined function"),
+                        sa.span,
+                    );
+                    return;
+                }
+            },
+            ModifyTarget::Cost(_) => {
+                match self.env.lookup_fn(target_name) {
+                    Some(info) => {
+                        if info.kind != FnKind::Action && info.kind != FnKind::Reaction {
+                            self.error(
+                                format!("`should_apply` cost target `{target_name}` must be an action or reaction"),
+                                sa.span,
+                            );
+                            return;
+                        }
+                        info.clone()
+                    }
+                    None => {
+                        self.error(
+                            format!("`should_apply` cost target `{target_name}` is not a defined function"),
+                            sa.span,
+                        );
+                        return;
+                    }
+                }
+            }
+            ModifyTarget::Selector(_) => unreachable!(),
+        };
+
+        // Set up scope: imperative block with mutable state
+        self.scope.push(BlockKind::ShouldApplyBlock);
+
+        // Bind receiver and condition params (read-only)
+        self.bind_condition_context(
+            Some((
+                &cond.receiver_name,
+                &cond.receiver_type,
+                &cond.receiver_with_groups,
+            )),
+            &cond.params,
+        );
+
+        // Bind condition state as MUTABLE (unlike modify which is read-only)
+        if !state_fields.is_empty() {
+            self.scope.bind(
+                "state".into(),
+                VarBinding {
+                    ty: Ty::ConditionState(state_fields.to_vec()),
+                    mutable: true,
+                    is_local: false,
+                },
+            );
+        }
+
+        // Validate bindings match target function params
+        self.validate_clause_bindings(
+            &sa.bindings,
+            |name| {
+                fn_info
+                    .params
+                    .iter()
+                    .find(|p| p.name == name)
+                    .map(|p| p.ty.clone())
+            },
+            "should_apply",
+            &format!("does not match any parameter of `{target_name}`"),
+        );
+
+        // Bind target function's params into scope (read-only)
+        for param in &fn_info.params {
+            self.scope.bind(
+                param.name.clone(),
+                VarBinding {
+                    ty: param.ty.clone(),
+                    mutable: false,
+                    is_local: false,
+                },
+            );
+        }
+
+        // Check the body — must return bool
+        let body_ty = self.check_block_with_tail_hint(&sa.body, Some(&Ty::Bool));
+        if !body_ty.is_error() && !self.types_compatible(&body_ty, &Ty::Bool) {
+            self.error(
+                format!("`should_apply` body must return `bool`, got `{body_ty}`"),
+                sa.span,
+            );
+        }
+
+        self.scope.pop();
+    }
+
     /// Check a modify clause. `receiver` is `Some` for conditions (which have
     /// a receiver binding) and `None` for options (which have no receiver).
     /// `condition_params` are the condition's declared parameters (empty for options).

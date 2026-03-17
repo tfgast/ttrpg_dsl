@@ -246,6 +246,8 @@ pub(super) fn advance_action_lifecycle(
                     modify_old_tokens: Vec::new(),
                     modify_old_free: false,
                     collect_state: None,
+                    should_apply_skipped: Vec::new(),
+                    should_apply_result: None,
                 });
             }
             // No cost or cost is free — skip to resolve.

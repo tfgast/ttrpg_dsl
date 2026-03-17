@@ -188,6 +188,7 @@ pub(crate) fn execute_pipeline(
     {
         // Collect and apply cost modifiers from conditions on the actor
         let modifiers = collect_cost_modifiers(env, actor, action_name)?;
+        let modifiers = crate::pipeline::filter_by_should_apply(env, modifiers, &[])?;
         let mut effective = cost.clone();
         for modifier in &modifiers {
             let maybe_effect =
@@ -466,7 +467,8 @@ pub(crate) fn collect_cost_modifiers(
                 | ConditionClause::OnApply(_)
                 | ConditionClause::OnRemove(_)
                 | ConditionClause::OnEvent(_)
-                | ConditionClause::Include(_) => continue,
+                | ConditionClause::Include(_)
+                | ConditionClause::ShouldApply(_) => continue,
             };
 
             // Only match Cost targets for this action
@@ -541,6 +543,9 @@ pub(crate) fn collect_cost_modifiers(
                     condition.gained_at,
                     OwnedModifier {
                         source: ModifySource::Condition(condition.name.clone()),
+                        should_apply_body: crate::pipeline::find_should_apply_body(
+                            cond_decl, clause,
+                        ),
                         clause: clause.clone(),
                         bearer: Some(Value::Entity(condition.bearer)),
                         receiver_name: Some(cond_decl.receiver_name.clone()),

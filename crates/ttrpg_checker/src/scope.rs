@@ -36,6 +36,9 @@ pub enum BlockKind {
     /// Function-body-like permissions: allows mutations, dice, emit,
     /// condition manipulation, return. No `invocation()` or `turn`.
     OnEventBlock,
+    /// `should_apply fn_name(...) -> bool { ... }` gate block inside a condition.
+    /// Same permissions as OnEventBlock: dice, mutations, emit, condition manipulation.
+    ShouldApplyBlock,
     /// Inner blocks (if, match, etc.) inherit from enclosing real block.
     Inner,
 }
@@ -52,6 +55,7 @@ impl BlockKind {
                 | BlockKind::WithBudget
                 | BlockKind::LifecycleBlock
                 | BlockKind::OnEventBlock
+                | BlockKind::ShouldApplyBlock
         )
     }
 
@@ -65,6 +69,7 @@ impl BlockKind {
                 | BlockKind::WithBudget
                 | BlockKind::LifecycleBlock
                 | BlockKind::OnEventBlock
+                | BlockKind::ShouldApplyBlock
         )
     }
 
@@ -95,6 +100,7 @@ impl BlockKind {
                 | BlockKind::WithBudget
                 | BlockKind::LifecycleBlock
                 | BlockKind::OnEventBlock
+                | BlockKind::ShouldApplyBlock
         )
     }
 
@@ -114,6 +120,7 @@ impl BlockKind {
                 | BlockKind::WithBudget
                 | BlockKind::LifecycleBlock
                 | BlockKind::OnEventBlock
+                | BlockKind::ShouldApplyBlock
         )
     }
 

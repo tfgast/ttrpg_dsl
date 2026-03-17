@@ -248,10 +248,7 @@ impl Checker<'_> {
                     Some(BlockKind::IndexExpression) => "assignment index expression",
                     _ => "trigger/suppress binding context",
                 };
-                self.error(
-                    format!("`{callee_name}` cannot be called in {ctx}"),
-                    span,
-                );
+                self.error(format!("`{callee_name}` cannot be called in {ctx}"), span);
             }
         }
 

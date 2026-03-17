@@ -507,7 +507,8 @@ fn is_suppressed(
                     | ConditionClause::OnApply(_)
                     | ConditionClause::OnRemove(_)
                     | ConditionClause::OnEvent(_)
-                    | ConditionClause::Include(_) => continue,
+                    | ConditionClause::Include(_)
+                    | ConditionClause::ShouldApply(_) => continue,
                 };
 
                 if suppress.event_name != event_name {

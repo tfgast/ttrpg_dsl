@@ -2908,6 +2908,8 @@ fn dispatch_derive_step(
         modify_walker: None,
         collect_state: None,
         pre_fill_params: Some(fill_params),
+        should_apply_skipped: Vec::new(),
+        should_apply_result: None,
     }))
 }
 
@@ -2969,6 +2971,8 @@ fn dispatch_table_step(
         modify_walker: None,
         collect_state: None,
         pre_fill_params: Some(fill_params),
+        should_apply_skipped: Vec::new(),
+        should_apply_result: None,
     }))
 }
 

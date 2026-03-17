@@ -120,6 +120,8 @@ pub(super) fn advance_derive_eval(
         modify_walker,
         collect_state,
         pre_fill_params,
+        should_apply_skipped,
+        should_apply_result,
     } = frame
     else {
         unreachable!()
@@ -446,6 +448,7 @@ pub(super) fn advance_derive_eval(
                         condition_id: None,
                         condition_duration: None,
                         condition_state_fields: BTreeMap::new(),
+                        should_apply_body: None,
                     };
 
                     if clause.bindings.is_empty() {
@@ -482,8 +485,13 @@ pub(super) fn advance_derive_eval(
                     *phase = DeriveEvalPhase::PushBody;
                 } else {
                     *phase1_params = bound_args.clone();
+                    let has_should_apply = result.iter().any(|m| m.should_apply_body.is_some());
                     *modifiers = result;
-                    *phase = DeriveEvalPhase::ApplyPhase1(0);
+                    *phase = if has_should_apply {
+                        DeriveEvalPhase::ShouldApplyGate(0)
+                    } else {
+                        DeriveEvalPhase::ApplyPhase1(0)
+                    };
                 }
                 Advance::Continue
             } else if candidates.is_empty() {
@@ -645,8 +653,13 @@ pub(super) fn advance_derive_eval(
                     *phase = DeriveEvalPhase::PushBody;
                 } else {
                     *phase1_params = bound_args.clone();
+                    let has_should_apply = result.iter().any(|m| m.should_apply_body.is_some());
                     *modifiers = result;
-                    *phase = DeriveEvalPhase::ApplyPhase1(0);
+                    *phase = if has_should_apply {
+                        DeriveEvalPhase::ShouldApplyGate(0)
+                    } else {
+                        DeriveEvalPhase::ApplyPhase1(0)
+                    };
                 }
                 Advance::Continue
             } else {
@@ -715,8 +728,13 @@ pub(super) fn advance_derive_eval(
                     *phase = DeriveEvalPhase::PushBody;
                 } else {
                     *phase1_params = bound_args.clone();
+                    let has_should_apply = result.iter().any(|m| m.should_apply_body.is_some());
                     *modifiers = result;
-                    *phase = DeriveEvalPhase::ApplyPhase1(0);
+                    *phase = if has_should_apply {
+                        DeriveEvalPhase::ShouldApplyGate(0)
+                    } else {
+                        DeriveEvalPhase::ApplyPhase1(0)
+                    };
                 }
                 Advance::Continue
             } else {
@@ -1077,6 +1095,151 @@ pub(super) fn advance_derive_eval(
                     "internal error: AwaitModifyHooks completed without result",
                 )),
             }
+        }
+
+        // ── should_apply gate ─────────────────────────────────────
+        DeriveEvalPhase::ShouldApplyGate(idx) => {
+            let idx = *idx;
+            // Skip modifiers without a should_apply body.
+            if idx >= modifiers.len() {
+                // All gates evaluated — filter out skipped modifiers and proceed.
+                if !should_apply_skipped.is_empty() {
+                    let skipped = std::mem::take(should_apply_skipped);
+                    let kept: Vec<OwnedModifier> = std::mem::take(modifiers)
+                        .into_iter()
+                        .enumerate()
+                        .filter(|(i, _)| !skipped.contains(i))
+                        .map(|(_, m)| m)
+                        .collect();
+                    *modifiers = kept;
+                }
+                if modifiers.is_empty() {
+                    *phase = DeriveEvalPhase::PushBody;
+                } else {
+                    *phase = DeriveEvalPhase::ApplyPhase1(0);
+                }
+                return Advance::Continue;
+            }
+
+            if modifiers[idx].should_apply_body.is_none() {
+                *phase = DeriveEvalPhase::ShouldApplyGate(idx + 1);
+                return Advance::Continue;
+            }
+
+            let modifier = &modifiers[idx];
+            let sa_body = modifier.should_apply_body.clone().unwrap();
+
+            // Push scope: receiver, condition params, MUTABLE live state, function params.
+            env.push_scope();
+            helpers::bind_modifier_context(env, modifier);
+
+            // Re-bind state as MUTABLE from live condition state (not snapshot).
+            if let (Some(Value::Entity(bearer_ref)), Some(cond_id)) =
+                (&modifier.bearer, modifier.condition_id)
+            {
+                if let Some(conditions) = sp.read_conditions(bearer_ref) {
+                    if let Some(live_cond) = conditions.iter().find(|c| c.id == cond_id) {
+                        if !live_cond.state_fields.is_empty() {
+                            env.bind(
+                                Name::from("state"),
+                                Value::Struct {
+                                    name: Name::from("state"),
+                                    fields: live_cond.state_fields.clone(),
+                                },
+                            );
+                        }
+                    }
+                }
+            }
+
+            // Bind target function params from bound_args.
+            if let Some(ba) = bound_args.as_ref() {
+                for (param_name, param_val) in ba {
+                    env.bind(param_name.clone(), param_val.clone());
+                }
+            }
+
+            *phase = DeriveEvalPhase::AwaitShouldApply(idx);
+            Advance::Push(Frame::Block {
+                stmts: sa_body.node,
+                index: 0,
+                result: Value::Void,
+                expr_cache: Vec::new(),
+                awaiting_fn: None,
+                awaiting_error: None,
+            })
+        }
+
+        DeriveEvalPhase::AwaitShouldApply(idx) => {
+            let idx = *idx;
+            match should_apply_result.take() {
+                Some(Ok(value)) => {
+                    // Read back mutated state from scope before popping.
+                    let mut final_state = None;
+                    if let Some(Value::Struct { fields, .. }) = env
+                        .scopes
+                        .last()
+                        .and_then(|s| s.bindings.get(&Name::from("state")))
+                        .cloned()
+                    {
+                        final_state = Some(fields);
+                    }
+                    env.pop_scope();
+                    env.return_value = None;
+
+                    // Determine if the modifier should be skipped.
+                    let should_run = matches!(value, Value::Bool(true));
+                    if !should_run {
+                        should_apply_skipped.push(idx);
+                    }
+
+                    // If state was mutated, emit SetConditionState.
+                    if let Some(fields) = final_state {
+                        if !fields.is_empty() {
+                            let cond_id = modifiers[idx].condition_id;
+                            let bearer = modifiers[idx].bearer.clone();
+                            if let (Some(cond_id), Some(Value::Entity(bearer_ref))) =
+                                (cond_id, bearer)
+                            {
+                                // Update the snapshot on the modifier for subsequent phases.
+                                modifiers[idx].condition_state_fields = fields.clone();
+                                let effect = Effect::SetConditionState {
+                                    target: bearer_ref,
+                                    condition_id: cond_id,
+                                    fields,
+                                };
+                                *phase = DeriveEvalPhase::YieldShouldApplyState(idx);
+                                return Advance::Push(Frame::MutationYield {
+                                    effect,
+                                    pending: None,
+                                    span: Span::default(),
+                                });
+                            }
+                        }
+                    }
+
+                    *phase = DeriveEvalPhase::ShouldApplyGate(idx + 1);
+                    Advance::Continue
+                }
+                Some(Err(e)) => {
+                    env.pop_scope();
+                    env.return_value = None;
+                    Advance::Error(e)
+                }
+                None => {
+                    env.pop_scope();
+                    Advance::Error(RuntimeError::new(
+                        "internal error: AwaitShouldApply completed without result",
+                    ))
+                }
+            }
+        }
+
+        DeriveEvalPhase::YieldShouldApplyState(idx) => {
+            let idx = *idx;
+            // MutationYield completed — advance to next gate.
+            *phase = DeriveEvalPhase::ShouldApplyGate(idx + 1);
+            Advance::Continue
         }
     }
 }

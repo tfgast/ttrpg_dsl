@@ -175,7 +175,17 @@ impl Runner {
                     )
                 })
             };
-            if let Some((has_errors, program, type_env, module_map, sources, diagnostics, loaded_label, error_label)) = hit {
+            if let Some((
+                has_errors,
+                program,
+                type_env,
+                module_map,
+                sources,
+                diagnostics,
+                loaded_label,
+                error_label,
+            )) = hit
+            {
                 if has_errors {
                     self.clear_state(resolved_paths);
                     self.diagnostics = diagnostics;

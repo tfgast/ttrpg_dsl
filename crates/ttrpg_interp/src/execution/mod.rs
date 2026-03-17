@@ -147,6 +147,12 @@ pub(crate) enum CostEvalPhase {
     /// Iterate binding-check candidates: process previous child result,
     /// push next BindingCheck child, or finish.
     CollectCheck,
+    /// Evaluate `should_apply` gate for cost modifier at index.
+    ShouldApplyGate(usize),
+    /// Receive bool result from should_apply Block child.
+    AwaitShouldApply(usize),
+    /// Yield SetConditionState after should_apply mutated state.
+    YieldShouldApplyState(usize),
     /// Set up scope for modifier at index, init walker, save old state.
     ApplyModifier(usize),
     /// Drive the walker: process modify stmts via ExprEval child frames.
@@ -304,6 +310,10 @@ pub(crate) enum Frame {
         /// mapping already done). When Some, Init phase uses these instead of
         /// building from positional `args`.
         pre_fill_params: Option<Vec<DefaultParam>>,
+        /// Indices of modifiers whose `should_apply` returned false.
+        should_apply_skipped: Vec<usize>,
+        /// Result from should_apply Block child frame.
+        should_apply_result: Option<Result<Value, RuntimeError>>,
     },
 
     FunctionEval {
@@ -578,6 +588,10 @@ pub(crate) enum Frame {
         modify_old_free: bool,
         /// State for frame-based modifier collection (CollectCheck phase).
         collect_state: Option<Box<ModifierCollectState>>,
+        /// Indices of modifiers whose `should_apply` returned false.
+        should_apply_skipped: Vec<usize>,
+        /// Result from should_apply Block child frame.
+        should_apply_result: Option<Result<Value, RuntimeError>>,
     },
 
     /// Evaluates call arguments one at a time via ExprEval children,
@@ -979,6 +993,7 @@ impl Frame {
                 modify_hooks_result,
                 modify_walker,
                 collect_state,
+                should_apply_result,
                 ..
             } => {
                 if matches!(phase, CostEvalPhase::CollectCheck) {
@@ -991,6 +1006,9 @@ impl Frame {
                     if let Some(walker) = modify_walker.as_mut() {
                         walker.receive_child(Ok(value));
                     }
+                } else if matches!(phase, CostEvalPhase::AwaitShouldApply(_)) {
+                    // Block child completed for should_apply gate.
+                    *should_apply_result = Some(Ok(value));
                 } else {
                     // EmitHooks child completed for modify_applied hooks.
                     *modify_hooks_result = Some(Ok(value));
@@ -1002,6 +1020,7 @@ impl Frame {
                 modify_hooks_result,
                 modify_walker,
                 collect_state,
+                should_apply_result,
                 ..
             } => {
                 if matches!(
@@ -1020,6 +1039,9 @@ impl Frame {
                     if let Some(walker) = modify_walker.as_mut() {
                         walker.receive_child(Ok(value));
                     }
+                } else if matches!(phase, DeriveEvalPhase::AwaitShouldApply(_)) {
+                    // Block child completed for should_apply gate.
+                    *should_apply_result = Some(Ok(value));
                 } else if matches!(phase, DeriveEvalPhase::AwaitModifyHooks) {
                     *modify_hooks_result = Some(Ok(value));
                 } else {
@@ -1111,6 +1133,7 @@ impl Frame {
                 modify_hooks_result,
                 modify_walker,
                 collect_state,
+                should_apply_result,
                 ..
             } => {
                 if matches!(phase, CostEvalPhase::CollectCheck) {
@@ -1122,6 +1145,8 @@ impl Frame {
                     if let Some(walker) = modify_walker.as_mut() {
                         walker.receive_child(Err(error));
                     }
+                } else if matches!(phase, CostEvalPhase::AwaitShouldApply(_)) {
+                    *should_apply_result = Some(Err(error));
                 } else {
                     *modify_hooks_result = Some(Err(error));
                 }
@@ -1132,6 +1157,7 @@ impl Frame {
                 modify_hooks_result,
                 modify_walker,
                 collect_state,
+                should_apply_result,
                 ..
             } => {
                 if matches!(
@@ -1149,6 +1175,8 @@ impl Frame {
                     if let Some(walker) = modify_walker.as_mut() {
                         walker.receive_child(Err(error));
                     }
+                } else if matches!(phase, DeriveEvalPhase::AwaitShouldApply(_)) {
+                    *should_apply_result = Some(Err(error));
                 } else {
                     *modify_hooks_result = Some(Err(error));
                 }
@@ -1244,6 +1272,13 @@ pub(crate) enum DeriveEvalPhase {
     CollectDone,
     /// Iterate suppression binding-check candidates.
     SuppressCheck,
+    /// Evaluate `should_apply` gate for modifier at index.
+    /// Pushes Block child frame, transitions to AwaitShouldApply.
+    ShouldApplyGate(usize),
+    /// Receive bool result from should_apply Block, handle state write-back.
+    AwaitShouldApply(usize),
+    /// Yield SetConditionState after should_apply mutated state.
+    YieldShouldApplyState(usize),
     /// Set up scope for Phase 1 modifier at index, init walker.
     ApplyPhase1(usize),
     /// Drive walker for Phase 1 modify stmts.
@@ -1860,6 +1895,8 @@ impl<S: WritableState> Execution<S> {
             modify_walker: None,
             collect_state: None,
             pre_fill_params: None,
+            should_apply_skipped: Vec::new(),
+            should_apply_result: None,
         });
         Ok(exec)
     }
@@ -1893,6 +1930,8 @@ impl<S: WritableState> Execution<S> {
             modify_walker: None,
             collect_state: None,
             pre_fill_params: None,
+            should_apply_skipped: Vec::new(),
+            should_apply_result: None,
         });
         Ok(exec)
     }

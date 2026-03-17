@@ -469,8 +469,7 @@ pub(super) fn advance_block(
     // Let/Assign/Expr with non-call expressions: compile to
     // ExprEval frame for step-based evaluation.
     if let Some((rhs_expr, awaiting)) = extract_resumable_expr(&stmt) {
-        if let Some(work) = core.compile_expr_cached(&rhs_expr)
-        {
+        if let Some(work) = core.compile_expr_cached(&rhs_expr) {
             *awaiting_fn = Some(awaiting);
             return Advance::Push(Frame::ExprEval {
                 work,

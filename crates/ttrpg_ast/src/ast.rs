@@ -785,6 +785,9 @@ pub enum ConditionClause {
     OnEvent(OnEventClause),
     /// Include directive (pre-expansion only; replaced by expand_includes).
     Include(IncludeClause),
+    /// Imperative gate that runs before a modify clause body.
+    /// Returns bool: true means run the modify, false means skip it.
+    ShouldApply(ShouldApplyClause),
 }
 
 /// An imperative block that runs when a condition is applied or removed.
@@ -803,6 +806,22 @@ pub struct LifecycleBlock {
 #[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub struct OnEventClause {
     pub trigger: TriggerExpr,
+    pub body: Block,
+    pub span: Span,
+}
+
+/// An imperative bool-returning gate paired with a modify clause.
+///
+/// Runs at execution time (after stacking/suppression), against live
+/// condition state (mutable). If the body returns false, the paired
+/// modify clause body is skipped entirely.
+#[derive(Clone, Debug)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
+pub struct ShouldApplyClause {
+    /// Which derive/mechanic (or action.cost) this gates — must match
+    /// a `modify` clause in the same condition by target name.
+    pub target: ModifyTarget,
+    pub bindings: Vec<ModifyBinding>,
     pub body: Block,
     pub span: Span,
 }

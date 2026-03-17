@@ -1044,6 +1044,9 @@ impl<'a> Checker<'a> {
                         inc.span,
                     );
                 }
+                ConditionClause::ShouldApply(sa) => {
+                    self.check_should_apply_clause(sa, c, &state_ty_fields);
+                }
             }
         }
     }

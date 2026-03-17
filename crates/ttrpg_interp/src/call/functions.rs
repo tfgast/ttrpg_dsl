@@ -92,8 +92,9 @@ pub(crate) fn evaluate_fn_with_values(
         }
     }
 
-    // Collect modifiers, Phase 1, execute body, Phase 2
+    // Collect modifiers, evaluate should_apply gates, Phase 1, body, Phase 2
     let modifiers = collect_modifiers_owned(env, name, &fn_info, &bound)?;
+    let modifiers = crate::pipeline::filter_by_should_apply(env, modifiers, &bound)?;
 
     let bound = if modifiers.is_empty() {
         bound
@@ -296,6 +297,7 @@ pub(super) fn dispatch_derive_or_mechanic(
 
     // Collect modifiers from conditions and options
     let modifiers = collect_modifiers_owned(env, name, &fn_info, &bound)?;
+    let modifiers = crate::pipeline::filter_by_should_apply(env, modifiers, &bound)?;
 
     // Phase 1: rewrite input parameters
     let bound = if modifiers.is_empty() {

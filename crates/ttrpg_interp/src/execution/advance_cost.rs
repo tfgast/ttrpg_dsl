@@ -24,6 +24,8 @@ pub(super) fn advance_cost_eval(
         modify_old_tokens,
         modify_old_free,
         collect_state,
+        should_apply_skipped,
+        should_apply_result,
     } = frame
     else {
         unreachable!()
@@ -117,7 +119,12 @@ pub(super) fn advance_cost_eval(
                 if modifiers.is_empty() {
                     *phase = CostEvalPhase::BudgetPreCheck(0);
                 } else {
-                    *phase = CostEvalPhase::ApplyModifier(0);
+                    let has_sa = modifiers.iter().any(|m| m.should_apply_body.is_some());
+                    *phase = if has_sa {
+                        CostEvalPhase::ShouldApplyGate(0)
+                    } else {
+                        CostEvalPhase::ApplyModifier(0)
+                    };
                 }
             } else {
                 *collect_state = Some(Box::new(ModifierCollectState {
@@ -484,6 +491,137 @@ pub(super) fn advance_cost_eval(
                     *call_span,
                 )),
             }
+        }
+
+        // ── should_apply gate ─────────────────────────────────────
+        CostEvalPhase::ShouldApplyGate(idx) => {
+            let idx = *idx;
+            if idx >= modifiers.len() {
+                // All gates evaluated — filter out skipped modifiers.
+                if !should_apply_skipped.is_empty() {
+                    let skipped = std::mem::take(should_apply_skipped);
+                    let kept: Vec<OwnedModifier> = std::mem::take(modifiers)
+                        .into_iter()
+                        .enumerate()
+                        .filter(|(i, _)| !skipped.contains(i))
+                        .map(|(_, m)| m)
+                        .collect();
+                    *modifiers = kept;
+                }
+                if modifiers.is_empty() {
+                    *phase = CostEvalPhase::BudgetPreCheck(0);
+                } else {
+                    *phase = CostEvalPhase::ApplyModifier(0);
+                }
+                return Advance::Continue;
+            }
+
+            if modifiers[idx].should_apply_body.is_none() {
+                *phase = CostEvalPhase::ShouldApplyGate(idx + 1);
+                return Advance::Continue;
+            }
+
+            let modifier = &modifiers[idx];
+            let sa_body = modifier.should_apply_body.clone().unwrap();
+
+            env.push_scope();
+            helpers::bind_modifier_context(env, modifier);
+
+            // Re-bind state as MUTABLE from live condition.
+            if let (Some(Value::Entity(bearer_ref)), Some(cond_id)) =
+                (&modifier.bearer, modifier.condition_id)
+            {
+                if let Some(conditions) = sp.read_conditions(bearer_ref) {
+                    if let Some(live_cond) = conditions.iter().find(|c| c.id == cond_id) {
+                        if !live_cond.state_fields.is_empty() {
+                            env.bind(
+                                Name::from("state"),
+                                Value::Struct {
+                                    name: Name::from("state"),
+                                    fields: live_cond.state_fields.clone(),
+                                },
+                            );
+                        }
+                    }
+                }
+            }
+
+            *phase = CostEvalPhase::AwaitShouldApply(idx);
+            Advance::Push(Frame::Block {
+                stmts: sa_body.node,
+                index: 0,
+                result: Value::Void,
+                expr_cache: Vec::new(),
+                awaiting_fn: None,
+                awaiting_error: None,
+            })
+        }
+
+        CostEvalPhase::AwaitShouldApply(idx) => {
+            let idx = *idx;
+            match should_apply_result.take() {
+                Some(Ok(value)) => {
+                    let mut final_state = None;
+                    if let Some(Value::Struct { fields, .. }) = env
+                        .scopes
+                        .last()
+                        .and_then(|s| s.bindings.get(&Name::from("state")))
+                        .cloned()
+                    {
+                        final_state = Some(fields);
+                    }
+                    env.pop_scope();
+                    env.return_value = None;
+
+                    let should_run = matches!(value, Value::Bool(true));
+                    if !should_run {
+                        should_apply_skipped.push(idx);
+                    }
+
+                    if let Some(fields) = final_state {
+                        if !fields.is_empty() {
+                            let cond_id = modifiers[idx].condition_id;
+                            let bearer = modifiers[idx].bearer.clone();
+                            if let (Some(cond_id), Some(Value::Entity(bearer_ref))) =
+                                (cond_id, bearer)
+                            {
+                                modifiers[idx].condition_state_fields = fields.clone();
+                                let effect = Effect::SetConditionState {
+                                    target: bearer_ref,
+                                    condition_id: cond_id,
+                                    fields,
+                                };
+                                *phase = CostEvalPhase::YieldShouldApplyState(idx);
+                                return Advance::Push(Frame::MutationYield {
+                                    effect,
+                                    pending: None,
+                                    span: Span::default(),
+                                });
+                            }
+                        }
+                    }
+
+                    *phase = CostEvalPhase::ShouldApplyGate(idx + 1);
+                    Advance::Continue
+                }
+                Some(Err(e)) => {
+                    env.pop_scope();
+                    env.return_value = None;
+                    Advance::Error(e)
+                }
+                None => {
+                    env.pop_scope();
+                    Advance::Error(RuntimeError::new(
+                        "internal error: CostEval AwaitShouldApply completed without result",
+                    ))
+                }
+            }
+        }
+
+        CostEvalPhase::YieldShouldApplyState(idx) => {
+            let idx = *idx;
+            *phase = CostEvalPhase::ShouldApplyGate(idx + 1);
+            Advance::Continue
         }
     }
 }

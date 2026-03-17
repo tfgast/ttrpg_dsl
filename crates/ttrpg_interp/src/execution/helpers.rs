@@ -689,6 +689,7 @@ pub(super) fn owned_modifier_from_condition(
     use crate::effect::ModifySource;
     OwnedModifier {
         source: ModifySource::Condition(condition.name.clone()),
+        should_apply_body: crate::pipeline::find_should_apply_body(cond_decl, clause),
         clause: clause.clone(),
         bearer: Some(Value::Entity(condition.bearer)),
         receiver_name: Some(cond_decl.receiver_name.clone()),

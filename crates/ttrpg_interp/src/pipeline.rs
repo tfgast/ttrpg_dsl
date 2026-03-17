@@ -322,7 +322,8 @@ pub(crate) fn collect_modifiers_owned(
                     | ConditionClause::OnApply(_)
                     | ConditionClause::OnRemove(_)
                     | ConditionClause::OnEvent(_)
-                    | ConditionClause::Include(_) => continue,
+                    | ConditionClause::Include(_)
+                    | ConditionClause::ShouldApply(_) => continue,
                 };
 
                 // Does the target function name match?
@@ -359,6 +360,7 @@ pub(crate) fn collect_modifiers_owned(
                         condition.gained_at,
                         OwnedModifier {
                             source: ModifySource::Condition(condition.name.clone()),
+                            should_apply_body: find_should_apply_body(cond_decl, clause),
                             clause: clause.clone(),
                             bearer: Some(Value::Entity(condition.bearer)),
                             receiver_name: Some(cond_decl.receiver_name.clone()),
@@ -429,6 +431,7 @@ pub(crate) fn collect_modifiers_owned(
                     condition_id: None,
                     condition_duration: None,
                     condition_state_fields: BTreeMap::new(),
+                    should_apply_body: None,
                 });
             }
         }
@@ -549,6 +552,109 @@ pub(crate) struct OwnedModifier {
     pub condition_duration: Option<Value>,
     /// Condition state fields (for read-only access in modify body/bindings).
     pub condition_state_fields: BTreeMap<Name, Value>,
+    /// Optional `should_apply` gate body. If present, evaluated at execution time
+    /// before the modify body; if it returns false, the modify is skipped.
+    pub should_apply_body: Option<ttrpg_ast::ast::Block>,
+}
+
+/// Find a `should_apply` clause in a condition declaration that matches the
+/// given modify clause's target name.
+pub(crate) fn find_should_apply_body(
+    cond_decl: &ttrpg_ast::ast::ConditionDecl,
+    modify_clause: &ModifyClause,
+) -> Option<ttrpg_ast::ast::Block> {
+    use ttrpg_ast::ast::ConditionClause;
+    for clause in &cond_decl.clauses {
+        if let ConditionClause::ShouldApply(sa) = clause {
+            let matches = match (&sa.target, &modify_clause.target) {
+                (ModifyTarget::Named(sa_n), ModifyTarget::Named(m_n)) => sa_n == m_n,
+                (ModifyTarget::Cost(sa_n), ModifyTarget::Cost(m_n)) => sa_n == m_n,
+                _ => false,
+            };
+            if matches {
+                return Some(sa.body.clone());
+            }
+        }
+    }
+    None
+}
+
+/// Evaluate `should_apply` gates on modifiers and filter out those that return false.
+/// State mutations from should_apply bodies are written back via SetConditionState effects.
+pub(crate) fn filter_by_should_apply(
+    env: &mut Env,
+    modifiers: Vec<OwnedModifier>,
+    params: &[(Name, Value)],
+) -> Result<Vec<OwnedModifier>, RuntimeError> {
+    use crate::eval::eval_block;
+
+    let mut kept = Vec::with_capacity(modifiers.len());
+    for mut modifier in modifiers {
+        if let Some(ref sa_body) = modifier.should_apply_body {
+            env.push_scope();
+
+            // Bind receiver and condition params
+            if let (Some(bearer), Some(recv_name)) = (&modifier.bearer, &modifier.receiver_name) {
+                env.bind(recv_name.clone(), bearer.clone());
+            }
+            for (name, val) in &modifier.condition_params {
+                env.bind(name.clone(), val.clone());
+            }
+
+            // Bind state as mutable
+            if !modifier.condition_state_fields.is_empty() {
+                env.bind(
+                    Name::from("state"),
+                    Value::Struct {
+                        name: Name::from("state"),
+                        fields: modifier.condition_state_fields.clone(),
+                    },
+                );
+            }
+
+            // Bind function params
+            for (name, val) in params {
+                env.bind(name.clone(), val.clone());
+            }
+
+            let result = eval_block(env, sa_body);
+
+            // Read back mutated state before popping scope
+            let final_state = env
+                .scopes
+                .last()
+                .and_then(|s| s.bindings.get(&Name::from("state")))
+                .cloned();
+
+            env.pop_scope();
+            env.return_value = None;
+
+            let value = result?;
+
+            // Write back state if changed
+            if let Some(Value::Struct { fields, .. }) = final_state {
+                if !fields.is_empty() {
+                    if let (Some(Value::Entity(bearer_ref)), Some(cond_id)) =
+                        (&modifier.bearer, modifier.condition_id)
+                    {
+                        modifier.condition_state_fields = fields.clone();
+                        env.emit(Effect::SetConditionState {
+                            target: *bearer_ref,
+                            condition_id: cond_id,
+                            fields,
+                        });
+                    }
+                }
+            }
+
+            if matches!(value, Value::Bool(true)) {
+                kept.push(modifier);
+            }
+        } else {
+            kept.push(modifier);
+        }
+    }
+    Ok(kept)
 }
 
 /// Check if a condition modify clause's bindings match the current call params.

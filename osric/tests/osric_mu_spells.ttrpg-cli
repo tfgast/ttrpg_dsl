@@ -829,7 +829,7 @@ assert_condition mi_caster, MirrorImageActive
 
 // ── Image absorbs attack: roll targets image ──────────────────
 // 3 images → roll 1d4: values 1-3 = image, 4 = caster.
-// TakeDamage(source: Attack) emits DamageIncoming, handler rolls targeting.
+// should_apply gate on deal_damage rolls targeting.
 // Roll targeting = 2 → image absorbs, damage zeroed.
 rolls clear
 rolls 2

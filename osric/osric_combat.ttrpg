@@ -163,10 +163,6 @@ system "OSRIC Combat" {
     //  EVENTS
     // ========================================================
 
-    // Fires BEFORE deal_damage pipeline — conditions can react
-    // and set state flags that modify deal_damage (e.g. Mirror Image).
-    event DamageIncoming(target: entity, attacker: entity, amount: int, source: DamageSource) {}
-
     event Damaged(target: entity, attacker: entity, amount: int) {}
 
     event CreatureSlain(target: entity, attacker: entity) {}
@@ -731,7 +727,8 @@ system "OSRIC Combat" {
         target: entity,
         attacker: entity,
         raw_damage: int,
-        damage_type: DamageType = DamageType.Blunt
+        damage_type: DamageType = DamageType.Blunt,
+        source: DamageSource = DamageSource.Attack
     ) -> int #damage_dealt {
         raw_damage
     }
@@ -750,9 +747,8 @@ system "OSRIC Combat" {
     ) {
         cost free
         resolve {
-            emit DamageIncoming(target: target, attacker: attacker, amount: raw_damage, source: source)
             let was_unconscious = has_condition(target, Unconscious)
-            let final_damage = deal_damage(target, attacker, raw_damage, damage_type)
+            let final_damage = deal_damage(target, attacker, raw_damage, damage_type, source)
             target.hp = target.hp - final_damage
             emit Damaged(target: target, attacker: attacker, amount: final_damage)
 
@@ -793,8 +789,7 @@ system "OSRIC Combat" {
     ) {
         cost free
         resolve {
-            emit DamageIncoming(target: target, attacker: attacker, amount: raw_damage, source: source)
-            let final_damage = deal_damage(target, attacker, raw_damage, damage_type)
+            let final_damage = deal_damage(target, attacker, raw_damage, damage_type, source)
             target.hp = target.hp - final_damage
             emit Damaged(target: target, attacker: attacker, amount: final_damage)
 
