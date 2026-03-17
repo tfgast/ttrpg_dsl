@@ -3994,7 +3994,7 @@ fn block_frame_empty_body() {
 #[test]
 fn block_frame_conditional_mutation() {
     // Conditional logic within the block — verifies that
-    // if/else is handled correctly by bridged statements.
+    // if/else is handled correctly by frame-based statements.
     let (core, _) = make_core(
         r"
         system Test {
@@ -5781,8 +5781,8 @@ fn async_differential_condition_with_state_default() {
 fn async_mutation_before_roll_no_double_fire() {
     // When a nested function call performs a mutation (advance_time)
     // before a host-decided effect (roll), the Block frame dispatches
-    // the function call via FunctionEval instead of bridge_eval_with.
-    // This ensures advance_time fires exactly once.
+    // the function call via FunctionEval. This ensures advance_time
+    // fires exactly once.
     use crate::value::{DiceExpr, RollResult};
 
     let (core, _) = make_core(
@@ -6004,10 +6004,10 @@ fn async_assign_with_fn_call_rhs_no_double_fire() {
 // ── Bug fix tests (try_frame_dispatch_stmt) ───────────────
 
 #[test]
-fn yielding_arg_falls_back_to_bridge() {
-    // Bug 1: calling a user function whose arg expression yields
-    // (e.g., roll(1d6).total) should not panic — it should fall
-    // back to the bridge path and yield the RollDice effect.
+fn yielding_arg_yields_effect() {
+    // Calling a user function whose arg expression yields
+    // (e.g., roll(1d6).total) should not panic — it should
+    // yield the RollDice effect via the ExprEval frame.
     use crate::value::{DiceExpr, RollResult};
 
     let (core, _) = make_core(
@@ -6969,8 +6969,8 @@ fn alloc_condition_id_overflow_returns_error() {
 }
 
 #[test]
-fn step_based_bridge_records_coverage() {
-    // Bridge eval in step mode should record coverage hits.
+fn step_based_eval_records_coverage() {
+    // Step-based evaluation should record coverage hits.
     let source = r"
         system Test {
             entity Creature { HP: int }
@@ -6997,7 +6997,7 @@ fn step_based_bridge_records_coverage() {
     let data = cov.borrow();
     assert!(
         !data.hit_spans.is_empty() || !data.hit_functions.is_empty(),
-        "step-based bridge should record coverage hits"
+        "step-based eval should record coverage hits"
     );
 }
 
@@ -7125,7 +7125,6 @@ fn effectful_requires_yields_instead_of_panicking() {
     exec.respond(Response::Acknowledged).unwrap();
 
     // Poll → should yield RollDice for the requires clause, not panic
-    // BUG: currently panics with "unexpected forwarded effect in bridge evaluation"
     let step = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| exec.poll()));
     match step {
         Ok(Ok(Step::Yielded(e))) => {
@@ -7283,10 +7282,10 @@ fn action_with_insufficient_budget_emits_requires_check_in_step_mode() {
     );
 }
 
-// ── Bridge category assertions ────────────────────────────
+// ── Frame-based dispatch assertions ───────────────────────
 
 #[test]
-fn assert_no_dispatch_bridges_derive() {
+fn frame_dispatch_derive() {
     let (core, _) = make_core(
         r"
         system Test {
@@ -7315,7 +7314,7 @@ fn assert_no_dispatch_bridges_derive() {
 }
 
 #[test]
-fn assert_no_dispatch_bridges_function() {
+fn frame_dispatch_function() {
     let (core, _) = make_core(
         r"
         system Test {
@@ -7343,7 +7342,7 @@ fn assert_no_dispatch_bridges_function() {
 }
 
 #[test]
-fn assert_no_dispatch_bridges_table() {
+fn frame_dispatch_table() {
     let (core, _) = make_core(
         r#"
         system Test {

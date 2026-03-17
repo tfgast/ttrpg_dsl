@@ -27,8 +27,8 @@ pub(super) fn advance_block(
         return Advance::Error(err);
     }
 
-    // Handle completed child frame for a statement that was
-    // dispatched via FunctionEval instead of bridge_eval_with.
+    // Handle completed child frame for a statement dispatched
+    // via FunctionEval or ExprEval.
     if let Some(awaiting) = awaiting_fn.take() {
         let value = std::mem::replace(result, Value::Void);
         match awaiting {
@@ -450,12 +450,11 @@ pub(super) fn advance_block(
         return Advance::Push(emit_frame);
     }
 
-    // Let/Assign/Expr with non-call expressions: try ExprEval
-    // for trivially-pure expressions, then fall back to
-    // ExprEval for frame-based async evaluation.
-    if let Some((bridge_expr, awaiting)) = extract_resumable_expr(&stmt) {
+    // Let/Assign/Expr with non-call expressions: compile to
+    // ExprEval frame for step-based evaluation.
+    if let Some((rhs_expr, awaiting)) = extract_resumable_expr(&stmt) {
         if let Some(work) =
-            crate::expr_eval::compile_expr(&bridge_expr, &core.type_env, &core.program)
+            crate::expr_eval::compile_expr(&rhs_expr, &core.type_env, &core.program)
         {
             *awaiting_fn = Some(awaiting);
             return Advance::Push(Frame::ExprEval {
@@ -474,7 +473,7 @@ pub(super) fn advance_block(
         env.pop_scope();
         return Advance::Error(RuntimeError::with_span(
             "expression could not be compiled for step-based evaluation",
-            bridge_expr.span,
+            rhs_expr.span,
         ));
     }
 

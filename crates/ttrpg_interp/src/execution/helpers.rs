@@ -76,8 +76,8 @@ pub(super) fn dispatch_builtin_call(
     )))
 }
 
-/// Try to dispatch a statement via frame-based execution instead of
-/// `bridge_eval_with`. Returns `Some((frame, awaiting))` if the
+/// Try to dispatch a statement via specialized frame (CallSetup/FunctionEval).
+/// Returns `Some((frame, awaiting))` if the
 /// statement is a bare function call or a let binding whose value is
 /// a function call that can be dispatched via `CallSetup`/`FunctionEval`.
 ///
@@ -159,7 +159,7 @@ pub(super) fn try_frame_dispatch_stmt(
             match params.iter().position(|p| p.name == *name) {
                 Some(p) if slot_used[p] => return Ok(None), // duplicate
                 Some(p) => p,
-                None => return Ok(None), // unknown param — bridge will error
+                None => return Ok(None), // unknown param — caller will error
             }
         } else {
             if next_positional >= params.len() {
@@ -195,7 +195,7 @@ pub(super) fn try_frame_dispatch_stmt(
                 return Ok(None); // missing default expr
             }
         } else {
-            return Ok(None); // missing required arg — bridge will error
+            return Ok(None); // missing required arg — caller will error
         }
     }
 
@@ -224,8 +224,7 @@ pub(super) fn try_frame_dispatch_stmt(
 /// Evaluate an expression using the frame-based ExprEval machinery.
 ///
 /// Compiles the expression to ExprWork and runs it synchronously via
-/// `run_frame_to_completion_sync`. This replaces the recursive interpreter
-/// bridge for expression evaluation in the frame-based path.
+/// `run_frame_to_completion_sync`.
 pub(crate) fn eval_expr_via_frame(
     core: &RuntimeCore,
     env: &mut ExecEnv,
@@ -254,8 +253,8 @@ pub(crate) fn eval_expr_via_frame(
 ///
 /// This is the same loop as `Execution::drive()` but operates on a standalone
 /// frame stack with borrowed `RuntimeCore`/`ExecEnv`/`StateProvider`/`EffectHandler`.
-/// Used by `expr_eval::eval_expr_step` to eliminate direct bridge calls while
-/// still supporting child frames (DeriveEval, FunctionEval, etc.).
+/// Used by `expr_eval::eval_expr_step` for synchronous evaluation of
+/// child frames (DeriveEval, FunctionEval, etc.).
 pub(crate) fn run_frame_to_completion_sync(
     initial: Frame,
     core: &RuntimeCore,

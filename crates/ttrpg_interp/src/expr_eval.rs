@@ -3183,7 +3183,7 @@ fn build_action_lifecycle(
 
 /// Bind pre-evaluated argument values to parameters.
 ///
-/// Handles positional and named args, fills defaults via bridge evaluation.
+/// Handles positional and named args, fills defaults via synchronous evaluation.
 fn bind_args_from_values(
     params: &[ttrpg_checker::env::ParamInfo],
     arg_meta: &[ArgMeta],

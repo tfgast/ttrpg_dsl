@@ -129,7 +129,7 @@ pub(super) fn advance_derive_eval(
         DeriveEvalPhase::Init => {
             if *is_table && pre_fill_params.is_none() {
                 // Tables are pure lookups — dispatch directly
-                // via AssignContext (no bridge needed).
+                // via AssignContext.
                 // (Only when args are fully resolved; if pre_fill_params
                 // is set, defaults need evaluation first via FillDefaults.)
                 let n = name.clone();

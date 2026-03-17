@@ -65,7 +65,7 @@ pub(super) fn advance_action_lifecycle(
 
                     // Always flow through the frame-based state machine
                     // (EvalRequires → EvalCost → RunResolve), even on the
-                    // sync path. This eliminates the RunPipeline bridge.
+                    // sync path.
                     *step = ActionStep::EvalRequires;
 
                     // Push FillDefaults if there are defaults to evaluate.

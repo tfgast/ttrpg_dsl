@@ -130,7 +130,7 @@ pub(crate) enum ActionStep {
     EvalCost,
     /// Cost evaluation child frame completed.
     AwaitCostEval,
-    /// Run the resolve body via bridge.
+    /// Run the resolve body via Block frame.
     RunResolve,
     /// Body completed: emit ActionCompleted.
     EmitCompleted,
@@ -666,14 +666,10 @@ pub(crate) enum BindingScopeMode {
 impl Frame {
     /// Advance the frame one step. Returns the action for the driver loop.
     ///
-    /// When `handler` is `Some`, host-decided effects inside bridge evaluation
-    /// are handled synchronously (used by `run_with_handler`). When `None`,
-    /// bridge evaluation panics on host-decided effects (async `poll()` path).
-    /// Advance the frame one step. Returns the action for the driver loop.
-    ///
-    /// For bridge evaluation of locally-applied effects, `NoYieldHandler` is
-    /// used. For user-facing expressions (ExprEntry, DeriveEval, etc.),
-    /// `CachingHandler` provides replay-based yielding on the async path.
+    /// Effects are yielded via `Advance::Yield` for the driver to handle.
+    /// On the sync path (`run_with_handler`), effects are forwarded to the
+    /// host handler directly. On the async path (`poll`), they surface as
+    /// `Step::Yielded` for the host to respond to.
     fn advance(
         &mut self,
         core: &RuntimeCore,
@@ -1940,7 +1936,7 @@ impl<S: WritableState> Execution<S> {
         }
 
         // Collect default expressions for missing optional params.
-        // They'll be evaluated in FunctionEval's advance method via bridge.
+        // They'll be evaluated in FunctionEval's advance method.
         let mut default_params = Vec::new();
         for i in bound.len()..fn_info.params.len() {
             if fn_info.params[i].has_default {
@@ -2194,9 +2190,8 @@ impl<S: WritableState> Execution<S> {
     /// Drive execution to completion using a callback handler.
     ///
     /// This drives the frame stack directly, bypassing the poll/respond
-    /// protocol. Host-decided effects (including those inside bridge
-    /// evaluation like RollDice, Prompt, ConditionApplyGate) are handled
-    /// synchronously by the provided handler.
+    /// protocol. Host-decided effects (RollDice, Prompt, ConditionApplyGate,
+    /// etc.) are handled synchronously by the provided handler.
     pub fn run_with_handler(
         mut self,
         handler: &mut dyn EffectHandler,
