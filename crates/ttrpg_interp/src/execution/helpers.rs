@@ -337,7 +337,7 @@ pub(crate) fn run_frame_to_completion_sync(
             return final_result.unwrap_or(Ok(Value::Void));
         }
 
-        let frame = frames.last_mut().unwrap();
+        let frame = frames.last_mut().expect("frame stack non-empty (checked above)");
         let advance = frame.advance(core, env, sp, eh, &tracker);
 
         match advance {
@@ -401,26 +401,8 @@ pub(super) fn extract_resumable_expr(
     }
 }
 
-/// Compile an expression for ExprEval. Panics if compilation fails.
-pub(super) fn compile_expr_to_frame(expr: &Spanned<ExprKind>, core: &RuntimeCore) -> Frame {
-    if let Some(work) = crate::expr_eval::compile_expr(expr, &core.type_env, &core.program) {
-        Frame::ExprEval {
-            work,
-            operands: Vec::new(),
-            pc: 0,
-            child_result: None,
-            scope_depth: 0,
-        }
-    } else {
-        panic!(
-            "compile_expr failed at {:?} — all expressions should be compilable",
-            expr.span,
-        )
-    }
-}
-
 /// Compile an expression for ExprEval, returning an error if compilation fails.
-pub(super) fn try_compile_expr_to_frame(
+pub(super) fn compile_expr_to_frame(
     expr: &Spanned<ExprKind>,
     core: &RuntimeCore,
 ) -> Result<Frame, RuntimeError> {
@@ -437,6 +419,14 @@ pub(super) fn try_compile_expr_to_frame(
             "expression could not be compiled for frame-based eval",
             expr.span,
         ))
+    }
+}
+
+/// Compile an expression and wrap in `Advance::Push`, or return `Advance::Error`.
+pub(super) fn compile_expr_push(expr: &Spanned<ExprKind>, core: &RuntimeCore) -> Advance {
+    match compile_expr_to_frame(expr, core) {
+        Ok(frame) => Advance::Push(frame),
+        Err(e) => Advance::Error(e),
     }
 }
 
@@ -604,7 +594,7 @@ pub(super) fn build_modify_hooks_frame(
     }
 
     // Use the last payload as the representative payload for hook dispatch.
-    let payload = last_payload.unwrap();
+    let payload = last_payload.expect("at least one hook matched (checked above)");
 
     Ok(Some(Frame::EmitHooks {
         hooks: all_hooks,

@@ -57,6 +57,14 @@ pub(crate) enum WalkerStep {
     Error(RuntimeError),
 }
 
+/// Compile an expression and wrap in `WalkerStep::PushExpr`, or return `WalkerStep::Error`.
+fn compile_expr_walker_step(expr: &Spanned<ExprKind>, core: &RuntimeCore) -> WalkerStep {
+    match compile_expr_to_frame(expr, core) {
+        Ok(frame) => WalkerStep::PushExpr(frame),
+        Err(e) => WalkerStep::Error(e),
+    }
+}
+
 /// Shared state machine for walking `ModifyStmt` lists.
 #[derive(Debug, Clone)]
 pub(crate) struct ModifyStmtWalker {
@@ -185,7 +193,7 @@ impl ModifyStmtWalker {
             // ── Let: shared across all modes ──
             ModifyStmt::Let { name, value, .. } => {
                 self.awaiting = ModifyWalkerAwait::LetExpr(name.clone());
-                WalkerStep::PushExpr(compile_expr_to_frame(value, core))
+                compile_expr_walker_step(value, core)
             }
 
             // ── If: shared across all modes (with phase1 skip optimization) ──
@@ -206,7 +214,7 @@ impl ModifyStmtWalker {
                     return WalkerStep::Continue;
                 }
                 self.awaiting = ModifyWalkerAwait::IfCondition;
-                WalkerStep::PushExpr(compile_expr_to_frame(condition, core))
+                compile_expr_walker_step(condition, core)
             }
 
             // ── CostOverride: cost mode only, pure data ──
@@ -233,13 +241,13 @@ impl ModifyStmtWalker {
                             WalkerStep::Continue
                         } else {
                             self.awaiting = ModifyWalkerAwait::ParamOverride(name.clone());
-                            WalkerStep::PushExpr(compile_expr_to_frame(value, core))
+                            compile_expr_walker_step(value, core)
                         }
                     }
                     ModifyWalkerMode::Phase2 => {
                         if name == "result" {
                             self.awaiting = ModifyWalkerAwait::ResultParamOverride;
-                            WalkerStep::PushExpr(compile_expr_to_frame(value, core))
+                            compile_expr_walker_step(value, core)
                         } else {
                             // Phase2 ignores non-result param overrides.
                             self.index += 1;
@@ -258,7 +266,7 @@ impl ModifyStmtWalker {
             ModifyStmt::ResultOverride { field, value, .. } => {
                 if self.mode == ModifyWalkerMode::Phase2 {
                     self.awaiting = ModifyWalkerAwait::ResultOverride(field.clone());
-                    WalkerStep::PushExpr(compile_expr_to_frame(value, core))
+                    compile_expr_walker_step(value, core)
                 } else {
                     self.index += 1;
                     WalkerStep::Continue

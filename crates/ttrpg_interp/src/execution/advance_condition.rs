@@ -49,7 +49,7 @@ pub(super) fn advance_condition_materialize(
         Advance::Continue
     } else if let Some(ref default_expr) = param.default_expr {
         // Push child frame to evaluate the default expression.
-        Advance::Push(compile_expr_to_frame(default_expr, core))
+        compile_expr_push(default_expr, core)
     } else {
         // Condition param without default — skip it.
         *index += 1;
@@ -136,7 +136,7 @@ pub(super) fn advance_condition_apply_gate(
         }
         *default_scope_pushed = true;
 
-        return Advance::Push(compile_expr_to_frame(field_expr, core));
+        return compile_expr_push(field_expr, core);
     }
 
     // Phase 1: gate response handling.

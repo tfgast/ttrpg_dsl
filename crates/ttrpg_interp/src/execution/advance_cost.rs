@@ -329,7 +329,9 @@ pub(super) fn advance_cost_eval(
                     Advance::Continue
                 }
                 Some(Err(e)) => Advance::Error(e),
-                None => panic!("AwaitModifyHooks without result"),
+                None => Advance::Error(RuntimeError::new(
+                    "internal error: AwaitModifyHooks completed without result",
+                )),
             }
         }
 

@@ -2015,12 +2015,17 @@ impl<S: WritableState> Execution<S> {
             raw,
             ..
         } = self;
-        /// Handler that panics on host-decided effects (used for synchronous poll).
+        /// Handler that should never be reached — in raw poll mode, non-spawn
+        /// effects are yielded to the host, not handled internally.
         struct NoYieldHandler;
         impl EffectHandler for NoYieldHandler {
             fn handle(&mut self, effect: Effect) -> Response {
+                // This is an internal invariant violation: if we reach here,
+                // a frame is trying to auto-resolve a host-decided effect
+                // that should have been yielded instead.
                 panic!(
-                    "unexpected host-decided effect in synchronous poll: {:?}",
+                    "internal invariant violated: unexpected host-decided effect \
+                     in synchronous poll: {:?}",
                     EffectKind::of(&effect)
                 )
             }
@@ -2049,7 +2054,7 @@ impl<S: WritableState> Execution<S> {
                     };
                 }
 
-                let frame = frames.last_mut().unwrap();
+                let frame = frames.last_mut().expect("frame stack non-empty (checked above)");
                 let advance = frame.advance(core, env, &*state, &mut handler, tracker);
 
                 match advance {
@@ -2112,7 +2117,7 @@ impl<S: WritableState> Execution<S> {
                         };
                     }
 
-                    let frame = frames.last_mut().unwrap();
+                    let frame = frames.last_mut().expect("frame stack non-empty (checked above)");
                     let advance = frame.advance(core, env, sp, eh, tracker);
 
                     match advance {
@@ -2214,7 +2219,7 @@ impl<S: WritableState> Execution<S> {
                     return final_result.take().unwrap_or(Ok(Value::Void));
                 }
 
-                let frame = frames.last_mut().unwrap();
+                let frame = frames.last_mut().expect("frame stack non-empty (checked above)");
                 let advance = frame.advance(core, env, sp, eh, tracker);
 
                 match advance {

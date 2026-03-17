@@ -133,7 +133,7 @@ pub(super) fn advance_prompt_waiting(
                 for (pn, pv) in params.iter() {
                     env.bind(pn.clone(), pv.clone());
                 }
-                return Advance::Push(compile_expr_to_frame(&expr, core));
+                return compile_expr_push(&expr, core);
             }
 
             // No suggest expression — skip to emit.

@@ -145,7 +145,7 @@ pub(super) fn advance_action_lifecycle(
             if let Some(req_expr) = requires.as_ref() {
                 // Push ExprEval for the requires expression.
                 *step = ActionStep::AwaitRequiresEval;
-                Advance::Push(compile_expr_to_frame(req_expr, core))
+                compile_expr_push(req_expr, core)
             } else {
                 // No requires clause, skip to cost evaluation
                 *step = ActionStep::EvalCost;
@@ -370,7 +370,7 @@ pub(super) fn advance_call_setup(
 
     // Phase 1: push ExprEval for next arg.
     if *arg_index < arg_exprs.len() {
-        return Advance::Push(compile_expr_to_frame(&arg_exprs[*arg_index], core));
+        return compile_expr_push(&arg_exprs[*arg_index], core);
     }
 
     // Phase 2: all args evaluated — build and push target frame.

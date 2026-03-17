@@ -101,7 +101,7 @@ pub(super) fn advance_emit_eval(
 
             // 3. Evaluate arg expressions one at a time via child frames.
             if *arg_index < args.len() {
-                return Advance::Push(compile_expr_to_frame(&args[*arg_index].value, core));
+                return compile_expr_push(&args[*arg_index].value, core);
             }
 
             // All args evaluated — look up EventDecl and collect defaults.
@@ -158,7 +158,7 @@ pub(super) fn advance_emit_eval(
             }
 
             let (_, ref default_expr) = param_defaults[*default_index];
-            Advance::Push(compile_expr_to_frame(default_expr, core))
+            compile_expr_push(default_expr, core)
         }
 
         EmitEvalPhase::FieldDefaults => {
@@ -180,7 +180,7 @@ pub(super) fn advance_emit_eval(
                 return Advance::Continue;
             }
 
-            Advance::Push(compile_expr_to_frame(default_expr, core))
+            compile_expr_push(default_expr, core)
         }
 
         EmitEvalPhase::Ready => {

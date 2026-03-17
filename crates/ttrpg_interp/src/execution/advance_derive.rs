@@ -91,7 +91,7 @@ pub(super) fn advance_binding_check(
     };
 
     // Push ExprEval child for binding expression.
-    Advance::Push(compile_expr_to_frame(expr, core))
+    compile_expr_push(expr, core)
 }
 
 pub(super) fn advance_derive_eval(
@@ -269,7 +269,7 @@ pub(super) fn advance_derive_eval(
             if *is_table {
                 let resolved_args: Vec<Value> = bound_args
                     .as_ref()
-                    .unwrap()
+                    .expect("bound_args populated during BindArgs phase")
                     .iter()
                     .map(|(_, v)| v.clone())
                     .collect();
@@ -1075,7 +1075,9 @@ pub(super) fn advance_derive_eval(
                     Advance::Pop(val)
                 }
                 Some(Err(e)) => Advance::Error(e),
-                None => panic!("AwaitModifyHooks without result"),
+                None => Advance::Error(RuntimeError::new(
+                    "internal error: AwaitModifyHooks completed without result",
+                )),
             }
         }
     }

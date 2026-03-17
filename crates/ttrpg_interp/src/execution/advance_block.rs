@@ -74,16 +74,14 @@ pub(super) fn advance_block(
                 // MutationYield child completed — just advance.
             }
             AwaitingFn::Return => {
-                env.return_value = Some(value);
-                let ret = env.return_value.clone().unwrap();
+                env.return_value = Some(value.clone());
                 env.pop_scope();
-                return Advance::Pop(ret);
+                return Advance::Pop(value);
             }
         }
         *index += 1;
         expr_cache.clear();
-        if env.return_value.is_some() {
-            let ret = env.return_value.clone().unwrap();
+        if let Some(ret) = env.return_value.clone() {
             env.pop_scope();
             return Advance::Pop(ret);
         }
@@ -96,8 +94,7 @@ pub(super) fn advance_block(
     }
 
     // Check for early return (set by a previous statement).
-    if env.return_value.is_some() {
-        let ret = env.return_value.clone().unwrap();
+    if let Some(ret) = env.return_value.clone() {
         env.pop_scope();
         return Advance::Pop(ret);
     }
@@ -140,7 +137,7 @@ pub(super) fn advance_block(
     {
         if expr_cache.is_empty() {
             // Push ExprEval for entity expression; result goes to expr_cache.
-            match try_compile_expr_to_frame(entity_expr, core) {
+            match compile_expr_to_frame(entity_expr, core) {
                 Ok(frame) => return Advance::Push(frame),
                 Err(e) => {
                     env.pop_scope();
@@ -188,7 +185,7 @@ pub(super) fn advance_block(
             } else {
                 &budget_field_exprs[expr_cache.len() - 1].1
             };
-            match try_compile_expr_to_frame(next_expr, core) {
+            match compile_expr_to_frame(next_expr, core) {
                 Ok(frame) => return Advance::Push(frame),
                 Err(e) => {
                     env.pop_scope();
@@ -235,7 +232,7 @@ pub(super) fn advance_block(
     } = stmt.node
     {
         if expr_cache.is_empty() {
-            match try_compile_expr_to_frame(specs_expr, core) {
+            match compile_expr_to_frame(specs_expr, core) {
                 Ok(frame) => return Advance::Push(frame),
                 Err(e) => {
                     env.pop_scope();
@@ -290,7 +287,7 @@ pub(super) fn advance_block(
     {
         // Phase 1: entity expression.
         if expr_cache.is_empty() {
-            match try_compile_expr_to_frame(entity_expr, core) {
+            match compile_expr_to_frame(entity_expr, core) {
                 Ok(frame) => return Advance::Push(frame),
                 Err(e) => {
                     env.pop_scope();
@@ -301,7 +298,7 @@ pub(super) fn advance_block(
         // Phase 2: field init expressions.
         if expr_cache.len() < 1 + field_inits.len() {
             let idx = expr_cache.len() - 1;
-            match try_compile_expr_to_frame(&field_inits[idx].value, core) {
+            match compile_expr_to_frame(&field_inits[idx].value, core) {
                 Ok(frame) => return Advance::Push(frame),
                 Err(e) => {
                     env.pop_scope();
@@ -340,7 +337,7 @@ pub(super) fn advance_block(
         let total_needed = 1 + field_inits.len() + defaults.len();
         if expr_cache.len() < total_needed {
             let def_idx = expr_cache.len() - 1 - field_inits.len();
-            match try_compile_expr_to_frame(&defaults[def_idx].1, core) {
+            match compile_expr_to_frame(&defaults[def_idx].1, core) {
                 Ok(frame) => return Advance::Push(frame),
                 Err(e) => {
                     env.pop_scope();
@@ -381,7 +378,7 @@ pub(super) fn advance_block(
     } = stmt.node
     {
         if expr_cache.is_empty() {
-            match try_compile_expr_to_frame(entity_expr, core) {
+            match compile_expr_to_frame(entity_expr, core) {
                 Ok(frame) => return Advance::Push(frame),
                 Err(e) => {
                     env.pop_scope();
@@ -598,8 +595,7 @@ pub(super) fn advance_list_comp(
                         Value::Bool(true) => {
                             // Filter passed — evaluate element expression.
                             *phase = ListCompPhase::ElementDone;
-                            let elem_frame = compile_expr_to_frame(element, core);
-                            return Advance::Push(elem_frame);
+                            return compile_expr_push(element, core);
                         }
                         Value::Bool(false) => {
                             // Filter failed — skip item, pop scope.
@@ -641,13 +637,11 @@ pub(super) fn advance_list_comp(
             if let Some(filter_expr) = filter {
                 // Evaluate filter expression.
                 *phase = ListCompPhase::FilterDone;
-                let filter_frame = compile_expr_to_frame(filter_expr, core);
-                return Advance::Push(filter_frame);
+                return compile_expr_push(filter_expr, core);
             }
             // No filter — evaluate element directly.
             *phase = ListCompPhase::ElementDone;
-            let elem_frame = compile_expr_to_frame(element, core);
-            return Advance::Push(elem_frame);
+            return compile_expr_push(element, core);
         }
         // Pattern didn't match — skip.
         *index += 1;
@@ -677,7 +671,7 @@ pub(super) fn advance_expr_entry(
         };
     }
     match expr.take() {
-        Some(ref e) => Advance::Push(compile_expr_to_frame(e, core)),
+        Some(ref e) => compile_expr_push(e, core),
         None => Advance::Error(RuntimeError::new("ExprEntry frame has no expression")),
     }
 }
@@ -721,7 +715,7 @@ pub(super) fn advance_fill_defaults(
         Advance::Continue
     } else if let Some(ref default_expr) = param.default_expr {
         // Push child frame to evaluate the default expression.
-        Advance::Push(compile_expr_to_frame(default_expr, core))
+        compile_expr_push(default_expr, core)
     } else {
         // Missing required parameter.
         Advance::Error(RuntimeError::new(format!(
