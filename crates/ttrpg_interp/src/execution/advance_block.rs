@@ -88,7 +88,10 @@ pub(super) fn advance_block(
     }
 
     // Push scope on first entry (before first statement).
-    if *index == 0 {
+    // Guard with expr_cache.is_empty() so we don't push a second scope when
+    // re-entering after an expr_cache child (entity eval for WithBudget, etc.)
+    // completes without advancing the statement index.
+    if *index == 0 && expr_cache.is_empty() {
         env.push_scope();
     }
 
@@ -103,9 +106,18 @@ pub(super) fn advance_block(
     // with no statements always return Void, matching the recursive
     // evaluator's `eval_block` which only checks return_value inside the
     // statement loop (i.e., after at least one statement has run).
-    if let Some(ret) = env.return_value.clone() {
-        env.pop_scope();
-        return Advance::Pop(ret);
+    // Only check return_value when we're not in the middle of an expr_cache
+    // multi-step evaluation.  A `return` inside a nested expression (e.g. a
+    // match arm block within a MapLit that is the entity expression of a
+    // with_budget) sets return_value, but the recursive interpreter continues
+    // evaluating the expression and only checks return_value after the full
+    // statement completes.  Skipping the check when expr_cache is non-empty
+    // matches that behaviour.
+    if expr_cache.is_empty() {
+        if let Some(ret) = env.return_value.clone() {
+            env.pop_scope();
+            return Advance::Pop(ret);
+        }
     }
 
     // Evaluate the current statement.

@@ -7534,3 +7534,184 @@ fn unwrap_yielded(step: Step) -> Box<Effect> {
         Step::Done(_) => panic!("expected Yielded, got Done"),
     }
 }
+
+// ── Regression tests for return_value / expr_cache interaction ──
+//
+// These cover a fuzz-discovered divergence where `env.return_value` set by a
+// `return` inside a nested expression (e.g. a match arm block within the entity
+// expression of `with_budget`) caused the Block frame to short-circuit on
+// re-entry, skipping the rest of the statement.  The recursive interpreter was
+// unaffected because it evaluates expressions synchronously and only checks
+// `return_value` after the full statement completes.
+
+/// Like `setup` but tolerates checker errors — for testing ill-typed programs
+/// that still exercise interpreter code paths (matching the fuzz harness which
+/// intentionally passes ill-typed ASTs through both interpreters).
+fn setup_allow_errors(source: &str) -> (Arc<ttrpg_ast::ast::Program>, Arc<TypeEnv>) {
+    let (program, parse_errors) = ttrpg_parser::parse(source, ttrpg_ast::FileId::SYNTH);
+    assert!(
+        parse_errors.is_empty(),
+        "parse errors: {:?}",
+        parse_errors.iter().map(|d| &d.message).collect::<Vec<_>>()
+    );
+    let mut lower_diags = Vec::new();
+    let program = ttrpg_parser::lower_moves(program, &mut lower_diags);
+    let result = ttrpg_checker::check(&program);
+    (Arc::new(program), Arc::new(result.env))
+}
+
+/// Regression: return inside match arm block within with_budget entity
+/// expression.  The entity expression evaluates a match that hits an arm whose
+/// body contains `return`.  The with_budget should still error because the
+/// result is not an entity — not silently return the match arm's value.
+///
+/// Bug: when an expr_cache child frame (entity expression eval) set
+/// env.return_value via a nested `return` in a match arm block, the Block
+/// frame would see return_value on re-entry (with index still 0) and
+/// short-circuit instead of reaching the "expected entity" error.
+#[test]
+fn differential_return_in_expr_cache_with_budget() {
+    // The match is the entity expression of with_budget.  The wildcard arm's
+    // block body executes `return none`, setting env.return_value.  The match
+    // itself evaluates to `none` (not an entity), so with_budget should error.
+    // In the buggy code the Block frame saw return_value on re-entry and
+    // short-circuited, returning Ok(Option(None)) instead of error.
+    //
+    // The checker rejects this (return type mismatch), but both interpreters
+    // should still agree — matching the fuzz harness which ignores type errors.
+    let source = r#"
+        system Test {
+            struct TurnBudget { action: int }
+            entity Character { HP: int }
+            function buggy(c: Character) {
+                with_budget(match 1 { _ => { return none } }, { action: 1 }) {
+                    c.HP -= 1
+                }
+            }
+        }
+    "#;
+
+    let (program, type_env) = setup_allow_errors(source);
+
+    // Recursive path
+    let interp = crate::Interpreter::new(&program, &type_env).unwrap();
+    let mut game1 = GameState::new();
+    let c1 = add_character(&mut game1, 10);
+    let adapter1 = StateAdapter::new(game1);
+    let mut handler1 = ScriptedHandler::always_ack();
+    let result1 = adapter1.run(&mut handler1, |state, handler| {
+        interp.evaluate_function(state, handler, "buggy", vec![Value::Entity(c1)])
+    });
+
+    // Step-based path
+    let core = RuntimeCore::new(Arc::clone(&program), Arc::clone(&type_env), 1, 1);
+    let mut game2 = GameState::new();
+    let c2 = add_character(&mut game2, 10);
+    let adapter2 = StateAdapter::new(game2);
+    let exec = Execution::start_function(
+        core,
+        adapter2,
+        "buggy",
+        vec![Value::Entity(c2)],
+    )
+    .unwrap();
+    let mut handler2 = ScriptedHandler::always_ack();
+    let result2 = exec.run_with_handler(&mut handler2);
+
+    // Both paths must agree — the return_value set inside the match arm
+    // must not cause the step path to diverge.
+    match (&result1, &result2) {
+        (Ok(v1), Ok(v2)) => assert_eq!(v1, v2, "values diverge"),
+        (Err(_), Err(_)) => {} // both error — OK
+        _ => panic!(
+            "DIVERGENCE: recursive={result1:?}, step={result2:?}"
+        ),
+    }
+}
+
+/// Regression: return inside a match arm block within a let-binding expression.
+/// Even though `let` doesn't use expr_cache, this exercises the same
+/// return_value propagation path — verifying the fix doesn't regress on the
+/// simpler case where the return_value should propagate normally.
+#[test]
+fn differential_return_in_match_arm_block_let() {
+    let source = r#"
+        system Test {
+            entity Character { HP: int }
+            function early_via_match() -> int {
+                let x = match 1 {
+                    _ => {
+                        return 42
+                    }
+                }
+                // dead code — should not be reached because the match arm
+                // body executed `return 42`.
+                99
+            }
+        }
+    "#;
+
+    let (program, type_env) = setup(source);
+
+    let interp = crate::Interpreter::new(&program, &type_env).unwrap();
+    let game1 = GameState::new();
+    let adapter1 = StateAdapter::new(game1);
+    let mut handler1 = ScriptedHandler::always_ack();
+    let result1 = adapter1.run(&mut handler1, |state, handler| {
+        interp.evaluate_function(state, handler, "early_via_match", vec![])
+    });
+
+    let core = RuntimeCore::new(Arc::clone(&program), Arc::clone(&type_env), 1, 1);
+    let game2 = GameState::new();
+    let adapter2 = StateAdapter::new(game2);
+    let exec = Execution::start_function(core, adapter2, "early_via_match", vec![]).unwrap();
+    let mut handler2 = ScriptedHandler::always_ack();
+    let result2 = exec.run_with_handler(&mut handler2);
+
+    match (&result1, &result2) {
+        (Ok(v1), Ok(v2)) => assert_eq!(v1, v2, "values diverge"),
+        (Err(_), Err(_)) => {}
+        _ => panic!(
+            "DIVERGENCE: recursive={result1:?}, step={result2:?}"
+        ),
+    }
+}
+
+/// Regression: return_value from a previous statement should still propagate
+/// correctly when no expr_cache is involved.  This verifies the guard on the
+/// return_value check doesn't suppress legitimate early returns.
+#[test]
+fn return_value_propagates_across_statements() {
+    let source = r#"
+        system Test {
+            entity Character { HP: int }
+            function early_ret() -> int {
+                return 42
+                // dead code; should not be reached
+                99
+            }
+        }
+    "#;
+
+    let (program, type_env) = setup(source);
+
+    // Recursive
+    let interp = crate::Interpreter::new(&program, &type_env).unwrap();
+    let game1 = GameState::new();
+    let adapter1 = StateAdapter::new(game1);
+    let mut handler1 = ScriptedHandler::always_ack();
+    let result1 = adapter1.run(&mut handler1, |state, handler| {
+        interp.evaluate_function(state, handler, "early_ret", vec![])
+    });
+
+    // Step
+    let core = RuntimeCore::new(Arc::clone(&program), Arc::clone(&type_env), 1, 1);
+    let game2 = GameState::new();
+    let adapter2 = StateAdapter::new(game2);
+    let exec = Execution::start_function(core, adapter2, "early_ret", vec![]).unwrap();
+    let mut handler2 = ScriptedHandler::always_ack();
+    let result2 = exec.run_with_handler(&mut handler2);
+
+    assert_eq!(result1.unwrap(), Value::Int(42));
+    assert_eq!(result2.unwrap(), Value::Int(42));
+}
