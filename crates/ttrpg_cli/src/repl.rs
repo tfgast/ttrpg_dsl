@@ -27,9 +27,7 @@ enum PromptMode {
         suggest: Option<String>,
     },
     /// Waiting for a GM gate decision (accept/veto/override).
-    Gate {
-        summary: String,
-    },
+    Gate { summary: String },
 }
 
 /// Custom prompt for the TTRPG REPL.

@@ -69,8 +69,7 @@ impl Runner {
         }
 
         let state = if on { "enabled" } else { "disabled" };
-        self.output
-            .push(format!("gm gate {kind_str} {state}"));
+        self.output.push(format!("gm gate {kind_str} {state}"));
         Ok(())
     }
 

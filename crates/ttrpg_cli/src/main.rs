@@ -254,7 +254,9 @@ fn exec_commands(label: &str, content: &str, coverage: bool, quiet: bool) {
         had_error = true;
     }
     if runner.in_gate() {
-        eprintln!("{label}: error: pending GM gate at end of input (missing gm accept/veto/override)");
+        eprintln!(
+            "{label}: error: pending GM gate at end of input (missing gm accept/veto/override)"
+        );
         had_error = true;
     }
 
