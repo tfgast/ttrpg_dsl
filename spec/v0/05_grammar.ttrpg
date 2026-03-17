@@ -717,6 +717,15 @@
 // assign_op       = "=" | "+=" | "-="
 // lvalue          = IDENT ("." IDENT | "[" expr "]")*
 // expr_stmt       = expr term
+//
+// RESTRICTION: Index expressions inside lvalues (the `[expr]` part) must be
+// side-effect-free. The same rules as trigger bindings apply: no dice
+// literals, no derive/mechanic/action/function calls — only arithmetic,
+// variable references, field access, and pure builtins (floor, ceil, min,
+// max, etc.). Use a `let` binding to pre-compute complex indices:
+//
+//   let idx = some_derive(x)
+//   arr[idx] = val
 
 // --- Return statement ---
 //

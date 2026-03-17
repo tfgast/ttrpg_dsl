@@ -47,6 +47,9 @@ impl crate::eval::AssignContext for FrameAssignCtx<'_> {
         self.state
     }
     fn eval_expr(&mut self, expr: &Spanned<ExprKind>) -> Result<Value, RuntimeError> {
+        // Safety: the checker enforces that index expressions in assignment
+        // LValues are side-effect-free (BlockKind::IndexExpression), so
+        // synchronous evaluation here cannot miss async effects.
         eval_expr_via_frame(self.core, self.env, self.state, self.handler, expr)
     }
     fn scopes_mut_and_state(&mut self) -> (&mut Vec<Scope>, &dyn StateProvider) {

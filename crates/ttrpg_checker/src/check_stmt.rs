@@ -365,7 +365,12 @@ impl Checker<'_> {
                     path_key = format!("{path_key}.{name}");
                 }
                 LValueSegment::Index(idx_expr) => {
+                    // Index expressions in assignment LValues must be pure —
+                    // no dice, no effectful calls. The interpreter evaluates
+                    // them synchronously, so side effects would be unsound.
+                    self.scope.push(BlockKind::IndexExpression);
                     let idx_ty = self.check_expr(idx_expr);
+                    self.scope.pop();
                     if idx_ty.is_error() || current.is_error() {
                         return Ty::Error;
                     }

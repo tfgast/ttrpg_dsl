@@ -40,15 +40,22 @@ impl Checker<'_> {
             ExprKind::NoneLit => Ty::Option(Box::new(Ty::Error)),
 
             ExprKind::DiceLit { .. } => {
-                if matches!(
-                    self.scope.current_block_kind(),
-                    Some(BlockKind::TriggerBinding)
-                ) {
-                    self.error(
-                        "dice literals are not allowed in trigger/suppress binding context"
-                            .to_string(),
-                        expr.span,
-                    );
+                match self.scope.current_block_kind() {
+                    Some(BlockKind::TriggerBinding) => {
+                        self.error(
+                            "dice literals are not allowed in trigger/suppress binding context"
+                                .to_string(),
+                            expr.span,
+                        );
+                    }
+                    Some(BlockKind::IndexExpression) => {
+                        self.error(
+                            "dice literals are not allowed in assignment index expressions"
+                                .to_string(),
+                            expr.span,
+                        );
+                    }
+                    _ => {}
                 }
                 Ty::DiceExpr
             }

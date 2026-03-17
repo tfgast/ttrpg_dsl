@@ -21,6 +21,11 @@ pub enum BlockKind {
     /// access, action/reaction calls, prompts, and mechanic calls. Only
     /// side-effect-free builtins (floor, ceil, min, max, distance) are permitted.
     TriggerBinding,
+    /// Index expressions in assignment LValues (e.g. `arr[i+1] = val`).
+    /// Same restrictions as TriggerBinding: only pure builtins allowed.
+    /// This lets the interpreter evaluate indices synchronously without
+    /// needing async frame resolution.
+    IndexExpression,
     /// `with_budget` body — provisions a scoped turn budget in a function.
     /// Does NOT grant `turn` access; use `budget_of(entity)` instead.
     WithBudget,
@@ -96,7 +101,7 @@ impl BlockKind {
     /// Whether function calls (derives, mechanics, prompts, actions, reactions)
     /// are allowed. TriggerBinding only permits side-effect-free builtins.
     pub fn allows_calls(&self) -> bool {
-        !matches!(self, BlockKind::TriggerBinding)
+        !matches!(self, BlockKind::TriggerBinding | BlockKind::IndexExpression)
     }
 
     pub fn allows_emit(&self) -> bool {

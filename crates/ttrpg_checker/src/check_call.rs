@@ -228,7 +228,7 @@ impl Checker<'_> {
             self.check_name_visible(&callee_name, Namespace::Function, span);
         }
 
-        // In TriggerBinding context, only side-effect-free builtins are allowed
+        // In TriggerBinding / IndexExpression context, only side-effect-free builtins are allowed
         if !self.scope.allows_calls() {
             let is_pure_builtin = fn_info.kind == FnKind::Builtin
                 && matches!(
@@ -244,8 +244,12 @@ impl Checker<'_> {
                         | "budget_of"
                 );
             if !is_pure_builtin {
+                let ctx = match self.scope.current_block_kind() {
+                    Some(BlockKind::IndexExpression) => "assignment index expression",
+                    _ => "trigger/suppress binding context",
+                };
                 self.error(
-                    format!("`{callee_name}` cannot be called in trigger/suppress binding context"),
+                    format!("`{callee_name}` cannot be called in {ctx}"),
                     span,
                 );
             }

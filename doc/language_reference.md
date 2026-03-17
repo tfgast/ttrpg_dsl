@@ -799,6 +799,9 @@ let name = expr                    // type inferred
 lvalue = expr                      // assignment
 lvalue += expr                     // compound assignment
 lvalue -= expr
+// lvalue = ident (.field | [index])*
+// Index expressions in lvalues must be side-effect-free
+// (no dice, no function calls — only arithmetic, variables, pure builtins)
 
 grant entity.Group { field: val }  // activate optional group
 revoke entity.Group                // deactivate optional group
