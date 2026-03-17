@@ -205,9 +205,6 @@ pub(crate) fn execute_pipeline(
                 }
             }
         }
-        if !modifiers.is_empty() {
-            crate::pipeline::emit_modify_applied_events(env, &modifiers, action_name, call_span)?;
-        }
         if !effective.free {
             match deduct_costs(env, action_name, &effective, call_span)? {
                 CostOutcome::Proceed => {}
@@ -551,7 +548,6 @@ pub(crate) fn collect_cost_modifiers(
                         receiver_name: Some(cond_decl.receiver_name.clone()),
                         condition_params: condition.params.clone(),
                         condition_id: Some(condition.id),
-                        condition_duration: Some(condition.duration.clone()),
                         condition_state_fields: condition.state_fields.clone(),
                     },
                 ));

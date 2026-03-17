@@ -6,9 +6,7 @@ use crate::Env;
 use crate::RuntimeError;
 use crate::effect::{Effect, Response};
 use crate::eval::{AssignContext, eval_block, eval_expr};
-use crate::pipeline::{
-    collect_modifiers_owned, emit_modify_applied_events, run_phase1, run_phase2,
-};
+use crate::pipeline::{collect_modifiers_owned, run_phase1, run_phase2};
 use crate::value::{Value, value_matches_ty, value_type_display};
 
 use super::args::bind_args;
@@ -121,11 +119,6 @@ pub(crate) fn evaluate_fn_with_values(
         }
         Err(e) => return Err(e),
     };
-
-    // Emit modify_applied events for any condition modifiers that fired
-    if !modifiers.is_empty() {
-        emit_modify_applied_events(env, &modifiers, name, call_span)?;
-    }
 
     Ok(val)
 }
@@ -327,11 +320,6 @@ pub(super) fn dispatch_derive_or_mechanic(
         }
         Err(e) => return Err(e),
     };
-
-    // Emit modify_applied events for any condition modifiers that fired
-    if !modifiers.is_empty() {
-        emit_modify_applied_events(env, &modifiers, name, call_span)?;
-    }
 
     Ok(val)
 }

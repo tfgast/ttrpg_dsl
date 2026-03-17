@@ -241,7 +241,7 @@ pub(super) fn advance_action_lifecycle(
                     abort_value: abort,
                     modifiers: Vec::new(),
                     pending_modify_effect: None,
-                    modify_hooks_result: None,
+
                     modify_walker: None,
                     modify_old_tokens: Vec::new(),
                     modify_old_free: false,

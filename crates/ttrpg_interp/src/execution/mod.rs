@@ -164,10 +164,6 @@ pub(crate) enum CostEvalPhase {
     YieldModifyApplied(usize),
     /// Await host acknowledgement for a yielded ModifyApplied effect.
     AwaitModifyAck(usize),
-    /// Build and push EmitHooks frame for modify_applied events.
-    EmitModifyEvents,
-    /// Awaiting EmitHooks child frame completion.
-    AwaitModifyHooks,
     /// Budget pre-check: iterate tokens, check budget sufficiency.
     BudgetPreCheck(usize),
     /// Await budget pre-check host response.
@@ -300,8 +296,6 @@ pub(crate) enum Frame {
         phase2_result: Option<Value>,
         /// Cached FnInfo to avoid re-lookup across phase transitions.
         fn_info_cache: Option<FnInfo>,
-        /// Result from EmitHooks child frame (modify_applied hooks).
-        modify_hooks_result: Option<Result<Value, RuntimeError>>,
         /// Walker for inline modify stmt execution (Phase1/Phase2).
         modify_walker: Option<Box<ModifyStmtWalker>>,
         /// State for frame-based modifier collection (CollectCheck phase).
@@ -579,8 +573,6 @@ pub(crate) enum Frame {
         modifiers: Vec<crate::pipeline::OwnedModifier>,
         /// Pending ModifyApplied effect to yield (populated by ApplyModifier phase).
         pending_modify_effect: Option<Effect>,
-        /// Result from EmitHooks child frame (modify_applied hooks).
-        modify_hooks_result: Option<Result<Value, RuntimeError>>,
         /// Walker for inline cost modify stmt execution (ExecCostModify phase).
         modify_walker: Option<Box<ModifyStmtWalker>>,
         /// Saved old tokens/free for change detection during ExecCostModify.
@@ -990,7 +982,6 @@ impl Frame {
             }
             Frame::CostEval {
                 phase,
-                modify_hooks_result,
                 modify_walker,
                 collect_state,
                 should_apply_result,
@@ -1010,14 +1001,12 @@ impl Frame {
                     // Block child completed for should_apply gate.
                     *should_apply_result = Some(Ok(value));
                 } else {
-                    // EmitHooks child completed for modify_applied hooks.
-                    *modify_hooks_result = Some(Ok(value));
+                    unreachable!("CostEval: unexpected child value in phase {:?}", phase)
                 }
             }
             Frame::DeriveEval {
                 base_value,
                 phase,
-                modify_hooks_result,
                 modify_walker,
                 collect_state,
                 should_apply_result,
@@ -1042,8 +1031,6 @@ impl Frame {
                 } else if matches!(phase, DeriveEvalPhase::AwaitShouldApply(_)) {
                     // Block child completed for should_apply gate.
                     *should_apply_result = Some(Ok(value));
-                } else if matches!(phase, DeriveEvalPhase::AwaitModifyHooks) {
-                    *modify_hooks_result = Some(Ok(value));
                 } else {
                     // FunctionEval child completed with body result.
                     *base_value = Some(value);
@@ -1130,7 +1117,6 @@ impl Frame {
             }
             Frame::CostEval {
                 phase,
-                modify_hooks_result,
                 modify_walker,
                 collect_state,
                 should_apply_result,
@@ -1148,13 +1134,12 @@ impl Frame {
                 } else if matches!(phase, CostEvalPhase::AwaitShouldApply(_)) {
                     *should_apply_result = Some(Err(error));
                 } else {
-                    *modify_hooks_result = Some(Err(error));
+                    return Err(error);
                 }
                 Ok(())
             }
             Frame::DeriveEval {
                 phase,
-                modify_hooks_result,
                 modify_walker,
                 collect_state,
                 should_apply_result,
@@ -1178,7 +1163,7 @@ impl Frame {
                 } else if matches!(phase, DeriveEvalPhase::AwaitShouldApply(_)) {
                     *should_apply_result = Some(Err(error));
                 } else {
-                    *modify_hooks_result = Some(Err(error));
+                    return Err(error);
                 }
                 Ok(())
             }
@@ -1303,10 +1288,6 @@ pub(crate) enum DeriveEvalPhase {
     YieldPhase2(usize),
     /// Await host ack for Phase 2 ModifyApplied.
     AwaitPhase2Ack(usize),
-    /// Build and push EmitHooks frame for modify_applied events.
-    EmitModifyEvents,
-    /// Awaiting EmitHooks child frame completion.
-    AwaitModifyHooks,
 }
 
 // ── ModifyStmtWalker ───────────────────────────────────────────
@@ -1891,7 +1872,6 @@ impl<S: WritableState> Execution<S> {
             phase2_result: None,
             fn_info_cache: None,
             pending: None,
-            modify_hooks_result: None,
             modify_walker: None,
             collect_state: None,
             pre_fill_params: None,
@@ -1926,7 +1906,6 @@ impl<S: WritableState> Execution<S> {
             phase2_result: None,
             fn_info_cache: None,
             pending: None,
-            modify_hooks_result: None,
             modify_walker: None,
             collect_state: None,
             pre_fill_params: None,

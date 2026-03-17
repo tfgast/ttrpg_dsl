@@ -131,8 +131,8 @@ pub struct EventInfo {
     pub name: Name,
     pub params: Vec<ParamInfo>,
     pub fields: Vec<(Name, Ty)>,
-    /// True for auto-registered events (e.g., `modify_applied`). User-defined
-    /// events with the same name are allowed to override builtins.
+    /// True for auto-registered events. User-defined events with the same
+    /// name are allowed to override builtins.
     pub builtin: bool,
 }
 

@@ -2904,7 +2904,7 @@ fn dispatch_derive_step(
         phase1_params: None,
         phase2_result: None,
         fn_info_cache: Some(fn_info),
-        modify_hooks_result: None,
+
         modify_walker: None,
         collect_state: None,
         pre_fill_params: Some(fill_params),
@@ -2967,7 +2967,7 @@ fn dispatch_table_step(
         phase1_params: None,
         phase2_result: None,
         fn_info_cache: Some(fn_info),
-        modify_hooks_result: None,
+
         modify_walker: None,
         collect_state: None,
         pre_fill_params: Some(fill_params),

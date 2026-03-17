@@ -8,9 +8,8 @@
 //! 3. Cost modification: cost=free, cost=token replacement, checker rejects
 //!    param/result overrides in cost modify bodies
 //! 4. Suppress clauses: reaction suppression at runtime, hooks NOT suppressible
-//! 5. modify_applied: user-defined override takes precedence
-//! 6. Condition include clause behavior (modify/suppress inclusion, ordering, diamond dedup)
-//! 7. Parameterized conditions: params stored on ActiveCondition, matching on remove
+//! 5. Condition include clause behavior (modify/suppress inclusion, ordering, diamond dedup)
+//! 6. Parameterized conditions: params stored on ActiveCondition, matching on remove
 
 use std::collections::{BTreeMap, VecDeque};
 
@@ -776,50 +775,7 @@ system "test" {
 }
 
 // ═══════════════════════════════════════════════════════════════
-// 5. modify_applied: user-defined override takes precedence
-// ═══════════════════════════════════════════════════════════════
-
-#[test]
-fn user_defined_modify_applied_overrides_builtin() {
-    // Spec: "User-defined events with the name modify_applied take
-    //        precedence over the built-in"
-    let source = r#"
-system "test" {
-    entity Character { HP: int }
-
-    event modify_applied(bearer: Character, condition: string) {
-        target_fn: string
-        custom_field: int
-    }
-}
-"#;
-    let (_program, result) = setup(source);
-
-    let event_info = &result.env.events["modify_applied"];
-    // User-defined version should have the extra custom_field
-    assert_eq!(
-        event_info.fields.len(),
-        2,
-        "user-defined version should have 2 fields"
-    );
-    let field_names: Vec<_> = event_info.fields.iter().map(|(n, _)| n.as_str()).collect();
-    assert!(
-        field_names.contains(&"target_fn"),
-        "should still have target_fn"
-    );
-    assert!(
-        field_names.contains(&"custom_field"),
-        "should have custom_field from user definition"
-    );
-    // Should NOT be marked as builtin
-    assert!(
-        !event_info.builtin,
-        "user-defined event should override builtin"
-    );
-}
-
-// ═══════════════════════════════════════════════════════════════
-// 6. Condition include clause behavior
+// 5. Condition include clause behavior
 // ═══════════════════════════════════════════════════════════════
 
 #[test]
@@ -1079,7 +1035,7 @@ system "test" {
 }
 
 // ═══════════════════════════════════════════════════════════════
-// 7. Parameterized conditions: matching on remove
+// 6. Parameterized conditions: matching on remove
 // ═══════════════════════════════════════════════════════════════
 
 #[test]

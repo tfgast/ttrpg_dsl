@@ -19,7 +19,6 @@ pub(super) fn advance_cost_eval(
         abort_value,
         modifiers,
         pending_modify_effect,
-        modify_hooks_result,
         modify_walker,
         modify_old_tokens,
         modify_old_free,
@@ -175,7 +174,10 @@ pub(super) fn advance_cost_eval(
                 if modifiers.is_empty() {
                     *phase = CostEvalPhase::BudgetPreCheck(0);
                 } else {
-                    *phase = CostEvalPhase::EmitModifyEvents;
+                    if effective_cost.as_ref().is_some_and(|c| c.free) {
+                        return Advance::Pop(Value::Void);
+                    }
+                    *phase = CostEvalPhase::BudgetPreCheck(0);
                 }
                 return Advance::Continue;
             }
@@ -303,43 +305,6 @@ pub(super) fn advance_cost_eval(
             let _ = pending.take();
             *phase = CostEvalPhase::ApplyModifier(*idx + 1);
             Advance::Continue
-        }
-
-        CostEvalPhase::EmitModifyEvents => {
-            // Build and push EmitHooks frame for modify_applied events.
-            let span = *call_span;
-            match build_modify_hooks_frame(core, sp, env, modifiers, action_name.as_str(), span) {
-                Ok(Some(frame)) => {
-                    *phase = CostEvalPhase::AwaitModifyHooks;
-                    Advance::Push(frame)
-                }
-                Ok(None) => {
-                    // No hooks matched — skip directly.
-                    if effective_cost.as_ref().is_some_and(|c| c.free) {
-                        return Advance::Pop(Value::Void);
-                    }
-                    *phase = CostEvalPhase::BudgetPreCheck(0);
-                    Advance::Continue
-                }
-                Err(e) => Advance::Error(e),
-            }
-        }
-
-        CostEvalPhase::AwaitModifyHooks => {
-            // EmitHooks child completed.
-            match modify_hooks_result.take() {
-                Some(Ok(_)) => {
-                    if effective_cost.as_ref().is_some_and(|c| c.free) {
-                        return Advance::Pop(Value::Void);
-                    }
-                    *phase = CostEvalPhase::BudgetPreCheck(0);
-                    Advance::Continue
-                }
-                Some(Err(e)) => Advance::Error(e),
-                None => Advance::Error(RuntimeError::new(
-                    "internal error: AwaitModifyHooks completed without result",
-                )),
-            }
         }
 
         CostEvalPhase::BudgetPreCheck(idx) => {

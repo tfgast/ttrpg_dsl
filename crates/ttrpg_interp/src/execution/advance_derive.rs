@@ -116,7 +116,6 @@ pub(super) fn advance_derive_eval(
         phase2_result,
         fn_info_cache,
         pending,
-        modify_hooks_result,
         modify_walker,
         collect_state,
         pre_fill_params,
@@ -446,7 +445,6 @@ pub(super) fn advance_derive_eval(
                         receiver_name: None,
                         condition_params: BTreeMap::new(),
                         condition_id: None,
-                        condition_duration: None,
                         condition_state_fields: BTreeMap::new(),
                         should_apply_body: None,
                     };
@@ -910,12 +908,6 @@ pub(super) fn advance_derive_eval(
                 *phase = DeriveEvalPhase::ApplyPhase2(0);
                 return Advance::Continue;
             }
-            // Body evaluation may have errored and the error was
-            // stored in modify_hooks_result by receive_child_error.
-            // Propagate it instead of the generic message.
-            if let Some(Err(e)) = modify_hooks_result.take() {
-                return Advance::Error(e);
-            }
             Advance::Error(RuntimeError::new(format!(
                 "DeriveEval '{name}': BodyDone but no base_value"
             )))
@@ -923,9 +915,9 @@ pub(super) fn advance_derive_eval(
 
         DeriveEvalPhase::ApplyPhase2(idx) => {
             if *idx >= modifiers.len() {
-                // All Phase 2 modifiers applied — emit events.
-                *phase = DeriveEvalPhase::EmitModifyEvents;
-                return Advance::Continue;
+                // All Phase 2 modifiers applied — pop with result.
+                let val = phase2_result.take().unwrap_or(Value::Void);
+                return Advance::Pop(val);
             }
 
             let modifier = &modifiers[*idx];
@@ -1065,36 +1057,6 @@ pub(super) fn advance_derive_eval(
             let _ = pending.take();
             *phase = DeriveEvalPhase::ApplyPhase2(*idx + 1);
             Advance::Continue
-        }
-
-        DeriveEvalPhase::EmitModifyEvents => {
-            // Build and push EmitHooks frame for modify_applied events.
-            match build_modify_hooks_frame(core, sp, env, modifiers, name.as_str(), Span::dummy()) {
-                Ok(Some(frame)) => {
-                    *phase = DeriveEvalPhase::AwaitModifyHooks;
-                    Advance::Push(frame)
-                }
-                Ok(None) => {
-                    // No hooks matched — pop directly.
-                    let val = phase2_result.take().unwrap_or(Value::Void);
-                    Advance::Pop(val)
-                }
-                Err(e) => Advance::Error(e),
-            }
-        }
-
-        DeriveEvalPhase::AwaitModifyHooks => {
-            // EmitHooks child completed.
-            match modify_hooks_result.take() {
-                Some(Ok(_)) => {
-                    let val = phase2_result.take().unwrap_or(Value::Void);
-                    Advance::Pop(val)
-                }
-                Some(Err(e)) => Advance::Error(e),
-                None => Advance::Error(RuntimeError::new(
-                    "internal error: AwaitModifyHooks completed without result",
-                )),
-            }
         }
 
         // ── should_apply gate ─────────────────────────────────────
