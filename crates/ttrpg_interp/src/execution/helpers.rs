@@ -345,7 +345,7 @@ pub(super) fn compile_expr_to_frame(
     expr: &Spanned<ExprKind>,
     core: &RuntimeCore,
 ) -> Result<Frame, RuntimeError> {
-    if let Some(work) = crate::expr_eval::compile_expr(expr, &core.type_env, &core.program) {
+    if let Some(work) = core.compile_expr_cached(expr) {
         Ok(Frame::ExprEval {
             work,
             operands: Vec::new(),

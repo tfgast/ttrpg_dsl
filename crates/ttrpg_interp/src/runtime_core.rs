@@ -13,8 +13,11 @@ use ttrpg_ast::Name;
 use ttrpg_ast::ast::Program;
 use ttrpg_checker::env::TypeEnv;
 
+use ttrpg_ast::span::Span;
+
 use crate::RuntimeError;
 use crate::coverage::CoverageData;
+use crate::expr_eval::ExprWork;
 use crate::value::Value;
 
 /// Shared across executions. Immutable program data + mutable caches.
@@ -23,6 +26,10 @@ pub struct RuntimeCore {
     pub(crate) program: Arc<Program>,
     pub(crate) type_env: Arc<TypeEnv>,
     pub(crate) consts: RefCell<FxHashMap<Name, Value>>,
+    /// Cache of compiled expression work sequences, keyed by source span.
+    /// Avoids redundant `compile_expr()` calls for the same expression
+    /// across repeated function/derive/mechanic invocations.
+    pub(crate) compiled_exprs: RefCell<FxHashMap<Span, Vec<ExprWork>>>,
     pub(crate) coverage: Option<Rc<RefCell<CoverageData>>>,
     next_invocation_id: Cell<u64>,
     next_condition_id: Cell<u64>,
@@ -40,6 +47,7 @@ impl RuntimeCore {
             program,
             type_env,
             consts: RefCell::new(FxHashMap::default()),
+            compiled_exprs: RefCell::new(FxHashMap::default()),
             coverage: None,
             next_invocation_id: Cell::new(invocation_start),
             next_condition_id: Cell::new(condition_start),
@@ -74,6 +82,7 @@ impl RuntimeCore {
             program: Arc::clone(&self.program),
             type_env: Arc::clone(&self.type_env),
             consts: RefCell::new(FxHashMap::default()),
+            compiled_exprs: RefCell::new(FxHashMap::default()),
             coverage: Some(cov),
             next_invocation_id: Cell::new(self.next_invocation_id.get()),
             next_condition_id: Cell::new(self.next_condition_id.get()),
@@ -105,5 +114,30 @@ impl RuntimeCore {
     /// Current ID counter values. Call after completion to persist.
     pub fn counters(&self) -> (u64, u64) {
         (self.next_invocation_id.get(), self.next_condition_id.get())
+    }
+
+    /// Compile an expression, returning cached work if available.
+    ///
+    /// On the first call for a given span, delegates to `compile_expr()` and
+    /// stores the result. Subsequent calls for the same span clone the cached
+    /// work sequence instead of recompiling.
+    pub(crate) fn compile_expr_cached(
+        &self,
+        expr: &ttrpg_ast::span::Spanned<ttrpg_ast::ast::ExprKind>,
+    ) -> Option<Vec<ExprWork>> {
+        let span = expr.span;
+        // Skip cache for dummy/synthetic spans — multiple unrelated
+        // expressions can share Span::dummy(), causing collisions.
+        if span == Span::dummy() {
+            return crate::expr_eval::compile_expr(expr, &self.type_env, &self.program);
+        }
+        if let Some(cached) = self.compiled_exprs.borrow().get(&span) {
+            return Some(cached.clone());
+        }
+        let work = crate::expr_eval::compile_expr(expr, &self.type_env, &self.program)?;
+        self.compiled_exprs
+            .borrow_mut()
+            .insert(span, work.clone());
+        Some(work)
     }
 }

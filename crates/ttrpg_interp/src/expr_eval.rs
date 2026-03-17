@@ -1617,7 +1617,7 @@ fn advance_ident(
             .insert(Name::from(name.as_str()), Value::Void);
         *pc += 1; // advance to ConstWriteback
         // Compile the const expression and push child ExprEval
-        if let Some(child_work) = compile_expr(&const_decl.value, &core.type_env, &core.program) {
+        if let Some(child_work) = core.compile_expr_cached(&const_decl.value) {
             return Advance::Push(Frame::ExprEval {
                 work: child_work,
                 operands: Vec::new(),
@@ -5161,7 +5161,7 @@ pub(crate) fn eval_expr_step(
     expr: &Spanned<ExprKind>,
 ) -> Result<Value, RuntimeError> {
     // Try fast inline path first: compile + step without frame overhead
-    if let Some(ref work) = compile_expr(expr, &core.type_env, &core.program) {
+    if let Some(ref work) = core.compile_expr_cached(expr) {
         let mut operands = Vec::new();
         let mut pc = 0;
         let mut child_result = None;
