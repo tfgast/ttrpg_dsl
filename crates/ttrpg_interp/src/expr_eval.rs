@@ -148,8 +148,10 @@ pub(crate) enum ExprWork {
     // ── Phase 6 variants ────────────────────────────────────────
     /// Duplicate the top of the operand stack.
     Dup,
-    /// No pattern arm matched in a `match` expression — emit runtime error.
+    /// No arm matched in a `match` or guard-match expression — emit runtime error.
     MatchFail(Span),
+    /// No guard matched in a guard-match expression — emit runtime error.
+    GuardMatchFail(Span),
 
     // ── Phase 7 variants ────────────────────────────────────────
     /// For loop: pop iterable (collection or range start+end), materialize,
@@ -514,7 +516,7 @@ fn compile_inner(
         }
 
         ExprKind::GuardMatch { arms } => {
-            compile_guard_match(arms, type_env, program, work)?;
+            compile_guard_match(arms, span, type_env, program, work)?;
         }
 
         ExprKind::IfLet {
@@ -731,6 +733,7 @@ fn compile_if_expr(
 /// Compile a `guard match` expression (chain of condition → body arms).
 fn compile_guard_match(
     arms: &[ttrpg_ast::ast::GuardArm],
+    expr_span: Span,
     type_env: &TypeEnv,
     program: &ttrpg_ast::ast::Program,
     work: &mut Vec<ExprWork>,
@@ -765,6 +768,8 @@ fn compile_guard_match(
         let else_pc = work.len();
         patch_branch(work, branch_idx, then_pc, else_pc);
     }
+    // If no guard matched, emit a runtime error (matches recursive interpreter behavior).
+    work.push(ExprWork::GuardMatchFail(expr_span));
     patch_jumps_to_end(work, &jump_patches);
     Some(())
 }
@@ -1408,6 +1413,12 @@ pub(crate) fn advance_expr_eval(
                 *scope_depth = 0;
                 return Advance::Error(RuntimeError::with_span(
                     "no pattern matched in match expression",
+                    *span,
+                ));
+            }
+            ExprWork::GuardMatchFail(span) => {
+                return Advance::Error(RuntimeError::with_span(
+                    "no guard matched in match expression",
                     *span,
                 ));
             }

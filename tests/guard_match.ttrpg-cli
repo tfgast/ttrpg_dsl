@@ -1,0 +1,66 @@
+// Guard-match expression tests
+//
+// Regression: step-mode returned Ok(Void) instead of an error when
+// no guard arm matched (fuzz finding, cb7b709d).
+
+source -s <<END
+    derive always_five() -> int {
+        match {
+            true => 5
+        }
+    }
+
+    derive first_true() -> int {
+        match {
+            false => 1
+            false => 2
+            true  => 3
+        }
+    }
+
+    derive guarded(x: int) -> int {
+        match {
+            x < 0  => -1
+            x == 0 => 0
+            x > 0  => 1
+        }
+    }
+
+    derive no_match(x: int) -> int {
+        match {
+            x > 100 => 1
+            x < -100 => 2
+        }
+    }
+
+    derive wildcard_fallback(x: int) -> int {
+        match {
+            x == 1 => 10
+            x == 2 => 20
+            _ => 99
+        }
+    }
+END
+
+// ── basic guard match ──────────────────────────────────────────
+
+assert_eq always_five(), 5
+assert_eq first_true(), 3
+
+// ── guards with parameters ─────────────────────────────────────
+
+assert_eq guarded(-5), -1
+assert_eq guarded(0), 0
+assert_eq guarded(5), 1
+
+// ── no guard matched → error ───────────────────────────────────
+
+assert_err call no_match(50)
+assert_err call no_match(0)
+
+// ── wildcard fallback ──────────────────────────────────────────
+
+assert_eq wildcard_fallback(1), 10
+assert_eq wildcard_fallback(2), 20
+assert_eq wildcard_fallback(3), 99
+assert_eq wildcard_fallback(999), 99
