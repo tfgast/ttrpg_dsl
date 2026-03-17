@@ -919,9 +919,7 @@ impl Runner {
         loop {
             let step = exec.poll().map_err(|e| match e {
                 PollError::Runtime(re) => render_runtime_error(&re, &self.source_map),
-                PollError::Protocol(pe) => {
-                    CliError::Message(format!("protocol error: {pe}"))
-                }
+                PollError::Protocol(pe) => CliError::Message(format!("protocol error: {pe}")),
             })?;
 
             match step {
@@ -955,19 +953,11 @@ impl Runner {
                                 self.output.push(format!(
                                     "[ResolvePrompt] {} -> {} (queued)",
                                     name,
-                                    crate::format::format_value(
-                                        &val,
-                                        &self.unit_suffixes
-                                    )
+                                    crate::format::format_value(&val, &self.unit_suffixes)
                                 ));
                             }
-                            exec.respond(Response::PromptResult(val)).map_err(
-                                |pe| {
-                                    CliError::Message(format!(
-                                        "protocol error: {pe}"
-                                    ))
-                                },
-                            )?;
+                            exec.respond(Response::PromptResult(val))
+                                .map_err(|pe| CliError::Message(format!("protocol error: {pe}")))?;
                             continue;
                         }
 
@@ -1002,10 +992,52 @@ impl Runner {
                         return Err(CliError::GatePending);
                     }
 
-                    // Handle all other effects via CliHandler
-                    let is_mutation = ttrpg_interp::adapter::is_mutation(
-                        EffectKind::of(&effect),
-                    );
+                    // SpawnEntity: apply directly to execution state
+                    // (CliHandler can't return EntitySpawned without
+                    // writable access, so handle it here).
+                    if matches!(&*effect, Effect::SpawnEntity { .. }) {
+                        let entity_ref = exec
+                            .state()
+                            .with_state_mut(|gs| ttrpg_interp::adapter::apply_spawn(gs, &effect));
+                        if !self.quiet
+                            && let Effect::SpawnEntity { entity_type, .. } = &*effect
+                        {
+                            self.output
+                                .push(format!("[SpawnEntity] {entity_type} ({})", entity_ref.0,));
+                        }
+                        exec.respond(Response::EntitySpawned(entity_ref))
+                            .map_err(|pe| CliError::Message(format!("protocol error: {pe}")))?;
+                        continue;
+                    }
+
+                    // DeductCost: apply directly to execution state
+                    // (not in MUTATION_KINDS, needs explicit handling).
+                    if let Effect::DeductCost {
+                        actor,
+                        budget_field,
+                        token,
+                    } = &*effect
+                    {
+                        exec.state().with_state_mut(|gs| {
+                            ttrpg_interp::adapter::deduct_budget_field(gs, actor, budget_field);
+                        });
+                        if !self.quiet {
+                            let name = self
+                                .handles
+                                .by_entity()
+                                .get(actor)
+                                .cloned()
+                                .unwrap_or_else(|| format!("Entity({})", actor.0));
+                            self.output.push(format!("[DeductCost] {name}: {token}"));
+                        }
+                        exec.respond(Response::Acknowledged)
+                            .map_err(|pe| CliError::Message(format!("protocol error: {pe}")))?;
+                        continue;
+                    }
+
+                    // Handle all other effects via CliHandler, reading
+                    // from the execution's state (not the empty RefCell).
+                    let is_mutation = ttrpg_interp::adapter::is_mutation(EffectKind::of(&effect));
                     let effect_for_apply = if is_mutation {
                         Some((*effect).clone())
                     } else {
@@ -1020,6 +1052,7 @@ impl Runner {
                             &mut self.prompt_queue,
                             &self.unit_suffixes,
                         )
+                        .with_state(exec.state())
                         .quiet(self.quiet)
                         .interactive(self.interactive);
 
@@ -1052,20 +1085,15 @@ impl Runner {
                         }
                     }
 
-                    exec.respond(response).map_err(|pe| {
-                        CliError::Message(format!("protocol error: {pe}"))
-                    })?;
+                    exec.respond(response)
+                        .map_err(|pe| CliError::Message(format!("protocol error: {pe}")))?;
                 }
             }
         }
     }
 
     /// Extract state from a completed execution and restore it to the runner.
-    fn finish_execution(
-        &mut self,
-        exec: Execution<GameState>,
-        core: &Rc<RuntimeCore>,
-    ) {
+    fn finish_execution(&mut self, exec: Execution<GameState>, core: &Rc<RuntimeCore>) {
         let (inv_id, cond_id) = core.counters();
         let mut gs = exec.into_state();
         gs.set_next_invocation_id(inv_id);
@@ -1087,10 +1115,7 @@ impl Runner {
             name: p.name.clone(),
             hint: p.hint.clone(),
             type_hint: crate::effects::type_hint(&p.return_type),
-            suggest: p
-                .suggest
-                .as_ref()
-                .map(crate::effects::format_suggest),
+            suggest: p.suggest.as_ref().map(crate::effects::format_suggest),
             has_default: p.has_default,
         })
     }
@@ -1120,10 +1145,8 @@ impl Runner {
                 Response::PromptResult(val.clone())
             } else {
                 if !self.quiet {
-                    self.output.push(format!(
-                        "[ResolvePrompt] {} -> use default",
-                        pending.name
-                    ));
+                    self.output
+                        .push(format!("[ResolvePrompt] {} -> use default", pending.name));
                 }
                 Response::UseDefault
             }

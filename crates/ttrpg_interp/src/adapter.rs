@@ -752,7 +752,7 @@ pub struct MutationResult {
 /// Compute the final field value after applying op + bounds clamping.
 ///
 /// Returns a [`MutationResult`] with the final value and whether clamping occurred.
-pub fn compute_field_value<S: StateProvider>(
+pub fn compute_field_value<S: StateProvider + ?Sized>(
     state: &S,
     entity: &EntityRef,
     path: &[FieldPathSegment],
@@ -784,7 +784,7 @@ pub fn compute_field_value<S: StateProvider>(
 }
 
 /// Compute the final turn field value after applying op.
-pub fn compute_turn_field_value<S: StateProvider>(
+pub fn compute_turn_field_value<S: StateProvider + ?Sized>(
     state: &S,
     actor: &EntityRef,
     field: &str,
