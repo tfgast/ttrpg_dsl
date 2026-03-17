@@ -106,58 +106,17 @@ impl crate::eval::AssignContext for FrameAssignCtx<'_> {
     }
 }
 
-/// Dispatch an `apply_condition(...)` call as a `CallSetup` frame.
-///
-/// Collects argument expressions and returns a `CallSetup` that will
-/// evaluate them one at a time via ExprEval children.
-pub(super) fn try_dispatch_apply_condition(
-    args: &[ttrpg_ast::ast::Arg],
-    span: Span,
-    awaiting: AwaitingFn,
-) -> Result<Option<(Frame, AwaitingFn)>, RuntimeError> {
-    Ok(Some((
-        Frame::CallSetup {
-            target: CallTarget::ApplyCondition { span },
-            arg_exprs: args.iter().map(|a| a.value.clone()).collect(),
-            arg_index: 0,
-            evaluated: Vec::new(),
-            child_result: None,
-            awaiting_child: false,
-            span,
-        },
-        awaiting,
-    )))
-}
-
-/// Dispatch a `remove_condition(...)` call as a `CallSetup` frame.
-pub(super) fn try_dispatch_remove_condition(
+/// Dispatch a builtin call (apply_condition, remove_condition, revoke)
+/// as a `CallSetup` frame. The `target` parameter selects which builtin.
+pub(super) fn dispatch_builtin_call(
+    target: CallTarget,
     args: &[Arg],
     span: Span,
     awaiting: AwaitingFn,
 ) -> Result<Option<(Frame, AwaitingFn)>, RuntimeError> {
     Ok(Some((
         Frame::CallSetup {
-            target: CallTarget::RemoveCondition { span },
-            arg_exprs: args.iter().map(|a| a.value.clone()).collect(),
-            arg_index: 0,
-            evaluated: Vec::new(),
-            child_result: None,
-            awaiting_child: false,
-            span,
-        },
-        awaiting,
-    )))
-}
-
-/// Dispatch a `revoke(...)` call as a `CallSetup` frame.
-pub(super) fn try_dispatch_revoke(
-    args: &[Arg],
-    span: Span,
-    awaiting: AwaitingFn,
-) -> Result<Option<(Frame, AwaitingFn)>, RuntimeError> {
-    Ok(Some((
-        Frame::CallSetup {
-            target: CallTarget::Revoke { span },
+            target,
             arg_exprs: args.iter().map(|a| a.value.clone()).collect(),
             arg_index: 0,
             evaluated: Vec::new(),
@@ -209,22 +168,15 @@ pub(super) fn try_frame_dispatch_stmt(
         _ => return Ok(None),
     };
 
-    // Check for apply_condition builtin — must be dispatched as a frame
-    // because it yields a ConditionApplyGate effect.
-    if callee_name.as_str() == "apply_condition" {
-        return try_dispatch_apply_condition(args, call_expr.span, awaiting);
-    }
-
-    // Check for remove_condition builtin — must be dispatched as a frame
-    // because it yields ConditionRemovalGate effects.
-    if callee_name.as_str() == "remove_condition" {
-        return try_dispatch_remove_condition(args, call_expr.span, awaiting);
-    }
-
-    // Check for revoke builtin — must be dispatched as a frame
-    // because it yields ConditionRemovalGate effects.
-    if callee_name.as_str() == "revoke" {
-        return try_dispatch_revoke(args, call_expr.span, awaiting);
+    // Dispatch builtins that yield effects (ConditionApplyGate, ConditionRemovalGate).
+    let builtin_target = match callee_name.as_str() {
+        "apply_condition" => Some(CallTarget::ApplyCondition { span: call_expr.span }),
+        "remove_condition" => Some(CallTarget::RemoveCondition { span: call_expr.span }),
+        "revoke" => Some(CallTarget::Revoke { span: call_expr.span }),
+        _ => None,
+    };
+    if let Some(target) = builtin_target {
+        return dispatch_builtin_call(target, args, call_expr.span, awaiting);
     }
 
     // Must be a user-defined function (not a builtin, condition, etc.)
