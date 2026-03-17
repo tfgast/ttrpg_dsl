@@ -394,17 +394,16 @@ fn compile_inner(
                     for arg in args {
                         // Determine which parameter this arg maps to
                         let param_idx = if let Some(ref arg_name) = arg.name {
-                            fn_params.as_ref().and_then(|params| {
-                                params.iter().position(|p| p.name == *arg_name)
-                            })
+                            fn_params
+                                .as_ref()
+                                .and_then(|params| params.iter().position(|p| p.name == *arg_name))
                         } else {
                             let idx = next_positional;
                             next_positional += 1;
                             Some(idx)
                         };
-                        let hint = param_idx.and_then(|i| {
-                            fn_params.as_ref().and_then(|p| p.get(i)).map(|p| &p.ty)
-                        });
+                        let hint = param_idx
+                            .and_then(|i| fn_params.as_ref().and_then(|p| p.get(i)).map(|p| &p.ty));
                         if let Some(hint) = hint {
                             try_compile_with_hint(&arg.value, type_env, program, work, hint)?;
                         } else {
@@ -503,7 +502,15 @@ fn compile_inner(
             then_block,
             else_branch,
         } => {
-            compile_if_expr(condition, then_block, else_branch.as_ref(), span, type_env, program, work)?;
+            compile_if_expr(
+                condition,
+                then_block,
+                else_branch.as_ref(),
+                span,
+                type_env,
+                program,
+                work,
+            )?;
         }
 
         ExprKind::GuardMatch { arms } => {
@@ -516,7 +523,16 @@ fn compile_inner(
             then_block,
             else_branch,
         } => {
-            compile_if_let(pattern, scrutinee, then_block, else_branch.as_ref(), span, type_env, program, work)?;
+            compile_if_let(
+                pattern,
+                scrutinee,
+                then_block,
+                else_branch.as_ref(),
+                span,
+                type_env,
+                program,
+                work,
+            )?;
         }
 
         ExprKind::StructLit {
@@ -1404,7 +1420,12 @@ pub(crate) fn advance_expr_eval(
                 span,
             } => {
                 return advance_spawn_entity(
-                    entity_type, field_names, group_specs, *span, operands, pc,
+                    entity_type,
+                    field_names,
+                    group_specs,
+                    *span,
+                    operands,
+                    pc,
                 );
             }
         }
@@ -1557,13 +1578,14 @@ fn advance_ident(
             .params
             .iter()
             .filter_map(|param| {
-                param.default.as_ref().map(|default_expr| {
-                    crate::execution::DefaultParam {
+                param
+                    .default
+                    .as_ref()
+                    .map(|default_expr| crate::execution::DefaultParam {
                         name: param.name.clone(),
                         provided_value: None,
                         default_expr: Some(default_expr.clone()),
-                    }
-                })
+                    })
             })
             .collect();
         if params.is_empty() {
@@ -1715,7 +1737,17 @@ fn advance_call_method(
     let receiver = operands.pop().unwrap();
     *pc += 1;
 
-    match resolve_call_method(receiver, method, arg_meta, &arg_values, span, core, env, sp, eh) {
+    match resolve_call_method(
+        receiver,
+        method,
+        arg_meta,
+        &arg_values,
+        span,
+        core,
+        env,
+        sp,
+        eh,
+    ) {
         Ok(CallResult::Value(val)) => {
             operands.push(val);
             Advance::Continue
@@ -4166,18 +4198,52 @@ fn call_builtin_step_full(
         // Env-context builtins: implemented natively using ExecEnv + EffectHandler
         "invocation" => builtin_invocation_step(env, &args, span).map(CallResult::Value),
         "condition_token" => builtin_condition_token_step(env, &args, span).map(CallResult::Value),
-        "advance_time" => builtin_advance_time_step(env, &args, span)
-            .map(|effect| CallResult::PushChild(Frame::MutationYield { effect, pending: None, span })),
-        "despawn" => builtin_despawn_step(&args, span)
-            .map(|effect| CallResult::PushChild(Frame::MutationYield { effect, pending: None, span })),
-        "suspend" => builtin_suspend_step(env, &args, span)
-            .map(|effect| CallResult::PushChild(Frame::MutationYield { effect, pending: None, span })),
-        "suspend_with_source" => builtin_suspend_with_source_step(&args, span)
-            .map(|effect| CallResult::PushChild(Frame::MutationYield { effect, pending: None, span })),
-        "remove_suspension_source" => builtin_remove_suspension_source_step(&args, span)
-            .map(|effect| CallResult::PushChild(Frame::MutationYield { effect, pending: None, span })),
-        "transfer_conditions" => builtin_transfer_conditions_step(env, &args, span, core)
-            .map(|effect| CallResult::PushChild(Frame::MutationYield { effect, pending: None, span })),
+        "advance_time" => builtin_advance_time_step(env, &args, span).map(|effect| {
+            CallResult::PushChild(Frame::MutationYield {
+                effect,
+                pending: None,
+                span,
+            })
+        }),
+        "despawn" => builtin_despawn_step(&args, span).map(|effect| {
+            CallResult::PushChild(Frame::MutationYield {
+                effect,
+                pending: None,
+                span,
+            })
+        }),
+        "suspend" => builtin_suspend_step(env, &args, span).map(|effect| {
+            CallResult::PushChild(Frame::MutationYield {
+                effect,
+                pending: None,
+                span,
+            })
+        }),
+        "suspend_with_source" => builtin_suspend_with_source_step(&args, span).map(|effect| {
+            CallResult::PushChild(Frame::MutationYield {
+                effect,
+                pending: None,
+                span,
+            })
+        }),
+        "remove_suspension_source" => {
+            builtin_remove_suspension_source_step(&args, span).map(|effect| {
+                CallResult::PushChild(Frame::MutationYield {
+                    effect,
+                    pending: None,
+                    span,
+                })
+            })
+        }
+        "transfer_conditions" => {
+            builtin_transfer_conditions_step(env, &args, span, core).map(|effect| {
+                CallResult::PushChild(Frame::MutationYield {
+                    effect,
+                    pending: None,
+                    span,
+                })
+            })
+        }
         // Complex lifecycle builtins — push a CallSetup frame with pre-evaluated args.
         // These must NOT be run synchronously via run_frame_to_completion_sync because
         // that would re-enter compile_expr → call_builtin_step_full → infinite recursion.
@@ -4763,10 +4829,7 @@ fn builtin_advance_time_step(
     }
 }
 
-fn builtin_despawn_step(
-    args: &[Value],
-    span: Span,
-) -> Result<Effect, RuntimeError> {
+fn builtin_despawn_step(args: &[Value], span: Span) -> Result<Effect, RuntimeError> {
     match args.first() {
         Some(Value::Entity(entity)) => Ok(Effect::RemoveEntity { entity: *entity }),
         Some(other) => Err(RuntimeError::with_span(
@@ -4799,11 +4862,7 @@ fn parse_presence_step(val: &Value, span: Span) -> Result<crate::state::Presence
     }
 }
 
-fn builtin_suspend_step(
-    env: &ExecEnv,
-    args: &[Value],
-    span: Span,
-) -> Result<Effect, RuntimeError> {
+fn builtin_suspend_step(env: &ExecEnv, args: &[Value], span: Span) -> Result<Effect, RuntimeError> {
     if env.in_lifecycle_block == 0 {
         return Err(RuntimeError::with_span(
             "suspend() can only be called inside on_apply/on_remove blocks. \
@@ -4840,10 +4899,7 @@ fn builtin_suspend_step(
     }
 }
 
-fn builtin_suspend_with_source_step(
-    args: &[Value],
-    span: Span,
-) -> Result<Effect, RuntimeError> {
+fn builtin_suspend_with_source_step(args: &[Value], span: Span) -> Result<Effect, RuntimeError> {
     match (
         args.first(),
         args.get(1),

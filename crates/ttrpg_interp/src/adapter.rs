@@ -121,7 +121,6 @@ impl<S: WritableState> StateAdapter<S> {
         f(self, &mut handler)
     }
 
-
     /// Borrow the inner state mutably for direct manipulation.
     ///
     /// Use this when you need `&mut S` outside of an interpreter call,

@@ -74,9 +74,7 @@ fn add_character(state: &mut GameState, hp: i64) -> EntityRef {
 /// Drive an execution to completion, collecting all yielded effects.
 /// Responds with Acknowledged to every effect. Mutation effects are
 /// applied to state (since MutationYield frames yield them to the host).
-fn run_to_completion(
-    exec: &mut Execution<GameState>,
-) -> (Value, Vec<Effect>) {
+fn run_to_completion(exec: &mut Execution<GameState>) -> (Value, Vec<Effect>) {
     let mut effects = Vec::new();
     loop {
         match exec.poll().expect("poll should not error") {
@@ -290,9 +288,9 @@ system "test" {
 
     // SetConditionState is now yielded to the host in poll mode (not auto-applied
     // by StateAdapter). Verify it was yielded with the updated ticks value.
-    let set_state = effects.iter().find(|e| {
-        matches!(e, Effect::SetConditionState { .. })
-    });
+    let set_state = effects
+        .iter()
+        .find(|e| matches!(e, Effect::SetConditionState { .. }));
     assert!(
         set_state.is_some(),
         "expected SetConditionState to be yielded in poll mode"
@@ -357,9 +355,9 @@ system "test" {
     let (_val, effects) = run_to_completion(&mut exec);
 
     // SetConditionState is now yielded in poll mode. Verify it was yielded.
-    let set_state = effects.iter().find(|e| {
-        matches!(e, Effect::SetConditionState { .. })
-    });
+    let set_state = effects
+        .iter()
+        .find(|e| matches!(e, Effect::SetConditionState { .. }));
     assert!(
         set_state.is_some(),
         "expected SetConditionState to be yielded in poll mode"
