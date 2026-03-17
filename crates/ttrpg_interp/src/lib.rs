@@ -654,6 +654,10 @@ pub(crate) struct Env<'a, 'p> {
     /// Set by a `return` statement to signal early exit from the enclosing block.
     /// `eval_block` checks this after each statement and unwinds if set.
     pub return_value: Option<Value>,
+    /// Set by `execute_pipeline` when requires or cost checks abort the action.
+    /// Read and cleared by `scoped_execute` to emit `ActionOutcome::Failed`
+    /// instead of `Succeeded`.
+    pub pipeline_aborted: bool,
 }
 
 impl<'a, 'p> Env<'a, 'p> {
@@ -675,6 +679,7 @@ impl<'a, 'p> Env<'a, 'p> {
             lifecycle_condition_stack: Vec::new(),
             current_condition_token: None,
             return_value: None,
+            pipeline_aborted: false,
         }
     }
 

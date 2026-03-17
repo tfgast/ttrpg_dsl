@@ -427,11 +427,11 @@ fn action_with_requires_fail() {
     ));
     exec.respond(Response::Acknowledged).unwrap();
 
-    // ActionCompleted (Succeeded — abort returns Ok, so outcome is Succeeded)
+    // ActionCompleted (Failed — requires abort reports Failed)
     let step = exec.poll().unwrap();
     assert!(matches!(
         &step,
-        Step::Yielded(e) if matches!(&**e, Effect::ActionCompleted { outcome: ActionOutcome::Succeeded, .. })
+        Step::Yielded(e) if matches!(&**e, Effect::ActionCompleted { outcome: ActionOutcome::Failed, .. })
     ));
     exec.respond(Response::Acknowledged).unwrap();
 
@@ -1021,12 +1021,12 @@ fn differential_requires_override_force_fail() {
         assert!(*p1, "requires should have originally passed");
     }
 
-    // ActionCompleted outcome should match — Succeeded because abort is not an error
+    // ActionCompleted outcome should match — Failed because requires abort reports Failed
     if let Effect::ActionCompleted { outcome: o1, .. } = handler1.log.last().unwrap()
         && let Effect::ActionCompleted { outcome: o2, .. } = handler2.log.last().unwrap()
     {
         assert_eq!(o1, o2);
-        assert_eq!(*o1, ActionOutcome::Succeeded);
+        assert_eq!(*o1, ActionOutcome::Failed);
     }
 }
 
@@ -1530,12 +1530,12 @@ fn differential_requires_fail_acknowledged() {
     assert!(result2.is_ok());
     assert_eq!(result1.unwrap(), result2.unwrap());
 
-    // ActionCompleted should be Succeeded (abort is Ok(Void), not Err)
+    // ActionCompleted should be Failed (requires abort reports Failed)
     if let Effect::ActionCompleted { outcome: o1, .. } = handler1.log.last().unwrap()
         && let Effect::ActionCompleted { outcome: o2, .. } = handler2.log.last().unwrap()
     {
         assert_eq!(o1, o2);
-        assert_eq!(*o1, ActionOutcome::Succeeded);
+        assert_eq!(*o1, ActionOutcome::Failed);
     }
 }
 

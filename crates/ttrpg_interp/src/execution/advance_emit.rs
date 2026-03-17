@@ -344,6 +344,7 @@ pub(super) fn advance_emit_hooks(
             pending: None,
             body_result: None,
             cost_aborted: false,
+            requires_aborted: false,
             saved_turn_actor: None,
             saved_invocation: None,
         });

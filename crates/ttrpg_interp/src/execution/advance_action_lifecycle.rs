@@ -25,6 +25,7 @@ pub(super) fn advance_action_lifecycle(
         pending,
         body_result,
         cost_aborted,
+        requires_aborted,
         saved_turn_actor,
         saved_invocation,
     } = frame
@@ -213,6 +214,7 @@ pub(super) fn advance_action_lifecycle(
                     Value::Void
                 };
                 *body_result = Some(Ok(abort));
+                *requires_aborted = true;
                 *step = ActionStep::EmitCompleted;
                 Advance::Continue
             }
@@ -290,7 +292,7 @@ pub(super) fn advance_action_lifecycle(
             // Clear return_value from body (previously done in
             // RunResolve when it ran the block synchronously).
             env.return_value = None;
-            let outcome = if *cost_aborted {
+            let outcome = if *cost_aborted || *requires_aborted {
                 ActionOutcome::Failed
             } else {
                 match body_result {

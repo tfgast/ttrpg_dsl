@@ -228,6 +228,8 @@ pub(crate) enum Frame {
         body_result: Option<Result<Value, RuntimeError>>,
         /// Set to true when CostEval aborts (budget exhausted or cost vetoed).
         cost_aborted: bool,
+        /// Set to true when requires clause fails (check not passed).
+        requires_aborted: bool,
         // Context save (populated when gate passes)
         saved_turn_actor: Option<EntityRef>,
         saved_invocation: Option<InvocationId>,
@@ -1525,6 +1527,7 @@ impl<S: WritableState> Execution<S> {
             pending: None,
             body_result: None,
             cost_aborted: false,
+            requires_aborted: false,
             saved_turn_actor: None,
             saved_invocation: None,
         });
@@ -1572,6 +1575,7 @@ impl<S: WritableState> Execution<S> {
             pending: None,
             body_result: None,
             cost_aborted: false,
+            requires_aborted: false,
             saved_turn_actor: None,
             saved_invocation: None,
         });
@@ -1619,6 +1623,7 @@ impl<S: WritableState> Execution<S> {
             pending: None,
             body_result: None,
             cost_aborted: false,
+            requires_aborted: false,
             saved_turn_actor: None,
             saved_invocation: None,
         });

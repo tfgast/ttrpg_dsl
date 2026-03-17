@@ -105,7 +105,11 @@ fn scoped_execute(
     env.current_invocation_id = prev_invocation;
 
     // Always emit ActionCompleted
-    let outcome = if result.is_ok() {
+    let aborted = env.pipeline_aborted;
+    env.pipeline_aborted = false;
+    let outcome = if aborted {
+        ActionOutcome::Failed
+    } else if result.is_ok() {
         ActionOutcome::Succeeded
     } else {
         ActionOutcome::Failed
@@ -173,6 +177,7 @@ pub(crate) fn execute_pipeline(
 
         if !effective_passed {
             // Requires failed: no cost spent, action ends
+            env.pipeline_aborted = true;
             return Ok(abort_value);
         }
     }
@@ -205,7 +210,10 @@ pub(crate) fn execute_pipeline(
         if !effective.free {
             match deduct_costs(env, action_name, &effective, call_span)? {
                 CostOutcome::Proceed => {}
-                CostOutcome::ActionFailed => return Ok(abort_value),
+                CostOutcome::ActionFailed => {
+                    env.pipeline_aborted = true;
+                    return Ok(abort_value);
+                }
             }
         }
         // else: cost was overridden to free by a modifier

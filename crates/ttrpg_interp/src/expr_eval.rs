@@ -3260,6 +3260,7 @@ fn build_action_lifecycle(
         pending: None,
         body_result: None,
         cost_aborted: false,
+        requires_aborted: false,
         saved_turn_actor: None,
         saved_invocation: None,
     }))
