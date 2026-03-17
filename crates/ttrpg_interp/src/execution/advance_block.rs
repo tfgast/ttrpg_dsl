@@ -92,16 +92,20 @@ pub(super) fn advance_block(
         env.push_scope();
     }
 
-    // Check for early return (set by a previous statement).
-    if let Some(ret) = env.return_value.clone() {
-        env.pop_scope();
-        return Advance::Pop(ret);
-    }
-
     // All statements processed.
     if *index >= stmts.len() {
         env.pop_scope();
         return Advance::Pop(result.clone());
+    }
+
+    // Check for early return (set by a previous statement in this block).
+    // This must come AFTER the "all stmts processed" check so that blocks
+    // with no statements always return Void, matching the recursive
+    // evaluator's `eval_block` which only checks return_value inside the
+    // statement loop (i.e., after at least one statement has run).
+    if let Some(ret) = env.return_value.clone() {
+        env.pop_scope();
+        return Advance::Pop(ret);
     }
 
     // Evaluate the current statement.
