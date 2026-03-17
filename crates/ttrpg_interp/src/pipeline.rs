@@ -1,18 +1,18 @@
 use std::collections::{BTreeMap, HashMap, HashSet};
 
+use ttrpg_ast::Name;
 use ttrpg_ast::ast::{
     ConditionClause, ModifyClause, ModifyStmt, ModifyTarget, SelectorPredicate,
     SuppressModifyClause,
 };
-use ttrpg_ast::Name;
 use ttrpg_checker::env::FnInfo;
 
+use crate::Env;
 use crate::RuntimeError;
 use crate::effect::{Effect, FieldChange, ModifySource, Phase, Response};
 use crate::eval::{eval_expr, value_eq};
 use crate::state::{ActiveCondition, EntityRef};
 use crate::value::Value;
-use crate::Env;
 
 // ── Supporting types ────────────────────────────────────────────
 

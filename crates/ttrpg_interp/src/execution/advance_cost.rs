@@ -17,6 +17,7 @@ pub(super) fn advance_cost_eval(
         effective_cost,
         pending,
         abort_value,
+        action_params,
         modifiers,
         pending_modify_effect,
         modify_walker,
@@ -160,7 +161,12 @@ pub(super) fn advance_cost_eval(
                     if modifiers.is_empty() {
                         *phase = CostEvalPhase::BudgetPreCheck(0);
                     } else {
-                        *phase = CostEvalPhase::ApplyModifier(0);
+                        let has_sa = modifiers.iter().any(|m| m.should_apply_body.is_some());
+                        *phase = if has_sa {
+                            CostEvalPhase::ShouldApplyGate(0)
+                        } else {
+                            CostEvalPhase::ApplyModifier(0)
+                        };
                     }
                     Advance::Continue
                 }
@@ -509,6 +515,12 @@ pub(super) fn advance_cost_eval(
                         }
                     }
                 }
+            }
+
+            // Bind action params (receiver + args) so should_apply body
+            // can reference them for gating decisions.
+            for (param_name, param_val) in action_params.iter() {
+                env.bind(param_name.clone(), param_val.clone());
             }
 
             *phase = CostEvalPhase::AwaitShouldApply(idx);

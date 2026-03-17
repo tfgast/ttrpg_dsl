@@ -569,6 +569,8 @@ pub(crate) enum Frame {
         effective_cost: Option<CostClause>,
         pending: Option<Response>,
         abort_value: Value,
+        /// Action's bound params (receiver + args) for should_apply gate scope.
+        action_params: Vec<(Name, Value)>,
         /// Collected cost modifiers (populated by CollectModifiers phase).
         modifiers: Vec<crate::pipeline::OwnedModifier>,
         /// Pending ModifyApplied effect to yield (populated by ApplyModifier phase).
@@ -1000,6 +1002,8 @@ impl Frame {
                 } else if matches!(phase, CostEvalPhase::AwaitShouldApply(_)) {
                     // Block child completed for should_apply gate.
                     *should_apply_result = Some(Ok(value));
+                } else if matches!(phase, CostEvalPhase::YieldShouldApplyState(_)) {
+                    // MutationYield child completed for SetConditionState — value is ignored.
                 } else {
                     unreachable!("CostEval: unexpected child value in phase {:?}", phase)
                 }

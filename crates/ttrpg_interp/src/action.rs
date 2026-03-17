@@ -127,6 +127,9 @@ fn scoped_execute(
 
 /// Inner pipeline shared by actions and reactions: optional requires → optional
 /// cost → resolve block.
+///
+/// `action_params` are the action's bound params (receiver + args) — passed to
+/// `filter_by_should_apply` so cost modifier should_apply gates can reference them.
 pub(crate) fn execute_pipeline(
     env: &mut Env,
     actor: &EntityRef,
@@ -136,6 +139,7 @@ pub(crate) fn execute_pipeline(
     resolve: &Block,
     has_return_type: bool,
     call_span: Span,
+    action_params: &[(Name, Value)],
 ) -> Result<Value, RuntimeError> {
     let abort_value = if has_return_type {
         Value::Option(None)
@@ -188,7 +192,7 @@ pub(crate) fn execute_pipeline(
     {
         // Collect and apply cost modifiers from conditions on the actor
         let modifiers = collect_cost_modifiers(env, actor, action_name)?;
-        let modifiers = crate::pipeline::filter_by_should_apply(env, modifiers, &[])?;
+        let modifiers = crate::pipeline::filter_by_should_apply(env, modifiers, action_params)?;
         let mut effective = cost.clone();
         for modifier in &modifiers {
             let maybe_effect =
@@ -291,6 +295,10 @@ pub(crate) fn execute_action(
             }
         }
 
+        // Build action params: receiver + provided args.
+        let mut ap: Vec<(Name, Value)> =
+            vec![(action.receiver_name.clone(), Value::Entity(actor))];
+        ap.extend(args.iter().cloned());
         execute_pipeline(
             env,
             &actor,
@@ -300,6 +308,7 @@ pub(crate) fn execute_action(
             &action.resolve,
             has_return_type,
             call_span,
+            &ap,
         )
     })
 }
@@ -347,7 +356,11 @@ pub(crate) fn execute_reaction(
     // 2–4. Scoped execution with lifecycle completion
     scoped_execute(env, &reaction_name, reactor, inv_id, call_span, |env| {
         env.bind(reaction.receiver_name.clone(), Value::Entity(reactor));
-        env.bind(Name::from("trigger"), event_payload);
+        env.bind(Name::from("trigger"), event_payload.clone());
+        let ap = vec![
+            (reaction.receiver_name.clone(), Value::Entity(reactor)),
+            (Name::from("trigger"), event_payload),
+        ];
         execute_pipeline(
             env,
             &reactor,
@@ -357,6 +370,7 @@ pub(crate) fn execute_reaction(
             &reaction.resolve,
             false, // reactions never have return types
             call_span,
+            &ap,
         )
     })
 }

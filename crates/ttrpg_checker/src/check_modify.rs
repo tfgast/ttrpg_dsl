@@ -217,10 +217,18 @@ impl Checker<'_> {
             );
         }
 
-        // Validate bindings match target function params
+        // Validate bindings match target function params (+ receiver for cost targets)
         self.validate_clause_bindings(
             &sa.bindings,
             |name| {
+                // For cost targets, the action's receiver is also bindable
+                if matches!(&sa.target, ModifyTarget::Cost(_)) {
+                    if let Some(ref recv) = fn_info.receiver {
+                        if recv.name == name {
+                            return Some(recv.ty.clone());
+                        }
+                    }
+                }
                 fn_info
                     .params
                     .iter()
@@ -231,6 +239,19 @@ impl Checker<'_> {
             &format!("does not match any parameter of `{target_name}`"),
         );
 
+        // Bind target function's receiver into scope for cost targets
+        if matches!(&sa.target, ModifyTarget::Cost(_)) {
+            if let Some(ref recv) = fn_info.receiver {
+                self.scope.bind(
+                    recv.name.clone(),
+                    VarBinding {
+                        ty: recv.ty.clone(),
+                        mutable: false,
+                        is_local: false,
+                    },
+                );
+            }
+        }
         // Bind target function's params into scope (read-only)
         for param in &fn_info.params {
             self.scope.bind(

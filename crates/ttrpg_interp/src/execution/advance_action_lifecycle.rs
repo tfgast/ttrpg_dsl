@@ -60,8 +60,8 @@ pub(super) fn advance_action_lifecycle(
                     env.push_scope();
 
                     env.bind(receiver_name.clone(), Value::Entity(*actor));
-                    for (pname, pval) in bindings.drain(..) {
-                        env.bind(pname, pval);
+                    for (pname, pval) in bindings.iter() {
+                        env.bind(pname.clone(), pval.clone());
                     }
 
                     // Always flow through the frame-based state machine
@@ -225,6 +225,11 @@ pub(super) fn advance_action_lifecycle(
             if let Some(c) = cost.as_ref()
                 && !c.free
             {
+                // Capture the action's bound params (receiver + args) so that
+                // cost modifier should_apply gates can reference them.
+                let mut ap = vec![(receiver_name.clone(), Value::Entity(*actor))];
+                ap.extend(bindings.iter().cloned());
+
                 // Use Bool(false) as a universal abort sentinel:
                 // CostEval pops Void on success, Bool(false) on abort.
                 // receive_child_result detects this and sets cost_aborted.
@@ -239,6 +244,7 @@ pub(super) fn advance_action_lifecycle(
                     effective_cost: Some(c.clone()),
                     pending: None,
                     abort_value: abort,
+                    action_params: ap,
                     modifiers: Vec::new(),
                     pending_modify_effect: None,
 
