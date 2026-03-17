@@ -25,7 +25,7 @@ use crate::state::{
 };
 use crate::value::DiceExpr;
 use crate::value::Value;
-use crate::{Env, Interpreter, RuntimeError, Scope};
+use crate::{RuntimeError, Scope};
 use ttrpg_checker::env::FnInfo;
 use ttrpg_checker::ty::Ty;
 
@@ -91,6 +91,15 @@ impl ExecEnv {
     pub(crate) fn lookup(&self, name: &str) -> Option<&Value> {
         for scope in self.scopes.iter().rev() {
             if let Some(val) = scope.bindings.get(name) {
+                return Some(val);
+            }
+        }
+        None
+    }
+
+    pub(crate) fn lookup_mut(&mut self, name: &str) -> Option<&mut Value> {
+        for scope in self.scopes.iter_mut().rev() {
+            if let Some(val) = scope.bindings.get_mut(name) {
                 return Some(val);
             }
         }
@@ -2054,7 +2063,9 @@ impl<S: WritableState> Execution<S> {
                     };
                 }
 
-                let frame = frames.last_mut().expect("frame stack non-empty (checked above)");
+                let frame = frames
+                    .last_mut()
+                    .expect("frame stack non-empty (checked above)");
                 let advance = frame.advance(core, env, &*state, &mut handler, tracker);
 
                 match advance {
@@ -2117,7 +2128,9 @@ impl<S: WritableState> Execution<S> {
                         };
                     }
 
-                    let frame = frames.last_mut().expect("frame stack non-empty (checked above)");
+                    let frame = frames
+                        .last_mut()
+                        .expect("frame stack non-empty (checked above)");
                     let advance = frame.advance(core, env, sp, eh, tracker);
 
                     match advance {
@@ -2219,7 +2232,9 @@ impl<S: WritableState> Execution<S> {
                     return final_result.take().unwrap_or(Ok(Value::Void));
                 }
 
-                let frame = frames.last_mut().expect("frame stack non-empty (checked above)");
+                let frame = frames
+                    .last_mut()
+                    .expect("frame stack non-empty (checked above)");
                 let advance = frame.advance(core, env, sp, eh, tracker);
 
                 match advance {

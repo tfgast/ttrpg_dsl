@@ -135,8 +135,7 @@ pub(super) fn advance_derive_eval(
                 let n = name.clone();
                 let a = args.clone();
                 let mut ctx = FrameAssignCtx {
-                    scopes: &mut env.scopes,
-                    turn_actor: env.turn_actor,
+                    env,
                     core,
                     state: sp,
                     handler: &mut *eh,
@@ -275,8 +274,7 @@ pub(super) fn advance_derive_eval(
                     .collect();
                 let n = name.clone();
                 let mut ctx = FrameAssignCtx {
-                    scopes: &mut env.scopes,
-                    turn_actor: env.turn_actor,
+                    env,
                     core,
                     state: sp,
                     handler: &mut *eh,

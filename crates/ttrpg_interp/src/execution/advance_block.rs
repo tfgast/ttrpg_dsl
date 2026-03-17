@@ -45,8 +45,7 @@ pub(super) fn advance_block(
                 let rhs = value;
                 let collected = {
                     let mut ctx = FrameAssignCtx {
-                        scopes: &mut env.scopes,
-                        turn_actor: env.turn_actor,
+                        env,
                         core,
                         state: sp,
                         handler: &mut *eh,

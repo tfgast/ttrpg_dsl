@@ -3,11 +3,10 @@ use super::*;
 // ── Frame-based assignment context ─────────────────────────────
 
 /// Implements `AssignContext` for the frame-based execution path,
-/// allowing assignment logic to run without a bridge to the
-/// recursive `Interpreter`.
+/// using frame-based expression evaluation instead of bridging to
+/// the recursive `Interpreter`.
 pub(super) struct FrameAssignCtx<'a> {
-    pub(super) scopes: &'a mut Vec<Scope>,
-    pub(super) turn_actor: Option<EntityRef>,
+    pub(super) env: &'a mut ExecEnv,
     pub(super) core: &'a RuntimeCore,
     pub(super) state: &'a dyn StateProvider,
     pub(super) handler: &'a mut dyn EffectHandler,
@@ -18,37 +17,25 @@ pub(super) struct FrameAssignCtx<'a> {
 
 impl crate::eval::AssignContext for FrameAssignCtx<'_> {
     fn lookup(&self, name: &str) -> Option<&Value> {
-        for scope in self.scopes.iter().rev() {
-            if let Some(val) = scope.bindings.get(name) {
-                return Some(val);
-            }
-        }
-        None
+        self.env.lookup(name)
     }
     fn lookup_mut(&mut self, name: &str) -> Option<&mut Value> {
-        for scope in self.scopes.iter_mut().rev() {
-            if let Some(val) = scope.bindings.get_mut(name) {
-                return Some(val);
-            }
-        }
-        None
+        self.env.lookup_mut(name)
     }
     fn push_scope(&mut self) {
-        self.scopes.push(Scope::new());
+        self.env.push_scope();
     }
     fn pop_scope(&mut self) {
-        self.scopes.pop();
+        self.env.pop_scope();
     }
     fn bind(&mut self, name: Name, value: Value) {
-        if let Some(scope) = self.scopes.last_mut() {
-            scope.bindings.insert(name, value);
-        }
+        self.env.bind(name, value);
     }
     fn emit(&mut self, effect: Effect) {
         self.collected.push(effect);
     }
     fn turn_actor(&self) -> Option<EntityRef> {
-        self.turn_actor
+        self.env.turn_actor
     }
     fn type_env(&self) -> &ttrpg_checker::env::TypeEnv {
         &self.core.type_env
@@ -60,49 +47,10 @@ impl crate::eval::AssignContext for FrameAssignCtx<'_> {
         self.state
     }
     fn eval_expr(&mut self, expr: &Spanned<ExprKind>) -> Result<Value, RuntimeError> {
-        match &expr.node {
-            ExprKind::IntLit(n) => return Ok(Value::Int(*n)),
-            ExprKind::StringLit(s) => return Ok(Value::Str(s.clone())),
-            ExprKind::BoolLit(b) => return Ok(Value::Bool(*b)),
-            ExprKind::NoneLit => return Ok(Value::Option(None)),
-            ExprKind::Ident(name) => {
-                if let Some(val) = self.lookup(name) {
-                    return Ok(val.clone());
-                }
-            }
-            _ => {}
-        }
-        let interp = Interpreter::bridge(
-            &self.core.program,
-            &self.core.type_env,
-            self.core.counters().0,
-            self.core.counters().1,
-            self.core.coverage.clone(),
-        );
-        let scopes = std::mem::take(self.scopes);
-        let turn_actor = self.turn_actor;
-        let mut tmp_env = Env {
-            state: self.state,
-            handler: &mut *self.handler,
-            interp: &interp,
-            scopes,
-            turn_actor,
-            cost_payer: None,
-            current_invocation_id: None,
-            emit_depth: 0,
-            in_lifecycle_block: 0,
-            lifecycle_condition_stack: Vec::new(),
-            current_condition_token: None,
-            return_value: None,
-        };
-        let result = crate::eval::eval_expr(&mut tmp_env, expr);
-        *self.scopes = std::mem::take(&mut tmp_env.scopes);
-        let (inv, cond) = interp.id_counters();
-        self.core.sync_counters(inv, cond);
-        result
+        eval_expr_via_frame(self.core, self.env, self.state, self.handler, expr)
     }
     fn scopes_mut_and_state(&mut self) -> (&mut Vec<Scope>, &dyn StateProvider) {
-        (self.scopes, self.state)
+        (&mut self.env.scopes, self.state)
     }
 }
 
@@ -170,9 +118,15 @@ pub(super) fn try_frame_dispatch_stmt(
 
     // Dispatch builtins that yield effects (ConditionApplyGate, ConditionRemovalGate).
     let builtin_target = match callee_name.as_str() {
-        "apply_condition" => Some(CallTarget::ApplyCondition { span: call_expr.span }),
-        "remove_condition" => Some(CallTarget::RemoveCondition { span: call_expr.span }),
-        "revoke" => Some(CallTarget::Revoke { span: call_expr.span }),
+        "apply_condition" => Some(CallTarget::ApplyCondition {
+            span: call_expr.span,
+        }),
+        "remove_condition" => Some(CallTarget::RemoveCondition {
+            span: call_expr.span,
+        }),
+        "revoke" => Some(CallTarget::Revoke {
+            span: call_expr.span,
+        }),
         _ => None,
     };
     if let Some(target) = builtin_target {
@@ -267,6 +221,35 @@ pub(super) fn try_frame_dispatch_stmt(
     )))
 }
 
+/// Evaluate an expression using the frame-based ExprEval machinery.
+///
+/// Compiles the expression to ExprWork and runs it synchronously via
+/// `run_frame_to_completion_sync`. This replaces the recursive interpreter
+/// bridge for expression evaluation in the frame-based path.
+pub(crate) fn eval_expr_via_frame(
+    core: &RuntimeCore,
+    env: &mut ExecEnv,
+    sp: &dyn StateProvider,
+    eh: &mut dyn EffectHandler,
+    expr: &Spanned<ExprKind>,
+) -> Result<Value, RuntimeError> {
+    // Fast path for trivial expressions — avoid frame overhead.
+    match &expr.node {
+        ExprKind::IntLit(n) => return Ok(Value::Int(*n)),
+        ExprKind::StringLit(s) => return Ok(Value::Str(s.clone())),
+        ExprKind::BoolLit(b) => return Ok(Value::Bool(*b)),
+        ExprKind::NoneLit => return Ok(Value::Option(None)),
+        ExprKind::Ident(name) => {
+            if let Some(val) = env.lookup(name) {
+                return Ok(val.clone());
+            }
+        }
+        _ => {}
+    }
+    let frame = compile_expr_to_frame(expr, core)?;
+    run_frame_to_completion_sync(frame, core, env, sp, eh)
+}
+
 /// Run a frame (and any children it pushes) to completion synchronously.
 ///
 /// This is the same loop as `Execution::drive()` but operates on a standalone
@@ -289,7 +272,9 @@ pub(crate) fn run_frame_to_completion_sync(
             return final_result.unwrap_or(Ok(Value::Void));
         }
 
-        let frame = frames.last_mut().expect("frame stack non-empty (checked above)");
+        let frame = frames
+            .last_mut()
+            .expect("frame stack non-empty (checked above)");
         let advance = frame.advance(core, env, sp, eh, &tracker);
 
         match advance {

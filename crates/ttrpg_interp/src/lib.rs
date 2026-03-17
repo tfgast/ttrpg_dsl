@@ -237,11 +237,6 @@ impl<'p> Interpreter<'p> {
         }
     }
 
-    /// Read the current ID counters (for syncing back to RuntimeCore).
-    pub(crate) fn id_counters(&self) -> (u64, u64) {
-        (self.next_invocation_id.get(), self.next_condition_id.get())
-    }
-
     /// Attach shared coverage data to this interpreter.
     pub fn set_coverage(&mut self, cov: Rc<RefCell<coverage::CoverageData>>) {
         self.coverage = Some(cov);

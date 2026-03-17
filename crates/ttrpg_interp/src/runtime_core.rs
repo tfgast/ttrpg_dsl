@@ -106,10 +106,4 @@ impl RuntimeCore {
     pub fn counters(&self) -> (u64, u64) {
         (self.next_invocation_id.get(), self.next_condition_id.get())
     }
-
-    /// Sync ID counters back to this core.
-    pub(crate) fn sync_counters(&self, invocation: u64, condition: u64) {
-        self.next_invocation_id.set(invocation);
-        self.next_condition_id.set(condition);
-    }
 }
