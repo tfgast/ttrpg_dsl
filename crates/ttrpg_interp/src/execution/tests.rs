@@ -7715,3 +7715,72 @@ fn return_value_propagates_across_statements() {
     assert_eq!(result1.unwrap(), Value::Int(42));
     assert_eq!(result2.unwrap(), Value::Int(42));
 }
+
+/// Regression: UnitLit with unknown suffix caused compile_inner to return None,
+/// making compile_expr fail with "expression could not be compiled for frame-based
+/// eval" while the recursive interpreter returned a proper RuntimeError. Both paths
+/// must agree on Err.
+#[test]
+fn differential_unknown_unit_suffix_errors_consistently() {
+    use ttrpg_ast::ast::*;
+    use ttrpg_ast::{Span, Spanned};
+
+    // Build a derive whose body returns a UnitLit with a bogus suffix.
+    // This can't be produced by the parser but the fuzzer generates arbitrary ASTs.
+    let bogus_expr = Spanned {
+        node: ExprKind::UnitLit {
+            value: 10,
+            suffix: "bogus".into(),
+        },
+        span: Span::dummy(),
+    };
+
+    let mut program = Program::default();
+    program.derives.insert(
+        "test_derive".into(),
+        FnDecl::new(
+            "test_derive",
+            vec![],
+            Spanned {
+                node: TypeExpr::Named("int".into()),
+                span: Span::dummy(),
+            },
+            Spanned {
+                node: vec![Spanned {
+                    node: StmtKind::Expr(bogus_expr),
+                    span: Span::dummy(),
+                }],
+                span: Span::dummy(),
+            },
+        ),
+    );
+
+    let result = ttrpg_checker::check(&program);
+    let program = Arc::new(program);
+    let type_env = Arc::new(result.env);
+
+    // Recursive path
+    let interp = crate::Interpreter::new(&program, &type_env).unwrap();
+    let game1 = GameState::new();
+    let adapter1 = StateAdapter::new(game1);
+    let mut handler1 = ScriptedHandler::always_ack();
+    let result1 = adapter1.run(&mut handler1, |state, handler| {
+        interp.evaluate_derive(state, handler, "test_derive", vec![])
+    });
+
+    // Step-based path
+    let core = RuntimeCore::new(Arc::clone(&program), Arc::clone(&type_env), 1, 1);
+    let game2 = GameState::new();
+    let adapter2 = StateAdapter::new(game2);
+    let exec = Execution::start_derive(core, adapter2, "test_derive", vec![]).unwrap();
+    let mut handler2 = ScriptedHandler::always_ack();
+    let result2 = exec.run_with_handler(&mut handler2);
+
+    // Both paths must produce an error (not diverge).
+    match (&result1, &result2) {
+        (Err(_), Err(_)) => {} // both error — OK
+        _ => panic!(
+            "DIVERGENCE: recursive={result1:?}, step={result2:?}"
+        ),
+    }
+}

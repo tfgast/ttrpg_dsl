@@ -152,6 +152,10 @@ pub(crate) enum ExprWork {
     MatchFail(Span),
     /// No guard matched in a guard-match expression — emit runtime error.
     GuardMatchFail(Span),
+    /// Deferred runtime error — used when compilation can detect an error
+    /// (e.g. unknown unit suffix) but needs to emit the same error the
+    /// recursive evaluator would produce at runtime.
+    Fail(String, Span),
 
     // ── Phase 7 variants ────────────────────────────────────────
     /// For loop: pop iterable (collection or range start+end), materialize,
@@ -317,21 +321,42 @@ fn compile_inner(
         }
         ExprKind::UnitLit { value, suffix } => {
             // Look up the unit type name from the suffix
-            let unit_name = type_env.suffix_to_unit.get(suffix.as_str())?.clone();
-            // Look up the field name from the unit type declaration
-            let field_name = match type_env.types.get(unit_name.as_str())? {
-                DeclInfo::Unit(info) => info.fields.first()?.name.clone(),
-                _ => return None,
-            };
-            let mut fields = BTreeMap::new();
-            fields.insert(field_name, Value::Int(*value));
-            work.push(ExprWork::Literal(
-                Value::Struct {
-                    name: unit_name,
-                    fields,
-                },
-                span,
-            ));
+            if let Some(unit_name) = type_env.suffix_to_unit.get(suffix.as_str()).cloned() {
+                // Look up the field name from the unit type declaration
+                let field_name = match type_env.types.get(unit_name.as_str()) {
+                    Some(DeclInfo::Unit(info)) => match info.fields.first() {
+                        Some(f) => f.name.clone(),
+                        None => {
+                            work.push(ExprWork::Fail(
+                                format!("unit type `{unit_name}` has no fields"),
+                                span,
+                            ));
+                            return Some(());
+                        }
+                    },
+                    _ => {
+                        work.push(ExprWork::Fail(
+                            format!("unit type `{unit_name}` not found"),
+                            span,
+                        ));
+                        return Some(());
+                    }
+                };
+                let mut fields = BTreeMap::new();
+                fields.insert(field_name, Value::Int(*value));
+                work.push(ExprWork::Literal(
+                    Value::Struct {
+                        name: unit_name,
+                        fields,
+                    },
+                    span,
+                ));
+            } else {
+                work.push(ExprWork::Fail(
+                    format!("unknown unit suffix `{suffix}`"),
+                    span,
+                ));
+            }
         }
         ExprKind::Paren(inner) => {
             compile_inner(inner, type_env, program, work)?;
@@ -1421,6 +1446,9 @@ pub(crate) fn advance_expr_eval(
                     "no guard matched in match expression",
                     *span,
                 ));
+            }
+            ExprWork::Fail(msg, span) => {
+                return Advance::Error(RuntimeError::with_span(msg.clone(), *span));
             }
 
             // ── Phase 7: For loop / List comprehension ──────
