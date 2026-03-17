@@ -47,8 +47,11 @@ bench *ARGS:
 run *ARGS:
     cargo run --release -- {{ARGS}}
 
-# Run .ttrpg-cli integration test scripts (recursive mode)
-test-scripts:
+# Run .ttrpg-cli integration test scripts (both execution modes)
+test-scripts: test-scripts-recursive test-scripts-step
+
+# Run .ttrpg-cli integration test scripts (recursive mode only)
+test-scripts-recursive:
     #!/usr/bin/env bash
     set -euo pipefail
     total=0
@@ -83,7 +86,7 @@ test-scripts:
     echo "═══════════════════════════════════════"
     [ $failed -eq 0 ]
 
-# Run .ttrpg-cli integration test scripts (step-based mode)
+# Run .ttrpg-cli integration test scripts (step-based mode only)
 test-scripts-step:
     #!/usr/bin/env bash
     set -euo pipefail
