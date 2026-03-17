@@ -12,11 +12,12 @@ use ttrpg_ast::ast::{AssignOp, DeclKind, FieldDef, Program, TopLevel, TypeExpr};
 use ttrpg_ast::diagnostic::{Diagnostic, MultiSourceMap, Severity};
 use ttrpg_ast::module::ModuleMap;
 use ttrpg_checker::env::{DeclInfo, FnKind, TypeEnv};
+use ttrpg_checker::ty::Ty;
 use ttrpg_interp::Interpreter;
 use ttrpg_interp::adapter::StateAdapter;
 use ttrpg_interp::coverage::{self, CoverageData};
-use ttrpg_interp::effect::FieldPathSegment;
-use ttrpg_interp::execution::Execution;
+use ttrpg_interp::effect::{Effect, EffectHandler, FieldPathSegment, Response, Step};
+use ttrpg_interp::execution::{Execution, PollError};
 use ttrpg_interp::handle_registry::HandleRegistry;
 use ttrpg_interp::reference_state::GameState;
 use ttrpg_interp::runtime_core::RuntimeCore;
@@ -54,6 +55,9 @@ pub enum CliError {
     Message(String),
     /// A pre-rendered diagnostic with source spans (already includes "error:" prefix).
     Rendered(String),
+    /// Execution paused waiting for the REPL to collect a prompt response.
+    /// Not a real error — signals the REPL to enter prompt mode.
+    PromptPending,
 }
 
 impl CliError {
@@ -61,12 +65,18 @@ impl CliError {
     pub fn is_rendered(&self) -> bool {
         matches!(self, CliError::Rendered(_))
     }
+
+    /// Returns `true` if this is a prompt-pending signal (not a real error).
+    pub fn is_prompt_pending(&self) -> bool {
+        matches!(self, CliError::PromptPending)
+    }
 }
 
 impl std::fmt::Display for CliError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             CliError::Message(msg) | CliError::Rendered(msg) => write!(f, "{msg}"),
+            CliError::PromptPending => write!(f, "(prompt pending)"),
         }
     }
 }
@@ -130,6 +140,26 @@ pub enum ExecutionMode {
     StepBased,
 }
 
+/// A paused execution waiting for user input to resolve a prompt.
+pub(crate) struct PendingPrompt {
+    pub exec: Execution<GameState>,
+    pub core: Rc<RuntimeCore>,
+    pub name: String,
+    pub hint: Option<String>,
+    pub return_type: Ty,
+    pub suggest: Option<Value>,
+    pub has_default: bool,
+}
+
+/// Information about a pending prompt, for the REPL to display.
+pub struct PromptDisplay {
+    pub name: String,
+    pub hint: Option<String>,
+    pub type_hint: &'static str,
+    pub suggest: Option<String>,
+    pub has_default: bool,
+}
+
 /// The core CLI runner. Owns program state and dispatches commands.
 pub struct Runner {
     program: Arc<Program>,
@@ -157,6 +187,8 @@ pub struct Runner {
     zone_membership: HashSet<(u64, u64)>,
     /// Which execution path to use for expression evaluation.
     exec_mode: ExecutionMode,
+    /// A paused step-based execution waiting for a prompt response.
+    pending_prompt: Option<PendingPrompt>,
 }
 
 impl Runner {
@@ -185,6 +217,7 @@ impl Runner {
             exec_mode: ExecutionMode::Recursive,
             loop_state: None,
             zone_membership: HashSet::new(),
+            pending_prompt: None,
         }
     }
 
@@ -780,44 +813,233 @@ impl Runner {
 
         let exec = Execution::start_expr_with_bindings(core.clone(), adapter, parsed, bindings);
 
-        let mut handler = CliHandler::new(
-            // CliHandler needs &RefCell<GameState> for MutateField handling,
-            // but in step-based mode the StateAdapter owns the GameState.
-            // We pass a dummy RefCell that won't be used since MutateField
-            // is handled locally by StateAdapter.
-            &self.game_state,
-            self.handles.by_entity(),
-            &mut self.rng,
-            &mut self.roll_queue,
-            &mut self.prompt_queue,
-            &self.unit_suffixes,
-        )
-        .quiet(self.quiet)
-        .interactive(self.interactive);
+        self.drive_execution(exec, core)
+    }
 
-        let (result, gs) = exec.run_returning_state(&mut handler);
+    /// Drive a step-based execution to completion, pausing when an
+    /// interactive prompt is needed and returning control to the REPL.
+    ///
+    /// Returns `Ok(value)` on completion, or `Err(CliError::PromptPending)`
+    /// when the execution is paused waiting for user input.
+    fn drive_execution(
+        &mut self,
+        mut exec: Execution<GameState>,
+        core: Rc<RuntimeCore>,
+    ) -> Result<Value, CliError> {
+        loop {
+            let step = exec.poll().map_err(|e| match e {
+                PollError::Runtime(re) => render_runtime_error(&re, &self.source_map),
+                PollError::Protocol(pe) => {
+                    CliError::Message(format!("protocol error: {pe}"))
+                }
+            })?;
 
-        // Persist counters back to GameState
+            match step {
+                Step::Done(value) => {
+                    self.finish_execution(exec, &core);
+                    return Ok(value);
+                }
+                Step::Yielded(effect) => {
+                    // Check if this is a prompt that should pause for REPL input
+                    let is_prompt = self.interactive
+                        && self.exec_mode == ExecutionMode::StepBased
+                        && matches!(&*effect, Effect::ResolvePrompt { .. });
+
+                    if is_prompt {
+                        let Effect::ResolvePrompt {
+                            name,
+                            hint,
+                            return_type,
+                            suggest,
+                            has_default,
+                            ..
+                        } = *effect
+                        else {
+                            unreachable!()
+                        };
+
+                        // Check prompt queue first — if there's a queued value,
+                        // use it immediately without pausing.
+                        if let Some(val) = self.prompt_queue.pop_front() {
+                            if !self.quiet {
+                                self.output.push(format!(
+                                    "[ResolvePrompt] {} -> {} (queued)",
+                                    name,
+                                    crate::format::format_value(
+                                        &val,
+                                        &self.unit_suffixes
+                                    )
+                                ));
+                            }
+                            exec.respond(Response::PromptResult(val)).map_err(
+                                |pe| {
+                                    CliError::Message(format!(
+                                        "protocol error: {pe}"
+                                    ))
+                                },
+                            )?;
+                            continue;
+                        }
+
+                        // Pause execution — store state and return to REPL
+                        self.pending_prompt = Some(PendingPrompt {
+                            exec,
+                            core,
+                            name: name.to_string(),
+                            hint,
+                            return_type,
+                            suggest,
+                            has_default,
+                        });
+                        return Err(CliError::PromptPending);
+                    }
+
+                    // Handle all other effects via CliHandler
+                    let response = {
+                        let mut handler = CliHandler::new(
+                            &self.game_state,
+                            self.handles.by_entity(),
+                            &mut self.rng,
+                            &mut self.roll_queue,
+                            &mut self.prompt_queue,
+                            &self.unit_suffixes,
+                        )
+                        .quiet(self.quiet)
+                        .interactive(self.interactive);
+
+                        let response = handler.handle(*effect);
+
+                        for line in handler.log.drain(..) {
+                            self.output.push(line);
+                        }
+
+                        response
+                    };
+
+                    exec.respond(response).map_err(|pe| {
+                        CliError::Message(format!("protocol error: {pe}"))
+                    })?;
+                }
+            }
+        }
+    }
+
+    /// Extract state from a completed execution and restore it to the runner.
+    fn finish_execution(
+        &mut self,
+        exec: Execution<GameState>,
+        core: &Rc<RuntimeCore>,
+    ) {
         let (inv_id, cond_id) = core.counters();
-        let mut gs = gs;
+        let mut gs = exec.into_state();
         gs.set_next_invocation_id(inv_id);
         gs.set_next_condition_id(cond_id);
-
-        // Put GameState back
         self.game_state.replace(gs);
+    }
 
-        let result = result.map_err(|e| {
-            for line in handler.log.drain(..) {
-                self.output.push(line);
+    // ── Prompt handling ──────────────────────────────────────────
+
+    /// Returns `true` when execution is paused waiting for a prompt response.
+    pub fn in_prompt(&self) -> bool {
+        self.pending_prompt.is_some()
+    }
+
+    /// Returns display info about the pending prompt (for REPL formatting).
+    pub fn prompt_display(&self) -> Option<PromptDisplay> {
+        let p = self.pending_prompt.as_ref()?;
+        Some(PromptDisplay {
+            name: p.name.clone(),
+            hint: p.hint.clone(),
+            type_hint: crate::effects::type_hint(&p.return_type),
+            suggest: p
+                .suggest
+                .as_ref()
+                .map(crate::effects::format_suggest),
+            has_default: p.has_default,
+        })
+    }
+
+    /// Submit user input to resolve the pending prompt.
+    ///
+    /// Parses the input according to the prompt's expected type,
+    /// feeds it to the paused execution, and continues driving.
+    pub fn submit_prompt(&mut self, input: &str) -> Result<(), CliError> {
+        let pending = self
+            .pending_prompt
+            .take()
+            .ok_or_else(|| CliError::Message("no prompt pending".into()))?;
+
+        let trimmed = input.trim();
+
+        // Empty input: use suggest if available, else UseDefault
+        let response = if trimmed.is_empty() {
+            if let Some(ref val) = pending.suggest {
+                if !self.quiet {
+                    self.output.push(format!(
+                        "[ResolvePrompt] {} -> {}",
+                        pending.name,
+                        crate::format::format_value(val, &self.unit_suffixes)
+                    ));
+                }
+                Response::PromptResult(val.clone())
+            } else {
+                if !self.quiet {
+                    self.output.push(format!(
+                        "[ResolvePrompt] {} -> use default",
+                        pending.name
+                    ));
+                }
+                Response::UseDefault
             }
-            render_runtime_error(&e, &self.source_map)
-        })?;
+        } else {
+            match crate::effects::parse_prompt_input(trimmed, &pending.return_type) {
+                Ok(val) => {
+                    if !self.quiet {
+                        self.output.push(format!(
+                            "[ResolvePrompt] {} -> {}",
+                            pending.name,
+                            crate::format::format_value(&val, &self.unit_suffixes)
+                        ));
+                    }
+                    Response::PromptResult(val)
+                }
+                Err(msg) => {
+                    // Parse error — re-store the pending prompt and show error
+                    let type_hint = crate::effects::type_hint(&pending.return_type);
+                    self.pending_prompt = Some(pending);
+                    return Err(CliError::Message(format!(
+                        "expected {type_hint}, got {trimmed:?}: {msg}",
+                    )));
+                }
+            }
+        };
 
-        for line in handler.log.drain(..) {
-            self.output.push(line);
+        let mut exec = pending.exec;
+        let core = pending.core;
+        exec.respond(response)
+            .map_err(|pe| CliError::Message(format!("protocol error: {pe}")))?;
+
+        match self.drive_execution(exec, core) {
+            Ok(value) => {
+                if !matches!(value, Value::Void) {
+                    self.output
+                        .push(crate::format::format_value(&value, &self.unit_suffixes));
+                }
+                Ok(())
+            }
+            Err(CliError::PromptPending) => {
+                // Another prompt in the same execution — stay in prompt mode
+                Ok(())
+            }
+            Err(e) => Err(e),
         }
+    }
 
-        Ok(result)
+    /// Cancel the pending prompt (e.g., on Ctrl-C), vetoing the execution.
+    pub fn cancel_prompt(&mut self) {
+        if let Some(pending) = self.pending_prompt.take() {
+            self.finish_execution(pending.exec, &pending.core);
+        }
     }
 
     /// Resolve a handle name to an EntityRef.

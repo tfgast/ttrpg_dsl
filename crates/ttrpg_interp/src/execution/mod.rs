@@ -2304,6 +2304,14 @@ impl<S: WritableState> Execution<S> {
     pub fn state_mut(&mut self) -> &mut StateAdapter<S> {
         &mut self.state
     }
+
+    /// Consume the execution and return the inner game state.
+    ///
+    /// Use this to reclaim owned state from a paused or cancelled execution
+    /// (e.g., when the user cancels a prompt in the REPL).
+    pub fn into_state(self) -> S {
+        self.state.into_inner()
+    }
 }
 
 impl std::fmt::Display for ProtocolError {

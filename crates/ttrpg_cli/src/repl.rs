@@ -13,23 +13,62 @@ use crate::highlighter::TtrpgHighlighter;
 use crate::runner::Runner;
 use crate::validator::TtrpgValidator;
 
+/// Which mode the REPL prompt is in.
+enum PromptMode {
+    /// Normal command entry.
+    Normal,
+    /// Continuation (heredoc, backslash, unclosed delimiters).
+    Continuation,
+    /// Waiting for user input to resolve a DSL prompt.
+    Prompt {
+        name: String,
+        hint: Option<String>,
+        type_hint: &'static str,
+        suggest: Option<String>,
+    },
+}
+
 /// Custom prompt for the TTRPG REPL.
 struct TtrpgPrompt {
-    /// When true, show a continuation prompt instead of the normal one.
-    continuation: bool,
+    mode: PromptMode,
 }
 
 impl Prompt for TtrpgPrompt {
     fn render_prompt_left(&self) -> std::borrow::Cow<'_, str> {
-        if self.continuation {
-            std::borrow::Cow::Owned(Color::Yellow.bold().paint("  ...").to_string())
-        } else {
-            std::borrow::Cow::Owned(Color::Green.bold().paint("ttrpg").to_string())
+        match &self.mode {
+            PromptMode::Continuation => {
+                std::borrow::Cow::Owned(Color::Yellow.bold().paint("  ...").to_string())
+            }
+            PromptMode::Normal => {
+                std::borrow::Cow::Owned(Color::Green.bold().paint("ttrpg").to_string())
+            }
+            PromptMode::Prompt { name, .. } => {
+                std::borrow::Cow::Owned(Color::Yellow.bold().paint(name.as_str()).to_string())
+            }
         }
     }
 
     fn render_prompt_right(&self) -> std::borrow::Cow<'_, str> {
-        std::borrow::Cow::Borrowed("")
+        match &self.mode {
+            PromptMode::Prompt {
+                hint,
+                type_hint,
+                suggest,
+                ..
+            } => {
+                let dim = Color::DarkGray;
+                let mut parts = Vec::new();
+                if let Some(h) = hint {
+                    parts.push(Color::Yellow.paint(h.as_str()).to_string());
+                }
+                parts.push(dim.paint(format!("({type_hint})")).to_string());
+                if let Some(s) = suggest {
+                    parts.push(dim.paint(format!("[default: {s}]")).to_string());
+                }
+                std::borrow::Cow::Owned(parts.join(" "))
+            }
+            _ => std::borrow::Cow::Borrowed(""),
+        }
     }
 
     fn render_prompt_indicator(&self, edit_mode: PromptEditMode) -> std::borrow::Cow<'_, str> {
@@ -165,25 +204,45 @@ pub fn run_repl(vi_mode: bool, coverage: bool, interactive: bool) {
     }
 
     let mut prompt = TtrpgPrompt {
-        continuation: false,
+        mode: PromptMode::Normal,
     };
 
     // Initialize completions before first prompt
     refresh_completions(&runner, &completion_ctx);
 
     loop {
-        prompt.continuation = runner.in_heredoc() || runner.in_continuation();
+        // Update prompt mode based on runner state
+        if runner.in_prompt() {
+            if let Some(info) = runner.prompt_display() {
+                prompt.mode = PromptMode::Prompt {
+                    name: info.name,
+                    hint: info.hint,
+                    type_hint: info.type_hint,
+                    suggest: info.suggest,
+                };
+            }
+        } else if runner.in_heredoc() || runner.in_continuation() {
+            prompt.mode = PromptMode::Continuation;
+        } else {
+            prompt.mode = PromptMode::Normal;
+        }
 
         match editor.read_line(&prompt) {
             Ok(Signal::Success(buffer)) => {
-                let result = runner.exec(&buffer);
+                let result = if runner.in_prompt() {
+                    runner.submit_prompt(&buffer)
+                } else {
+                    runner.exec(&buffer)
+                };
 
                 for out in runner.take_output() {
                     println!("{out}");
                 }
 
                 if let Err(e) = result {
-                    if e.is_rendered() {
+                    if e.is_prompt_pending() {
+                        // Not a real error — execution paused for prompt input
+                    } else if e.is_rendered() {
                         eprintln!("{e}");
                     } else {
                         eprintln!("error: {e}");
@@ -191,14 +250,23 @@ pub fn run_repl(vi_mode: bool, coverage: bool, interactive: bool) {
                 }
 
                 // Refresh completion context after each command
-                refresh_completions(&runner, &completion_ctx);
+                if !runner.in_prompt() {
+                    refresh_completions(&runner, &completion_ctx);
+                }
             }
             Ok(Signal::CtrlC) => {
-                // Cancel any in-progress continuation
-                runner.cancel_continuation();
+                if runner.in_prompt() {
+                    runner.cancel_prompt();
+                } else {
+                    runner.cancel_continuation();
+                }
             }
             Ok(Signal::CtrlD) => {
-                break;
+                if runner.in_prompt() {
+                    runner.cancel_prompt();
+                } else {
+                    break;
+                }
             }
             Err(err) => {
                 eprintln!("I/O error: {err}");

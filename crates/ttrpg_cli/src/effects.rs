@@ -731,7 +731,7 @@ fn prompt_loop(
 }
 
 /// Parse user input string into a Value according to the expected type.
-fn parse_prompt_input(input: &str, ty: &Ty) -> Result<Value, String> {
+pub(crate) fn parse_prompt_input(input: &str, ty: &Ty) -> Result<Value, String> {
     match ty {
         Ty::Int | Ty::Resource => input
             .parse::<i64>()
@@ -775,7 +775,7 @@ fn eval_simple_expr(expr: &ttrpg_ast::Spanned<ttrpg_ast::ast::ExprKind>) -> Resu
 }
 
 /// Human-readable type hint for prompt display.
-fn type_hint(ty: &Ty) -> &'static str {
+pub(crate) fn type_hint(ty: &Ty) -> &'static str {
     match ty {
         Ty::Int | Ty::Resource => "int",
         Ty::Float => "float",
@@ -787,7 +787,7 @@ fn type_hint(ty: &Ty) -> &'static str {
 }
 
 /// Format a suggest value for display in the prompt header.
-fn format_suggest(val: &Value) -> String {
+pub(crate) fn format_suggest(val: &Value) -> String {
     match val {
         Value::Int(n) => n.to_string(),
         Value::Float(n) => n.to_string(),
