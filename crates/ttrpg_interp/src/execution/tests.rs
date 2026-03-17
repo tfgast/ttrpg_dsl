@@ -3,6 +3,7 @@ use std::collections::{BTreeSet, VecDeque};
 use std::sync::Arc;
 
 use ttrpg_ast::diagnostic::Severity;
+
 use ttrpg_checker::env::TypeEnv;
 
 use rustc_hash::FxHashMap;

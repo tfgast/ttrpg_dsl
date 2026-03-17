@@ -4,13 +4,18 @@
 //! Each benchmark isolates a single pipeline stage so regressions are
 //! immediately attributable.
 
+use std::sync::Arc;
+
 use criterion::{Criterion, black_box, criterion_group, criterion_main};
 
 use ttrpg_ast::FileId;
 use ttrpg_ast::diagnostic::Severity;
 use ttrpg_interp::Interpreter;
-use ttrpg_interp::effect::{Effect, EffectHandler, Response};
+use ttrpg_interp::adapter::StateAdapter;
+use ttrpg_interp::effect::{Effect, EffectHandler, Response, Step};
+use ttrpg_interp::execution::Execution;
 use ttrpg_interp::reference_state::GameState;
+use ttrpg_interp::runtime_core::RuntimeCore;
 use ttrpg_interp::value::Value;
 use ttrpg_lexer::Lexer;
 
@@ -148,6 +153,67 @@ fn bench_full_pipeline(c: &mut Criterion) {
     });
 }
 
+// ── Step-mode benchmarks ─────────────────────────────────────────
+
+fn bench_step_derive(c: &mut Criterion) {
+    let (program, _) = parse_source();
+    let program = lower(program);
+    let result = check(&program);
+    let program = Arc::new(program);
+    let type_env = Arc::new(result.env);
+
+    c.bench_function("step_derive_target_number", |b| {
+        b.iter(|| {
+            let state = GameState::new();
+            let core = RuntimeCore::new(program.clone(), type_env.clone(), 1, 1);
+            let adapter = StateAdapter::new(state);
+            let exec = Execution::start_derive(
+                core,
+                adapter,
+                "target_number",
+                vec![Value::Int(19), Value::Int(5)],
+            )
+            .unwrap();
+            let val = exec.run_with_handler(&mut NullHandler).unwrap();
+            black_box(val);
+        });
+    });
+}
+
+fn bench_step_derive_poll(c: &mut Criterion) {
+    let (program, _) = parse_source();
+    let program = lower(program);
+    let result = check(&program);
+    let program = Arc::new(program);
+    let type_env = Arc::new(result.env);
+
+    c.bench_function("step_derive_target_number_poll", |b| {
+        b.iter(|| {
+            let state = GameState::new();
+            let core = RuntimeCore::new(program.clone(), type_env.clone(), 1, 1);
+            let adapter = StateAdapter::new(state);
+            let mut exec = Execution::start_derive(
+                core,
+                adapter,
+                "target_number",
+                vec![Value::Int(19), Value::Int(5)],
+            )
+            .unwrap();
+            loop {
+                match exec.poll().unwrap() {
+                    Step::Done(val) => {
+                        black_box(val);
+                        break;
+                    }
+                    Step::Yielded(_effect) => {
+                        exec.respond(Response::Acknowledged).unwrap();
+                    }
+                }
+            }
+        });
+    });
+}
+
 criterion_group!(
     benches,
     bench_lex,
@@ -155,6 +221,8 @@ criterion_group!(
     bench_lower,
     bench_check,
     bench_interpret_derive,
+    bench_step_derive,
+    bench_step_derive_poll,
     bench_full_pipeline,
 );
 criterion_main!(benches);

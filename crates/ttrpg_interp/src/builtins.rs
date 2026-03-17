@@ -1,7 +1,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 use ttrpg_ast::Name;
 use ttrpg_ast::Span;
-#[cfg(debug_assertions)]
+#[allow(unused_imports)]
 use ttrpg_checker::ty::Ty;
 
 use crate::Env;
@@ -1385,7 +1385,7 @@ fn type_name(val: &Value) -> &'static str {
 /// Used only in debug assertions to catch checker bugs — not exhaustive for
 /// complex generic types (List<T>, Map<K,V>, etc.), which are accepted
 /// unconditionally.
-#[cfg(debug_assertions)]
+#[allow(dead_code)]
 fn value_matches_ty(val: &Value, ty: &Ty) -> bool {
     match (val, ty) {
         // Error/Unit types — always accept
