@@ -917,10 +917,20 @@ impl Runner {
         core: Rc<RuntimeCore>,
     ) -> Result<Value, CliError> {
         loop {
-            let step = exec.poll().map_err(|e| match e {
-                PollError::Runtime(re) => render_runtime_error(&re, &self.source_map),
-                PollError::Protocol(pe) => CliError::Message(format!("protocol error: {pe}")),
-            })?;
+            let step = match exec.poll() {
+                Ok(s) => s,
+                Err(e) => {
+                    // Restore state before returning the error so entity IDs
+                    // and other game state survive failed executions.
+                    self.finish_execution(exec, &core);
+                    return Err(match e {
+                        PollError::Runtime(re) => render_runtime_error(&re, &self.source_map),
+                        PollError::Protocol(pe) => {
+                            CliError::Message(format!("protocol error: {pe}"))
+                        }
+                    });
+                }
+            };
 
             match step {
                 Step::Done(value) => {
