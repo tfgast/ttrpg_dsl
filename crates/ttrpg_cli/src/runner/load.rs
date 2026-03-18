@@ -13,6 +13,7 @@ impl Runner {
         self.variables.retain(|_, v| !matches!(v, Value::Entity(_)));
         self.source_map = None;
         self.unit_suffixes = crate::format::UnitSuffixes::new();
+        self.source_failed = true;
     }
 
     pub(super) fn cmd_load(&mut self, paths_str: &str) -> Result<(), CliError> {
@@ -213,6 +214,7 @@ impl Runner {
                 self.handles.clear();
                 self.variables.retain(|_, v| !matches!(v, Value::Entity(_)));
                 self.output.push(format!("{loaded_label} (cached)"));
+                self.source_failed = false;
                 return Ok(());
             }
         }
@@ -298,6 +300,7 @@ impl Runner {
                 self.handles.clear();
                 self.variables.retain(|_, v| !matches!(v, Value::Entity(_)));
                 self.output.push(loaded_label);
+                self.source_failed = false;
                 Ok(())
             } else {
                 self.clear_state(resolved_paths);
@@ -331,6 +334,7 @@ impl Runner {
                 self.handles.clear();
                 self.variables.retain(|_, v| !matches!(v, Value::Entity(_)));
                 self.output.push(loaded_label);
+                self.source_failed = false;
                 Ok(())
             } else {
                 self.clear_state(resolved_paths);
@@ -403,6 +407,7 @@ impl Runner {
             self.variables.retain(|_, v| !matches!(v, Value::Entity(_)));
             self.output.push("loaded <source>".into());
             self.source_map = Some(MultiSourceMap::new(sources));
+            self.source_failed = false;
             Ok(())
         } else {
             self.clear_state(Vec::new());

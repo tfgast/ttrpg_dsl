@@ -281,8 +281,9 @@ system "test" {
     assert!(err.to_string().contains("failed to load"));
     runner.take_output();
 
-    // Arithmetic still works (no program needed for basic eval)
-    runner.exec("eval 1 + 2").unwrap();
+    // After a failed load, non-meta commands are suppressed to avoid cascade errors
+    let err = runner.exec("eval 1 + 2").unwrap_err();
+    assert!(err.is_suppressed(), "eval should be suppressed after failed load");
     runner.take_output();
 
     // Reload should re-attempt the bad file, not the good one

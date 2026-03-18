@@ -86,6 +86,10 @@ pub enum CliError {
     /// Execution paused at a GM gate waiting for accept/veto/override.
     /// Not a real error — signals the REPL to enter gate mode.
     GatePending,
+    /// Command suppressed because the source/load block that precedes it failed.
+    /// Not a real error — prevents cascading noise from commands that depend on
+    /// a successfully loaded program.
+    Suppressed,
 }
 
 impl CliError {
@@ -108,6 +112,11 @@ impl CliError {
     pub fn is_pending(&self) -> bool {
         self.is_prompt_pending() || self.is_gate_pending()
     }
+
+    /// Returns `true` if this command was suppressed due to a prior source failure.
+    pub fn is_suppressed(&self) -> bool {
+        matches!(self, CliError::Suppressed)
+    }
 }
 
 impl std::fmt::Display for CliError {
@@ -116,6 +125,7 @@ impl std::fmt::Display for CliError {
             CliError::Message(msg) | CliError::Rendered(msg) => write!(f, "{msg}"),
             CliError::PromptPending => write!(f, "(prompt pending)"),
             CliError::GatePending => write!(f, "(gm gate pending)"),
+            CliError::Suppressed => write!(f, "(suppressed — source block failed)"),
         }
     }
 }
@@ -294,6 +304,9 @@ pub struct Runner {
     gm_gates: HashSet<EffectKind>,
     /// A paused step-based execution waiting for a GM gate decision.
     pending_gate: Option<PendingGate>,
+    /// Set when a `source` or `load` command fails. While true, commands that
+    /// depend on a loaded program are suppressed to avoid cascading errors.
+    source_failed: bool,
 }
 
 impl Runner {
@@ -326,6 +339,7 @@ impl Runner {
             gm_gates: HashSet::new(),
             pending_gate: None,
             program_cache: None,
+            source_failed: false,
         }
     }
 
@@ -759,6 +773,27 @@ impl Runner {
             return Err(CliError::Message(
                 "execution paused at GM gate — respond with: gm accept, gm veto, or gm override <value>".into(),
             ));
+        }
+
+        // Cascade suppression: if the preceding source/load failed, suppress
+        // commands that depend on a loaded program. Allow meta commands through
+        // so the user can inspect errors, reload, or reconfigure.
+        if self.source_failed {
+            let is_meta = matches!(
+                cmd,
+                Command::Load(_)
+                    | Command::Reload
+                    | Command::Errors
+                    | Command::Help(_)
+                    | Command::Seed(_)
+                    | Command::Rolls(_)
+                    | Command::Prompts(_)
+                    | Command::Coverage
+                    | Command::CoverageReset
+            );
+            if !is_meta {
+                return Err(CliError::Suppressed);
+            }
         }
 
         match cmd {

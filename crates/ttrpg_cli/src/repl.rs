@@ -268,6 +268,8 @@ pub fn run_repl(vi_mode: bool, coverage: bool, interactive: bool) {
                 if let Err(e) = result {
                     if e.is_pending() {
                         // Not a real error — execution paused for prompt/gate input
+                    } else if e.is_suppressed() {
+                        eprintln!("note: command skipped (source/load failed — use 'errors' to see diagnostics)");
                     } else if e.is_rendered() {
                         eprintln!("{e}");
                     } else {

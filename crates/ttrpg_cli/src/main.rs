@@ -190,8 +190,8 @@ fn run_batch(scripts: &[&str], coverage: bool, quiet: bool) {
             }
 
             if let Err(e) = result {
-                if e.is_pending() {
-                    // next line provides the response
+                if e.is_pending() || e.is_suppressed() {
+                    // next line provides the response / cascade suppression
                 } else if e.is_rendered() {
                     eprintln!("{e}");
                     had_error = true;
@@ -280,8 +280,8 @@ fn run_pipe(coverage: bool, quiet: bool) {
         }
 
         if let Err(e) = result {
-            if e.is_pending() {
-                // Execution paused — next line provides the response.
+            if e.is_pending() || e.is_suppressed() {
+                // Execution paused / cascade suppression — not a real error.
             } else if e.is_rendered() {
                 eprintln!("{e}");
                 had_error = true;
@@ -343,9 +343,8 @@ fn exec_commands(label: &str, content: &str, coverage: bool, quiet: bool) {
         }
 
         if let Err(e) = result {
-            if e.is_pending() {
-                // Execution paused at prompt or GM gate — not an error,
-                // next line should provide the response.
+            if e.is_pending() || e.is_suppressed() {
+                // Execution paused / cascade suppression — not a real error.
             } else if e.is_rendered() {
                 eprintln!("{e}");
                 had_error = true;
