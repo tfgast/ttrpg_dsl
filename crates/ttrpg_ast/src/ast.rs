@@ -80,11 +80,18 @@ impl Program {
                             self.reaction_order.push(r.name.clone());
                         }
                         DeclKind::Condition(c) => {
-                            // Assign ModifyClauseIds to condition modify clauses
+                            // Assign ModifyClauseIds to condition modify/should_apply clauses
                             for clause in &mut c.clauses {
-                                if let ConditionClause::Modify(m) = clause {
-                                    m.id = ModifyClauseId(self.next_modify_clause_id);
-                                    self.next_modify_clause_id += 1;
+                                match clause {
+                                    ConditionClause::Modify(m) => {
+                                        m.id = ModifyClauseId(self.next_modify_clause_id);
+                                        self.next_modify_clause_id += 1;
+                                    }
+                                    ConditionClause::ShouldApply(sa) => {
+                                        sa.id = ModifyClauseId(self.next_modify_clause_id);
+                                        self.next_modify_clause_id += 1;
+                                    }
+                                    _ => {}
                                 }
                             }
                             self.conditions.insert(c.name.clone(), c.clone());
@@ -819,11 +826,14 @@ pub struct OnEventClause {
 #[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub struct ShouldApplyClause {
     /// Which derive/mechanic (or action.cost) this gates — must match
-    /// a `modify` clause in the same condition by target name.
+    /// a `modify` clause in the same condition by target name or selector.
     pub target: ModifyTarget,
     pub bindings: Vec<ModifyBinding>,
     pub body: Block,
     pub span: Span,
+    /// Stable clause identity, assigned during `build_index()`.
+    /// Used for selector match-set lookup.
+    pub id: ModifyClauseId,
 }
 
 #[derive(Clone, Debug)]

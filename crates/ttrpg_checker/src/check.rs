@@ -914,8 +914,11 @@ impl<'a> Checker<'a> {
             .map(|info| info.state_fields.clone())
             .unwrap_or_default();
 
+        // Check clauses in two passes: first all non-ShouldApply clauses
+        // (so modify selector match sets are populated), then ShouldApply.
         for clause in &c.clauses {
             match clause {
+                ConditionClause::ShouldApply(_) => {} // deferred to second pass
                 ConditionClause::Modify(m) => {
                     self.check_modify_clause_with_state(
                         m,
@@ -1044,9 +1047,12 @@ impl<'a> Checker<'a> {
                         inc.span,
                     );
                 }
-                ConditionClause::ShouldApply(sa) => {
-                    self.check_should_apply_clause(sa, c, &state_ty_fields);
-                }
+            }
+        }
+        // Second pass: check should_apply clauses (needs modify selector matches populated)
+        for clause in &c.clauses {
+            if let ConditionClause::ShouldApply(sa) = clause {
+                self.check_should_apply_clause(sa, c, &state_ty_fields);
             }
         }
     }

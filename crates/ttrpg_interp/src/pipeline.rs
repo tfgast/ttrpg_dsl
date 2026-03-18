@@ -2,7 +2,7 @@ use std::collections::{BTreeMap, HashMap, HashSet};
 
 use ttrpg_ast::Name;
 use ttrpg_ast::ast::{
-    ConditionClause, ModifyClause, ModifyStmt, ModifyTarget, SelectorPredicate,
+    ConditionClause, ModifyClause, ModifyClauseId, ModifyStmt, ModifyTarget, SelectorPredicate,
     SuppressModifyClause,
 };
 use ttrpg_checker::env::FnInfo;
@@ -360,7 +360,7 @@ pub(crate) fn collect_modifiers_owned(
                         condition.gained_at,
                         OwnedModifier {
                             source: ModifySource::Condition(condition.name.clone()),
-                            should_apply_body: find_should_apply_body(cond_decl, clause),
+                            should_apply_body: find_should_apply_body(cond_decl, clause, &env.interp.type_env.selector_matches),
                             clause: clause.clone(),
                             bearer: Some(Value::Entity(condition.bearer)),
                             receiver_name: Some(cond_decl.receiver_name.clone()),
@@ -555,10 +555,11 @@ pub(crate) struct OwnedModifier {
 }
 
 /// Find a `should_apply` clause in a condition declaration that matches the
-/// given modify clause's target name.
+/// given modify clause's target name or selector.
 pub(crate) fn find_should_apply_body(
     cond_decl: &ttrpg_ast::ast::ConditionDecl,
     modify_clause: &ModifyClause,
+    selector_matches: &std::collections::HashMap<ModifyClauseId, std::collections::HashSet<ttrpg_ast::Name>>,
 ) -> Option<ttrpg_ast::ast::Block> {
     use ttrpg_ast::ast::ConditionClause;
     for clause in &cond_decl.clauses {
@@ -566,6 +567,13 @@ pub(crate) fn find_should_apply_body(
             let matches = match (&sa.target, &modify_clause.target) {
                 (ModifyTarget::Named(sa_n), ModifyTarget::Named(m_n)) => sa_n == m_n,
                 (ModifyTarget::Cost(sa_n), ModifyTarget::Cost(m_n)) => sa_n == m_n,
+                (ModifyTarget::Selector(_), ModifyTarget::Selector(_)) => {
+                    // Match if the should_apply's match set overlaps with the modify's match set
+                    match (selector_matches.get(&sa.id), selector_matches.get(&modify_clause.id)) {
+                        (Some(sa_set), Some(m_set)) => !sa_set.is_disjoint(m_set),
+                        _ => false,
+                    }
+                }
                 _ => false,
             };
             if matches {

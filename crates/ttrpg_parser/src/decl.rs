@@ -1390,20 +1390,30 @@ impl Parser {
         let start = self.start_span();
         self.expect_soft_keyword("should_apply")?;
 
-        // Parse target: named function or name.cost — selectors not allowed.
-        if matches!(self.peek(), TokenKind::LBracket) {
-            self.error("`should_apply` cannot use selector syntax; target a specific function");
-            return Err(());
-        }
-        let (name, _) = self.expect_ident()?;
-        let target = if matches!(self.peek(), TokenKind::Dot)
-            && matches!(self.peek_at(1), TokenKind::Ident(s) if &**s == "cost")
-        {
-            self.advance(); // consume .
-            self.advance(); // consume cost
-            ModifyTarget::Cost(name)
+        // Parse target: named function, name.cost, or selector [predicates].
+        let target = if matches!(self.peek(), TokenKind::LBracket) {
+            self.advance(); // consume [
+            let mut preds = vec![self.parse_selector_predicate()?];
+            while matches!(self.peek(), TokenKind::Comma) {
+                self.advance();
+                if matches!(self.peek(), TokenKind::RBracket) {
+                    break; // trailing comma
+                }
+                preds.push(self.parse_selector_predicate()?);
+            }
+            self.expect(&TokenKind::RBracket)?;
+            ModifyTarget::Selector(preds)
         } else {
-            ModifyTarget::Named(name)
+            let (name, _) = self.expect_ident()?;
+            if matches!(self.peek(), TokenKind::Dot)
+                && matches!(self.peek_at(1), TokenKind::Ident(s) if &**s == "cost")
+            {
+                self.advance(); // consume .
+                self.advance(); // consume cost
+                ModifyTarget::Cost(name)
+            } else {
+                ModifyTarget::Named(name)
+            }
         };
 
         // Parse bindings: (param: value, ...)
@@ -1431,6 +1441,7 @@ impl Parser {
             bindings,
             body,
             span: self.end_span(start),
+            id: ModifyClauseId(0), // assigned during build_index()
         })
     }
 

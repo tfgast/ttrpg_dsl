@@ -101,7 +101,7 @@ impl Checker<'_> {
     }
 
     /// Check a `should_apply` clause inside a condition. Validates:
-    /// - Target is Named or Cost (not Selector)
+    /// - Target is Named, Cost, or Selector
     /// - Target function exists and is derive/mechanic (or action/reaction for .cost)
     /// - A matching `modify` clause exists in the same condition
     /// - Body type-checks to bool
@@ -111,11 +111,13 @@ impl Checker<'_> {
         cond: &ConditionDecl,
         state_fields: &[(Name, Ty)],
     ) {
-        // Reject selector targets
-        if matches!(&sa.target, ModifyTarget::Selector(_)) {
-            self.error(
-                "`should_apply` cannot use selector syntax; target a specific function",
-                sa.span,
+        // Dispatch to selector-specific path if needed
+        if let ModifyTarget::Selector(preds) = &sa.target {
+            self.check_should_apply_selector(
+                sa,
+                preds,
+                cond,
+                state_fields,
             );
             return;
         }
@@ -271,6 +273,246 @@ impl Checker<'_> {
         }
 
         self.scope.pop();
+    }
+
+    /// Check a `should_apply` clause that uses selector syntax.
+    /// Mirrors `check_modify_selector` but validates the body returns `bool`
+    /// and binds condition state as mutable.
+    fn check_should_apply_selector(
+        &mut self,
+        sa: &ShouldApplyClause,
+        preds: &[SelectorPredicate],
+        cond: &ConditionDecl,
+        state_fields: &[(Name, Ty)],
+    ) {
+        let receiver = Some((
+            &cond.receiver_name,
+            &cond.receiver_type,
+            &cond.receiver_with_groups,
+        ));
+        let condition_params = &cond.params;
+
+        // Resolve predicates into concrete types for matching
+        let mut resolved: Vec<ResolvedPredicate> = Vec::new();
+        for pred in preds {
+            match pred {
+                SelectorPredicate::Tag(tag_name) => {
+                    if !self.env.tags.contains(tag_name) {
+                        self.error(format!("undefined tag `{tag_name}`"), sa.span);
+                        return;
+                    }
+                    self.check_name_visible(tag_name, Namespace::Tag, sa.span);
+                    resolved.push(ResolvedPredicate::Tag(tag_name.clone()));
+                }
+                SelectorPredicate::Returns(type_expr) => {
+                    let ty = self.resolve_type_validated(type_expr);
+                    if ty.is_error() {
+                        return;
+                    }
+                    resolved.push(ResolvedPredicate::Returns(ty));
+                }
+                SelectorPredicate::HasParam { name, ty } => {
+                    let resolved_ty = if let Some(te) = ty {
+                        let t = self.resolve_type_validated(te);
+                        if t.is_error() {
+                            return;
+                        }
+                        Some(t)
+                    } else {
+                        None
+                    };
+                    resolved.push(ResolvedPredicate::HasParam {
+                        name: name.clone(),
+                        ty: resolved_ty,
+                    });
+                }
+            }
+        }
+
+        // Compute match set
+        let mut match_set: HashSet<Name> = HashSet::new();
+        for (fn_name, fn_info) in &self.env.functions {
+            if fn_info.kind != FnKind::Derive && fn_info.kind != FnKind::Mechanic {
+                continue;
+            }
+            if fn_info.synthetic {
+                continue;
+            }
+            if self.fn_matches_predicates(fn_info, &resolved) {
+                match_set.insert(fn_name.clone());
+            }
+        }
+
+        if match_set.is_empty() {
+            self.diagnostics
+                .push(Diagnostic::warning(
+                    "should_apply selector matches no functions",
+                    sa.span,
+                ));
+            return;
+        }
+
+        // Verify at least one modify clause with a selector has an overlapping match set
+        let has_matching_modify = cond.clauses.iter().any(|clause| {
+            if let ConditionClause::Modify(m) = clause
+                && matches!(&m.target, ModifyTarget::Selector(_))
+                && let Some(modify_matches) = self.selector_matches.get(&m.id)
+            {
+                return !modify_matches.is_disjoint(&match_set);
+            }
+            false
+        });
+        if !has_matching_modify {
+            self.error(
+                "`should_apply` selector has no matching `modify` selector clause in this condition",
+                sa.span,
+            );
+            return;
+        }
+
+        // Narrow match set based on bindings (same logic as check_modify_selector)
+        {
+            let mut context_types: HashMap<&Name, Ty> = HashMap::new();
+            if let Some((name, type_expr, _with)) = receiver {
+                let ty = self.env.resolve_type(type_expr);
+                if !ty.is_error() {
+                    context_types.insert(name, ty);
+                }
+            }
+            for p in condition_params {
+                let ty = self.env.resolve_type(&p.ty);
+                if !ty.is_error() {
+                    context_types.insert(&p.name, ty);
+                }
+            }
+
+            for binding in &sa.bindings {
+                let expected_ty = binding.value.as_ref().and_then(|value| {
+                    if let ExprKind::Ident(ref name) = value.node {
+                        context_types.get(name).cloned()
+                    } else {
+                        None
+                    }
+                });
+
+                match expected_ty {
+                    Some(ref expected) => {
+                        match_set.retain(|fn_name| {
+                            if let Some(fi) = self.env.functions.get(fn_name) {
+                                fi.params.iter().any(|p| {
+                                    p.name == binding.name && self.types_compatible(&p.ty, expected)
+                                })
+                            } else {
+                                false
+                            }
+                        });
+                    }
+                    None => {
+                        match_set.retain(|fn_name| {
+                            if let Some(fi) = self.env.functions.get(fn_name) {
+                                fi.params.iter().any(|p| p.name == binding.name)
+                            } else {
+                                false
+                            }
+                        });
+                        let mut binding_ty: Option<Ty> = None;
+                        for fn_name in &match_set {
+                            if let Some(fi) = self.env.functions.get(fn_name)
+                                && let Some(p) = fi.params.iter().find(|p| p.name == binding.name)
+                            {
+                                match &binding_ty {
+                                    None => binding_ty = Some(p.ty.clone()),
+                                    Some(existing) => {
+                                        if !self.types_compatible(existing, &p.ty) {
+                                            self.error(
+                                                format!(
+                                                    "should_apply selector binding `{}` has inconsistent types across matched functions: {} vs {}",
+                                                    binding.name, existing, p.ty
+                                                ),
+                                                binding.span,
+                                            );
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            if match_set.is_empty() {
+                self.diagnostics
+                    .push(Diagnostic::warning(
+                        "should_apply selector matches no functions after binding narrowing",
+                        sa.span,
+                    ));
+                return;
+            }
+        }
+
+        // Build synthetic FnInfo for scope binding
+        let matched_fns: Vec<&FnInfo> = match_set
+            .iter()
+            .filter_map(|n| self.env.functions.get(n))
+            .collect();
+        let synthetic_params = Self::compute_common_params(&matched_fns);
+
+        // Set up scope: imperative block with mutable state
+        self.scope.push(BlockKind::ShouldApplyBlock);
+
+        // Bind receiver and condition params (read-only)
+        self.bind_condition_context(receiver, condition_params);
+
+        // Bind condition state as MUTABLE
+        if !state_fields.is_empty() {
+            self.scope.bind(
+                "state".into(),
+                VarBinding {
+                    ty: Ty::ConditionState(state_fields.to_vec()),
+                    mutable: true,
+                    is_local: false,
+                },
+            );
+        }
+
+        // Validate bindings against the synthetic params
+        self.validate_clause_bindings(
+            &sa.bindings,
+            |name| {
+                synthetic_params
+                    .iter()
+                    .find(|p| p.name == name)
+                    .map(|p| p.ty.clone())
+            },
+            "should_apply",
+            "does not match any common parameter across selector-matched functions",
+        );
+
+        // Bind synthetic function params into scope (read-only)
+        for param in &synthetic_params {
+            self.scope.bind(
+                param.name.clone(),
+                VarBinding {
+                    ty: param.ty.clone(),
+                    mutable: false,
+                    is_local: false,
+                },
+            );
+        }
+
+        // Check the body — must return bool
+        let body_ty = self.check_block_with_tail_hint(&sa.body, Some(&Ty::Bool));
+        if !body_ty.is_error() && !self.types_compatible(&body_ty, &Ty::Bool) {
+            self.error(
+                format!("`should_apply` body must return `bool`, got `{body_ty}`"),
+                sa.span,
+            );
+        }
+
+        self.scope.pop();
+
+        // Store match set for interpreter runtime dispatch
+        self.selector_matches.insert(sa.id, match_set);
     }
 
     /// Check a modify clause. `receiver` is `Some` for conditions (which have

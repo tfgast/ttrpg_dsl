@@ -553,11 +553,12 @@ pub(super) fn owned_modifier_from_condition(
     condition: &ActiveCondition,
     cond_decl: &ttrpg_ast::ast::ConditionDecl,
     clause: &ttrpg_ast::ast::ModifyClause,
+    selector_matches: &std::collections::HashMap<ttrpg_ast::ast::ModifyClauseId, std::collections::HashSet<ttrpg_ast::Name>>,
 ) -> OwnedModifier {
     use crate::effect::ModifySource;
     OwnedModifier {
         source: ModifySource::Condition(condition.name.clone()),
-        should_apply_body: crate::pipeline::find_should_apply_body(cond_decl, clause),
+        should_apply_body: crate::pipeline::find_should_apply_body(cond_decl, clause, selector_matches),
         clause: clause.clone(),
         bearer: Some(Value::Entity(condition.bearer)),
         receiver_name: Some(cond_decl.receiver_name.clone()),

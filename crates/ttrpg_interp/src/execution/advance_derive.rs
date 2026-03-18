@@ -368,7 +368,7 @@ pub(super) fn advance_derive_eval(
                             _ => continue,
                         }
 
-                        let owned_mod = owned_modifier_from_condition(condition, cond_decl, clause);
+                        let owned_mod = owned_modifier_from_condition(condition, cond_decl, clause, &core.type_env.selector_matches);
 
                         if clause.bindings.is_empty() {
                             collected_direct.push((condition.gained_at, owned_mod));

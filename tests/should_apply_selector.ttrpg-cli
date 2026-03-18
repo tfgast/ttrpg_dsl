@@ -1,0 +1,57 @@
+// should_apply with selector syntax: gate all selector-matched modifiers.
+//
+// A should_apply clause using [#tag] syntax should gate every modify clause
+// that also uses the same [#tag] selector. Uses condition state to allow
+// the modifier to apply only once across all tagged functions.
+
+source <<END
+system "test" {
+    entity Character { hp: int, ac: int }
+
+    tag combat_bonus
+
+    derive attack_mod(attacker: Character) -> int #combat_bonus { 0 }
+
+    derive damage_mod(attacker: Character) -> int #combat_bonus { 0 }
+
+    // Non-tagged derive — should NOT be affected by the condition
+    derive ac_bonus(target: Character) -> int { 0 }
+
+    condition BattleFury on bearer: Character {
+        state { used: bool = false }
+
+        should_apply [#combat_bonus](attacker: bearer) -> bool {
+            if state.used {
+                false
+            } else {
+                state.used = true
+                true
+            }
+        }
+
+        modify [#combat_bonus](attacker: bearer) {
+            result = result + 5
+        }
+    }
+}
+END
+
+spawn Character alice { hp: 10, ac: 10 }
+
+// Before condition: base values
+assert_eq attack_mod(alice), 0
+assert_eq damage_mod(alice), 0
+assert_eq ac_bonus(alice), 0
+
+// Apply condition
+call apply_condition(alice, BattleFury, Duration.Indefinite)
+
+// First evaluation of a tagged derive: should_apply fires, sets used=true, returns true
+// So modify applies: 0 + 5 = 5
+assert_eq attack_mod(alice), 5
+
+// Second evaluation: used=true, should_apply returns false, modify skipped
+assert_eq damage_mod(alice), 0
+
+// Non-tagged derive is unaffected
+assert_eq ac_bonus(alice), 0
