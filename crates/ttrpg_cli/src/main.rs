@@ -474,7 +474,7 @@ FLAGS:
   --vi                               Use vi keybindings in REPL
   --non-interactive                   Disable interactive prompts in REPL
   --quiet                            Suppress effect log output (run, pipe)
-  --format json                      Output as JSON (check, query)
+  --format json                      Output as JSON (check)
   --system <name>                    Filter query output by system name
   --xref                             Include cross-references (query entity)
   -s, --snippet                      Auto-wrap source in system block (check, query)

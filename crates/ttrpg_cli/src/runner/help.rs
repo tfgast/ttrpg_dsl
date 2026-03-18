@@ -173,8 +173,8 @@ const COMMANDS: &[CommandInfo] = &[
     CommandInfo {
         name: "state",
         syntax: "state",
-        description: "Show all entities and their values",
-        detail: "Display all spawned entities with their fields, groups, and conditions.",
+        description: "Show CLI-spawned entities and their values",
+        detail: "Display CLI-spawned entities with their fields, groups, and conditions.\n  Entities created by DSL code (e.g. inside actions) are not shown.",
         examples: &["state"],
         category: "Inspection",
     },
@@ -221,8 +221,8 @@ const COMMANDS: &[CommandInfo] = &[
     CommandInfo {
         name: "conditions",
         syntax: "conditions",
-        description: "List active conditions",
-        detail: "List all active conditions across all spawned entities.",
+        description: "List active conditions on CLI-spawned entities",
+        detail: "List active conditions on CLI-spawned entities.\n  Entities created by DSL code (e.g. inside actions) are not shown.",
         examples: &["conditions"],
         category: "Inspection",
     },

@@ -501,15 +501,18 @@ fn builtin_roll(env: &mut Env, args: &[Value], span: Span) -> Result<Value, Runt
 
 // ── apply_condition ────────────────────────────────────────────
 
-/// `apply_condition(target: Entity, condition: Condition, duration: Duration) -> option<int>`
+/// `apply_condition(target, condition, duration, source?) -> option<int>`
 ///
 /// Returns `some(id)` when the condition is activated, or `none` if the host
 /// vetoes the application at either gate.
 ///
-/// Two-phase lifecycle:
-/// 1. Emit `ConditionApplyGate` — if host vetoes, return early (no condition)
+/// Arguments: target (Entity), condition (Condition), duration (Duration),
+/// and an optional source (EffectSource) for tracking what applied it.
+///
+/// Three-phase lifecycle:
+/// 1. Emit `ConditionApplyGate` — if host vetoes, return early (`none`)
 /// 2. Execute `on_apply` lifecycle blocks
-/// 3. If on_apply succeeds, emit `ApplyCondition` to activate
+/// 3. If on_apply succeeds, emit `ApplyCondition` — if host vetoes, return `none`
 /// 4. If on_apply errors, propagate error (condition never activates)
 fn builtin_apply_condition(
     env: &mut Env,

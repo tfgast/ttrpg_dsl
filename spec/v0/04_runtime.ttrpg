@@ -138,8 +138,10 @@ hook Regenerate on creature: Character (
 
 // --- Emit (firing events from DSL code) ---
 //
-// The `emit` statement fires a named event from within an action's
-// resolve block. When emit executes:
+// The `emit` statement fires a named event from within any block that
+// allows side effects (actions, reactions, hooks, functions, with_budget,
+// lifecycle blocks, on_event handlers, should_apply blocks).
+// When emit executes:
 //
 //   1. Argument expressions are evaluated and matched to event params.
 //   2. Missing params with defaults are filled in.

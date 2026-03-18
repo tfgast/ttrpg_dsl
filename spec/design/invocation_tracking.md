@@ -199,15 +199,15 @@ Hosts observe `ActionCompleted { outcome: Failed }` and may perform defensive cl
 
 ### InvocationId Allocation
 
-**Automatic allocation:** Every action, reaction, and hook execution gets an `InvocationId` allocated when its body begins execution (inside `scoped_execute`, after gating). This is automatic — the DSL author doesn't need to opt in. Even if the body never calls `invocation()`, all conditions applied during that scope carry the invocation ID.
+**Automatic allocation:** Every action, reaction, and hook execution gets an `InvocationId` pre-allocated *before* `ActionStarted` is emitted, so that allocation failure cannot break the ActionStarted/ActionCompleted pairing guarantee. This is automatic — the DSL author doesn't need to opt in. Even if the body never calls `invocation()`, all conditions applied during that scope carry the invocation ID.
 
-**Vetoed actions:** When the host vetoes an `ActionStarted`, `scoped_execute` is never entered and no `InvocationId` is allocated. This is correct — a vetoed action has no body execution, no conditions to tag, and nothing to revoke.
+**Vetoed actions:** When the host vetoes an `ActionStarted`, the `InvocationId` has already been allocated (pre-allocation happens before the gate). The ID is consumed but unused — this is by design, since allocation must precede the gate to maintain the pairing guarantee.
 
 **Counter ownership:** `Interpreter` owns a `next_invocation_id: Cell<u64>` field, seeded from the host's durable counter at construction time. `Interpreter` exposes `alloc_invocation_id() -> InvocationId` (bumps and returns) and `next_invocation_id() -> u64` (reads current counter for persistence). `Env` stores the active invocation as `current_invocation_id: Option<InvocationId>`, set/restored by `scoped_execute`.
 
 **Counter persistence:** `GameState` owns a `next_invocation_id: u64` field (starting at 1), following the same pattern as `next_entity_id` and `next_condition_id`. The host passes `state.next_invocation_id()` when constructing `Interpreter`, and reads back `interp.next_invocation_id()` after execution completes. The `Runner` uses a centralized helper (`with_interpreter`) that handles seeding and write-back on all return paths.
 
-**Uniqueness:** `InvocationId` values must be unique within the lifetime of the game state. The monotonic `u64` counter guarantees this. IDs are never reused — once allocated, an `InvocationId` is consumed regardless of whether the action succeeds or fails. (Vetoed actions do not allocate IDs since their body never executes.)
+**Uniqueness:** `InvocationId` values must be unique within the lifetime of the game state. The monotonic `u64` counter guarantees this. IDs are never reused — once allocated, an `InvocationId` is consumed regardless of whether the action succeeds, fails, or is vetoed.
 
 ### Action Lifecycle
 
@@ -409,8 +409,8 @@ pub(crate) struct Env<'a, 'p> {
 ### 6. `crates/ttrpg_interp/src/action.rs` — Execution pipeline
 
 Key changes:
-1. `execute_action`: veto/unexpected paths emit `ActionCompleted` with `outcome` and `invocation: None` before returning
-2. `scoped_execute`: allocate invocation, set/restore scope, always emit `ActionCompleted` with outcome and `invocation: Some(id)`
+1. `execute_action`: pre-allocates `InvocationId` before emitting `ActionStarted`, so allocation failure cannot break the pairing guarantee
+2. `scoped_execute`: receives pre-allocated invocation, sets/restores scope, always emits `ActionCompleted` with outcome and `invocation: Some(id)`
 3. Default parameter evaluation moves *inside* `scoped_execute`'s body closure (after invocation context is set)
 
 In `execute_action`, update gate handling:

@@ -36,8 +36,8 @@ enum Namespace {
     Tag,
 }
 
-/// Takes an already-rebased, merged program. Produces ModuleMap + validation diagnostics.
-/// All spans in the input program are already global offsets.
+/// Takes a merged program with local file-relative spans. Produces ModuleMap + validation diagnostics.
+/// Spans are not rebased to global offsets — each declaration retains its original per-file byte offsets.
 pub fn resolve_modules(
     program: &mut Program,
     file_systems: &[FileSystemInfo],

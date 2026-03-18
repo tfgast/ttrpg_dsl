@@ -2783,7 +2783,7 @@ fn dispatch_fn_step(
             dispatch_derive_step(&fn_info.name, arg_meta, arg_values, span, core, env, sp, eh)
         }
         FnKind::Builtin => {
-            // Builtins have no defaults — bind positional/named args
+            // Builtins use the same bind path; some params may have defaults
             let bound = bind_args_from_values(
                 &fn_info.params,
                 arg_meta,

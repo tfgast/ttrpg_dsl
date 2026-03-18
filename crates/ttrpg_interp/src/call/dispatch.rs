@@ -326,7 +326,7 @@ fn dispatch_fn(
         FnKind::Mechanic => dispatch_derive_or_mechanic(env, &fn_info.name, args, call_span),
         FnKind::Prompt => dispatch_prompt(env, &fn_info.name, args, call_span),
         FnKind::Builtin => {
-            // Builtins have no defaults — all params are required
+            // Builtins use the same bind_args path; some params may have defaults
             let bound = bind_args(&fn_info.params, args, None, env, call_span)?;
             let arg_values: Vec<Value> = bound.into_iter().map(|(_, v)| v).collect();
             call_builtin(env, &fn_info.name, arg_values, call_span)

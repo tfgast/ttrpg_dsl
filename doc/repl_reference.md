@@ -156,13 +156,13 @@ Cannot grant/revoke required (`include`) groups.
 
 | Command              | Description                                                |
 |----------------------|------------------------------------------------------------|
-| `state`              | Show all entities and their current values                  |
+| `state`              | Show CLI-spawned entities and their current values           |
 | `types`              | List all defined types (entities, structs, enums, units)    |
 | `entity <name>`      | Show detailed entity type declaration (fields, groups)      |
 | `actions`            | List all actions with signatures                            |
 | `mechanics`          | List all derives and mechanics (alias: `derives`)           |
 | `functions`          | List all function declarations                              |
-| `conditions`         | List all active conditions across entities                  |
+| `conditions`         | List active conditions on CLI-spawned entities               |
 | `condition_decls`    | List all condition declarations                             |
 | `events`             | List all event declarations                                 |
 | `reactions`          | List all reaction declarations                              |
