@@ -37,8 +37,8 @@ fn test_overflow_int_literal_produces_error() {
 
 #[test]
 fn test_overflow_dice_sides_gives_misleading_error() {
-    // 1d followed by a number that overflows u32 currently produces "dice sides
-    // must be at least 1" because overflow → 0. It should instead report overflow.
+    // 1d followed by a number that overflows u32 previously produced "dice sides
+    // must be at least 1" because overflow → 0. Now correctly reports overflow.
     let source = "1d99999999999";
     let tokens: Vec<_> = RawLexer::new(source, FileId::SYNTH).collect();
     let error_msgs: Vec<_> = tokens

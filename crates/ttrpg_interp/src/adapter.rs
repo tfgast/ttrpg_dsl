@@ -157,8 +157,7 @@ impl<S: WritableState> StateAdapter<S> {
                 let response = inner.handle(effect.clone());
                 match response {
                     Response::Acknowledged => {
-                        let entity_ref =
-                            apply_spawn(&mut *self.state.borrow_mut(), &effect);
+                        let entity_ref = apply_spawn(&mut *self.state.borrow_mut(), &effect);
                         self.mutation_tracker.set();
                         return Response::EntitySpawned(entity_ref);
                     }
@@ -316,11 +315,7 @@ impl<S: WritableState> StateAdapter<S> {
     /// differ from the host's response (e.g. SpawnEntity pass-through
     /// translates `Acknowledged` → `EntitySpawned(ref)`). Returns `None`
     /// when the host's response should be used as-is.
-    pub fn apply_host_response(
-        &self,
-        effect: &Effect,
-        response: &Response,
-    ) -> Option<Response> {
+    pub fn apply_host_response(&self, effect: &Effect, response: &Response) -> Option<Response> {
         let kind = EffectKind::of(effect);
 
         if kind == EffectKind::DeductCost {

@@ -39,7 +39,7 @@ pub fn draw(
         .direction(Direction::Horizontal)
         .constraints([
             Constraint::Min(map.width as u16 + 2), // map + border
-            Constraint::Length(22),                 // stats panel
+            Constraint::Length(22),                // stats panel
         ])
         .split(top_bottom[0]);
 
@@ -117,7 +117,7 @@ fn draw_stats(frame: &mut Frame, area: Rect, stats: &[StatLine]) {
         let y = inner.y + i as u16;
 
         let line = if let Some((cur, max)) = stat.bar {
-            // Draw a bar: "HP 12/20 [████░░░░]"
+            // Draw a bar: "HP 12/20 ████░░░░"
             let label_val = format!("{} {}/{}", stat.label, cur, max);
             let filled = if max > 0 {
                 ((cur.max(0) as u64 * bar_width as u64) / max as u64) as usize
@@ -125,8 +125,7 @@ fn draw_stats(frame: &mut Frame, area: Rect, stats: &[StatLine]) {
                 0
             };
             let empty = bar_width.saturating_sub(filled);
-            // Use two lines: value then bar
-            // Actually keep it compact: label + fraction on one line
+            // Compact: label + fraction + bar on one line
             let bar_str: String =
                 "█".repeat(filled.min(bar_width)) + &"░".repeat(empty.min(bar_width));
             // Truncate bar to fit
@@ -144,10 +143,7 @@ fn draw_stats(frame: &mut Frame, area: Rect, stats: &[StatLine]) {
 
         let spans = Line::from(Span::styled(line, Style::default().fg(Color::White)));
         let paragraph = Paragraph::new(spans);
-        frame.render_widget(
-            paragraph,
-            Rect::new(inner.x, y, inner.width, 1),
-        );
+        frame.render_widget(paragraph, Rect::new(inner.x, y, inner.width, 1));
     }
 }
 

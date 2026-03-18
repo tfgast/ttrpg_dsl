@@ -2,7 +2,7 @@ use super::*;
 use ttrpg_parser::manifest;
 
 impl Runner {
-    /// Reset all loaded state (program, types, game state, entities, etc.)
+    /// Reset all loaded state (program, types, game state, entities, variables, etc.)
     fn clear_state(&mut self, paths: Vec<PathBuf>) {
         self.program = Arc::new(Program::default());
         self.type_env = Arc::new(TypeEnv::new());
@@ -10,7 +10,7 @@ impl Runner {
         self.game_state = RefCell::new(GameState::new());
         self.last_paths = paths;
         self.handles.clear();
-        self.variables.retain(|_, v| !matches!(v, Value::Entity(_)));
+        self.variables.clear();
         self.source_map = None;
         self.unit_suffixes = crate::format::UnitSuffixes::new();
         self.source_failed = true;

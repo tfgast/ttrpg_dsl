@@ -88,8 +88,9 @@ impl BlockKind {
     }
 
     /// Whether `return` statements are allowed. Permitted in imperative blocks
-    /// (actions, reactions, hooks, functions, with_budget, lifecycle) but NOT
-    /// in derives, mechanics, conditions, or prompts (expression-oriented).
+    /// (actions, reactions, hooks, functions, with_budget, lifecycle,
+    /// on_event, should_apply) but NOT in derives, mechanics, conditions,
+    /// or prompts (expression-oriented).
     pub fn allows_return(&self) -> bool {
         matches!(
             self,

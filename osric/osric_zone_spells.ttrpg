@@ -136,8 +136,8 @@ system "OSRIC Zone Spells" {
     //      protected targets
     //
     //  The full OSRIC spell also checks attacker alignment
-    //  and grants save bonuses; those require additional
-    //  infrastructure and are deferred to a follow-up.
+    //  and grants save bonuses; those are implemented below
+    //  (evil-attacker penalty and summoned-creature check).
     //
     //  Zone type: anchored occupancy zone (tracks_occupancy,
     //  moves_with_anchor, no contact_mode).

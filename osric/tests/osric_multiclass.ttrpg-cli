@@ -81,17 +81,17 @@ assert_eq armour_permission_rank(AnyArmour), 4
 
 // ── effective_armour_permission (entity-level) ──────────────────
 
-// Fighter/Thief: least restrictive permission applies -> AnyArmour
+// Fighter/Thief: most restrictive permission applies -> LeatherOnly
 spawn Character ft { name: "Erix", classes: [ClassLevel { class: Fighter, level: 3, xp: 0 }, ClassLevel { class: Thief, level: 3, xp: 0 }], classing_mode: Multi, ancestry: Dwarf, abilities: { STR: 14, DEX: 14, CON: 14, INT: 10, WIS: 10, CHA: 10 }, HitPoints { max_hp: 30, hp: 30 }, EquipmentSlots { wielded_main: none, worn_armor: none } }
-assert_eq effective_armour_permission(ft), ArmourPermission.AnyArmour
+assert_eq effective_armour_permission(ft), ArmourPermission.LeatherOnly
 
-// Fighter/MagicUser: OSRIC explicitly allows the fighter's broader armour access
+// Fighter/MagicUser: most restrictive applies -> NoArmour (MagicUser restriction)
 spawn Character fmu { name: "Elminster", classes: [ClassLevel { class: Fighter, level: 5, xp: 0 }, ClassLevel { class: Class.MagicUser, level: 5, xp: 0 }], classing_mode: Multi, ancestry: Elf, abilities: { STR: 14, DEX: 14, CON: 14, INT: 14, WIS: 10, CHA: 10 }, HitPoints { max_hp: 30, hp: 30 }, EquipmentSlots { wielded_main: none, worn_armor: none } }
-assert_eq effective_armour_permission(fmu), ArmourPermission.AnyArmour
+assert_eq effective_armour_permission(fmu), ArmourPermission.NoArmour
 
-// MagicUser/Thief: the thief's leather access is less restrictive than no armour
+// MagicUser/Thief: most restrictive applies -> NoArmour (MagicUser restriction)
 spawn Character mut { name: "Kestrel", classes: [ClassLevel { class: Class.MagicUser, level: 4, xp: 0 }, ClassLevel { class: Thief, level: 4, xp: 0 }], classing_mode: Multi, ancestry: Elf, abilities: { STR: 10, DEX: 16, CON: 12, INT: 15, WIS: 10, CHA: 11 }, HitPoints { max_hp: 18, hp: 18 }, EquipmentSlots { wielded_main: none, worn_armor: none } }
-assert_eq effective_armour_permission(mut), ArmourPermission.LeatherOnly
+assert_eq effective_armour_permission(mut), ArmourPermission.NoArmour
 
 // Cleric/Fighter: both AnyArmour -> AnyArmour
 spawn Character cf { name: "Grom", classes: [ClassLevel { class: Class.Cleric, level: 3, xp: 0 }, ClassLevel { class: Fighter, level: 3, xp: 0 }], classing_mode: Multi, ancestry: HalfOrc, abilities: { STR: 14, DEX: 14, CON: 14, INT: 10, WIS: 14, CHA: 10 }, HitPoints { max_hp: 30, hp: 30 }, EquipmentSlots { wielded_main: none, worn_armor: none } }

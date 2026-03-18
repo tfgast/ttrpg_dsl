@@ -19,7 +19,7 @@ use ttrpg_interp::value::Value;
 
 use rustc_hash::FxHashMap;
 
-use crate::config::{DisplayHint, HostConfig, StatField};
+use crate::config::{AiBehavior, DisplayHint, HostConfig, StatField};
 use crate::map::{EntityDisplay, Map};
 use crate::state::{RoguelikeHandler, read_hp, read_name, read_position};
 use crate::ui::StatLine;
@@ -34,6 +34,8 @@ struct Game {
     over: bool,
     /// Glyph + color per entity, populated at spawn time from config.
     display: FxHashMap<EntityRef, (char, ratatui::style::Color)>,
+    /// AI behavior per entity, populated at spawn time from config.
+    ai: FxHashMap<EntityRef, AiBehavior>,
 }
 
 impl Game {
@@ -59,7 +61,10 @@ impl Game {
                 continue;
             }
             if let Some((x, y)) = read_position(state, &entity) {
-                let &(glyph, color) = self.display.get(&entity).unwrap_or(&('?', ratatui::style::Color::White));
+                let &(glyph, color) = self
+                    .display
+                    .get(&entity)
+                    .unwrap_or(&('?', ratatui::style::Color::White));
                 displays.push(EntityDisplay { x, y, glyph, color });
             }
         }
@@ -189,7 +194,11 @@ fn format_stat(
                 Some(Value::Int(n)) => n.to_string(),
                 _ => "?".into(),
             };
-            StatLine { label: field.label.clone(), text, bar: None }
+            StatLine {
+                label: field.label.clone(),
+                text,
+                bar: None,
+            }
         }
         DisplayHint::Modifier => {
             let text = match &value {
@@ -197,14 +206,22 @@ fn format_stat(
                 Some(Value::Int(n)) => n.to_string(),
                 _ => "?".into(),
             };
-            StatLine { label: field.label.clone(), text, bar: None }
+            StatLine {
+                label: field.label.clone(),
+                text,
+                bar: None,
+            }
         }
         DisplayHint::DiceExpr => {
             let text = match &value {
                 Some(Value::DiceExpr(expr)) => format_dice_expr(expr),
                 _ => "?".into(),
             };
-            StatLine { label: field.label.clone(), text, bar: None }
+            StatLine {
+                label: field.label.clone(),
+                text,
+                bar: None,
+            }
         }
     }
 }
@@ -244,7 +261,8 @@ fn spawn_entity(
 ) -> EntityRef {
     use ttrpg_interp::reference_state::GridPosition;
 
-    let pos_val = adapter.with_state_mut(|state| state.register_position(GridPosition(pos.0, pos.1)));
+    let pos_val =
+        adapter.with_state_mut(|state| state.register_position(GridPosition(pos.0, pos.1)));
     let result = adapter.run(handler, |state, eff| {
         interp.evaluate_function(state, eff, fn_name, vec![pos_val.clone()])
     });
@@ -273,10 +291,7 @@ fn main() -> io::Result<()> {
         eprintln!("error: {e}");
         std::process::exit(1);
     });
-    let config_dir = config_path
-        .parent()
-        .unwrap_or(Path::new("."))
-        .to_path_buf();
+    let config_dir = config_path.parent().unwrap_or(Path::new(".")).to_path_buf();
 
     // Load DSL rules
     let (program, type_env) = load_rules(&config, &config_dir);
@@ -289,9 +304,17 @@ fn main() -> io::Result<()> {
 
     // Build display info map
     let mut display: FxHashMap<EntityRef, (char, ratatui::style::Color)> = FxHashMap::default();
+    // Build AI behavior map
+    let mut ai: FxHashMap<EntityRef, AiBehavior> = FxHashMap::default();
 
     // Spawn player via DSL
-    let player = spawn_entity(&interp, &adapter, &mut handler, &config.player.spawn_fn, (5, 5));
+    let player = spawn_entity(
+        &interp,
+        &adapter,
+        &mut handler,
+        &config.player.spawn_fn,
+        (5, 5),
+    );
     display.insert(player, (config.player.glyph, config.player.color.into()));
 
     // Spawn monsters (positions are still hardcoded — map generation will own this later)
@@ -301,19 +324,25 @@ fn main() -> io::Result<()> {
         ("spawn_rat", (15, 14)),
     ];
 
-    // Build a lookup from spawn_fn name → config display info
+    // Build a lookup from spawn_fn name → config display info + AI
     let creature_configs: FxHashMap<&str, _> = config
         .creatures
         .iter()
-        .map(|c| (c.spawn_fn.as_str(), (c.glyph, ratatui::style::Color::from(c.color))))
+        .map(|c| {
+            (
+                c.spawn_fn.as_str(),
+                (c.glyph, ratatui::style::Color::from(c.color), c.ai),
+            )
+        })
         .collect();
 
     let monsters: Vec<EntityRef> = monster_spawns
         .iter()
         .map(|(fn_name, pos)| {
             let entity = spawn_entity(&interp, &adapter, &mut handler, fn_name, *pos);
-            if let Some(&info) = creature_configs.get(fn_name) {
-                display.insert(entity, info);
+            if let Some(&(glyph, color, behavior)) = creature_configs.get(fn_name) {
+                display.insert(entity, (glyph, color));
+                ai.insert(entity, behavior);
             }
             entity
         })
@@ -326,6 +355,7 @@ fn main() -> io::Result<()> {
         messages: vec!["Welcome to the dungeon! Arrow keys to move, q to quit.".into()],
         over: false,
         display,
+        ai,
     };
 
     // Terminal setup
@@ -497,15 +527,8 @@ fn player_turn(
         return;
     }
 
-    // Move player
-    adapter.run(handler, |_state, _eff| {
-        // Direct state mutation for movement (not a DSL action)
-    });
-    // We need mutable access to GameState for set_position.
-    // StateAdapter doesn't expose mutable access directly, so we
-    // use a ProvisionBudget/ClearBudget hack... Actually, let me
-    // use write_field through the adapter's StateProvider path.
-    // The adapter auto-applies MutateField effects.
+    // Move player — use with_state_mut for direct position update,
+    // then MutateField effect to sync the DSL entity field.
     let pos_val = adapter.with_state_mut(|state| {
         use ttrpg_interp::reference_state::GridPosition;
         state.register_position(GridPosition(nx, ny))
@@ -536,6 +559,13 @@ fn monster_turns(
     };
 
     for &monster in &alive {
+        // Look up AI behavior; default to Passive (no action) if unknown
+        let behavior = game.ai.get(&monster).copied().unwrap_or(AiBehavior::Passive);
+        let chase_range = match behavior {
+            AiBehavior::Aggressive { chase_range } => chase_range,
+            AiBehavior::Passive => continue,
+        };
+
         let Some((mx, my)) = read_position(adapter, &monster) else {
             continue;
         };
@@ -591,7 +621,7 @@ fn monster_turns(
             adapter.run(handler, |_state, eff| {
                 eff.handle(ttrpg_interp::effect::Effect::ClearBudget { actor: monster });
             });
-        } else if dist <= 6 {
+        } else if dist <= chase_range as i64 {
             // Close enough to chase — A* pathfind toward player
             let blocked: Vec<(i64, i64)> = alive
                 .iter()

@@ -447,7 +447,7 @@ impl Iterator for RawLexer<'_> {
 ///
 /// Rules:
 /// 1. Inside `()` and `[]`: all NL tokens are discarded.
-/// 2. After binary/assignment operators and arrows, `{`, and `,`: suppress next NL.
+/// 2. After binary/assignment operators, arrows, `{`, `,`, `|`, `:`, and `#`: suppress next NL.
 /// 3. (Combined with rule 2 via `suppresses_next_newline`)
 pub struct Lexer<'a> {
     raw: RawLexer<'a>,

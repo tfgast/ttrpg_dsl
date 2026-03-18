@@ -161,9 +161,8 @@
 //                 | tag_decl
 //                 | move_decl          // PbtA sugar (desugars to mechanic + action)
 
-// Note: `table` is a reserved keyword for future use. The parser
-// recognizes `table` in declaration position but currently produces
-// a parse error. Table declarations are not implemented in v0.
+// Note: `table` declarations are implemented and may appear inside
+// system blocks. See the parser and examples for usage.
 
 // --- Const declaration ---
 // const_decl      = "const" IDENT (":" type)? "=" expr term

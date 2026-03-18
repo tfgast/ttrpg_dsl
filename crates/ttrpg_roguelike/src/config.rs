@@ -33,7 +33,7 @@ pub struct PlayerConfig {
 /// A creature type the host knows how to spawn and display.
 #[derive(Debug, Deserialize)]
 pub struct CreatureConfig {
-    /// Unique identifier for this creature type (used by map generation).
+    /// Unique identifier for this creature type.
     pub id: String,
     /// Name of the DSL spawn function (e.g. `"spawn_goblin"`).
     pub spawn_fn: String,
@@ -43,7 +43,7 @@ pub struct CreatureConfig {
 }
 
 /// AI behavior hint for a creature type.
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Copy, Deserialize)]
 pub enum AiBehavior {
     /// Chase and attack within `chase_range` tiles.
     Aggressive { chase_range: u32 },
@@ -129,8 +129,8 @@ impl From<Color> for ratatui::style::Color {
 impl HostConfig {
     /// Load a `HostConfig` from a RON file at the given path.
     pub fn load(path: &std::path::Path) -> Result<Self, ConfigError> {
-        let contents = std::fs::read_to_string(path)
-            .map_err(|e| ConfigError::Io(path.to_path_buf(), e))?;
+        let contents =
+            std::fs::read_to_string(path).map_err(|e| ConfigError::Io(path.to_path_buf(), e))?;
         ron::from_str(&contents).map_err(ConfigError::Parse)
     }
 }

@@ -68,9 +68,9 @@ pub enum Command {
 ///
 /// Skips blank lines and `//`-only lines (returns `None`).
 /// Comment stripping is applied per-command: `eval` expressions
-/// have trailing `//` comments removed, while `load` paths are
-/// taken as the first whitespace-delimited token (preserving `//`
-/// that may appear in valid file paths).
+/// have trailing `//` comments removed, while `load` accepts
+/// multiple whitespace-delimited paths (preserving `//` that may
+/// appear in valid file paths).
 pub fn parse_command(line: &str) -> Option<Command> {
     let trimmed = line.trim();
     if trimmed.is_empty() || trimmed.starts_with("//") {

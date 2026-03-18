@@ -685,7 +685,7 @@ fn query_sources(
     }
 }
 
-// -- Topic stubs (each implemented by a follow-up bead) --
+// -- Query helpers --
 
 fn print_query(lines: Vec<String>, empty_msg: &str) {
     if lines.is_empty() {

@@ -345,7 +345,7 @@ spawn Character saver_pass { name: "Saver", classes: [ClassLevel { class: Fighte
 // Roll 16 vs target 14 → pass
 rolls 16
 do ResistSpell(saver_pass, some(DeathParalysisPoison))
-// TODO: assert on action return value once supported
+// ResistSpell returns a bool but we only care that it doesn't error here
 
 // Human Fighter L1, roll 5 vs death target 14 → fail
 spawn Character saver_fail { name: "Saver2", classes: [ClassLevel { class: Fighter, level: 1 }], abilities: { STR: 12, INT: 12, WIS: 12, DEX: 12, CON: 12, CHA: 12 }, HitPoints { max_hp: 10, hp: 10 } }

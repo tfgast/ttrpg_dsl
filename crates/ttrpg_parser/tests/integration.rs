@@ -2155,9 +2155,9 @@ fn for_range_inclusive_end_not_struct_lit() {
 
 // ── Bug repro tests (P1) ──────────────────────────────────────────
 
-/// Bug tdsl-srpf: bare 'some' in pattern is parsed as PatternKind::Ident
-/// (a catch-all binding) instead of being recognized as the option constructor.
-/// match x { some => 10, none => 0 } matches EVERYTHING on the first arm.
+/// Regression tdsl-srpf: bare 'some' in pattern was previously parsed as
+/// PatternKind::Ident (a catch-all binding) instead of being recognized as
+/// the option constructor. Now emits a diagnostic and recovers correctly.
 #[test]
 fn bare_some_pattern_is_not_ident_binding() {
     let (expr, diags) = ttrpg_parser::parse_expr("match x { some => 10, none => 0 }");
@@ -2179,9 +2179,9 @@ fn bare_some_pattern_is_not_ident_binding() {
     }
 }
 
-/// Bug tdsl-9h5: when a closing brace is missing, suppress_newlines_in_brace_block
-/// removes ALL newlines to EOF, corrupting the token stream and losing subsequent
-/// declarations.
+/// Regression tdsl-9h5: a missing closing brace previously caused
+/// suppress_newlines_in_brace_block to remove ALL newlines to EOF, corrupting
+/// the token stream. Now recovers without losing subsequent declarations.
 #[test]
 fn missing_brace_does_not_corrupt_subsequent_decls() {
     // First system has a missing closing brace in the derive body.

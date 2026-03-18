@@ -55,8 +55,8 @@ fn osric_combined_coverage() {
         let content = std::fs::read_to_string(script_path)
             .unwrap_or_else(|e| panic!("cannot read {script_name}: {e}"));
 
-        // Clear leftover rolls/variables from previous scripts (load resets
-        // game state and handles but not the roll queue).
+        // Clear leftover rolls from previous scripts (load resets
+        // game state, handles, and variables but not the roll queue).
         let _ = runner.exec("rolls clear");
         runner.take_output();
 
