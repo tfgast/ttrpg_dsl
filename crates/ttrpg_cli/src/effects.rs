@@ -522,7 +522,12 @@ impl EffectHandler for CliHandler<'_> {
                 Response::Acknowledged
             }
             Effect::AdvanceTime { amount } => {
-                self.log(format!("[AdvanceTime] +{amount}"));
+                let mut gs = self.game_state.borrow_mut();
+                let current = gs.read_game_time();
+                let new_time = current.saturating_add(amount);
+                gs.set_game_time(new_time);
+                drop(gs);
+                self.log(format!("[AdvanceTime] +{amount} (time: {new_time})"));
                 Response::Acknowledged
             }
 
