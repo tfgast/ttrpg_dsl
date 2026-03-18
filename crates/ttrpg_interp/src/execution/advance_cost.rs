@@ -215,7 +215,7 @@ pub(super) fn advance_cost_eval(
                 .expect("ExecCostModify without walker");
 
             match walker.step(core) {
-                WalkerStep::PushExpr(frame) => Advance::Push(frame),
+                WalkerStep::PushExpr(frame) => Advance::Push(*frame),
                 WalkerStep::Bind(name, val) => {
                     env.bind(name, val);
                     Advance::Continue
@@ -501,10 +501,9 @@ pub(super) fn advance_cost_eval(
             // Re-bind state as MUTABLE from live condition.
             if let (Some(Value::Entity(bearer_ref)), Some(cond_id)) =
                 (&modifier.bearer, modifier.condition_id)
-            {
-                if let Some(conditions) = sp.read_conditions(bearer_ref) {
-                    if let Some(live_cond) = conditions.iter().find(|c| c.id == cond_id) {
-                        if !live_cond.state_fields.is_empty() {
+                && let Some(conditions) = sp.read_conditions(bearer_ref)
+                    && let Some(live_cond) = conditions.iter().find(|c| c.id == cond_id)
+                        && !live_cond.state_fields.is_empty() {
                             env.bind(
                                 Name::from("state"),
                                 Value::Struct {
@@ -513,9 +512,6 @@ pub(super) fn advance_cost_eval(
                                 },
                             );
                         }
-                    }
-                }
-            }
 
             // Bind action params (receiver + args) so should_apply body
             // can reference them for gating decisions.
@@ -555,8 +551,8 @@ pub(super) fn advance_cost_eval(
                         should_apply_skipped.push(idx);
                     }
 
-                    if let Some(fields) = final_state {
-                        if !fields.is_empty() {
+                    if let Some(fields) = final_state
+                        && !fields.is_empty() {
                             let cond_id = modifiers[idx].condition_id;
                             let bearer = modifiers[idx].bearer.clone();
                             if let (Some(cond_id), Some(Value::Entity(bearer_ref))) =
@@ -576,7 +572,6 @@ pub(super) fn advance_cost_eval(
                                 });
                             }
                         }
-                    }
 
                     *phase = CostEvalPhase::ShouldApplyGate(idx + 1);
                     Advance::Continue

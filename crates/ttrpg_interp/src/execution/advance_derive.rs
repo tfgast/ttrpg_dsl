@@ -52,12 +52,11 @@ pub(super) fn advance_binding_check(
                     .find(|(n, _)| *n == binding.name)
                     .map(|(_, v)| v);
                 // param_val must exist — we checked before pushing ExprEval.
-                if let Some(pv) = param_val {
-                    if !crate::eval::value_eq(sp, pv, &val) {
+                if let Some(pv) = param_val
+                    && !crate::eval::value_eq(sp, pv, &val) {
                         cleanup(env, scope_pushed, *scope_mode);
                         return Advance::Pop(Value::Bool(false));
                     }
-                }
                 *index += 1;
                 return Advance::Continue;
             }
@@ -791,7 +790,7 @@ pub(super) fn advance_derive_eval(
                 .expect("ExecPhase1Modify without phase1_params");
 
             match walker.step(core) {
-                WalkerStep::PushExpr(frame) => Advance::Push(frame),
+                WalkerStep::PushExpr(frame) => Advance::Push(*frame),
                 WalkerStep::Bind(n, val) => {
                     env.bind(n, val);
                     Advance::Continue
@@ -843,7 +842,7 @@ pub(super) fn advance_derive_eval(
 
             // Detect changes.
             let old_params = bound_args.clone().unwrap_or_default();
-            let new_params = phase1_params.as_ref().cloned().unwrap_or_default();
+            let new_params = phase1_params.clone().unwrap_or_default();
             let changes = crate::pipeline::collect_param_changes(&old_params, &new_params);
 
             if !changes.is_empty() {
@@ -962,7 +961,7 @@ pub(super) fn advance_derive_eval(
                 .expect("ExecPhase2Modify without phase2_result");
 
             match walker.step(core) {
-                WalkerStep::PushExpr(frame) => Advance::Push(frame),
+                WalkerStep::PushExpr(frame) => Advance::Push(*frame),
                 WalkerStep::Bind(n, val) => {
                     env.bind(n, val);
                     Advance::Continue
@@ -1098,10 +1097,9 @@ pub(super) fn advance_derive_eval(
             // Re-bind state as MUTABLE from live condition state (not snapshot).
             if let (Some(Value::Entity(bearer_ref)), Some(cond_id)) =
                 (&modifier.bearer, modifier.condition_id)
-            {
-                if let Some(conditions) = sp.read_conditions(bearer_ref) {
-                    if let Some(live_cond) = conditions.iter().find(|c| c.id == cond_id) {
-                        if !live_cond.state_fields.is_empty() {
+                && let Some(conditions) = sp.read_conditions(bearer_ref)
+                    && let Some(live_cond) = conditions.iter().find(|c| c.id == cond_id)
+                        && !live_cond.state_fields.is_empty() {
                             env.bind(
                                 Name::from("state"),
                                 Value::Struct {
@@ -1110,9 +1108,6 @@ pub(super) fn advance_derive_eval(
                                 },
                             );
                         }
-                    }
-                }
-            }
 
             // Bind target function params from bound_args.
             if let Some(ba) = bound_args.as_ref() {
@@ -1156,8 +1151,8 @@ pub(super) fn advance_derive_eval(
                     }
 
                     // If state was mutated, emit SetConditionState.
-                    if let Some(fields) = final_state {
-                        if !fields.is_empty() {
+                    if let Some(fields) = final_state
+                        && !fields.is_empty() {
                             let cond_id = modifiers[idx].condition_id;
                             let bearer = modifiers[idx].bearer.clone();
                             if let (Some(cond_id), Some(Value::Entity(bearer_ref))) =
@@ -1178,7 +1173,6 @@ pub(super) fn advance_derive_eval(
                                 });
                             }
                         }
-                    }
 
                     *phase = DeriveEvalPhase::ShouldApplyGate(idx + 1);
                     Advance::Continue

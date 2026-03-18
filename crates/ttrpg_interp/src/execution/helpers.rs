@@ -370,6 +370,7 @@ pub(super) fn compile_expr_push(expr: &Spanned<ExprKind>, core: &RuntimeCore) ->
 }
 
 /// Parse a list of BudgetSpec struct values into (actor, budget) pairs.
+#[allow(clippy::type_complexity)]
 pub(super) fn parse_budget_spec_entries(
     spec_list: &[Value],
     span: Span,

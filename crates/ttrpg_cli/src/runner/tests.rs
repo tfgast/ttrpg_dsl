@@ -4762,7 +4762,7 @@ fn step_mode_mutation_log_shows_correct_before_value() {
     let mut runner = Runner::new();
     load_snippet(
         &mut runner,
-        r#"
+        r"
         entity Character {
             HP: int
         }
@@ -4771,7 +4771,7 @@ fn step_mode_mutation_log_shows_correct_before_value() {
                 target.HP -= amount
             }
         }
-    "#,
+    ",
     );
 
     runner.set_exec_mode(ExecutionMode::StepBased);
@@ -4808,7 +4808,7 @@ fn step_mode_consecutive_mutations_log_correct_values() {
     let mut runner = Runner::new();
     load_snippet(
         &mut runner,
-        r#"
+        r"
         entity Character {
             HP: int
         }
@@ -4818,7 +4818,7 @@ fn step_mode_consecutive_mutations_log_correct_values() {
                 target.HP -= 7
             }
         }
-    "#,
+    ",
     );
 
     runner.set_exec_mode(ExecutionMode::StepBased);

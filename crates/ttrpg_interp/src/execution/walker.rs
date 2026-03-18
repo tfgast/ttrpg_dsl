@@ -28,7 +28,7 @@ enum ModifyWalkerAwait {
 /// Actions produced by the walker for the parent frame to execute.
 pub(crate) enum WalkerStep {
     /// Push this ExprEval frame as a child. Return `Advance::Push(frame)`.
-    PushExpr(Frame),
+    PushExpr(Box<Frame>),
     /// Let binding evaluated — parent should `env.bind(name, value)`.
     Bind(Name, Value),
     /// Cost override (pure data) — parent applies to CostClause.
@@ -60,7 +60,7 @@ pub(crate) enum WalkerStep {
 /// Compile an expression and wrap in `WalkerStep::PushExpr`, or return `WalkerStep::Error`.
 fn compile_expr_walker_step(expr: &Spanned<ExprKind>, core: &RuntimeCore) -> WalkerStep {
     match compile_expr_to_frame(expr, core) {
-        Ok(frame) => WalkerStep::PushExpr(frame),
+        Ok(frame) => WalkerStep::PushExpr(Box::new(frame)),
         Err(e) => WalkerStep::Error(e),
     }
 }
@@ -182,9 +182,8 @@ impl ModifyStmtWalker {
         if self.index >= self.stmts.len() {
             if self.stack.is_empty() {
                 return WalkerStep::Complete;
-            } else {
-                return WalkerStep::ExitBody;
             }
+            return WalkerStep::ExitBody;
         }
 
         // 3. Process current statement.

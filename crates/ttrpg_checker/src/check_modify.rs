@@ -222,13 +222,11 @@ impl Checker<'_> {
             &sa.bindings,
             |name| {
                 // For cost targets, the action's receiver is also bindable
-                if matches!(&sa.target, ModifyTarget::Cost(_)) {
-                    if let Some(ref recv) = fn_info.receiver {
-                        if recv.name == name {
+                if matches!(&sa.target, ModifyTarget::Cost(_))
+                    && let Some(ref recv) = fn_info.receiver
+                        && recv.name == name {
                             return Some(recv.ty.clone());
                         }
-                    }
-                }
                 fn_info
                     .params
                     .iter()
@@ -240,8 +238,8 @@ impl Checker<'_> {
         );
 
         // Bind target function's receiver into scope for cost targets
-        if matches!(&sa.target, ModifyTarget::Cost(_)) {
-            if let Some(ref recv) = fn_info.receiver {
+        if matches!(&sa.target, ModifyTarget::Cost(_))
+            && let Some(ref recv) = fn_info.receiver {
                 self.scope.bind(
                     recv.name.clone(),
                     VarBinding {
@@ -251,7 +249,6 @@ impl Checker<'_> {
                     },
                 );
             }
-        }
         // Bind target function's params into scope (read-only)
         for param in &fn_info.params {
             self.scope.bind(

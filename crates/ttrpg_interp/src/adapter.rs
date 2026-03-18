@@ -374,6 +374,7 @@ pub fn apply_spawn<S: WritableState>(state: &mut S, effect: &Effect) -> EntityRe
 /// these checks.
 ///
 /// For `SpawnEntity`, use [`apply_spawn`] instead (it returns the new entity ref).
+#[allow(clippy::implicit_hasher)]
 pub fn apply_mutation<S: WritableState>(
     state: &mut S,
     effect: &Effect,
@@ -707,6 +708,7 @@ pub fn apply_mutation_with_override<S: WritableState>(
 /// - `EntitySpawned(_)` → apply spawn (for `SpawnEntity` effects)
 ///
 /// Returns `true` if the mutation was applied, `false` if vetoed/skipped.
+#[allow(clippy::implicit_hasher)]
 pub fn apply_effect<S: WritableState>(
     state: &mut S,
     effect: &Effect,

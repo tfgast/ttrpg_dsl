@@ -7399,7 +7399,7 @@ fn raw_mode_does_not_auto_apply_mutation() {
         adapter,
         "Hit",
         attacker,
-        vec![Value::Entity(defender.clone())],
+        vec![Value::Entity(defender)],
         Span::dummy(),
     )
     .unwrap()
@@ -7579,7 +7579,7 @@ fn differential_return_in_expr_cache_with_budget() {
     //
     // The checker rejects this (return type mismatch), but both interpreters
     // should still agree — matching the fuzz harness which ignores type errors.
-    let source = r#"
+    let source = r"
         system Test {
             struct TurnBudget { action: int }
             entity Character { HP: int }
@@ -7589,7 +7589,7 @@ fn differential_return_in_expr_cache_with_budget() {
                 }
             }
         }
-    "#;
+    ";
 
     let (program, type_env) = setup_allow_errors(source);
 
@@ -7627,7 +7627,7 @@ fn differential_return_in_expr_cache_with_budget() {
 /// simpler case where the return_value should propagate normally.
 #[test]
 fn differential_return_in_match_arm_block_let() {
-    let source = r#"
+    let source = r"
         system Test {
             entity Character { HP: int }
             function early_via_match() -> int {
@@ -7641,7 +7641,7 @@ fn differential_return_in_match_arm_block_let() {
                 99
             }
         }
-    "#;
+    ";
 
     let (program, type_env) = setup(source);
 
@@ -7672,7 +7672,7 @@ fn differential_return_in_match_arm_block_let() {
 /// return_value check doesn't suppress legitimate early returns.
 #[test]
 fn return_value_propagates_across_statements() {
-    let source = r#"
+    let source = r"
         system Test {
             entity Character { HP: int }
             function early_ret() -> int {
@@ -7681,7 +7681,7 @@ fn return_value_propagates_across_statements() {
                 99
             }
         }
-    "#;
+    ";
 
     let (program, type_env) = setup(source);
 

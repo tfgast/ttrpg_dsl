@@ -629,9 +629,9 @@ pub(crate) fn filter_by_should_apply(
             let value = result?;
 
             // Write back state if changed
-            if let Some(Value::Struct { fields, .. }) = final_state {
-                if !fields.is_empty() {
-                    if let (Some(Value::Entity(bearer_ref)), Some(cond_id)) =
+            if let Some(Value::Struct { fields, .. }) = final_state
+                && !fields.is_empty()
+                    && let (Some(Value::Entity(bearer_ref)), Some(cond_id)) =
                         (&modifier.bearer, modifier.condition_id)
                     {
                         modifier.condition_state_fields = fields.clone();
@@ -641,8 +641,6 @@ pub(crate) fn filter_by_should_apply(
                             fields,
                         });
                     }
-                }
-            }
 
             if matches!(value, Value::Bool(true)) {
                 kept.push(modifier);
