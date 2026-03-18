@@ -1,0 +1,25 @@
+// take() function and .take() method — additional edge cases.
+
+source -s <<END
+    derive take_negative() -> list<int> { take([1, 2, 3], -5) }
+    derive take_method_zero() -> list<string> { ["a", "b", "c"].take(0) }
+    derive take_method_all() -> list<int> { [10, 20, 30].take(3) }
+    derive take_method_exact() -> list<int> { [10, 20, 30].take(3) }
+    derive take_chained() -> int { [10, 20, 30, 40, 50].take(3).sum() }
+    derive take_with_sort() -> list<int> { sort([5, 1, 3, 2, 4]).take(3) }
+END
+
+// ── negative n returns empty ──────────────────────────────────
+assert_eq take_negative(), []
+
+// ── method form: zero returns empty ───────────────────────────
+assert_eq take_method_zero(), []
+
+// ── method form: exact length returns full list ───────────────
+assert_eq take_method_all(), [10, 20, 30]
+
+// ── chaining: take then aggregate ─────────────────────────────
+assert_eq take_chained(), 60
+
+// ── composition: sort then take ───────────────────────────────
+assert_eq take_with_sort(), [1, 2, 3]

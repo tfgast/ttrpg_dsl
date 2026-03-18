@@ -1,0 +1,30 @@
+// Negative list indexing — list[-1] accesses last element.
+
+source -s <<END
+    derive last_element() -> int { [10, 20, 30][-1] }
+    derive second_to_last() -> int { [10, 20, 30][-2] }
+    derive first_via_neg() -> int { [10, 20, 30][-3] }
+    derive positive_and_neg() -> bool {
+        let xs = [1, 2, 3, 4, 5]
+        xs[0] == xs[-5] && xs[4] == xs[-1]
+    }
+    derive neg_index_string() -> string { ["a", "b", "c"][-1] }
+END
+
+// ── Basic negative indexing ───────────────────────────────────
+assert_eq last_element(), 30
+assert_eq second_to_last(), 20
+assert_eq first_via_neg(), 10
+
+// ── Equivalence of positive and negative ──────────────────────
+assert positive_and_neg()
+
+// ── Works with other element types ────────────────────────────
+assert_eq neg_index_string(), "c"
+
+// ── Out of bounds error ───────────────────────────────────────
+source -s <<END
+    derive oob() -> int { [1, 2, 3][-4] }
+END
+
+assert_err call oob()

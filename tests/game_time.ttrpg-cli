@@ -1,0 +1,35 @@
+// game_time() and advance_time() — game clock management.
+//
+// Note: The CLI effect handler logs AdvanceTime but doesn't update the
+// internal clock (that's the host's responsibility). So we can only test
+// initial reads and error cases here. Accumulation tests are in Rust
+// integration tests.
+
+source -s <<END
+    derive current_time() -> int {
+        game_time()
+    }
+
+    function advance_one_hour() {
+        advance_time(60)
+    }
+END
+
+// ── Initial game time is 0 ───────────────────────────────────
+assert_eq current_time(), 0
+
+// ── advance_time emits effect without error ───────────────────
+call advance_one_hour()
+
+// ── advance_time with invalid amount errors ───────────────────
+source -s <<END
+    function bad_advance_zero() {
+        advance_time(0)
+    }
+    function bad_advance_negative() {
+        advance_time(-5)
+    }
+END
+
+assert_err call bad_advance_zero()
+assert_err call bad_advance_negative()

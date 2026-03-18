@@ -41,7 +41,7 @@
 | `Direction`       | Opaque spatial orientation (host-provided)                   |
 | `Duration`        | `EndOfTurn`, `StartOfNextTurn`, `Rounds(n)`, `Minutes(n)`, `Indefinite` |
 | `EffectSource`    | Condition provenance — user-defined enum, must have plain `Unknown` variant |
-| `Invocation`      | Opaque execution scope handle                               |
+| `Invocation`      | Opaque action/reaction/hook execution ID — tags conditions for batch `revoke()` |
 | `ActiveCondition` | Runtime condition instance — fields: `name`, `duration`, `source`, `id`, `applied_at`, `tags`; narrow with `is ActiveCondition<CondName>` for param access |
 | `Condition`       | Condition identifier — store in variables, pass to functions |
 | `Presence`        | Built-in enum: `OnMap`, `OffBoard` — entity board presence state |
@@ -69,7 +69,7 @@ struct Weapon {
 ```
 
 Construction: `Weapon { name: "Sword", damage: 1d8 }`
-Spread: `Weapon { ...old, damage: 2d6 }`
+Spread: `Weapon { damage: 2d6, ..old }` — copies unspecified fields from `old`
 
 ### Entity
 
@@ -520,6 +520,14 @@ condition Concealed(level: int) on bearer: Character
 
 Suppressed instances remain in state (duration ticks). `best by` param must be `int`, declared on the condition. Not copied by `include`.
 
+`all` is the implicit default — omit the `stacking` clause entirely:
+
+```
+condition Grappling(opponent: Character) on bearer: Character {
+    // stacking all (implicit) — each instance tracks a different opponent
+}
+```
+
 #### Event Handlers (`on`)
 
 Event handlers co-locate event-reactive logic with the condition that grants it. They fire automatically during `emit` dispatch for stacking winners, with lifetime scoped to the condition's active duration.
@@ -608,7 +616,7 @@ option flanking extends "Core Rules" {
         modify attack_roll(attacker: _) { mode = advantage }
     }
 }
-```
+`extends` names another option or a system. When an option extends a parent, its `when enabled` modifiers are active only when both the parent and the child are enabled. The parent must exist; circular extends chains are rejected by the checker.
 
 ---
 
@@ -642,6 +650,27 @@ none                  // option<T>
 {"a": 1, "b": 2}    // map
 ```
 
+No set literal syntax exists — create sets from lists: `[1, 2, 3].to_set()`.
+
+Map and struct literals both use `{ key: value }` syntax. The parser disambiguates by context: `{ key: value }` with no type name prefix is a **map literal**; `TypeName { field: value }` with a type name prefix is a **struct literal**.
+
+#### Dice Filter Syntax
+
+Dice literals support optional filters that keep or drop dice from the pool before summing:
+
+| Filter | Meaning | Example | Result |
+|--------|---------|---------|--------|
+| `kh`*N* | **K**eep **H**ighest *N* dice | `4d6kh3` | Roll 4d6, keep the 3 highest |
+| `kl`*N* | **K**eep **L**owest *N* dice | `2d20kl1` | Roll 2d20, keep the lowest 1 (disadvantage) |
+| `dh`*N* | **D**rop **H**ighest *N* dice | `4d6dh1` | Roll 4d6, drop the highest 1 (same as `4d6kl3`) |
+| `dl`*N* | **D**rop **L**owest *N* dice | `4d6dl1` | Roll 4d6, drop the lowest 1 (same as `4d6kh3`) |
+
+Full syntax: `<count>d<sides>[kh|kl|dh|dl]<filter_count>`
+
+- Filter count must be less than dice count
+- `kh` and `dl` are equivalent when the counts sum to the total (e.g., `4d6kh3` = `4d6dl1`)
+- Dice literals take precedence over unit literals (`2d6` is dice, not a unit)
+
 ### Operators (precedence low to high)
 
 | Precedence | Operators                           |
@@ -669,7 +698,7 @@ none                  // option<T>
 // If
 if condition { body }
 if condition { body } else { body }
-if let Some(x) = opt { body }
+if let some(x) = opt { body }
 
 // Match (pattern)
 match result {
@@ -692,6 +721,40 @@ for i in 0..=5 { ... }         // inclusive: 0,1,2,3,4,5
 // List comprehension
 [x * 2 for x in numbers if x > 5]
 ```
+
+#### If-Let (Option Unwrapping)
+
+`if let some(x) = expr` unwraps an `option<T>` value, binding the inner value if present:
+
+```
+function find_strongest(enemies: list<Character>) -> option<Character> {
+    if len(enemies) == 0 { return none }
+    some(sort_by_hp(enemies)[-1])
+}
+
+// Usage:
+if let some(target) = find_strongest(enemies) {
+    attacker.Attack(target)
+}
+```
+
+The pattern name is `some(x)` (lowercase), matching the `some()` constructor function.
+
+### Indexing
+
+Lists support both positive and negative integer indexing:
+
+```
+let xs = [10, 20, 30]
+xs[0]     // 10 (first element)
+xs[2]     // 30 (third element)
+xs[-1]    // 30 (last element)
+xs[-2]    // 20 (second-to-last)
+```
+
+Negative indices count from the end: `xs[-1]` is equivalent to `xs[len(xs) - 1]`. Out-of-bounds indices (positive or negative) produce a runtime error.
+
+Maps use the same syntax with key expressions: `m["key"]`, `m[enum_variant]`.
 
 ### Has Expression
 
@@ -807,7 +870,30 @@ grant entity.Group { field: val }  // activate optional group
 revoke entity.Group                // deactivate optional group
 
 emit EventName(param: value)       // fire event (named args only)
+
+with_budget(entity, { field: val }) { body }  // scoped turn budget (see Function section)
+with_budgets(specs) { body }                  // provision budgets for multiple entities
+with_cost_payer(entity) { body }              // override which entity pays action costs
 ```
+
+### Return
+
+`return` and `return expr` exit the enclosing block early:
+
+```
+function find_first_positive(xs: list<int>) -> int {
+    for x in xs {
+        if x > 0 { return x }
+    }
+    -1
+}
+```
+
+- Allowed in: `function`, `action` (resolve), `reaction`, `hook`, lifecycle blocks (`on_apply`, `on_remove`, `on_event`)
+- Not allowed in: `derive`, `mechanic`, `table`, `condition` (modify/suppress), `prompt`
+- `return` without a value returns unit — only valid when the block expects no return value
+- Implicit return: the last expression in a block is its value (no `return` needed)
+- `let` or assignment as the last statement makes the block return unit
 
 ---
 
@@ -820,16 +906,31 @@ emit EventName(param: value)       // fire event (named args only)
 `roll(expr)` `dice(count, sides)` `multiply_dice(expr, factor)` `max_value(expr)` `dice_count(expr)` `dice_sides(expr)` `dice_modifier(expr)`
 
 ### Collections
-`len(xs)` `keys(m)` `values(m)` `first(xs)` `last(xs)` `append(xs, item)` `concat(a, b)` `reverse(xs)` `sum(xs)` `any(xs)` `all(xs)` `sort(xs)`
+`len(xs)` `keys(m)` `values(m)` `first(xs)` `last(xs)` `append(xs, item)` `concat(a, b)` `reverse(xs)` `sum(xs)` `any(xs)` `all(xs)` `sort(xs)` `take(xs, n)`
 
 ### List Methods
-`.to_set()` `.contains(e)` `.remove_first(e)`
+`.to_set()` `.contains(e)` `.remove_first(e)` `.take(n)`
 
 ### Option
 `some(x)` `.unwrap()` `.unwrap_or(default)` `.is_some()` `.is_none()`
 
 ### Any Type
-`to_any(x)` — wraps any value into `any`. Use `is` guards to narrow back to a concrete type.
+
+`to_any(x)` — wraps any value into `any`. Use `is` guards to narrow back to a concrete type:
+
+```
+let val: any = to_any(42)
+if val is int {
+    val + 1           // narrowed to int, arithmetic works
+}
+
+// Useful for heterogeneous collections
+let items: list<any> = [to_any(1), to_any("hello"), to_any(true)]
+for item in items {
+    if item is int { /* handle int */ }
+    else if item is string { /* handle string */ }
+}
+```
 
 ### Set Methods
 `.add(e)` `.remove(e)` `.union(s)` `.intersection(s)` `.difference(s)` `.to_list()` `.contains(e)` `+=` `-=`
@@ -862,23 +963,118 @@ apply_cond(target, Sleeping, Duration.Rounds(10))
 `Condition` (blueprint) vs `ActiveCondition` (live instance with `.name`, `.duration`, `.source`, `.id`, `.applied_at`, `.tags`). Use `is ActiveCondition<CondName>` to narrow and access condition params, or `conditions(entity, CondName)` for the typed overload.
 
 ### Enum
-`ordinal(v)` `from_ordinal(E, i)` `try_from_ordinal(E, i)`
+
+`ordinal(v)` — returns the 0-based index of an enum variant.
+
+`from_ordinal(EnumType, i)` — constructs a variant by index. Only works with fieldless variants. Errors if out of range.
+
+`try_from_ordinal(EnumType, i)` — like `from_ordinal` but returns `option<Variant>` instead of erroring:
+
+```
+enum Size ordered { small, medium, large }
+
+ordinal(Size.medium)              // 1
+from_ordinal(Size, 0)             // Size.small
+try_from_ordinal(Size, 99)        // none
+```
 
 ### Invocation
 `invocation()` `revoke(inv)` — revokes all conditions tagged with that invocation
+
+`invocation()` creates an opaque scope handle that tags all conditions applied within the same action execution. `revoke(inv)` removes all conditions tagged with that invocation — used for concentration-style "end all effects from this casting" patterns:
+
+```
+action CastBless on caster: Character (targets: list<Character>) #concentration {
+    cost { action }
+    resolve {
+        let inv = invocation()
+        for target in targets {
+            apply_condition(target, Blessed, Duration.Rounds(10))
+        }
+        caster.concentrating_on = some(inv)
+    }
+}
+
+// Later, to end concentration:
+function break_concentration(caster: Character) {
+    if let some(inv) = caster.concentrating_on {
+        revoke(inv)                // removes all Blessed conditions from this casting
+        caster.concentrating_on = none
+    }
+}
+```
 
 ### Suspension
 `suspend(target, presence, freeze_turns, freeze_durations)` — lifecycle-only, keys to current condition token
 `suspend_with_source(target, source_id, presence, freeze_turns, freeze_durations)` — explicit source key
 `remove_suspension_source(target, source_id)` — removes suspension records by source
 `condition_token()` — lifecycle-only, returns pre-allocated condition instance ID
+
+Typical use: pass the token as a source key for suspension so it auto-cleans when the condition is removed:
+
+```
+condition Imprisoned on bearer: entity stacking first {
+    on_apply {
+        let token = condition_token()
+        suspend_with_source(bearer, source_id: token,
+            presence: Presence.OffBoard, freeze_turns: true, freeze_durations: true)
+    }
+    on_remove {
+        remove_suspension_source(bearer, source_id: condition_token())
+    }
+}
+```
 `is_suspended(target)` `is_off_board(target)` `are_turns_frozen(target)` `are_durations_frozen(target)` — queries
 
 ### Time
-`game_time()` `advance_time(amount)` — advance\_time only callable from function scope (not during action/reaction/hook execution)
+`game_time() -> int` — returns the current game time counter (integer, starts at 0). Pure read, callable anywhere.
+
+`advance_time(amount: int)` — increments the game time counter by `amount` (must be positive). Only callable from `function` scope — not during action/reaction/hook execution. Emits an `AdvanceTime` effect.
+
+```
+function long_rest(party: list<entity>) {
+    advance_time(480)   // 8 hours in minutes
+    for member in party {
+        member.HP = member.max_HP
+    }
+}
+
+derive hours_elapsed() -> int {
+    game_time() div 60
+}
+```
 
 ### Other
-`distance(a, b)` `error(msg)` `turn` (mutable TurnBudget in resolve blocks and `with_budget` bodies)
+`distance(a, b)` `error(msg)` `turn` (mutable TurnBudget in resolve blocks and `with_budget` bodies) `budget_of(entity)` `despawn(entity)`
+
+`error(msg)` aborts evaluation with a custom message. Use for unreachable branches or precondition violations:
+
+```
+derive safe_divide(a: int, b: int) -> int {
+    if b == 0 { error("division by zero") }
+    floor(a / b)
+}
+```
+
+### Budget & Cost Management
+
+`budget_of(entity)` — returns the entity's current `TurnBudget` struct. Only valid inside a `with_budget` or `with_budgets` scope. Errors if no budget is provisioned.
+
+`with_budgets(specs)` — like `with_budget` but provisions budgets for multiple entities at once. Takes a `list<BudgetSpec>` expression. Each spec pairs an entity with a budget map. Budgets are restored on scope exit (error-safe).
+
+`with_cost_payer(entity) { body }` — overrides which entity pays action costs within the body. By default, the `with_budget` entity pays. Use this when the cost-payer differs from the action performer (e.g., a wizard commanding a summoned creature):
+
+```
+function command_minion(wizard: Character, skeleton: Character, target: Character) {
+    with_budget(skeleton, { action: 1 }) {
+        with_cost_payer(wizard) {
+            skeleton.MeleeAttack(target)    // skeleton acts, wizard pays
+        }
+    }
+}
+```
+
+`despawn(entity)` — removes an entity from the game state, including all associated conditions and turn budgets. Only valid in mutating contexts (function, action, reaction, hook). Emits a `RemoveEntity` effect.
 
 ---
 
@@ -905,6 +1101,19 @@ Core.function()
 
 Multiple `system` blocks with the same name merge additively.
 Imports are NOT transitive.
+
+### Import
+
+```
+import "relative/path.ttrpg"
+```
+
+File-level source loading directive. Tells the resolver to load another file as a transitive dependency. The resolver follows `import` edges to build the complete file graph from an entrypoint.
+
+- Path is relative to the importing file
+- Circular imports are allowed (all files load simultaneously)
+- `import` loads source; `use` controls symbol visibility between systems
+- Transitive `import` dependencies are resolved automatically by `ttrpg check`
 
 ### Package Manifest (`ttrpg.toml`)
 

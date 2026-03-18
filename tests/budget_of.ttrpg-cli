@@ -1,0 +1,74 @@
+// budget_of() — read current turn budget for an entity.
+
+source <<END
+system "test" {
+    struct TurnBudget { action: int, bonus: int, reaction: int }
+
+    entity Character { hp: int }
+
+    action Strike on attacker: Character (target: Character) {
+        cost { action }
+        resolve {
+            target.hp -= 1
+        }
+    }
+
+    // Read full budget fields via side-effect on entity
+    function read_action_budget(actor: Character) {
+        with_budget(actor, { action: 2, bonus: 1, reaction: 1 }) {
+            actor.hp = budget_of(actor).action
+        }
+    }
+
+    function read_bonus_budget(actor: Character) {
+        with_budget(actor, { action: 2, bonus: 1, reaction: 1 }) {
+            actor.hp = budget_of(actor).bonus
+        }
+    }
+
+    function read_reaction_budget(actor: Character) {
+        with_budget(actor, { action: 2, bonus: 1, reaction: 1 }) {
+            actor.hp = budget_of(actor).reaction
+        }
+    }
+
+    // Budget decrements after action
+    function read_after_action(attacker: Character, target: Character) {
+        with_budget(attacker, { action: 3 }) {
+            attacker.Strike(target)
+            attacker.hp = budget_of(attacker).action
+        }
+    }
+
+    // No budget provisioned — should error
+    function read_no_budget(actor: Character) {
+        actor.hp = budget_of(actor).action
+    }
+}
+END
+
+// ── Read action budget ────────────────────────────────────────
+spawn Character reader_a { hp: 0 }
+call read_action_budget(reader_a)
+assert_eq reader_a.hp, 2
+
+// ── Read bonus budget ─────────────────────────────────────────
+spawn Character reader_b { hp: 0 }
+call read_bonus_budget(reader_b)
+assert_eq reader_b.hp, 1
+
+// ── Read reaction budget ──────────────────────────────────────
+spawn Character reader_r { hp: 0 }
+call read_reaction_budget(reader_r)
+assert_eq reader_r.hp, 1
+
+// ── Budget decrements after action ────────────────────────────
+spawn Character striker { hp: 0 }
+spawn Character dummy { hp: 20 }
+call read_after_action(striker, dummy)
+assert_eq striker.hp, 2
+assert_eq dummy.hp, 19
+
+// ── Error when no budget provisioned ──────────────────────────
+spawn Character no_budget { hp: 10 }
+assert_err call read_no_budget(no_budget)

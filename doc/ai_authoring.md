@@ -983,6 +983,22 @@ derive apply_resistances(
 ```
 
 
+### Struct Spread (copy-and-modify)
+
+```ttrpg
+struct Weapon {
+    name: string
+    damage: DiceExpr
+    bonus: int = 0
+}
+
+derive enchant_weapon(w: Weapon, extra_bonus: int) -> Weapon {
+    Weapon { bonus: w.bonus + extra_bonus, ..w }
+}
+```
+
+`..base` copies all unspecified fields from `base`. Explicit fields override the spread. Spread must come last: `Weapon { bonus: 5, ..old }`. Works with structs only (not entities).
+
 ---
 
 ## Validation Workflow

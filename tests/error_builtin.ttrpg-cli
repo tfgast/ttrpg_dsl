@@ -1,0 +1,24 @@
+// error() builtin — aborts evaluation with a custom message.
+
+source -s <<END
+    derive safe_divide(a: int, b: int) -> int {
+        if b == 0 { error("division by zero") }
+        floor(a / b)
+    }
+
+    derive unreachable_branch(x: int) -> string {
+        if x > 0 { "positive" }
+        else if x < 0 { "negative" }
+        else { error("zero is not allowed") }
+    }
+END
+
+// ── Normal case succeeds ──────────────────────────────────────
+assert_eq safe_divide(10, 3), 3
+assert_eq safe_divide(100, 5), 20
+assert_eq unreachable_branch(5), "positive"
+assert_eq unreachable_branch(-3), "negative"
+
+// ── Error cases abort ─────────────────────────────────────────
+assert_err call safe_divide(10, 0)
+assert_err call unreachable_branch(0)

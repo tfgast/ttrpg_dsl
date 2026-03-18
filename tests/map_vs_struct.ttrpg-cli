@@ -1,0 +1,32 @@
+// Map literal vs struct literal disambiguation.
+// { key: value } = map; TypeName { field: value } = struct.
+
+source -s <<END
+    struct Point { x: int, y: int }
+
+    derive make_map() -> map<string, int> { {"a": 1, "b": 2} }
+    derive make_struct() -> Point { Point { x: 10, y: 20 } }
+    derive empty_map() -> int {
+        let m: map<string, int> = {}
+        len(m)
+    }
+    derive map_index() -> int {
+        let m = {"hp": 100, "mp": 50}
+        m["hp"]
+    }
+    derive struct_field() -> int {
+        let p = Point { x: 5, y: 10 }
+        p.x + p.y
+    }
+END
+
+// ── Map literals ──────────────────────────────────────────────
+assert_eq make_map(), {"a": 1, "b": 2}
+assert_eq empty_map(), 0
+assert_eq map_index(), 100
+
+// ── Struct literals ───────────────────────────────────────────
+let p = make_struct()
+assert_eq p.x, 10
+assert_eq p.y, 20
+assert_eq struct_field(), 15

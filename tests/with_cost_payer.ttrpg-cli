@@ -1,0 +1,76 @@
+// with_cost_payer — override which entity pays action costs.
+
+source <<END
+system "test" {
+    struct TurnBudget { action: int, bonus: int }
+
+    entity Character { hp: int, name: string }
+
+    action Strike on attacker: Character (target: Character) {
+        cost { action }
+        resolve {
+            target.hp -= 1
+        }
+    }
+
+    action QuickStrike on attacker: Character (target: Character) {
+        cost { bonus }
+        resolve {
+            target.hp -= 1
+        }
+    }
+
+    // wizard pays action cost, skeleton performs the attack
+    function command_strike(wizard: Character, skeleton: Character, target: Character) {
+        with_budget(skeleton, { action: 1 }) {
+            with_cost_payer(wizard) {
+                skeleton.Strike(target)
+            }
+        }
+    }
+
+    // nested: inner payer overrides outer
+    function nested_payers(
+        payer1: Character, payer2: Character,
+        actor: Character, target: Character
+    ) {
+        with_budget(actor, { action: 2 }) {
+            with_cost_payer(payer1) {
+                actor.Strike(target)
+                with_cost_payer(payer2) {
+                    actor.Strike(target)
+                }
+            }
+        }
+    }
+
+    // payer reads budget correctly
+    function payer_budget_check(payer: Character, actor: Character, target: Character) {
+        with_budget(actor, { action: 1 }) {
+            with_cost_payer(payer) {
+                actor.Strike(target)
+            }
+        }
+    }
+}
+END
+
+// ── Basic: wizard pays, skeleton acts ──────────────────────────
+spawn Character wiz { hp: 10, name: "Wizard" }
+spawn Character skel { hp: 5, name: "Skeleton" }
+spawn Character target1 { hp: 10, name: "Target" }
+
+budget wiz action=1
+call command_strike(wiz, skel, target1)
+assert_eq target1.hp, 9
+
+// ── Nested payers: inner overrides outer ───────────────────────
+spawn Character p1 { hp: 10, name: "P1" }
+spawn Character p2 { hp: 10, name: "P2" }
+spawn Character actor { hp: 10, name: "Actor" }
+spawn Character target2 { hp: 10, name: "T2" }
+
+budget p1 action=1
+budget p2 action=1
+call nested_payers(p1, p2, actor, target2)
+assert_eq target2.hp, 8

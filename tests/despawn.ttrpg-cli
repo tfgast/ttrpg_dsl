@@ -1,0 +1,30 @@
+// despawn() builtin — removes entity from game state.
+
+source -s <<END
+    entity Creature { hp: int }
+
+    event Died(target: Creature) {}
+
+    condition Poisoned on bearer: Creature stacking first {}
+
+    function kill_and_cleanup(target: Creature) {
+        emit Died(target: target)
+        despawn(target)
+    }
+
+    function spawn_and_despawn() -> int {
+        let c = Creature { hp: 5 }
+        despawn(c)
+        1
+    }
+END
+
+// ── Basic despawn removes entity ───────────────────────────────
+spawn Creature goblin { hp: 10 }
+call kill_and_cleanup(goblin)
+
+// After despawn, the entity handle is no longer valid.
+// We can't inspect it — just verify the call succeeded.
+
+// ── Despawn entity created in function ─────────────────────────
+assert_eq spawn_and_despawn(), 1

@@ -1,0 +1,43 @@
+// condition_token() — returns the pre-allocated condition instance ID.
+// Used to key suspension records to conditions for auto-cleanup.
+// Complements the basic condition_token test in suspension.ttrpg-cli
+// by testing suspend_with_source keyed to condition_token().
+
+source -s <<END
+entity Character { name: string, hp: int }
+
+condition Imprisoned on bearer: Character stacking first {
+    state { token: int = 0 }
+
+    on_apply {
+        state.token = condition_token()
+        suspend_with_source(bearer, source_id: state.token,
+            presence: Presence.OffBoard, freeze_turns: true, freeze_durations: true)
+    }
+    on_remove {
+        remove_suspension_source(bearer, source_id: state.token)
+    }
+}
+END
+
+// ── Apply imprisonment suspends entity ────────────────────────
+spawn Character prisoner { name: "Prisoner", hp: 10 }
+
+assert is_suspended(prisoner) == false
+
+call apply_condition(prisoner, Imprisoned, Duration.Indefinite)
+assert_condition prisoner, Imprisoned
+
+assert is_suspended(prisoner) == true
+assert is_off_board(prisoner) == true
+assert are_turns_frozen(prisoner) == true
+assert are_durations_frozen(prisoner) == true
+
+// ── Remove imprisonment restores entity ───────────────────────
+call remove_condition(prisoner, Imprisoned)
+assert_no_condition prisoner, Imprisoned
+
+assert is_suspended(prisoner) == false
+assert is_off_board(prisoner) == false
+assert are_turns_frozen(prisoner) == false
+assert are_durations_frozen(prisoner) == false
