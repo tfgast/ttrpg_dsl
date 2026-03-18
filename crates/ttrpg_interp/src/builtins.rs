@@ -7,6 +7,7 @@ use ttrpg_checker::ty::Ty;
 use crate::Env;
 use crate::RuntimeError;
 use crate::effect::{Effect, Response};
+use crate::state::ConditionToken;
 use crate::value::{DiceExpr, Value};
 
 // ── Builtin dispatch ───────────────────────────────────────────
@@ -824,6 +825,8 @@ fn remove_condition_instances(
         } else {
             Some(instance.state_fields.clone())
         };
+        let saved_token = env.current_condition_token;
+        env.current_condition_token = Some(ConditionToken(instance.id));
         let lifecycle_result = crate::pipeline::execute_lifecycle_blocks(
             env,
             instance.name.as_str(),
@@ -833,6 +836,7 @@ fn remove_condition_instances(
             instance.id,
             state_map,
         );
+        env.current_condition_token = saved_token;
         match lifecycle_result {
             Ok(Some(final_state)) if !final_state.is_empty() => {
                 // Write back final state (no-op if condition was already removed)
@@ -980,6 +984,8 @@ fn builtin_revoke(env: &mut Env, args: &[Value], span: Span) -> Result<Value, Ru
         } else {
             Some(instance.state_fields.clone())
         };
+        let saved_token = env.current_condition_token;
+        env.current_condition_token = Some(ConditionToken(instance.id));
         let lifecycle_result = crate::pipeline::execute_lifecycle_blocks(
             env,
             instance.name.as_str(),
@@ -989,6 +995,7 @@ fn builtin_revoke(env: &mut Env, args: &[Value], span: Span) -> Result<Value, Ru
             instance.id,
             state_map,
         );
+        env.current_condition_token = saved_token;
         match lifecycle_result {
             Ok(Some(final_state)) if !final_state.is_empty() => {
                 let effect = Effect::SetConditionState {
