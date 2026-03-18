@@ -17,6 +17,39 @@ use super::compare::match_pattern;
 use super::dispatch::eval_expr;
 use super::helpers::{find_optional_group_fields, type_name};
 
+/// Maximum number of elements a range expression may produce.
+/// Prevents capacity overflow from expressions like `0..2147483647`.
+const MAX_RANGE_LEN: i64 = 1_000_000;
+
+/// Materialize a range into a Vec<Value>, returning an error if the range
+/// would exceed `MAX_RANGE_LEN` elements.
+pub(crate) fn collect_range(
+    s: i64,
+    e: i64,
+    inclusive: bool,
+    span: Span,
+) -> Result<Vec<Value>, RuntimeError> {
+    let len = if inclusive {
+        (e - s).saturating_add(1)
+    } else {
+        e - s
+    };
+    if len < 0 {
+        return Ok(Vec::new());
+    }
+    if len > MAX_RANGE_LEN {
+        return Err(RuntimeError::with_span(
+            format!("range too large ({len} elements, max {MAX_RANGE_LEN})"),
+            span,
+        ));
+    }
+    if inclusive {
+        Ok((s..=e).map(Value::Int).collect())
+    } else {
+        Ok((s..e).map(Value::Int).collect())
+    }
+}
+
 // ── If expression evaluation ───────────────────────────────────
 
 pub(super) fn eval_if(
@@ -69,7 +102,7 @@ pub(super) fn eval_if_let(
     let scrutinee_val = eval_expr(env, scrutinee)?;
     let mut bindings = FxHashMap::default();
 
-    if match_pattern(env, pattern, &scrutinee_val, &mut bindings) {
+    if match_pattern(env.interp.type_env, pattern, &scrutinee_val, &mut bindings) {
         env.record_branch(BranchPoint {
             parent_span,
             kind: BranchKind::IfThen,
@@ -123,6 +156,7 @@ pub(super) fn eval_for(
             end,
             inclusive,
         } => {
+            let range_span = start.span;
             let s = match eval_expr(env, start)? {
                 Value::Int(n) => n,
                 other => {
@@ -141,17 +175,13 @@ pub(super) fn eval_for(
                     ));
                 }
             };
-            if *inclusive {
-                (s..=e).map(Value::Int).collect()
-            } else {
-                (s..e).map(Value::Int).collect()
-            }
+            collect_range(s, e, *inclusive, range_span)?
         }
     };
 
     for item in items {
         let mut bindings = FxHashMap::default();
-        if match_pattern(env, pattern, &item, &mut bindings) {
+        if match_pattern(env.interp.type_env, pattern, &item, &mut bindings) {
             env.push_scope();
             for (name, val) in bindings {
                 env.bind(name, val);
@@ -191,6 +221,7 @@ pub(super) fn eval_list_comprehension(
             end,
             inclusive,
         } => {
+            let range_span = start.span;
             let s = match eval_expr(env, start)? {
                 Value::Int(n) => n,
                 other => {
@@ -209,18 +240,14 @@ pub(super) fn eval_list_comprehension(
                     ));
                 }
             };
-            if *inclusive {
-                (s..=e).map(Value::Int).collect()
-            } else {
-                (s..e).map(Value::Int).collect()
-            }
+            collect_range(s, e, *inclusive, range_span)?
         }
     };
 
     let mut collected = Vec::new();
     for item in items {
         let mut bindings = FxHashMap::default();
-        if match_pattern(env, pattern, &item, &mut bindings) {
+        if match_pattern(env.interp.type_env, pattern, &item, &mut bindings) {
             env.push_scope();
             for (name, val) in bindings {
                 env.bind(name, val);
@@ -296,7 +323,7 @@ pub(crate) fn eval_block(
 
 // ── Statement evaluation ───────────────────────────────────────
 
-pub(super) fn eval_stmt(
+pub(crate) fn eval_stmt(
     env: &mut Env,
     stmt: &Spanned<ttrpg_ast::ast::StmtKind>,
 ) -> Result<Value, RuntimeError> {
@@ -366,7 +393,7 @@ pub(super) fn eval_stmt(
                 group_name: group_name.clone(),
                 fields: struct_val,
             };
-            let response = env.handler.handle(effect);
+            let response = env.emit(effect);
             if let Response::Vetoed = response {
                 return Err(RuntimeError::with_span(
                     format!("grant {group_name} was vetoed by host"),
@@ -391,7 +418,7 @@ pub(super) fn eval_stmt(
                 entity: entity_ref,
                 group_name: group_name.clone(),
             };
-            let response = env.handler.handle(effect);
+            let response = env.emit(effect);
             if let Response::Vetoed = response {
                 return Err(RuntimeError::with_span(
                     format!("revoke {group_name} was vetoed by host"),
@@ -534,7 +561,7 @@ where
     let prev_budget = env.state.read_turn_budget(&actor);
 
     // 2. Emit ProvisionBudget
-    let response = env.handler.handle(Effect::ProvisionBudget {
+    let response = env.emit(Effect::ProvisionBudget {
         actor,
         budget: budget.clone(),
     });
@@ -551,7 +578,7 @@ where
     // 4. Restore or clear budget (always runs)
     let cleanup_result = match prev_budget {
         Some(old_budget) => {
-            let resp = env.handler.handle(Effect::ProvisionBudget {
+            let resp = env.emit(Effect::ProvisionBudget {
                 actor,
                 budget: old_budget,
             });
@@ -565,7 +592,7 @@ where
             }
         }
         None => {
-            let resp = env.handler.handle(Effect::ClearBudget { actor });
+            let resp = env.emit(Effect::ClearBudget { actor });
             if let Response::Vetoed = resp {
                 Err(RuntimeError::with_span(
                     "with_budget: budget clear was vetoed by host",
@@ -604,7 +631,7 @@ where
 
     for (actor, budget) in &entries {
         snapshots.push((*actor, env.state.read_turn_budget(actor)));
-        let response = env.handler.handle(Effect::ProvisionBudget {
+        let response = env.emit(Effect::ProvisionBudget {
             actor: *actor,
             budget: budget.clone(),
         });
@@ -652,7 +679,7 @@ fn restore_budget(
 ) -> Result<(), RuntimeError> {
     match prev {
         Some(old_budget) => {
-            let resp = env.handler.handle(Effect::ProvisionBudget {
+            let resp = env.emit(Effect::ProvisionBudget {
                 actor,
                 budget: old_budget,
             });
@@ -666,7 +693,7 @@ fn restore_budget(
             }
         }
         None => {
-            let resp = env.handler.handle(Effect::ClearBudget { actor });
+            let resp = env.emit(Effect::ClearBudget { actor });
             if let Response::Vetoed = resp {
                 Err(RuntimeError::with_span(
                     "with_budgets: budget clear was vetoed by host",

@@ -453,7 +453,7 @@ fn eval_dice_method(
         }
         "roll" => {
             let effect = Effect::RollDice { expr };
-            let response = env.handler.handle(effect);
+            let response = env.emit(effect);
             match response {
                 Response::Rolled(rr) => Ok(Value::RollResult(rr)),
                 Response::Override(Value::RollResult(rr)) => Ok(Value::RollResult(rr)),

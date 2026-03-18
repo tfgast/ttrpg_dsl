@@ -2,6 +2,7 @@ use std::cell::RefCell;
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet, VecDeque};
 use std::path::PathBuf;
 use std::rc::Rc;
+use std::sync::Arc;
 
 use rand::SeedableRng;
 use rand::rngs::StdRng;
@@ -11,11 +12,15 @@ use ttrpg_ast::ast::{AssignOp, DeclKind, FieldDef, Program, TopLevel, TypeExpr};
 use ttrpg_ast::diagnostic::{Diagnostic, MultiSourceMap, Severity};
 use ttrpg_ast::module::ModuleMap;
 use ttrpg_checker::env::{DeclInfo, FnKind, TypeEnv};
+use ttrpg_checker::ty::Ty;
 use ttrpg_interp::Interpreter;
+use ttrpg_interp::adapter::StateAdapter;
 use ttrpg_interp::coverage::{self, CoverageData};
-use ttrpg_interp::effect::FieldPathSegment;
+use ttrpg_interp::effect::{Effect, EffectHandler, EffectKind, FieldPathSegment, Response, Step};
+use ttrpg_interp::execution::{Execution, PollError};
 use ttrpg_interp::handle_registry::HandleRegistry;
 use ttrpg_interp::reference_state::GameState;
+use ttrpg_interp::runtime_core::RuntimeCore;
 use ttrpg_interp::state::{EntityRef, StateProvider, WritableState};
 use ttrpg_interp::value::Value;
 
@@ -43,6 +48,31 @@ use ttrpg_interp::RuntimeError;
 
 use util::*;
 
+/// Cache of parsed+checked programs keyed by canonical file paths.
+/// Shared across multiple Runner instances in batch mode to avoid
+/// redundant parsing and type-checking of the same file sets.
+#[derive(Default)]
+pub struct ProgramCache {
+    entries: HashMap<Vec<PathBuf>, CachedProgram>,
+}
+
+struct CachedProgram {
+    program: Arc<Program>,
+    type_env: Arc<TypeEnv>,
+    module_map: ModuleMap,
+    sources: Vec<(String, String)>,
+    diagnostics: Vec<Diagnostic>,
+    has_errors: bool,
+    loaded_label: String,
+    error_label: String,
+}
+
+impl ProgramCache {
+    pub fn new() -> Self {
+        Self::default()
+    }
+}
+
 /// Errors produced by Runner operations.
 #[derive(Debug)]
 pub enum CliError {
@@ -50,6 +80,16 @@ pub enum CliError {
     Message(String),
     /// A pre-rendered diagnostic with source spans (already includes "error:" prefix).
     Rendered(String),
+    /// Execution paused waiting for the REPL to collect a prompt response.
+    /// Not a real error — signals the REPL to enter prompt mode.
+    PromptPending,
+    /// Execution paused at a GM gate waiting for accept/veto/override.
+    /// Not a real error — signals the REPL to enter gate mode.
+    GatePending,
+    /// Command suppressed because the source/load block that precedes it failed.
+    /// Not a real error — prevents cascading noise from commands that depend on
+    /// a successfully loaded program.
+    Suppressed,
 }
 
 impl CliError {
@@ -57,12 +97,35 @@ impl CliError {
     pub fn is_rendered(&self) -> bool {
         matches!(self, CliError::Rendered(_))
     }
+
+    /// Returns `true` if this is a prompt-pending signal (not a real error).
+    pub fn is_prompt_pending(&self) -> bool {
+        matches!(self, CliError::PromptPending)
+    }
+
+    /// Returns `true` if this is a gate-pending signal (not a real error).
+    pub fn is_gate_pending(&self) -> bool {
+        matches!(self, CliError::GatePending)
+    }
+
+    /// Returns `true` if this is any kind of pause signal (not a real error).
+    pub fn is_pending(&self) -> bool {
+        self.is_prompt_pending() || self.is_gate_pending()
+    }
+
+    /// Returns `true` if this command was suppressed due to a prior source failure.
+    pub fn is_suppressed(&self) -> bool {
+        matches!(self, CliError::Suppressed)
+    }
 }
 
 impl std::fmt::Display for CliError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             CliError::Message(msg) | CliError::Rendered(msg) => write!(f, "{msg}"),
+            CliError::PromptPending => write!(f, "(prompt pending)"),
+            CliError::GatePending => write!(f, "(gm gate pending)"),
+            CliError::Suppressed => write!(f, "(suppressed — source block failed)"),
         }
     }
 }
@@ -80,6 +143,55 @@ pub(super) fn render_runtime_error(
         return CliError::Rendered(sm.render(&diag));
     }
     CliError::Message(format!("runtime error: {}", e.message))
+}
+
+/// Format a gate effect for display.
+fn format_gate_effect(effect: &Effect, handles: &HandleRegistry) -> String {
+    let entity_name = |e: &EntityRef| -> String {
+        handles
+            .name_of(e)
+            .map_or_else(|| format!("Entity({})", e.0), |n| n.to_string())
+    };
+    match effect {
+        Effect::ActionStarted {
+            name, actor, kind, ..
+        } => {
+            let kind_str = match kind {
+                ttrpg_interp::effect::ActionKind::Action => "Action",
+                ttrpg_interp::effect::ActionKind::Reaction { .. } => "Reaction",
+                ttrpg_interp::effect::ActionKind::Hook { .. } => "Hook",
+            };
+            format!(
+                "ActionStarted: {} {}({})",
+                kind_str,
+                name,
+                entity_name(actor),
+            )
+        }
+        Effect::ConditionApplyGate {
+            target,
+            condition,
+            duration,
+            ..
+        } => {
+            format!(
+                "ConditionApplyGate: {} on {} (duration: {})",
+                condition,
+                entity_name(target),
+                format_value(duration, &UnitSuffixes::default()),
+            )
+        }
+        Effect::ConditionRemovalGate {
+            target, condition, ..
+        } => {
+            format!(
+                "ConditionRemovalGate: {} on {}",
+                condition,
+                entity_name(target),
+            )
+        }
+        other => format!("{:?}", EffectKind::of(other)),
+    }
 }
 
 /// State for accumulating a multi-line `source <<DELIM ... DELIM` block.
@@ -117,13 +229,55 @@ struct ContinuationState {
     lines: Vec<String>,
 }
 
+/// Execution mode for the runner.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ExecutionMode {
+    /// Use the recursive `Interpreter` evaluator (original path).
+    Recursive,
+    /// Use the step-based `Execution` frame stack with `run_with_handler`.
+    StepBased,
+}
+
+/// A paused execution waiting for a GM gate decision (accept/veto/override).
+pub(crate) struct PendingGate {
+    pub exec: Execution<GameState>,
+    pub core: Rc<RuntimeCore>,
+    pub effect: Effect,
+}
+
+/// Information about a pending GM gate, for the REPL to display.
+pub struct GateDisplay {
+    pub summary: String,
+}
+
+/// A paused execution waiting for user input to resolve a prompt.
+pub(crate) struct PendingPrompt {
+    pub exec: Execution<GameState>,
+    pub core: Rc<RuntimeCore>,
+    pub name: String,
+    pub hint: Option<String>,
+    pub return_type: Ty,
+    pub suggest: Option<Value>,
+    pub has_default: bool,
+}
+
+/// Information about a pending prompt, for the REPL to display.
+pub struct PromptDisplay {
+    pub name: String,
+    pub hint: Option<String>,
+    pub type_hint: &'static str,
+    pub suggest: Option<String>,
+    pub has_default: bool,
+}
+
 /// The core CLI runner. Owns program state and dispatches commands.
 pub struct Runner {
-    program: Box<Program>,
-    type_env: Box<TypeEnv>,
+    program: Arc<Program>,
+    type_env: Arc<TypeEnv>,
     module_map: ModuleMap,
     game_state: RefCell<GameState>,
     last_paths: Vec<PathBuf>,
+    program_cache: Option<Rc<RefCell<ProgramCache>>>,
     diagnostics: Vec<Diagnostic>,
     source_map: Option<MultiSourceMap>,
     output: Vec<String>,
@@ -142,14 +296,25 @@ pub struct Runner {
     /// Prior zone membership: `(target_id, zone_id) -> is_inside`.
     /// Tracked across `zone_sync` calls for membership diffing.
     zone_membership: HashSet<(u64, u64)>,
+    /// Which execution path to use for expression evaluation.
+    exec_mode: ExecutionMode,
+    /// A paused step-based execution waiting for a prompt response.
+    pending_prompt: Option<PendingPrompt>,
+    /// Which effect kinds are gated for GM intervention.
+    gm_gates: HashSet<EffectKind>,
+    /// A paused step-based execution waiting for a GM gate decision.
+    pending_gate: Option<PendingGate>,
+    /// Set when a `source` or `load` command fails. While true, commands that
+    /// depend on a loaded program are suppressed to avoid cascading errors.
+    source_failed: bool,
 }
 
 impl Runner {
     /// Create a new runner with empty program state.
     pub fn new() -> Self {
         Runner {
-            program: Box::new(Program::default()),
-            type_env: Box::new(TypeEnv::new()),
+            program: Arc::new(Program::default()),
+            type_env: Arc::new(TypeEnv::new()),
             module_map: ModuleMap::default(),
             game_state: RefCell::new(GameState::new()),
             last_paths: Vec::new(),
@@ -167,9 +332,23 @@ impl Runner {
             interactive: false,
             heredoc: None,
             continuation: None,
+            exec_mode: ExecutionMode::Recursive,
             loop_state: None,
             zone_membership: HashSet::new(),
+            pending_prompt: None,
+            gm_gates: HashSet::new(),
+            pending_gate: None,
+            program_cache: None,
+            source_failed: false,
         }
+    }
+
+    /// Create a new runner that shares a program cache with other runners.
+    /// Used in batch mode to avoid re-parsing the same files.
+    pub fn with_cache(cache: Rc<RefCell<ProgramCache>>) -> Self {
+        let mut runner = Self::new();
+        runner.program_cache = Some(cache);
+        runner
     }
 
     /// Returns all handle names (for tab completion).
@@ -589,6 +768,34 @@ impl Runner {
             None => return Ok(()), // blank or comment-only line
         };
 
+        // If a GM gate is pending, only `gm` commands are allowed.
+        if self.pending_gate.is_some() && !matches!(cmd, Command::Gm(_)) {
+            return Err(CliError::Message(
+                "execution paused at GM gate — respond with: gm accept, gm veto, or gm override <value>".into(),
+            ));
+        }
+
+        // Cascade suppression: if the preceding source/load failed, suppress
+        // commands that depend on a loaded program. Allow meta commands through
+        // so the user can inspect errors, reload, or reconfigure.
+        if self.source_failed {
+            let is_meta = matches!(
+                cmd,
+                Command::Load(_)
+                    | Command::Reload
+                    | Command::Errors
+                    | Command::Help(_)
+                    | Command::Seed(_)
+                    | Command::Rolls(_)
+                    | Command::Prompts(_)
+                    | Command::Coverage
+                    | Command::CoverageReset
+            );
+            if !is_meta {
+                return Err(CliError::Suppressed);
+            }
+        }
+
         match cmd {
             Command::Load(path) => self.cmd_load(&path),
             Command::Eval(expr_str) => self.cmd_eval(&expr_str),
@@ -631,6 +838,7 @@ impl Runner {
             // Provenance
             Command::Breakdown(tail) => self.cmd_breakdown(&tail),
             // Host simulation
+            Command::Budget(tail) => self.cmd_budget(&tail),
             Command::Emit(tail) => self.cmd_emit(&tail),
             Command::Place(tail) => self.cmd_place(&tail),
             Command::Pos(tail) => self.cmd_pos(&tail),
@@ -642,6 +850,8 @@ impl Runner {
             Command::Seed(tail) => self.cmd_seed(&tail),
             Command::Rolls(tail) => self.cmd_rolls(&tail),
             Command::Prompts(tail) => self.cmd_prompts(&tail),
+            // GM gates
+            Command::Gm(tail) => self.cmd_gm(&tail),
             // Help
             Command::Help(topic) => self.cmd_help(topic.as_deref()),
             // Loops
@@ -664,6 +874,14 @@ impl Runner {
 
     /// Evaluate an expression and return the value directly (for testing).
     pub fn eval(&mut self, expr: &str) -> Result<Value, CliError> {
+        match self.exec_mode {
+            ExecutionMode::Recursive => self.eval_recursive(expr),
+            ExecutionMode::StepBased => self.eval_step_based(expr),
+        }
+    }
+
+    /// Evaluate using the recursive `Interpreter` path.
+    fn eval_recursive(&mut self, expr: &str) -> Result<Value, CliError> {
         let (parsed, diags) = ttrpg_parser::parse_expr(expr);
         if !diags.is_empty() {
             let msgs: Vec<_> = diags.iter().map(|d| d.message.as_str()).collect();
@@ -716,6 +934,390 @@ impl Runner {
         Ok(result)
     }
 
+    /// Evaluate using the step-based `Execution` frame stack.
+    fn eval_step_based(&mut self, expr: &str) -> Result<Value, CliError> {
+        let (parsed, diags) = ttrpg_parser::parse_expr(expr);
+        if !diags.is_empty() {
+            let msgs: Vec<_> = diags.iter().map(|d| d.message.as_str()).collect();
+            return Err(CliError::Message(format!(
+                "parse error: {}",
+                msgs.join("; ")
+            )));
+        }
+        let parsed =
+            parsed.ok_or_else(|| CliError::Message("failed to parse expression".into()))?;
+
+        // Take GameState out of RefCell for ownership transfer to Execution
+        let gs = self.game_state.replace(GameState::new());
+
+        // Build RuntimeCore from counter state
+        let core = RuntimeCore::from_game_state(
+            Arc::clone(&self.program),
+            Arc::clone(&self.type_env),
+            &gs,
+        );
+        // Share the runner's coverage data so step-mode hits are visible to `coverage` command
+        let core = if let Some(ref cov) = self.coverage {
+            core.with_shared_coverage(Rc::clone(cov))
+        } else {
+            core
+        };
+
+        // Pass through mutation kinds so the CLI can log them.
+        // The adapter's apply_host_response() in respond() handles
+        // state application. SpawnEntity is excluded because the CLI
+        // handles it specially (needs to allocate the EntityRef and
+        // return EntitySpawned).
+        let mut adapter = StateAdapter::new(gs);
+        for &kind in &ttrpg_interp::adapter::MUTATION_KINDS {
+            if kind != EffectKind::SpawnEntity {
+                adapter = adapter.pass_through(kind);
+            }
+        }
+
+        // Build bindings
+        let bindings: Vec<(Name, Value)> = self
+            .variables
+            .iter()
+            .map(|(name, val)| (Name::from(name.as_str()), val.clone()))
+            .collect();
+
+        let exec = Execution::start_expr_with_bindings(core.clone(), adapter, parsed, bindings);
+
+        self.drive_execution(exec, core)
+    }
+
+    /// Drive a step-based execution to completion, pausing when an
+    /// interactive prompt is needed and returning control to the REPL.
+    ///
+    /// Returns `Ok(value)` on completion, or `Err(CliError::PromptPending)`
+    /// when the execution is paused waiting for user input.
+    fn drive_execution(
+        &mut self,
+        mut exec: Execution<GameState>,
+        core: Rc<RuntimeCore>,
+    ) -> Result<Value, CliError> {
+        loop {
+            let step = match exec.poll() {
+                Ok(s) => s,
+                Err(e) => {
+                    // Restore state before returning the error so entity IDs
+                    // and other game state survive failed executions.
+                    self.finish_execution(exec, &core);
+                    return Err(match e {
+                        PollError::Runtime(re) => render_runtime_error(&re, &self.source_map),
+                        PollError::Protocol(pe) => {
+                            CliError::Message(format!("protocol error: {pe}"))
+                        }
+                    });
+                }
+            };
+
+            match step {
+                Step::Done(value) => {
+                    self.finish_execution(exec, &core);
+                    return Ok(value);
+                }
+                Step::Yielded(effect) => {
+                    // Check if this is a prompt that should pause for REPL input
+                    let is_prompt = self.interactive
+                        && self.exec_mode == ExecutionMode::StepBased
+                        && matches!(&*effect, Effect::ResolvePrompt { .. });
+
+                    if is_prompt {
+                        let Effect::ResolvePrompt {
+                            name,
+                            hint,
+                            return_type,
+                            suggest,
+                            has_default,
+                            ..
+                        } = *effect
+                        else {
+                            unreachable!()
+                        };
+
+                        // Check prompt queue first — if there's a queued value,
+                        // use it immediately without pausing.
+                        if let Some(val) = self.prompt_queue.pop_front() {
+                            if !self.quiet {
+                                self.output.push(format!(
+                                    "[ResolvePrompt] {} -> {} (queued)",
+                                    name,
+                                    crate::format::format_value(&val, &self.unit_suffixes)
+                                ));
+                            }
+                            exec.respond(Response::PromptResult(val))
+                                .map_err(|pe| CliError::Message(format!("protocol error: {pe}")))?;
+                            continue;
+                        }
+
+                        // Pause execution — store state and return to REPL
+                        self.pending_prompt = Some(PendingPrompt {
+                            exec,
+                            core,
+                            name: name.to_string(),
+                            hint,
+                            return_type,
+                            suggest,
+                            has_default,
+                        });
+                        return Err(CliError::PromptPending);
+                    }
+
+                    // Check if this effect is gated for GM intervention
+                    if self.exec_mode == ExecutionMode::StepBased
+                        && self.gm_gates.contains(&EffectKind::of(&effect))
+                    {
+                        if !self.quiet {
+                            self.output.push(format!(
+                                "[GM Gate] {}",
+                                format_gate_effect(&effect, &self.handles),
+                            ));
+                        }
+                        self.pending_gate = Some(PendingGate {
+                            exec,
+                            core,
+                            effect: *effect,
+                        });
+                        return Err(CliError::GatePending);
+                    }
+
+                    // SpawnEntity: the adapter needs an EntitySpawned
+                    // response containing the new EntityRef. We read it
+                    // from state here; apply_host_response() in respond()
+                    // handles the actual state application.
+                    if matches!(&*effect, Effect::SpawnEntity { .. }) {
+                        let entity_ref = exec
+                            .state()
+                            .with_state_mut(|gs| ttrpg_interp::adapter::apply_spawn(gs, &effect));
+                        if !self.quiet
+                            && let Effect::SpawnEntity { entity_type, .. } = &*effect
+                        {
+                            self.output
+                                .push(format!("[SpawnEntity] {entity_type} ({})", entity_ref.0,));
+                        }
+                        exec.respond(Response::EntitySpawned(entity_ref))
+                            .map_err(|pe| CliError::Message(format!("protocol error: {pe}")))?;
+                        continue;
+                    }
+
+                    // All other effects (mutations, DeductCost, gates,
+                    // informational, value effects): handle via CliHandler
+                    // for logging/response, then respond(). The adapter's
+                    // apply_host_response() in respond() handles state
+                    // application for pass-through mutations and DeductCost.
+                    let response = {
+                        let mut handler = CliHandler::new(
+                            &self.game_state,
+                            self.handles.by_entity(),
+                            &mut self.rng,
+                            &mut self.roll_queue,
+                            &mut self.prompt_queue,
+                            &self.unit_suffixes,
+                        )
+                        .with_state(exec.state())
+                        .quiet(self.quiet)
+                        .interactive(self.interactive);
+
+                        let response = handler.handle(*effect);
+
+                        for line in handler.log.drain(..) {
+                            self.output.push(line);
+                        }
+
+                        response
+                    };
+
+                    exec.respond(response)
+                        .map_err(|pe| CliError::Message(format!("protocol error: {pe}")))?;
+                }
+            }
+        }
+    }
+
+    /// Extract state from a completed execution and restore it to the runner.
+    fn finish_execution(&mut self, exec: Execution<GameState>, core: &Rc<RuntimeCore>) {
+        let (inv_id, cond_id) = core.counters();
+        let mut gs = exec.into_state();
+        gs.set_next_invocation_id(inv_id);
+        gs.set_next_condition_id(cond_id);
+        self.game_state.replace(gs);
+    }
+
+    // ── Prompt handling ──────────────────────────────────────────
+
+    /// Returns `true` when execution is paused waiting for a prompt response.
+    pub fn in_prompt(&self) -> bool {
+        self.pending_prompt.is_some()
+    }
+
+    /// Returns display info about the pending prompt (for REPL formatting).
+    pub fn prompt_display(&self) -> Option<PromptDisplay> {
+        let p = self.pending_prompt.as_ref()?;
+        Some(PromptDisplay {
+            name: p.name.clone(),
+            hint: p.hint.clone(),
+            type_hint: crate::effects::type_hint(&p.return_type),
+            suggest: p.suggest.as_ref().map(crate::effects::format_suggest),
+            has_default: p.has_default,
+        })
+    }
+
+    /// Submit user input to resolve the pending prompt.
+    ///
+    /// Parses the input according to the prompt's expected type,
+    /// feeds it to the paused execution, and continues driving.
+    pub fn submit_prompt(&mut self, input: &str) -> Result<(), CliError> {
+        let pending = self
+            .pending_prompt
+            .take()
+            .ok_or_else(|| CliError::Message("no prompt pending".into()))?;
+
+        let trimmed = input.trim();
+
+        // Empty input: use suggest if available, else UseDefault
+        let response = if trimmed.is_empty() {
+            if let Some(ref val) = pending.suggest {
+                if !self.quiet {
+                    self.output.push(format!(
+                        "[ResolvePrompt] {} -> {}",
+                        pending.name,
+                        crate::format::format_value(val, &self.unit_suffixes)
+                    ));
+                }
+                Response::PromptResult(val.clone())
+            } else {
+                if !self.quiet {
+                    self.output
+                        .push(format!("[ResolvePrompt] {} -> use default", pending.name));
+                }
+                Response::UseDefault
+            }
+        } else {
+            match crate::effects::parse_prompt_input(trimmed, &pending.return_type) {
+                Ok(val) => {
+                    if !self.quiet {
+                        self.output.push(format!(
+                            "[ResolvePrompt] {} -> {}",
+                            pending.name,
+                            crate::format::format_value(&val, &self.unit_suffixes)
+                        ));
+                    }
+                    Response::PromptResult(val)
+                }
+                Err(msg) => {
+                    // Parse error — re-store the pending prompt and show error
+                    let type_hint = crate::effects::type_hint(&pending.return_type);
+                    self.pending_prompt = Some(pending);
+                    return Err(CliError::Message(format!(
+                        "expected {type_hint}, got {trimmed:?}: {msg}",
+                    )));
+                }
+            }
+        };
+
+        let mut exec = pending.exec;
+        let core = pending.core;
+        exec.respond(response)
+            .map_err(|pe| CliError::Message(format!("protocol error: {pe}")))?;
+
+        match self.drive_execution(exec, core) {
+            Ok(value) => {
+                if !matches!(value, Value::Void) {
+                    self.output
+                        .push(crate::format::format_value(&value, &self.unit_suffixes));
+                }
+                Ok(())
+            }
+            Err(CliError::PromptPending) => {
+                // Another prompt in the same execution — stay in prompt mode
+                Ok(())
+            }
+            Err(e) => Err(e),
+        }
+    }
+
+    /// Cancel the pending prompt (e.g., on Ctrl-C), vetoing the execution.
+    pub fn cancel_prompt(&mut self) {
+        if let Some(pending) = self.pending_prompt.take() {
+            self.finish_execution(pending.exec, &pending.core);
+        }
+    }
+
+    // ── GM gate handling ──────────────────────────────────────────
+
+    /// Returns `true` when execution is paused at a GM gate.
+    pub fn in_gate(&self) -> bool {
+        self.pending_gate.is_some()
+    }
+
+    /// Returns display info about the pending GM gate (for REPL formatting).
+    pub fn gate_display(&self) -> Option<GateDisplay> {
+        let g = self.pending_gate.as_ref()?;
+        Some(GateDisplay {
+            summary: format_gate_effect(&g.effect, &self.handles),
+        })
+    }
+
+    /// Submit a GM response to the pending gate and resume execution.
+    fn submit_gate(&mut self, response: Response) -> Result<(), CliError> {
+        let pending = self
+            .pending_gate
+            .take()
+            .ok_or_else(|| CliError::Message("no GM gate pending".into()))?;
+
+        let response_label = match &response {
+            Response::Acknowledged => "accept",
+            Response::Vetoed => "veto",
+            Response::Override(v) => {
+                if !self.quiet {
+                    self.output.push(format!(
+                        "[GM Gate] -> override({})",
+                        format_value(v, &self.unit_suffixes),
+                    ));
+                }
+                "override"
+            }
+            _ => "respond",
+        };
+
+        if !self.quiet && !matches!(response, Response::Override(_)) {
+            self.output.push(format!("[GM Gate] -> {response_label}"));
+        }
+
+        let mut exec = pending.exec;
+        let core = pending.core;
+
+        // For vetoed mutations, we still need to handle them through CliHandler
+        // so state changes are properly skipped. For gates (ActionStarted,
+        // ConditionApplyGate, etc.), the interpreter handles Vetoed directly.
+        exec.respond(response)
+            .map_err(|pe| CliError::Message(format!("protocol error: {pe}")))?;
+
+        match self.drive_execution(exec, core) {
+            Ok(value) => {
+                if !matches!(value, Value::Void) {
+                    self.output
+                        .push(crate::format::format_value(&value, &self.unit_suffixes));
+                }
+                Ok(())
+            }
+            Err(e) if e.is_pending() => {
+                // Another gate or prompt in the same execution
+                Err(e)
+            }
+            Err(e) => Err(e),
+        }
+    }
+
+    /// Cancel the pending gate (e.g., on Ctrl-C), dropping the execution.
+    pub fn cancel_gate(&mut self) {
+        if let Some(pending) = self.pending_gate.take() {
+            self.finish_execution(pending.exec, &pending.core);
+        }
+    }
+
     /// Resolve a handle name to an EntityRef.
     fn resolve_handle(&self, name: &str) -> Result<EntityRef, CliError> {
         match self.variables.get(name) {
@@ -741,6 +1343,11 @@ impl Runner {
     /// Returns whether the runner is in interactive mode.
     pub fn is_interactive(&self) -> bool {
         self.interactive
+    }
+
+    /// Set the execution mode for expression evaluation.
+    pub fn set_exec_mode(&mut self, mode: ExecutionMode) {
+        self.exec_mode = mode;
     }
 
     /// Enable coverage tracking. Creates the shared `Rc` that will be

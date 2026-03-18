@@ -1,0 +1,79 @@
+// Test GM gate commands: accept, veto, override
+
+source -s <<END
+    entity Character {
+        hp: int = 10
+        ac: int = 10
+    }
+
+    condition Poisoned on target: Character {}
+
+    action DealDamage on target: Character(amount: int) {
+        resolve {
+            target.hp -= amount
+        }
+    }
+
+    action PoisonStrike on actor: Character(target: Character) {
+        resolve {
+            target.hp -= 3
+            apply_condition(target, Poisoned, Duration.Indefinite)
+        }
+    }
+END
+
+spawn Character hero { hp: 30, ac: 15 }
+spawn Character foe
+
+// ─── Action gate: accept ─────────────────────────
+gm gate actions on
+
+do DealDamage(hero, 5)
+gm accept
+// Action proceeded normally — damage applied
+assert_eq hero.hp, 25
+
+// ─── Action gate: veto ───────────────────────────
+do DealDamage(hero, 10)
+gm veto
+// Action was vetoed — body never ran, hp unchanged
+assert_eq hero.hp, 25
+
+// ─── Disable action gate ─────────────────────────
+gm gate actions off
+
+do DealDamage(hero, 2)
+// No gate — runs immediately
+assert_eq hero.hp, 23
+
+// ─── Condition gate: veto ────────────────────────
+gm gate conditions on
+
+do PoisonStrike(foe, hero)
+gm veto
+// PoisonStrike body ran (damage applied), but condition was vetoed
+assert_eq hero.hp, 20
+assert_no_condition hero, Poisoned
+
+// ─── Condition gate: accept ──────────────────────
+set hero.hp = 30
+do PoisonStrike(foe, hero)
+gm accept
+assert_eq hero.hp, 27
+assert_condition hero, Poisoned
+
+// ─── Both gates active ──────────────────────────
+gm gate actions on
+// gm gate conditions is still on
+
+set hero.hp = 30
+do PoisonStrike(foe, hero)
+gm accept              // accept the ActionStarted gate
+gm accept              // accept the ConditionApplyGate
+assert_eq hero.hp, 27
+
+// ─── Veto action with conditions gate still on ──
+set hero.hp = 30
+do PoisonStrike(foe, hero)
+gm veto                // veto the action — body never runs, no condition gate fires
+assert_eq hero.hp, 30

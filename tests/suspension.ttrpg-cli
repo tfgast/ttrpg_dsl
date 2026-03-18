@@ -78,7 +78,7 @@ source -s <<END
 entity Character { name: string, hp: int }
 
 function trap_soul(target: entity, source_key: int) {
-    suspend_with_source(target, source_id: source_key, Presence.OffBoard, freeze_turns: true, freeze_durations: true)
+    suspend_with_source(target, source_id: source_key, presence: Presence.OffBoard, freeze_turns: true, freeze_durations: true)
 }
 
 function release_soul(target: entity, source_key: int) {
@@ -107,11 +107,11 @@ source -s <<END
 entity Character { name: string, hp: int }
 
 function add_onmap_freeze(target: entity, key: int) {
-    suspend_with_source(target, source_id: key, Presence.OnMap, freeze_turns: true, freeze_durations: false)
+    suspend_with_source(target, source_id: key, presence: Presence.OnMap, freeze_turns: true, freeze_durations: false)
 }
 
 function add_offboard(target: entity, key: int) {
-    suspend_with_source(target, source_id: key, Presence.OffBoard, freeze_turns: false, freeze_durations: true)
+    suspend_with_source(target, source_id: key, presence: Presence.OffBoard, freeze_turns: false, freeze_durations: true)
 }
 
 function release(target: entity, key: int) {

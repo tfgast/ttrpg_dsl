@@ -7,6 +7,101 @@ use ttrpg_interp::value::PositionValue;
 use super::*;
 
 impl Runner {
+    /// `budget <handle> <field>=<value> ...` — provision a turn budget
+    /// `budget <handle>` — read current budget
+    /// `budget clear <handle>` — clear budget
+    ///
+    /// Directly sets/reads/clears the turn budget on an entity without
+    /// requiring DSL `with_budget` blocks.
+    pub(super) fn cmd_budget(&mut self, tail: &str) -> Result<(), CliError> {
+        let tail = tail.trim();
+
+        // budget clear <handle>
+        if let Some(rest) = tail.strip_prefix("clear") {
+            let handle = rest.trim();
+            if handle.is_empty() {
+                return Err(CliError::Message("usage: budget clear <handle>".into()));
+            }
+            let entity = self.resolve_handle(handle)?;
+            self.game_state.borrow_mut().clear_turn_budget(&entity);
+            self.output.push(format!("cleared budget for {handle}"));
+            return Ok(());
+        }
+
+        let (handle, rest) = split_first_token(tail);
+        if handle.is_empty() {
+            return Err(CliError::Message(
+                "usage: budget <handle> [field=value ...]".into(),
+            ));
+        }
+        let entity = self.resolve_handle(handle)?;
+        let rest = rest.trim();
+
+        // budget <handle> — read
+        if rest.is_empty() {
+            let gs = self.game_state.borrow();
+            match gs.read_turn_budget(&entity) {
+                Some(budget) => {
+                    let fields: Vec<String> = budget
+                        .iter()
+                        .map(|(k, v)| {
+                            format!(
+                                "{k}: {}",
+                                crate::format::format_value(v, &self.unit_suffixes)
+                            )
+                        })
+                        .collect();
+                    self.output
+                        .push(format!("{handle} budget: {{ {} }}", fields.join(", ")));
+                }
+                None => {
+                    self.output.push(format!("{handle}: no budget provisioned"));
+                }
+            }
+            return Ok(());
+        }
+
+        // budget <handle> field=value field=value ...
+        let mut budget = BTreeMap::new();
+        for token in rest.split_whitespace() {
+            let eq_pos = token
+                .find('=')
+                .ok_or_else(|| CliError::Message(format!("expected field=value, got: {token}")))?;
+            let field_name = &token[..eq_pos];
+            let val_str = &token[eq_pos + 1..];
+            if field_name.is_empty() || val_str.is_empty() {
+                return Err(CliError::Message(format!(
+                    "expected field=value, got: {token}"
+                )));
+            }
+            let val: i64 = val_str.parse().map_err(|_| {
+                CliError::Message(format!(
+                    "expected integer value for '{field_name}', got: {val_str}"
+                ))
+            })?;
+            budget.insert(Name::from(field_name), Value::Int(val));
+        }
+
+        self.game_state
+            .borrow_mut()
+            .set_turn_budget(&entity, budget.clone());
+
+        let fields: Vec<String> = budget
+            .iter()
+            .map(|(k, v)| {
+                format!(
+                    "{k}: {}",
+                    crate::format::format_value(v, &self.unit_suffixes)
+                )
+            })
+            .collect();
+        self.output.push(format!(
+            "provisioned {handle} budget: {{ {} }}",
+            fields.join(", ")
+        ));
+        Ok(())
+    }
+
     /// `emit EventName(param: expr, param: expr, ...)`
     ///
     /// Fire a DSL event from the host side, executing all matching hooks and
@@ -193,6 +288,7 @@ impl Runner {
         .interactive(self.interactive);
         let candidates = state.all_entities();
 
+        #[allow(deprecated)] // migration to step-based Execution is tracked separately
         let results = interp
             .fire_hooks(
                 &state,
@@ -253,6 +349,7 @@ impl Runner {
         )
         .quiet(self.quiet)
         .interactive(self.interactive);
+        #[allow(deprecated)] // migration to step-based Execution is tracked separately
         let cond_count = interp2
             .fire_condition_handlers(&state, &mut handler2, event_name, payload, &candidates)
             .map_err(|e| {

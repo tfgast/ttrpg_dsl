@@ -383,6 +383,18 @@ const COMMANDS: &[CommandInfo] = &[
     },
     // Host Simulation
     CommandInfo {
+        name: "budget",
+        syntax: "budget <handle> [field=value ...]",
+        description: "Provision, read, or clear a turn budget",
+        detail: "Provision a turn budget for an entity, read its current budget, or clear it.\n  Budget fields map to cost tokens used by actions (e.g. action, bonus_action, movement).\n  Use 'budget clear <handle>' to remove a provisioned budget.\n  With no field=value pairs, reads the current budget.",
+        examples: &[
+            "budget fighter action=1 bonus_action=1",
+            "budget fighter",
+            "budget clear fighter",
+        ],
+        category: "Host Simulation",
+    },
+    CommandInfo {
         name: "emit",
         syntax: "emit <Event>(param: expr, ...)",
         description: "Fire a DSL event from the host side",
@@ -449,6 +461,22 @@ const COMMANDS: &[CommandInfo] = &[
         ],
         category: "Loops",
     },
+    // GM Gates
+    CommandInfo {
+        name: "gm",
+        syntax: "gm gate <kind> on|off",
+        description: "Configure GM gates or respond to a pending gate",
+        detail: "GM gates pause execution at specific effect types so you can\n  accept, veto, or override the effect before execution continues.\n  Gate kinds: actions, conditions, all.\n\n  When paused at a gate, respond with:\n    gm accept     — acknowledge the effect (proceed normally)\n    gm veto       — block the effect\n    gm override <value> — substitute a different value\n\n  In test scripts, the gm response must be the very next command\n  after the command that triggered the gate. Any other command\n  while a gate is pending is an error.",
+        examples: &[
+            "gm gate actions on",
+            "gm gate conditions on",
+            "gm gate all off",
+            "gm accept",
+            "gm veto",
+            "gm override 20",
+        ],
+        category: "GM Gates",
+    },
     // Help
     CommandInfo {
         name: "help",
@@ -472,6 +500,7 @@ const CATEGORIES: &[&str] = &[
     "Dice Control",
     "Loops",
     "Host Simulation",
+    "GM Gates",
     "Help",
 ];
 

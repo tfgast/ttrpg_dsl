@@ -1,8 +1,48 @@
+//! Event query API for host-driven emit patterns.
+//!
+//! The functions in this module are **pure queries** — they determine which hooks,
+//! reactions, and condition handlers match an event without executing any of them.
+//! Hosts combine these queries with `Execution` entry points to drive execution
+//! at their own pace.
+//!
+//! # Host-driven emit pattern
+//!
+//! ```rust,ignore
+//! use ttrpg_interp::event;
+//! use ttrpg_interp::execution::Execution;
+//!
+//! // 1. Query matching hooks and condition handlers
+//! let hook_result = event::find_matching_hooks(&program, &type_env, &state, "OnDamage", &payload, &candidates)?;
+//! let cond_result = event::find_matching_condition_handlers(&program, &type_env, &state, "OnDamage", &payload, &candidates)?;
+//!
+//! // 2. Execute each hook (host controls the loop, can skip/reorder)
+//! for hook in &hook_result.hooks {
+//!     let mut exec = Execution::start_hook(core.clone(), state_adapter, &hook.name, hook.target, payload.clone(), span)?;
+//!     loop {
+//!         match exec.poll()? {
+//!             Step::Yielded(effect) => { /* host handles */ exec.respond(response)?; }
+//!             Step::Done(_) => break,
+//!         }
+//!     }
+//!     state_adapter = exec.state_mut().take(); // recover state for next execution
+//! }
+//!
+//! // 3. Execute condition handlers (batch or individual)
+//! let mut exec = Execution::start_condition_handlers(core.clone(), state_adapter, cond_result.handlers, payload);
+//! // ... same poll/respond loop ...
+//! ```
+//!
+//! Alternatively, use the batch entry points [`Execution::start_hooks`] and
+//! [`Execution::start_condition_handlers`] when per-item control is not needed.
+
 use std::collections::{BTreeMap, HashSet};
 
 use ttrpg_ast::Name;
 use ttrpg_ast::ast::ConditionClause;
 use ttrpg_checker::ty::Ty;
+
+use ttrpg_ast::ast::Program;
+use ttrpg_checker::env::TypeEnv;
 
 use crate::Env;
 use crate::Interpreter;
@@ -108,7 +148,7 @@ pub fn what_triggers(
         // For each candidate entity, try to match trigger bindings
         for candidate in candidates {
             if !receiver_matches_constraints(
-                interp,
+                interp.type_env,
                 state,
                 *candidate,
                 &reaction_decl.receiver_type,
@@ -162,13 +202,14 @@ pub fn what_triggers(
 /// Like `what_triggers`, this is a **pure query** — no effects are emitted.
 /// Hooks have no suppression logic: if the trigger bindings match, the hook fires.
 pub fn find_matching_hooks(
-    interp: &Interpreter,
+    program: &Program,
+    type_env: &TypeEnv,
     state: &dyn StateProvider,
     event_name: &str,
     payload: &Value,
     candidates: &[EntityRef],
 ) -> Result<HookResult, RuntimeError> {
-    let event_info = match interp.type_env.events.get(event_name) {
+    let event_info = match type_env.events.get(event_name) {
         Some(info) => info.clone(),
         None => {
             return Err(RuntimeError::new(format!("undefined event '{event_name}'")));
@@ -182,34 +223,30 @@ pub fn find_matching_hooks(
         }
     };
 
+    let interp = Interpreter::bridge(program, type_env, 0, 0, None);
     let mut noop_handler = NoopHandler;
-    let mut env = Env::new(state, &mut noop_handler, interp);
+    let mut env = Env::new(state, &mut noop_handler, &interp);
 
     let mut hooks = Vec::new();
 
     // Use the trigger index to find only hooks that listen for this event
     let empty = Vec::new();
-    let triggered_names = interp
-        .type_env
-        .trigger_index
-        .get(event_name)
-        .unwrap_or(&empty);
+    let triggered_names = type_env.trigger_index.get(event_name).unwrap_or(&empty);
 
     for hook_name in triggered_names {
         // Skip non-hooks (reactions share the same index)
-        if interp
-            .type_env
+        if type_env
             .functions
             .get(hook_name)
             .is_none_or(|fi| fi.kind != ttrpg_checker::env::FnKind::Hook)
         {
             continue;
         }
-        let hook_decl = &interp.program.hooks[hook_name];
+        let hook_decl = &program.hooks[hook_name];
 
         for candidate in candidates {
             if !receiver_matches_constraints(
-                interp,
+                type_env,
                 state,
                 *candidate,
                 &hook_decl.receiver_type,
@@ -243,13 +280,13 @@ pub fn find_matching_hooks(
 // ── Trigger matching ────────────────────────────────────────────
 
 fn receiver_matches_constraints(
-    interp: &Interpreter,
+    type_env: &TypeEnv,
     state: &dyn StateProvider,
     candidate: EntityRef,
     receiver_type: &ttrpg_ast::Spanned<ttrpg_ast::ast::TypeExpr>,
     with_clause: &ttrpg_ast::ast::WithClause,
 ) -> bool {
-    match interp.type_env.resolve_type(receiver_type) {
+    match type_env.resolve_type(receiver_type) {
         Ty::Entity(expected) => {
             if let Some(actual) = state.entity_type_name(&candidate)
                 && actual != expected
@@ -282,9 +319,8 @@ fn receiver_matches_constraints(
 
 /// Match a reaction's trigger bindings against event payload.
 ///
-/// Uses **fill-the-gaps** semantics:
-/// 1. Named bindings claim their slots first (params first, then fields)
-/// 2. Positional bindings fill remaining unclaimed param slots left-to-right
+/// Positional bindings fill slots 0..N sequentially, named bindings match
+/// by name. Positional bindings must come before named bindings.
 ///
 /// Returns true if all bindings match.
 fn match_trigger_bindings(
@@ -315,22 +351,10 @@ fn match_bindings_inner(
     event_fields: &[(Name, Ty)],
     payload_fields: &BTreeMap<Name, Value>,
 ) -> Result<bool, RuntimeError> {
-    // Track which param slots are claimed by named bindings
-    let mut claimed_params: HashSet<usize> = HashSet::new();
-
-    // First pass: identify named bindings and claim their slots
-    for binding in bindings {
-        if let Some(ref name) = binding.name {
-            // Look up in event params first
-            if let Some(pos) = event_params.iter().position(|p| p.name == *name) {
-                claimed_params.insert(pos);
-            }
-            // Named bindings referencing fields don't claim param slots
-        }
-    }
-
-    // Second pass: evaluate all bindings and check matches
-    let mut pos_iter = (0..event_params.len()).filter(|i| !claimed_params.contains(i));
+    // Single pass: positional bindings fill slots 0..N sequentially,
+    // named bindings match by name. Positional must come before named
+    // (enforced by checker).
+    let mut next_positional = 0usize;
 
     for binding in bindings {
         // Evaluate the binding expression
@@ -361,11 +385,12 @@ fn match_bindings_inner(
                 }
             }
         } else {
-            // Positional binding: fill next unclaimed param slot
-            let slot_idx = match pos_iter.next() {
-                Some(idx) => idx,
-                None => return Ok(false), // more positional bindings than unclaimed params
-            };
+            // Positional binding: fill next param slot sequentially
+            if next_positional >= event_params.len() {
+                return Ok(false); // more positional bindings than params
+            }
+            let slot_idx = next_positional;
+            next_positional += 1;
 
             let param_name = &event_params[slot_idx].name;
             match payload_fields.get(param_name) {
@@ -482,7 +507,8 @@ fn is_suppressed(
                     | ConditionClause::OnApply(_)
                     | ConditionClause::OnRemove(_)
                     | ConditionClause::OnEvent(_)
-                    | ConditionClause::Include(_) => continue,
+                    | ConditionClause::Include(_)
+                    | ConditionClause::ShouldApply(_) => continue,
                 };
 
                 if suppress.event_name != event_name {
@@ -608,13 +634,14 @@ pub struct ConditionHandlerResult {
 ///
 /// Returns handlers in entity order -> application order -> clause order.
 pub fn find_matching_condition_handlers(
-    interp: &Interpreter,
+    program: &Program,
+    type_env: &TypeEnv,
     state: &dyn StateProvider,
     event_name: &str,
     payload: &Value,
     candidates: &[EntityRef],
 ) -> Result<ConditionHandlerResult, RuntimeError> {
-    let event_info = match interp.type_env.events.get(event_name) {
+    let event_info = match type_env.events.get(event_name) {
         Some(info) => info.clone(),
         None => {
             return Err(RuntimeError::new(format!("undefined event '{event_name}'")));
@@ -630,8 +657,7 @@ pub fn find_matching_condition_handlers(
 
     // Look up which conditions have on-event handlers for this event
     let empty_ct = Vec::new();
-    let condition_handlers = interp
-        .type_env
+    let condition_handlers = type_env
         .condition_trigger_index
         .get(event_name)
         .unwrap_or(&empty_ct);
@@ -692,15 +718,12 @@ pub fn find_matching_condition_handlers(
     }
 
     // Build traversal: deduplicate entities, snapshot conditions, compute stacking winners
-    let traversal = crate::pipeline::ConditionTraversal::build(
-        named_entities,
-        candidates,
-        state,
-        interp.program,
-    )?;
+    let traversal =
+        crate::pipeline::ConditionTraversal::build(named_entities, candidates, state, program)?;
 
+    let interp = Interpreter::bridge(program, type_env, 0, 0, None);
     let mut noop_handler = NoopHandler;
-    let mut env = Env::new(state, &mut noop_handler, interp);
+    let mut env = Env::new(state, &mut noop_handler, &interp);
 
     let mut handlers = Vec::new();
 
@@ -729,7 +752,7 @@ pub fn find_matching_condition_handlers(
                 }
 
                 // Look up the condition declaration to get the on-event clause
-                let cond_decl = match interp.program.conditions.get(cond_name.as_str()) {
+                let cond_decl = match program.conditions.get(cond_name.as_str()) {
                     Some(d) => d,
                     None => continue,
                 };
@@ -1680,8 +1703,15 @@ mod tests {
         let payload = make_payload(vec![]);
         let candidates = vec![EntityRef(1), EntityRef(2), EntityRef(3)];
 
-        let result =
-            find_matching_hooks(&interp, &state, "RoundStart", &payload, &candidates).unwrap();
+        let result = find_matching_hooks(
+            interp.program,
+            interp.type_env,
+            &state,
+            "RoundStart",
+            &payload,
+            &candidates,
+        )
+        .unwrap();
 
         assert_eq!(result.hooks.len(), 1);
         assert_eq!(result.hooks[0].name, "TrackCasting");

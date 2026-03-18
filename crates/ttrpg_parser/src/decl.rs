@@ -1140,6 +1140,11 @@ impl Parser {
                 seen_on_remove = true;
                 seen_executable = true;
                 clauses.push(ConditionClause::OnRemove(self.parse_lifecycle_block()?));
+            } else if self.at_ident("should_apply") {
+                seen_executable = true;
+                clauses.push(ConditionClause::ShouldApply(
+                    self.parse_should_apply_clause()?,
+                ));
             } else if self.at_ident("include") {
                 clauses.push(ConditionClause::Include(self.parse_include_clause()?));
             } else if self.at_ident("on")
@@ -1150,7 +1155,7 @@ impl Parser {
                 clauses.push(ConditionClause::OnEvent(self.parse_on_event_clause()?));
             } else {
                 self.error(format!(
-                    "expected `tags`, `state`, `modify`, `suppress`, `include`, `on`, `on_apply`, or `on_remove` in condition body, found {}",
+                    "expected `tags`, `state`, `modify`, `should_apply`, `suppress`, `include`, `on`, `on_apply`, or `on_remove` in condition body, found {}",
                     self.peek()
                 ));
                 return Err(());
@@ -1377,6 +1382,66 @@ impl Parser {
             id: ModifyClauseId(0), // placeholder; build_index() assigns real IDs
             tags,
             included_from: None,
+        })
+    }
+
+    /// Parse `should_apply fn_name(bindings...) -> bool { block }`.
+    fn parse_should_apply_clause(&mut self) -> Result<ShouldApplyClause, ()> {
+        let start = self.start_span();
+        self.expect_soft_keyword("should_apply")?;
+
+        // Parse target: named function, name.cost, or selector [predicates].
+        let target = if matches!(self.peek(), TokenKind::LBracket) {
+            self.advance(); // consume [
+            let mut preds = vec![self.parse_selector_predicate()?];
+            while matches!(self.peek(), TokenKind::Comma) {
+                self.advance();
+                if matches!(self.peek(), TokenKind::RBracket) {
+                    break; // trailing comma
+                }
+                preds.push(self.parse_selector_predicate()?);
+            }
+            self.expect(&TokenKind::RBracket)?;
+            ModifyTarget::Selector(preds)
+        } else {
+            let (name, _) = self.expect_ident()?;
+            if matches!(self.peek(), TokenKind::Dot)
+                && matches!(self.peek_at(1), TokenKind::Ident(s) if &**s == "cost")
+            {
+                self.advance(); // consume .
+                self.advance(); // consume cost
+                ModifyTarget::Cost(name)
+            } else {
+                ModifyTarget::Named(name)
+            }
+        };
+
+        // Parse bindings: (param: value, ...)
+        self.expect(&TokenKind::LParen)?;
+        let bindings = if matches!(self.peek(), TokenKind::RParen) {
+            Vec::new()
+        } else {
+            self.parse_modify_bindings()?
+        };
+        self.expect(&TokenKind::RParen)?;
+
+        // Expect `-> bool` return type annotation.
+        self.expect(&TokenKind::Arrow)?;
+        if !self.at_ident("bool") {
+            self.error("`should_apply` must return `bool`");
+            return Err(());
+        }
+        self.advance(); // consume `bool`
+
+        // Parse imperative block body.
+        let body = self.parse_block()?;
+
+        Ok(ShouldApplyClause {
+            target,
+            bindings,
+            body,
+            span: self.end_span(start),
+            id: ModifyClauseId(0), // assigned during build_index()
         })
     }
 

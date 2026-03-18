@@ -180,7 +180,7 @@ Every public `Interpreter` method that can trigger effects, with v1 step-based c
 
 ### Overview
 
-The design has three layers:
+The design has three phases (not to be confused with the host integration layers 1/2/3 defined in [`doc/integration_layers.md`](../../doc/integration_layers.md)):
 
 1. **Emission seam** — a single `env.emit()` method replaces all 42 `handler.handle()` calls. This is a pure refactor with no behavior change.
 

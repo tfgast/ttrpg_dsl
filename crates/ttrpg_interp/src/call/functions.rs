@@ -5,10 +5,8 @@ use ttrpg_checker::env::ParamInfo;
 use crate::Env;
 use crate::RuntimeError;
 use crate::effect::{Effect, Response};
-use crate::eval::{eval_block, eval_expr};
-use crate::pipeline::{
-    collect_modifiers_owned, emit_modify_applied_events, run_phase1, run_phase2,
-};
+use crate::eval::{AssignContext, eval_block, eval_expr};
+use crate::pipeline::{collect_modifiers_owned, run_phase1, run_phase2};
 use crate::value::{Value, value_matches_ty, value_type_display};
 
 use super::args::bind_args;
@@ -92,8 +90,9 @@ pub(crate) fn evaluate_fn_with_values(
         }
     }
 
-    // Collect modifiers, Phase 1, execute body, Phase 2
+    // Collect modifiers, evaluate should_apply gates, Phase 1, body, Phase 2
     let modifiers = collect_modifiers_owned(env, name, &fn_info, &bound)?;
+    let modifiers = crate::pipeline::filter_by_should_apply(env, modifiers, &bound)?;
 
     let bound = if modifiers.is_empty() {
         bound
@@ -120,11 +119,6 @@ pub(crate) fn evaluate_fn_with_values(
         }
         Err(e) => return Err(e),
     };
-
-    // Emit modify_applied events for any condition modifiers that fired
-    if !modifiers.is_empty() {
-        emit_modify_applied_events(env, &modifiers, name, call_span)?;
-    }
 
     Ok(val)
 }
@@ -296,6 +290,7 @@ pub(super) fn dispatch_derive_or_mechanic(
 
     // Collect modifiers from conditions and options
     let modifiers = collect_modifiers_owned(env, name, &fn_info, &bound)?;
+    let modifiers = crate::pipeline::filter_by_should_apply(env, modifiers, &bound)?;
 
     // Phase 1: rewrite input parameters
     let bound = if modifiers.is_empty() {
@@ -325,11 +320,6 @@ pub(super) fn dispatch_derive_or_mechanic(
         }
         Err(e) => return Err(e),
     };
-
-    // Emit modify_applied events for any condition modifiers that fired
-    if !modifiers.is_empty() {
-        emit_modify_applied_events(env, &modifiers, name, call_span)?;
-    }
 
     Ok(val)
 }
@@ -463,6 +453,97 @@ fn dispatch_table_core(
     ))
 }
 
+/// Table dispatch via `AssignContext`, avoiding the bridge to `Interpreter`.
+/// Used by the frame-based executor (DeriveEval) for table lookups.
+pub(crate) fn dispatch_table_exec(
+    ctx: &mut dyn AssignContext,
+    name: &str,
+    args: Vec<Value>,
+    call_span: Span,
+) -> Result<Value, RuntimeError> {
+    use ttrpg_ast::ast::TableKey;
+
+    if !ctx.program().tables.contains_key(name) {
+        return Err(RuntimeError::with_span(
+            format!("undefined table '{name}'"),
+            call_span,
+        ));
+    }
+
+    let table_decl = ctx.program().tables.get(name).ok_or_else(|| {
+        RuntimeError::with_span(
+            format!("internal error: no declaration found for table '{name}'"),
+            call_span,
+        )
+    })?;
+    let expected_arity = table_decl.params.len();
+    if args.len() != expected_arity {
+        return Err(RuntimeError::with_span(
+            format!(
+                "table '{}' expects {} argument{}, got {}",
+                name,
+                expected_arity,
+                if expected_arity == 1 { "" } else { "s" },
+                args.len()
+            ),
+            call_span,
+        ));
+    }
+
+    let entries = table_decl.entries.clone();
+
+    for entry in &entries {
+        let mut matches = true;
+        for (key, arg_val) in entry.keys.iter().zip(args.iter()) {
+            match &key.node {
+                TableKey::Wildcard => {}
+                TableKey::Expr(expr_kind) => {
+                    let key_expr = Spanned {
+                        node: expr_kind.clone(),
+                        span: key.span,
+                    };
+                    let key_val = ctx.eval_expr(&key_expr)?;
+                    if !crate::eval::value_eq(ctx.state_provider(), &key_val, arg_val) {
+                        matches = false;
+                        break;
+                    }
+                }
+                TableKey::Range { start, end } => {
+                    let start_val = ctx.eval_expr(start)?;
+                    let end_val = ctx.eval_expr(end)?;
+                    match (arg_val, &start_val, &end_val) {
+                        (Value::Int(v), Value::Int(lo), Value::Int(hi)) => {
+                            if *v < *lo || *v > *hi {
+                                matches = false;
+                                break;
+                            }
+                        }
+                        _ => {
+                            matches = false;
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+        if matches {
+            return ctx.eval_expr(&entry.value);
+        }
+    }
+
+    Err(RuntimeError::with_span(
+        format!(
+            "no matching entry in table '{}' for arguments: {}",
+            name,
+            args.iter()
+                .map(|v| format!("{v:?}"))
+                .collect::<Vec<_>>()
+                .join(", ")
+        ),
+        call_span,
+    ))
+}
+
 // ── Prompt dispatch ────────────────────────────────────────────
 
 pub(super) fn dispatch_prompt(
@@ -524,7 +605,7 @@ pub(super) fn dispatch_prompt(
         suggest,
         has_default: default_body.is_some(),
     };
-    let response = env.handler.handle(effect);
+    let response = env.emit(effect);
 
     match response {
         Response::PromptResult(val) | Response::Override(val) => {

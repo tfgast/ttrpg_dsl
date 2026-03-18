@@ -1,0 +1,42 @@
+// game_time() and advance_time() — game clock management.
+
+source -s <<END
+    derive current_time() -> int {
+        game_time()
+    }
+
+    function advance_one_hour() {
+        advance_time(60)
+    }
+
+    function advance_ten() {
+        advance_time(10)
+    }
+END
+
+// ── Initial game time is 0 ───────────────────────────────────
+assert_eq current_time(), 0
+
+// ── advance_time updates the clock ───────────────────────────
+call advance_one_hour()
+assert_eq current_time(), 60
+
+// ── Multiple advances accumulate ─────────────────────────────
+call advance_ten()
+assert_eq current_time(), 70
+
+call advance_ten()
+assert_eq current_time(), 80
+
+// ── advance_time with invalid amount errors ───────────────────
+source -s <<END
+    function bad_advance_zero() {
+        advance_time(0)
+    }
+    function bad_advance_negative() {
+        advance_time(-5)
+    }
+END
+
+assert_err call bad_advance_zero()
+assert_err call bad_advance_negative()

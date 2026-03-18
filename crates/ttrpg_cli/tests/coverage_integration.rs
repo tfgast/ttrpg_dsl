@@ -512,6 +512,37 @@ fn coverage_percentage_increases_with_more_calls() {
     );
 }
 
+// ═══════════════════════════════════════════════════════════════
+//  Step-based execution mode coverage
+// ═══════════════════════════════════════════════════════════════
+
+#[test]
+fn step_based_coverage_visible_in_cli_report() {
+    use ttrpg_cli::runner::ExecutionMode;
+
+    let mut r = load_simple_system();
+    r.set_exec_mode(ExecutionMode::StepBased);
+    exec(&mut r, "seed 1");
+
+    exec(&mut r, "call modifier(14)");
+
+    // Coverage hits from step-based execution must show in the CLI report
+    let output = exec(&mut r, "coverage");
+    let report = output.join("\n");
+    assert!(
+        report.contains("HIT"),
+        "step-based execution should produce HIT lines in coverage report:\n{report}"
+    );
+
+    // The shared coverage data should also have function entry recorded
+    let cov = r.coverage_data().unwrap().borrow();
+    assert!(
+        cov.hit_functions.contains("modifier"),
+        "step-based execution should record function entry: {:?}",
+        cov.hit_functions
+    );
+}
+
 /// Extract the line coverage percentage from a coverage report summary line.
 fn extract_line_coverage_pct(report: &str) -> f64 {
     // Look for "Summary: X/Y lines covered (Z%)"

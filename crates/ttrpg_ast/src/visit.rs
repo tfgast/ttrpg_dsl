@@ -281,6 +281,7 @@ impl VisitSpansMut for ConditionClause {
             }
             ConditionClause::OnEvent(oe) => oe.visit_spans_mut(f),
             ConditionClause::Include(inc) => inc.visit_spans_mut(f),
+            ConditionClause::ShouldApply(sa) => sa.visit_spans_mut(f),
         }
     }
 }
@@ -288,6 +289,15 @@ impl VisitSpansMut for ConditionClause {
 impl VisitSpansMut for LifecycleBlock {
     fn visit_spans_mut(&mut self, f: &mut dyn FnMut(&mut Span)) {
         self.span.visit_spans_mut(f);
+        self.body.visit_spans_mut(f);
+    }
+}
+
+impl VisitSpansMut for ShouldApplyClause {
+    fn visit_spans_mut(&mut self, f: &mut dyn FnMut(&mut Span)) {
+        self.span.visit_spans_mut(f);
+        self.target.visit_spans_mut(f);
+        self.bindings.visit_spans_mut(f);
         self.body.visit_spans_mut(f);
     }
 }

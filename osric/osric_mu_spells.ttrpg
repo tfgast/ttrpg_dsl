@@ -841,41 +841,36 @@ system "OSRIC MU Spells" {
     {
         state {
             images: int = 0
-            absorbing: bool = false
         }
 
         on_apply {
             state.images = roll(1d4).total
         }
 
-        // Step 1: When attack damage is incoming, roll to see
-        // if an image absorbs. Set absorbing flag for deal_damage.
-        on DamageIncoming(target: bearer) {
-            state.absorbing = false
-            if trigger.source == DamageSource.Attack && state.images > 0 {
+        // Gate: roll to see if an image absorbs the incoming attack.
+        // Only melee/ranged attacks can target images; spell damage passes through.
+        should_apply deal_damage(target: bearer) -> bool {
+            if source != DamageSource.Attack || state.images <= 0 {
+                false
+            } else {
                 // Random target: 1..(images+1). If <= images, image absorbs.
                 let targets = state.images + 1
                 let target_roll = roll(dice(1, targets)).total
                 if target_roll <= state.images {
                     state.images -= 1
-                    state.absorbing = true
+                    if state.images <= 0 {
+                        remove_condition(bearer, "MirrorImageActive")
+                    }
+                    true
+                } else {
+                    false
                 }
             }
         }
 
-        // Step 2: If absorbing, zero out the damage in the pipeline.
+        // When should_apply returns true, zero out the damage.
         modify deal_damage(target: bearer) {
-            if state.absorbing {
-                result = 0
-            }
-        }
-
-        // Step 3: After damage applied, reset flag and check expiry.
-        on Damaged(target: bearer) {
-            state.absorbing = false
-            if state.images <= 0 {
-                remove_condition(bearer, "MirrorImageActive")
-            }
+            result = 0
         }
     }
 

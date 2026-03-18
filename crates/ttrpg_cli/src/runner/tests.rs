@@ -50,7 +50,7 @@ fn eval_boolean() {
 #[test]
 fn eval_none_literal() {
     let mut runner = Runner::new();
-    assert_eq!(runner.eval("none").unwrap(), Value::Void);
+    assert_eq!(runner.eval("none").unwrap(), Value::Option(None));
 }
 
 #[test]
@@ -281,8 +281,12 @@ system "test" {
     assert!(err.to_string().contains("failed to load"));
     runner.take_output();
 
-    // Arithmetic still works (no program needed for basic eval)
-    runner.exec("eval 1 + 2").unwrap();
+    // After a failed load, non-meta commands are suppressed to avoid cascade errors
+    let err = runner.exec("eval 1 + 2").unwrap_err();
+    assert!(
+        err.is_suppressed(),
+        "eval should be suppressed after failed load"
+    );
     runner.take_output();
 
     // Reload should re-attempt the bad file, not the good one
@@ -4746,4 +4750,111 @@ fn pos_invalid_name_errors() {
 
     let err = runner.exec("pos 123bad 5 3").unwrap_err();
     assert!(err.to_string().contains("invalid variable name"));
+}
+
+// ── Regression: tdsl-s16qx — step-mode mutation logging ─────
+
+/// In step-based execution, GameState is moved from the Runner's RefCell
+/// into the Execution's StateAdapter. Before the fix, CliHandler read
+/// before-values from the (now empty) RefCell, producing log lines like
+/// `hero.HP: 0 -> 25` instead of `hero.HP: 30 -> 25`.
+///
+/// This test verifies that step-mode mutation logs show the real
+/// before-value, not the default-initialized zero.
+#[test]
+fn step_mode_mutation_log_shows_correct_before_value() {
+    let mut runner = Runner::new();
+    load_snippet(
+        &mut runner,
+        r"
+        entity Character {
+            HP: int
+        }
+        action Hit on target: Character (amount: int) {
+            resolve {
+                target.HP -= amount
+            }
+        }
+    ",
+    );
+
+    runner.set_exec_mode(ExecutionMode::StepBased);
+
+    runner.exec("spawn Character hero { HP: 30 }").unwrap();
+    runner.take_output();
+
+    runner.exec("do hero.Hit(5)").unwrap();
+    let output = runner.take_output();
+
+    // The MutateField log line must show "30 -> 25", not "0 -> 25"
+    let mutate_line = output
+        .iter()
+        .find(|l| l.contains("[MutateField]") && l.contains("HP"))
+        .expect("expected a [MutateField] log line for HP");
+
+    assert!(
+        mutate_line.contains("30 -> 25"),
+        "step-mode log should show real before-value 30, got: {mutate_line}"
+    );
+    // Ensure the before-value isn't the default-initialized zero.
+    // "0 -> 25" would be a substring of "30 -> 25", so check with
+    // the surrounding format: ": 0 -> " (colon-space-zero-space).
+    assert!(
+        !mutate_line.contains(": 0 -> "),
+        "step-mode log should not show stale zero before-value, got: {mutate_line}"
+    );
+}
+
+/// Verify that consecutive mutations in step mode each see the
+/// correctly-updated before-value from the previous mutation.
+#[test]
+fn step_mode_consecutive_mutations_log_correct_values() {
+    let mut runner = Runner::new();
+    load_snippet(
+        &mut runner,
+        r"
+        entity Character {
+            HP: int
+        }
+        action DoubleHit on target: Character() {
+            resolve {
+                target.HP -= 3
+                target.HP -= 7
+            }
+        }
+    ",
+    );
+
+    runner.set_exec_mode(ExecutionMode::StepBased);
+
+    runner.exec("spawn Character hero { HP: 50 }").unwrap();
+    runner.take_output();
+
+    runner.exec("do hero.DoubleHit()").unwrap();
+    let output = runner.take_output();
+
+    let mutate_lines: Vec<&String> = output
+        .iter()
+        .filter(|l| l.contains("[MutateField]") && l.contains("HP"))
+        .collect();
+
+    assert_eq!(
+        mutate_lines.len(),
+        2,
+        "expected 2 MutateField lines, got: {mutate_lines:?}"
+    );
+
+    // First mutation: 50 -> 47
+    assert!(
+        mutate_lines[0].contains("50 -> 47"),
+        "first mutation should show 50 -> 47, got: {}",
+        mutate_lines[0]
+    );
+
+    // Second mutation: 47 -> 40
+    assert!(
+        mutate_lines[1].contains("47 -> 40"),
+        "second mutation should show 47 -> 40, got: {}",
+        mutate_lines[1]
+    );
 }

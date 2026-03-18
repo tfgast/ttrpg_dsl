@@ -1,0 +1,73 @@
+// Dice filter syntax: kh (keep highest), kl (keep lowest),
+// dh (drop highest), dl (drop lowest).
+
+source -s <<END
+    // keep highest: 4d6kh3 — roll 4, keep top 3
+    mechanic roll_kh3() -> RollResult {
+        roll(4d6kh3)
+    }
+
+    // keep lowest: 2d20kl1 — disadvantage
+    mechanic roll_kl1() -> RollResult {
+        roll(2d20kl1)
+    }
+
+    // drop highest: 4d6dh1 — equivalent to 4d6kl3
+    mechanic roll_dh1() -> RollResult {
+        roll(4d6dh1)
+    }
+
+    // drop lowest: 4d6dl1 — equivalent to 4d6kh3
+    mechanic roll_dl1() -> RollResult {
+        roll(4d6dl1)
+    }
+
+    // dice introspection on filtered expressions
+    derive kh3_count() -> int { dice_count(4d6kh3) }
+    derive kh3_sides() -> int { dice_sides(4d6kh3) }
+    derive kh3_max() -> int { max_value(4d6kh3) }
+
+    derive kl1_count() -> int { dice_count(2d20kl1) }
+    derive kl1_sides() -> int { dice_sides(2d20kl1) }
+
+    // advantage vs disadvantage
+    mechanic advantage_roll() -> RollResult {
+        roll(2d20kh1)
+    }
+    mechanic disadvantage_roll() -> RollResult {
+        roll(2d20kl1)
+    }
+END
+
+// ── keep highest 3 of 4d6 ─────────────────────────────────────
+// Queue rolls: 3, 5, 1, 6 → keep highest 3: 6, 5, 3 → total = 14
+rolls 3 5 1 6
+assert_eq roll_kh3().total, 14
+
+// ── keep lowest 1 of 2d20 (disadvantage) ──────────────────────
+rolls 15 8
+assert_eq roll_kl1().total, 8
+
+// ── drop highest 1 of 4d6 ────────────────────────────────────
+rolls 4 6 2 5
+assert_eq roll_dh1().total, 11
+
+// ── drop lowest 1 of 4d6 ────────────────────────────────────
+rolls 2 5 3 6
+assert_eq roll_dl1().total, 14
+
+// ── dice introspection ────────────────────────────────────────
+assert_eq kh3_count(), 4
+assert_eq kh3_sides(), 6
+assert_eq kh3_max(), 18
+
+assert_eq kl1_count(), 2
+assert_eq kl1_sides(), 20
+
+// ── advantage: keep highest of 2d20 ──────────────────────────
+rolls 12 18
+assert_eq advantage_roll().total, 18
+
+// ── disadvantage: keep lowest of 2d20 ─────────────────────────
+rolls 12 18
+assert_eq disadvantage_roll().total, 12

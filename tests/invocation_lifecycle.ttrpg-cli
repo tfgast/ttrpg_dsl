@@ -1,0 +1,68 @@
+// invocation() and revoke(inv) — tag conditions for batch revocation.
+// Tests the concentration spell pattern: cast → track invocation → revoke all.
+
+source <<END
+system "test" {
+    enum Duration { EndOfTurn, StartOfNextTurn, Rounds(count: int), Minutes(count: int), Indefinite }
+
+    struct TurnBudget { action: int }
+
+    entity Character {
+        name: string
+        hp: int
+        concentrating_on: option<Invocation>
+    }
+
+    condition Blessed on bearer: Character {
+        modify attack_bonus(attacker: bearer) {
+            bonus = bonus + 2
+        }
+    }
+
+    derive attack_bonus(attacker: Character, bonus: int = 0) -> int {
+        bonus
+    }
+
+    action CastBless on caster: Character (target1: Character, target2: Character) {
+        cost { action }
+        resolve {
+            let inv = invocation()
+            apply_condition(target1, Blessed, Duration.Rounds(10))
+            apply_condition(target2, Blessed, Duration.Rounds(10))
+            caster.concentrating_on = some(inv)
+        }
+    }
+
+    function cast_bless(caster: Character, t1: Character, t2: Character) {
+        with_budget(caster, { action: 1 }) {
+            caster.CastBless(t1, t2)
+        }
+    }
+
+    function break_concentration(caster: Character) {
+        if let some(inv) = caster.concentrating_on {
+            revoke(inv)
+            caster.concentrating_on = none
+        }
+    }
+}
+END
+
+spawn Character caster { name: "Caster", hp: 20, concentrating_on: none }
+spawn Character ally1 { name: "Ally1", hp: 15, concentrating_on: none }
+spawn Character ally2 { name: "Ally2", hp: 15, concentrating_on: none }
+
+// ── Cast Bless — both allies get the condition ────────────────
+call cast_bless(caster, ally1, ally2)
+assert_condition ally1, Blessed
+assert_condition ally2, Blessed
+assert_eq attack_bonus(ally1), 2
+assert_eq attack_bonus(ally2), 2
+
+// ── Break concentration — revoke removes both ─────────────────
+call break_concentration(caster)
+assert_no_condition ally1, Blessed
+assert_no_condition ally2, Blessed
+assert_eq attack_bonus(ally1), 0
+assert_eq attack_bonus(ally2), 0
+assert caster.concentrating_on.is_none()

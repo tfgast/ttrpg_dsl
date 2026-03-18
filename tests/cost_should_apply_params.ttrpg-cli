@@ -1,0 +1,144 @@
+// CostEval should_apply gate: verify action params are bound in scope.
+//
+// A cost modifier's should_apply body must be able to reference the action's
+// receiver and params to make gating decisions. Uses with_budget to enforce
+// budget exhaustion so we can observe when should_apply gates cost away.
+
+source <<END
+system "test" {
+    struct TurnBudget { action: int }
+
+    enum AttackMode { Normal, Heavy }
+
+    entity Character { hp: int }
+
+    // ── Action with two params ─────────────────────────────────
+    action Strike on attacker: Character (target: Character, mode: AttackMode) {
+        cost { action }
+        resolve {
+            if mode == AttackMode.Heavy {
+                target.hp -= 3
+            } else {
+                target.hp -= 1
+            }
+        }
+    }
+
+    // ── Condition: should_apply gates on the *mode* param ──────
+    // Only waives cost when attacking in Heavy mode.
+    condition HeavyStrikeFree on bearer: Character {
+        should_apply Strike.cost(attacker: bearer) -> bool {
+            mode == AttackMode.Heavy
+        }
+        modify Strike.cost(attacker: bearer) {
+            cost = free
+        }
+    }
+
+    // ── Condition: should_apply gates on the *target* param ────
+    // Only waives cost when striking a specific entity (the ward).
+    condition FreeStrikeVsWard(ward: Character) on bearer: Character {
+        should_apply Strike.cost(attacker: bearer) -> bool {
+            target == ward
+        }
+        modify Strike.cost(attacker: bearer) {
+            cost = free
+        }
+    }
+
+    // ── Condition: should_apply uses state + params ────────────
+    // One free heavy strike, tracked via mutable state.
+    condition HeavyStrikeOnce on bearer: Character {
+        state { used: bool = false }
+        should_apply Strike.cost(attacker: bearer) -> bool {
+            if state.used { return false }
+            if mode != AttackMode.Heavy { return false }
+            state.used = true
+            true
+        }
+        modify Strike.cost(attacker: bearer) {
+            cost = free
+        }
+    }
+
+    // ── Test helpers that wrap actions in with_budget ───────────
+
+    // With 1 action budget: heavy should be free, normal should cost.
+    // Two strikes means the second normal should be blocked.
+    function test_mode_gate(a: Character, t: Character) {
+        with_budget(a, { action: 1 }) {
+            a.Strike(t, AttackMode.Heavy)
+            a.Strike(t, AttackMode.Normal)
+            a.Strike(t, AttackMode.Normal)
+        }
+    }
+
+    // With 1 action budget: strikes vs ward are free, vs other cost.
+    function test_target_gate(a: Character, ward: Character, other: Character) {
+        with_budget(a, { action: 1 }) {
+            a.Strike(ward, AttackMode.Normal)
+            a.Strike(ward, AttackMode.Normal)
+            a.Strike(other, AttackMode.Normal)
+            a.Strike(other, AttackMode.Normal)
+        }
+    }
+
+    // With 2 action budget: first heavy free, rest cost normally.
+    function test_state_gate(a: Character, t: Character) {
+        with_budget(a, { action: 2 }) {
+            a.Strike(t, AttackMode.Heavy)
+            a.Strike(t, AttackMode.Heavy)
+            a.Strike(t, AttackMode.Normal)
+            a.Strike(t, AttackMode.Normal)
+        }
+    }
+}
+END
+
+// ── Test 1: should_apply gates on mode param ───────────────────
+
+spawn Character alice { hp: 20 }
+spawn Character bob { hp: 20 }
+spawn Character carol { hp: 20 }
+
+call apply_condition(alice, HeavyStrikeFree, Duration.Indefinite)
+
+call test_mode_gate(alice, bob)
+// Heavy: free (should_apply true → cost=free), hp 20→17
+// Normal: costs 1 action (budget 1→0), hp 17→16
+// Normal: budget exhausted, action aborts, hp stays 16
+assert_eq bob.hp, 16
+
+call remove_condition(alice, "HeavyStrikeFree")
+
+// ── Test 2: should_apply gates on target param ─────────────────
+
+set bob.hp = 20
+set carol.hp = 20
+
+call apply_condition(alice, FreeStrikeVsWard(ward: bob), Duration.Indefinite)
+
+call test_target_gate(alice, bob, carol)
+// Strike bob: free (should_apply true), hp 20→19
+// Strike bob: free (should_apply true), hp 19→18
+// Strike carol: costs 1 action (budget 1→0), hp 20→19
+// Strike carol: budget exhausted, hp stays 19
+assert_eq bob.hp, 18
+assert_eq carol.hp, 19
+
+call remove_condition(alice, "FreeStrikeVsWard")
+
+// ── Test 3: should_apply with state mutation + param check ─────
+
+set bob.hp = 20
+
+call apply_condition(alice, HeavyStrikeOnce, Duration.Indefinite)
+
+call test_state_gate(alice, bob)
+// Heavy #1: should_apply sets used=true, cost=free, hp 20→17
+// Heavy #2: used=true → should_apply false, costs 1 (budget 2→1), hp 17→14
+// Normal #1: mode!=Heavy → should_apply false, costs 1 (budget 1→0), hp 14→13
+// Normal #2: budget exhausted, hp stays 13
+assert_eq bob.hp, 13
+
+call remove_condition(alice, "HeavyStrikeOnce")

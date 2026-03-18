@@ -180,7 +180,7 @@ function polymorph_other(target: Character, form: Monster, key: int, dur: Durati
 
     // Suspend original
     suspend_with_source(target, source_id: key,
-        Presence.OffBoard, freeze_turns: true, freeze_durations: true)
+        presence: Presence.OffBoard, freeze_turns: true, freeze_durations: true)
 
     // Set form HP from original and link
     form.hp = target.hp

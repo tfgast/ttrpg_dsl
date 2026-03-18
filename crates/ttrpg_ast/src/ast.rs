@@ -5,7 +5,7 @@ use crate::{DiceFilter, Span, Spanned};
 
 // ── Program structure ────────────────────────────────────────────
 
-#[derive(Clone, Default)]
+#[derive(Clone, Debug, Default)]
 pub struct Program {
     pub items: Vec<Spanned<TopLevel>>,
 
@@ -80,11 +80,18 @@ impl Program {
                             self.reaction_order.push(r.name.clone());
                         }
                         DeclKind::Condition(c) => {
-                            // Assign ModifyClauseIds to condition modify clauses
+                            // Assign ModifyClauseIds to condition modify/should_apply clauses
                             for clause in &mut c.clauses {
-                                if let ConditionClause::Modify(m) = clause {
-                                    m.id = ModifyClauseId(self.next_modify_clause_id);
-                                    self.next_modify_clause_id += 1;
+                                match clause {
+                                    ConditionClause::Modify(m) => {
+                                        m.id = ModifyClauseId(self.next_modify_clause_id);
+                                        self.next_modify_clause_id += 1;
+                                    }
+                                    ConditionClause::ShouldApply(sa) => {
+                                        sa.id = ModifyClauseId(self.next_modify_clause_id);
+                                        self.next_modify_clause_id += 1;
+                                    }
+                                    _ => {}
                                 }
                             }
                             self.conditions.insert(c.name.clone(), c.clone());
@@ -124,7 +131,7 @@ impl Program {
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 #[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub enum TopLevel {
     Import(ImportDecl),
@@ -138,14 +145,14 @@ pub enum TopLevel {
 /// `import` tells the source resolver to load another file as a transitive
 /// dependency. The resolver follows `import` edges to build the complete
 /// file graph from an entrypoint.
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 #[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub struct ImportDecl {
     pub path: String,
     pub span: Span,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 #[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub struct UseDecl {
     pub path: String,
@@ -153,7 +160,7 @@ pub struct UseDecl {
     pub span: Span,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 #[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub struct SystemBlock {
     pub name: Name,
@@ -162,7 +169,7 @@ pub struct SystemBlock {
 
 // ── Declarations ─────────────────────────────────────────────────
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 #[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub enum DeclKind {
     Group(GroupDecl),
@@ -186,7 +193,7 @@ pub enum DeclKind {
     Const(ConstDecl),
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 #[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub struct TagDecl {
     pub name: Name,
@@ -198,7 +205,7 @@ pub struct TagDecl {
 pub struct ModifyClauseId(pub u32);
 
 /// What a modify clause targets: a specific function, a selector, or an action's cost.
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 #[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub enum ModifyTarget {
     Named(Name),
@@ -208,7 +215,7 @@ pub enum ModifyTarget {
 }
 
 /// A predicate in a selector expression.
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 #[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub enum SelectorPredicate {
     Tag(Name),
@@ -219,14 +226,14 @@ pub enum SelectorPredicate {
     },
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 #[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub struct GroupDecl {
     pub name: Name,
     pub fields: Vec<FieldDef>,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 #[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub struct EnumDecl {
     pub name: Name,
@@ -234,7 +241,7 @@ pub struct EnumDecl {
     pub variants: Vec<EnumVariant>,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 #[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub struct EnumVariant {
     pub name: Name,
@@ -243,7 +250,7 @@ pub struct EnumVariant {
 }
 
 /// Inline field in enum variant or param list: `name: type (= default)?`
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 #[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub struct FieldEntry {
     pub name: Name,
@@ -252,14 +259,14 @@ pub struct FieldEntry {
     pub span: Span,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 #[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub struct StructDecl {
     pub name: Name,
     pub fields: Vec<FieldDef>,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 #[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub struct EntityDecl {
     pub name: Name,
@@ -276,7 +283,7 @@ pub struct EntityDecl {
 /// - `optional GroupName { ... }` (inline optional schema)
 /// - `optional GroupName` (external optional schema)
 /// - `include GroupName` (external required schema)
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 #[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub struct OptionalGroup {
     pub name: Name,
@@ -290,7 +297,7 @@ pub struct OptionalGroup {
 }
 
 /// Field definition with optional default: `(restricted)? name: type (= expr)?`
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 #[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub struct FieldDef {
     pub name: Name,
@@ -381,7 +388,7 @@ impl Param {
 }
 
 /// Shared representation for derive and mechanic declarations.
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 #[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub struct FnDecl {
     pub name: Name,
@@ -423,7 +430,7 @@ impl FnDecl {
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 #[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub struct Param {
     pub name: Name,
@@ -435,7 +442,7 @@ pub struct Param {
     pub span: Span,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 #[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub struct ActionDecl {
     pub name: Name,
@@ -519,7 +526,7 @@ impl ActionDecl {
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 #[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub struct CostClause {
     pub tokens: Vec<Spanned<Name>>,
@@ -528,7 +535,7 @@ pub struct CostClause {
     pub span: Span,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 #[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub struct ReactionDecl {
     pub name: Name,
@@ -571,7 +578,7 @@ impl ReactionDecl {
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 #[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub struct HookDecl {
     pub name: Name,
@@ -607,7 +614,7 @@ impl HookDecl {
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 #[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub struct TriggerExpr {
     pub event_name: Name,
@@ -615,7 +622,7 @@ pub struct TriggerExpr {
     pub span: Span,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 #[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub struct TriggerBinding {
     pub name: Option<Name>,
@@ -623,7 +630,7 @@ pub struct TriggerBinding {
     pub span: Span,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 #[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub struct EventDecl {
     pub name: Name,
@@ -643,7 +650,7 @@ pub enum IncludeKind {
 }
 
 /// A named argument in an include directive, binding a source condition param.
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 #[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub struct IncludeArg {
     pub name: Name,
@@ -652,7 +659,7 @@ pub struct IncludeArg {
 }
 
 /// Value in an include argument: a name reference or a constant literal.
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 #[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub enum IncludeArgValue {
     Name(Name),
@@ -660,7 +667,7 @@ pub enum IncludeArgValue {
 }
 
 /// `include modify CondName(param: value, ...)` — copy declarative clauses from another condition.
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 #[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub struct IncludeClause {
     pub kind: IncludeKind,
@@ -692,7 +699,7 @@ pub enum Direction {
     Lowest,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 #[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub struct ConditionDecl {
     pub name: Name,
@@ -763,7 +770,7 @@ impl ConditionDecl {
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 #[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub struct StateFieldDecl {
     pub name: Name,
@@ -772,7 +779,7 @@ pub struct StateFieldDecl {
     pub span: Span,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 #[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub enum ConditionClause {
     Modify(ModifyClause),
@@ -785,10 +792,13 @@ pub enum ConditionClause {
     OnEvent(OnEventClause),
     /// Include directive (pre-expansion only; replaced by expand_includes).
     Include(IncludeClause),
+    /// Imperative gate that runs before a modify clause body.
+    /// Returns bool: true means run the modify, false means skip it.
+    ShouldApply(ShouldApplyClause),
 }
 
 /// An imperative block that runs when a condition is applied or removed.
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 #[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub struct LifecycleBlock {
     pub body: Block,
@@ -799,7 +809,7 @@ pub struct LifecycleBlock {
 ///
 /// Fires when the specified event occurs while the condition is active.
 /// Reuses `TriggerExpr` from hooks/reactions.
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 #[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub struct OnEventClause {
     pub trigger: TriggerExpr,
@@ -807,7 +817,26 @@ pub struct OnEventClause {
     pub span: Span,
 }
 
-#[derive(Clone)]
+/// An imperative bool-returning gate paired with a modify clause.
+///
+/// Runs at execution time (after stacking/suppression), against live
+/// condition state (mutable). If the body returns false, the paired
+/// modify clause body is skipped entirely.
+#[derive(Clone, Debug)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
+pub struct ShouldApplyClause {
+    /// Which derive/mechanic (or action.cost) this gates — must match
+    /// a `modify` clause in the same condition by target name or selector.
+    pub target: ModifyTarget,
+    pub bindings: Vec<ModifyBinding>,
+    pub body: Block,
+    pub span: Span,
+    /// Stable clause identity, assigned during `build_index()`.
+    /// Used for selector match-set lookup.
+    pub id: ModifyClauseId,
+}
+
+#[derive(Clone, Debug)]
 #[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub struct ModifyClause {
     pub target: ModifyTarget,
@@ -822,7 +851,7 @@ pub struct ModifyClause {
     pub included_from: Option<Span>,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 #[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub struct ModifyBinding {
     pub name: Name,
@@ -831,7 +860,7 @@ pub struct ModifyBinding {
     pub span: Span,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub enum ModifyStmt {
     Let {
         name: Name,
@@ -864,7 +893,7 @@ pub enum ModifyStmt {
     },
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 #[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub struct SuppressClause {
     pub event_name: Name,
@@ -874,7 +903,7 @@ pub struct SuppressClause {
     pub included_from: Option<Span>,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 #[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub struct SuppressModifyClause {
     pub predicates: Vec<SelectorPredicate>,
@@ -884,7 +913,7 @@ pub struct SuppressModifyClause {
     pub included_from: Option<Span>,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 #[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub struct PromptDecl {
     pub name: Name,
@@ -895,7 +924,7 @@ pub struct PromptDecl {
     pub default: Option<Block>,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 #[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub struct OptionDecl {
     pub name: Name,
@@ -905,7 +934,7 @@ pub struct OptionDecl {
     pub when_enabled: Option<Vec<ModifyClause>>,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 #[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub struct MoveDecl {
     pub name: Name,
@@ -917,7 +946,7 @@ pub struct MoveDecl {
     pub outcomes: Vec<OutcomeBlock>,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 #[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub struct OutcomeBlock {
     pub name: Name,
@@ -942,7 +971,7 @@ pub struct OutcomeBlock {
 ///
 /// Tables are registered as callable functions (like derives), invoked as:
 ///   let val = name(arg1, arg2)
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 #[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub struct TableDecl {
     pub name: Name,
@@ -952,7 +981,7 @@ pub struct TableDecl {
 }
 
 /// A single entry in a table: keys => value.
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 #[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub struct TableEntry {
     pub keys: Vec<Spanned<TableKey>>,
@@ -961,7 +990,7 @@ pub struct TableEntry {
 }
 
 /// A key in a table entry — can be a literal, enum variant, range, or wildcard.
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 #[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub enum TableKey {
     /// An expression used as a key (int literal, string literal, enum variant, etc.)
@@ -976,7 +1005,7 @@ pub enum TableKey {
 }
 
 /// A `unit` declaration: dimensioned numeric type with optional suffix.
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 #[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub struct UnitDecl {
     pub name: Name,
@@ -989,7 +1018,7 @@ pub struct UnitDecl {
 /// Syntax:
 ///   const NAME = expr
 ///   const NAME: Type = expr
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 #[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub struct ConstDecl {
     pub name: Name,
@@ -1000,7 +1029,7 @@ pub struct ConstDecl {
 
 // ── Types ────────────────────────────────────────────────────────
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub enum TypeExpr {
     Int,
     Bool,
@@ -1041,7 +1070,7 @@ pub enum TypeExpr {
 
 pub type Block = Spanned<Vec<Spanned<StmtKind>>>;
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub enum ExprKind {
     IntLit(i64),
     StringLit(std::string::String),
@@ -1137,7 +1166,7 @@ pub enum ExprKind {
     },
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 #[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub enum ForIterable {
     Collection(Box<Spanned<ExprKind>>),
@@ -1175,7 +1204,7 @@ pub enum UnaryOp {
     Not,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 #[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub struct Arg {
     pub name: Option<Name>,
@@ -1183,7 +1212,7 @@ pub struct Arg {
     pub span: Span,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 #[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub struct StructFieldInit {
     pub name: Name,
@@ -1191,7 +1220,7 @@ pub struct StructFieldInit {
     pub span: Span,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 #[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub struct GroupInit {
     pub name: Name,
@@ -1199,14 +1228,14 @@ pub struct GroupInit {
     pub span: Span,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 #[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub enum ElseBranch {
     Block(Block),
     If(Box<Spanned<ExprKind>>),
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 #[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub struct PatternArm {
     pub pattern: Spanned<PatternKind>,
@@ -1214,7 +1243,7 @@ pub struct PatternArm {
     pub span: Span,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 #[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub struct GuardArm {
     pub guard: GuardKind,
@@ -1222,14 +1251,14 @@ pub struct GuardArm {
     pub span: Span,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 #[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub enum GuardKind {
     Wildcard,
     Expr(Spanned<ExprKind>),
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 #[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub enum ArmBody {
     Expr(Spanned<ExprKind>),
@@ -1238,7 +1267,7 @@ pub enum ArmBody {
 
 // ── Patterns ─────────────────────────────────────────────────────
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub enum PatternKind {
     Wildcard,
     IntLit(i64),
@@ -1264,7 +1293,7 @@ pub enum PatternKind {
 
 // ── Statements ───────────────────────────────────────────────────
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 #[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub enum StmtKind {
     Let {
@@ -1326,7 +1355,13 @@ pub struct LValue {
     pub span: Span,
 }
 
-#[derive(Clone)]
+impl std::fmt::Debug for LValue {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "LValue({})", self.root)
+    }
+}
+
+#[derive(Clone, Debug)]
 #[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub enum LValueSegment {
     Field(Name),

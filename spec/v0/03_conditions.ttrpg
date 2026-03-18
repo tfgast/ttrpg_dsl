@@ -307,37 +307,36 @@ condition Prone on bearer: Character {
 // any suppression matches both its selector predicates and bindings.
 
 
-// --- Built-in `modify_applied` event ---
+// --- "Until next use" via should_apply + state ---
 //
-// The interpreter automatically emits a `modify_applied` event after a
-// condition's modify clause fires. Hooks can listen for this to implement
-// patterns like "until next use" — consuming a condition after its modifier
-// activates.
+// Conditions that should fire once and then deactivate use a state flag
+// checked by should_apply. This keeps the lifecycle logic co-located in
+// the condition itself rather than requiring an external hook.
 //
-// Event shape (built-in, auto-registered):
-//   event modify_applied(bearer: entity, condition: ActiveCondition) {
-//       target_fn: string
-//   }
+// Example: a one-shot saving throw bonus that deactivates after first use.
 //
-//   - bearer: entity bearing the condition whose modifier fired
-//   - condition: ActiveCondition struct with name, id, duration fields
-//   - target_fn: name of the function that was modified
+//   condition OneTimeBoost on bearer: Character {
+//       state {
+//           used: bool = false
+//       }
 //
-// The event is deduplicated by condition instance id: if a condition has
-// multiple modify clauses that all fire on the same call, only one
-// modify_applied event is emitted.
+//       should_apply saving_throw(target: bearer) -> bool {
+//           if state.used {
+//               false
+//           } else {
+//               state.used = true
+//               true
+//           }
+//       }
 //
-// Example: remove a condition after its modifier fires once
-//
-//   hook ConsumeOnUse on c: Character (trigger: modify_applied(bearer: c)) {
-//       if trigger.condition.name == "OneTimeBoost" {
-//           remove_condition(c, trigger.condition)
+//       modify saving_throw(target: bearer) {
+//           bonus = bonus + 2
 //       }
 //   }
 //
-// User-defined events with the name `modify_applied` take precedence over
-// the built-in (consistent with Duration/TurnBudget override semantics).
-// The event is only emitted for condition-sourced modifiers, not options.
+// After the modifier fires once, state.used becomes true and
+// should_apply blocks all future applications. A turn_end hook
+// or the host can then remove the spent condition.
 
 
 // --- Condition lifecycle hooks (on_apply / on_remove) ---
@@ -753,7 +752,7 @@ condition PoisonAura on bearer: Character stacking first {
 //
 // ENUMERATION:
 //   `entities_in_play()` (host-side) excludes off-board entities from
-//   hook candidate scanning and modify_applied evaluation. Off-board
+//   hook candidate scanning and event evaluation. Off-board
 //   entities still exist and can be queried with `all_entities()`.
 //
 // EXAMPLE: Imprisonment spell using suspend() in lifecycle block
@@ -773,7 +772,7 @@ condition PoisonAura on bearer: Character stacking first {
 //   let token = condition_token()  // ERROR — only in lifecycle blocks
 //   // Instead, use suspend_with_source():
 //   suspend_with_source(target, source_id: 42,
-//       Presence.OffBoard, freeze_turns: true, freeze_durations: true)
+//       presence: Presence.OffBoard, freeze_turns: true, freeze_durations: true)
 //   // Later:
 //   remove_suspension_source(target, source_id: 42)
 //

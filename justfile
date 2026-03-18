@@ -17,8 +17,8 @@ fmt-check:
 clippy:
     cargo clippy --workspace --all-targets
 
-# Run all tests (Rust + .ttrpg-cli scripts)
-test: test-rust test-scripts
+# Run all tests (Rust + .ttrpg-cli scripts, both execution modes)
+test: test-rust test-scripts test-scripts-step
 
 # Run the Rust test suite
 test-rust:
@@ -47,41 +47,33 @@ bench *ARGS:
 run *ARGS:
     cargo run --release -- {{ARGS}}
 
-# Run .ttrpg-cli integration test scripts
-test-scripts:
+# Run .ttrpg-cli integration test scripts (both execution modes)
+test-scripts: _build-cli test-scripts-recursive test-scripts-step
+
+# Build the CLI binary once (used by test-scripts recipes)
+_build-cli:
+    cargo build --quiet --bin ttrpg
+
+# Run .ttrpg-cli integration test scripts (recursive mode only)
+test-scripts-recursive: _build-cli
     #!/usr/bin/env bash
     set -euo pipefail
-    total=0
-    passed=0
-    failed=0
-    failed_scripts=()
+    scripts=()
     for script in osric/tests/*.ttrpg-cli ose/tests/*.ttrpg-cli tests/*.ttrpg-cli; do
-        [ -f "$script" ] || continue
-        total=$((total + 1))
-        echo "── $script ──"
-        if cargo run --quiet --bin ttrpg -- --quiet run "$script"; then
-            echo "  PASS"
-            passed=$((passed + 1))
-        else
-            echo "  FAIL"
-            failed=$((failed + 1))
-            failed_scripts+=("$script")
-        fi
+        [ -f "$script" ] && scripts+=("$script")
     done
-    echo ""
-    echo "═══════════════════════════════════════"
-    if [ $failed -eq 0 ]; then
-        echo "  ✓ All $total test scripts passed"
-    else
-        echo "  $passed passed, $failed failed out of $total test scripts"
-        echo ""
-        echo "  Failed:"
-        for s in "${failed_scripts[@]}"; do
-            echo "    • $s"
-        done
-    fi
-    echo "═══════════════════════════════════════"
-    [ $failed -eq 0 ]
+    exec ./target/debug/ttrpg --quiet run-batch "${scripts[@]}"
+
+# Run .ttrpg-cli integration test scripts (step-based mode only)
+test-scripts-step: _build-cli
+    #!/usr/bin/env bash
+    set -euo pipefail
+    export TTRPG_EXEC_MODE=step
+    scripts=()
+    for script in osric/tests/*.ttrpg-cli ose/tests/*.ttrpg-cli tests/*.ttrpg-cli; do
+        [ -f "$script" ] && scripts+=("$script")
+    done
+    exec ./target/debug/ttrpg --quiet run-batch "${scripts[@]}"
 
 # ── Fuzzing ──────────────────────────────────────────────────────
 # Use malloc_limit_mb instead of rss_limit_mb to avoid false-positive
@@ -92,7 +84,7 @@ fuzz_malloc_limit := "2048"
 fuzz-seed:
     #!/usr/bin/env bash
     set -euo pipefail
-    targets=(fuzz_lexer fuzz_parser fuzz_checker fuzz_full_pipeline)
+    targets=(fuzz_lexer fuzz_parser fuzz_checker fuzz_full_pipeline fuzz_differential)
     for target in "${targets[@]}"; do
         dir="fuzz/corpus/${target}"
         mkdir -p "$dir"
@@ -126,7 +118,7 @@ fuzz-smoke:
     #!/usr/bin/env bash
     set -euo pipefail
     just fuzz-seed
-    targets=(fuzz_lexer fuzz_parser fuzz_checker fuzz_full_pipeline fuzz_checker_ast fuzz_interp_ast)
+    targets=(fuzz_lexer fuzz_parser fuzz_checker fuzz_full_pipeline fuzz_checker_ast fuzz_interp_ast fuzz_differential)
     for target in "${targets[@]}"; do
         echo "── Fuzzing $target for 30s ──"
         cargo +nightly fuzz run "$target" -- \

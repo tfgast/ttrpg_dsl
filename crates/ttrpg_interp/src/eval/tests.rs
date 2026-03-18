@@ -173,7 +173,7 @@ fn eval_none_lit() {
     let mut env = make_env(&state, &mut handler, &interp);
 
     let expr = spanned(ExprKind::NoneLit);
-    assert_eq!(eval_expr(&mut env, &expr).unwrap(), Value::Void);
+    assert_eq!(eval_expr(&mut env, &expr).unwrap(), Value::Option(None));
 }
 
 #[test]
@@ -2027,7 +2027,7 @@ fn eval_pattern_bare_variant_no_match() {
     // Try to match `red` against an Int — should not match
     let mut bindings = FxHashMap::default();
     let result = match_pattern(
-        &env,
+        env.interp.type_env,
         &Spanned {
             node: PatternKind::Ident("red".into()),
             span: Span::dummy(),
@@ -2052,7 +2052,7 @@ fn eval_pattern_binding_still_works_for_non_variant() {
 
     let mut bindings = FxHashMap::default();
     let result = match_pattern(
-        &env,
+        env.interp.type_env,
         &Spanned {
             node: PatternKind::Ident("x".into()),
             span: Span::dummy(),
@@ -3170,11 +3170,11 @@ fn try_from_ordinal_returns_some_on_valid_index() {
     });
     assert_eq!(
         eval_expr(&mut env, &expr).unwrap(),
-        Value::EnumVariant {
+        Value::Option(Some(Box::new(Value::EnumVariant {
             enum_name: "Size".into(),
             variant: "large".into(),
             fields: BTreeMap::new(),
-        }
+        })))
     );
 }
 

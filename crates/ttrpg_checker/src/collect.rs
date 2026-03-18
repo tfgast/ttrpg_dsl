@@ -1562,10 +1562,7 @@ fn collect_prompt(
 
 fn collect_event(e: &EventDecl, env: &mut TypeEnv, diagnostics: &mut Vec<Diagnostic>, span: Span) {
     if let Some(existing) = env.events.get(&e.name) {
-        // Allow user-defined override of builtin events (e.g., modify_applied).
-        // Spec: "User-defined events with the name modify_applied take precedence
-        //        over the built-in (consistent with Duration/TurnBudget override
-        //        semantics)."
+        // Allow user-defined override of builtin events.
         if existing.builtin {
             env.events.remove(&e.name);
         } else {
@@ -1821,33 +1818,6 @@ fn register_builtin_types(env: &mut TypeEnv) {
             }),
         );
     }
-
-    // Built-in `modify_applied` event — emitted by the interpreter when a
-    // condition's modify clause fires. Hooks can listen for this to implement
-    // "until next use" duration patterns.
-    env.events
-        .entry(Name::from("modify_applied"))
-        .or_insert_with(|| EventInfo {
-            name: Name::from("modify_applied"),
-            params: vec![
-                ParamInfo {
-                    name: "bearer".into(),
-                    ty: Ty::AnyEntity,
-                    has_default: false,
-                    with_groups: vec![],
-                    with_disjunctive: false,
-                },
-                ParamInfo {
-                    name: "condition".into(),
-                    ty: Ty::ActiveCondition,
-                    has_default: false,
-                    with_groups: vec![],
-                    with_disjunctive: false,
-                },
-            ],
-            fields: vec![(Name::from("target_fn"), Ty::String)],
-            builtin: true,
-        });
 
     // Presence enum — used by suspend() builtins.
     if !env.types.contains_key("Presence") {

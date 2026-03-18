@@ -10,10 +10,19 @@ fuzz_target!(|data: &[u8]| {
         return;
     };
 
-    let mut diags = Vec::new();
-    let program = ttrpg_parser::lower_moves(program, &mut diags);
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        let mut diags = Vec::new();
+        let program = ttrpg_parser::lower_moves(program, &mut diags);
 
-    let result = ttrpg_checker::check(&program);
+        let result = ttrpg_checker::check(&program);
 
-    let _interp = Interpreter::new(&program, &result.env);
+        let _interp = Interpreter::new(&program, &result.env);
+    }));
+
+    if let Err(panic) = result {
+        if let Ok(program) = Unstructured::new(data).arbitrary::<Program>() {
+            eprintln!("=== FAILED AST ===\n{program:#?}\n==================");
+        }
+        std::panic::resume_unwind(panic);
+    }
 });

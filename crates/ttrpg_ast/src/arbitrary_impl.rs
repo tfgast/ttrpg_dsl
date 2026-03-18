@@ -264,24 +264,24 @@ impl<'a> Arbitrary<'a> for TypeExpr {
             13 => TypeExpr::Invocation,
             14 => TypeExpr::Unit,
             15 => TypeExpr::Named(u.arbitrary()?),
-            15 => TypeExpr::Qualified {
+            16 => TypeExpr::Qualified {
                 qualifier: u.arbitrary()?,
                 name: u.arbitrary()?,
             },
-            15 => {
+            17 => {
                 let k: Spanned<TypeExpr> = arb_spanned(u)?;
                 let v: Spanned<TypeExpr> = arb_spanned(u)?;
                 TypeExpr::Map(Box::new(k), Box::new(v))
             }
-            16 => {
+            18 => {
                 let inner: Spanned<TypeExpr> = arb_spanned(u)?;
                 TypeExpr::List(Box::new(inner))
             }
-            17 => {
+            19 => {
                 let inner: Spanned<TypeExpr> = arb_spanned(u)?;
                 TypeExpr::Set(Box::new(inner))
             }
-            18 => {
+            20 => {
                 let inner: Spanned<TypeExpr> = arb_spanned(u)?;
                 TypeExpr::OptionType(Box::new(inner))
             }

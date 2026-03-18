@@ -1,18 +1,18 @@
 use std::collections::{BTreeMap, HashMap, HashSet};
 
+use ttrpg_ast::Name;
 use ttrpg_ast::ast::{
-    ConditionClause, ModifyClause, ModifyStmt, ModifyTarget, SelectorPredicate,
+    ConditionClause, ModifyClause, ModifyClauseId, ModifyStmt, ModifyTarget, SelectorPredicate,
     SuppressModifyClause,
 };
-use ttrpg_ast::{Name, Span};
 use ttrpg_checker::env::FnInfo;
 
+use crate::Env;
 use crate::RuntimeError;
 use crate::effect::{Effect, FieldChange, ModifySource, Phase, Response};
 use crate::eval::{eval_expr, value_eq};
 use crate::state::{ActiveCondition, EntityRef};
 use crate::value::Value;
-use crate::{Env, MAX_EMIT_DEPTH, action, event};
 
 // ── Supporting types ────────────────────────────────────────────
 
@@ -322,7 +322,8 @@ pub(crate) fn collect_modifiers_owned(
                     | ConditionClause::OnApply(_)
                     | ConditionClause::OnRemove(_)
                     | ConditionClause::OnEvent(_)
-                    | ConditionClause::Include(_) => continue,
+                    | ConditionClause::Include(_)
+                    | ConditionClause::ShouldApply(_) => continue,
                 };
 
                 // Does the target function name match?
@@ -359,12 +360,17 @@ pub(crate) fn collect_modifiers_owned(
                         condition.gained_at,
                         OwnedModifier {
                             source: ModifySource::Condition(condition.name.clone()),
+                            should_apply_body: find_should_apply_body(
+                                cond_decl,
+                                clause,
+                                &env.interp.type_env.selector_matches,
+                            ),
                             clause: clause.clone(),
                             bearer: Some(Value::Entity(condition.bearer)),
                             receiver_name: Some(cond_decl.receiver_name.clone()),
                             condition_params: condition.params.clone(),
                             condition_id: Some(condition.id),
-                            condition_duration: Some(condition.duration.clone()),
+
                             condition_state_fields: condition.state_fields.clone(),
                         },
                     ));
@@ -427,8 +433,8 @@ pub(crate) fn collect_modifiers_owned(
                     receiver_name: None,
                     condition_params: BTreeMap::new(),
                     condition_id: None,
-                    condition_duration: None,
                     condition_state_fields: BTreeMap::new(),
+                    should_apply_body: None,
                 });
             }
         }
@@ -535,6 +541,7 @@ fn is_modifier_suppressed(
 }
 
 /// An owned modifier with cloned clause data.
+#[derive(Clone)]
 pub(crate) struct OwnedModifier {
     pub source: ModifySource,
     pub clause: ModifyClause,
@@ -542,12 +549,125 @@ pub(crate) struct OwnedModifier {
     pub receiver_name: Option<Name>,
     /// Condition parameters (e.g., source: Entity(1) for Frightened(source: attacker)).
     pub condition_params: BTreeMap<Name, Value>,
-    /// Unique condition instance id (for deduplication in modify_applied events).
+    /// Unique condition instance id (for ModifyApplied effect deduplication).
     pub condition_id: Option<u64>,
-    /// Duration of the condition (for hooks that need to check e.g. "until_next_use").
-    pub condition_duration: Option<Value>,
     /// Condition state fields (for read-only access in modify body/bindings).
     pub condition_state_fields: BTreeMap<Name, Value>,
+    /// Optional `should_apply` gate body. If present, evaluated at execution time
+    /// before the modify body; if it returns false, the modify is skipped.
+    pub should_apply_body: Option<ttrpg_ast::ast::Block>,
+}
+
+/// Find a `should_apply` clause in a condition declaration that matches the
+/// given modify clause's target name or selector.
+pub(crate) fn find_should_apply_body(
+    cond_decl: &ttrpg_ast::ast::ConditionDecl,
+    modify_clause: &ModifyClause,
+    selector_matches: &std::collections::HashMap<
+        ModifyClauseId,
+        std::collections::HashSet<ttrpg_ast::Name>,
+    >,
+) -> Option<ttrpg_ast::ast::Block> {
+    use ttrpg_ast::ast::ConditionClause;
+    for clause in &cond_decl.clauses {
+        if let ConditionClause::ShouldApply(sa) = clause {
+            let matches = match (&sa.target, &modify_clause.target) {
+                (ModifyTarget::Named(sa_n), ModifyTarget::Named(m_n)) => sa_n == m_n,
+                (ModifyTarget::Cost(sa_n), ModifyTarget::Cost(m_n)) => sa_n == m_n,
+                (ModifyTarget::Selector(_), ModifyTarget::Selector(_)) => {
+                    // Match if the should_apply's match set overlaps with the modify's match set
+                    match (
+                        selector_matches.get(&sa.id),
+                        selector_matches.get(&modify_clause.id),
+                    ) {
+                        (Some(sa_set), Some(m_set)) => !sa_set.is_disjoint(m_set),
+                        _ => false,
+                    }
+                }
+                _ => false,
+            };
+            if matches {
+                return Some(sa.body.clone());
+            }
+        }
+    }
+    None
+}
+
+/// Evaluate `should_apply` gates on modifiers and filter out those that return false.
+/// State mutations from should_apply bodies are written back via SetConditionState effects.
+pub(crate) fn filter_by_should_apply(
+    env: &mut Env,
+    modifiers: Vec<OwnedModifier>,
+    params: &[(Name, Value)],
+) -> Result<Vec<OwnedModifier>, RuntimeError> {
+    use crate::eval::eval_block;
+
+    let mut kept = Vec::with_capacity(modifiers.len());
+    for mut modifier in modifiers {
+        if let Some(ref sa_body) = modifier.should_apply_body {
+            env.push_scope();
+
+            // Bind receiver and condition params
+            if let (Some(bearer), Some(recv_name)) = (&modifier.bearer, &modifier.receiver_name) {
+                env.bind(recv_name.clone(), bearer.clone());
+            }
+            for (name, val) in &modifier.condition_params {
+                env.bind(name.clone(), val.clone());
+            }
+
+            // Bind state as mutable
+            if !modifier.condition_state_fields.is_empty() {
+                env.bind(
+                    Name::from("state"),
+                    Value::Struct {
+                        name: Name::from("state"),
+                        fields: modifier.condition_state_fields.clone(),
+                    },
+                );
+            }
+
+            // Bind function params
+            for (name, val) in params {
+                env.bind(name.clone(), val.clone());
+            }
+
+            let result = eval_block(env, sa_body);
+
+            // Read back mutated state before popping scope
+            let final_state = env
+                .scopes
+                .last()
+                .and_then(|s| s.bindings.get(&Name::from("state")))
+                .cloned();
+
+            env.pop_scope();
+            env.return_value = None;
+
+            let value = result?;
+
+            // Write back state if changed
+            if let Some(Value::Struct { fields, .. }) = final_state
+                && !fields.is_empty()
+                && let (Some(Value::Entity(bearer_ref)), Some(cond_id)) =
+                    (&modifier.bearer, modifier.condition_id)
+            {
+                modifier.condition_state_fields = fields.clone();
+                env.emit(Effect::SetConditionState {
+                    target: *bearer_ref,
+                    condition_id: cond_id,
+                    fields,
+                });
+            }
+
+            if matches!(value, Value::Bool(true)) {
+                kept.push(modifier);
+            }
+        } else {
+            kept.push(modifier);
+        }
+    }
+    Ok(kept)
 }
 
 /// Check if a condition modify clause's bindings match the current call params.
@@ -719,7 +839,7 @@ pub(crate) fn run_phase1(
         // Collect changes for ModifyApplied effect
         let changes = collect_param_changes(&old_params, &params);
         if !changes.is_empty() {
-            let response = env.handler.handle(Effect::ModifyApplied {
+            let response = env.emit(Effect::ModifyApplied {
                 source: modifier.source.clone(),
                 target_fn: Name::from(fn_name),
                 phase: Phase::Phase1,
@@ -807,7 +927,7 @@ pub(crate) fn run_phase2(
         // Collect changes for ModifyApplied effect
         let changes = collect_result_changes(&old_result, &result, fn_info);
         if !changes.is_empty() {
-            let response = env.handler.handle(Effect::ModifyApplied {
+            let response = env.emit(Effect::ModifyApplied {
                 source: modifier.source.clone(),
                 target_fn: Name::from(fn_name),
                 phase: Phase::Phase2,
@@ -1035,7 +1155,7 @@ fn exec_modify_stmts_phase2(
 }
 
 /// Check if any modify stmts contain Phase 1 operations (non-result param overrides, lets).
-fn has_phase1_stmts(stmts: &[ModifyStmt]) -> bool {
+pub(crate) fn has_phase1_stmts(stmts: &[ModifyStmt]) -> bool {
     stmts.iter().any(|s| match s {
         ModifyStmt::ParamOverride { name, .. } => name != "result",
         ModifyStmt::Let { .. } => true,
@@ -1049,7 +1169,7 @@ fn has_phase1_stmts(stmts: &[ModifyStmt]) -> bool {
 }
 
 /// Check if any modify stmts contain Phase 2 operations.
-fn has_phase2_stmts(stmts: &[ModifyStmt]) -> bool {
+pub(crate) fn has_phase2_stmts(stmts: &[ModifyStmt]) -> bool {
     stmts.iter().any(|s| match s {
         ModifyStmt::ResultOverride { .. } => true,
         ModifyStmt::ParamOverride { name, .. } => name == "result",
@@ -1064,7 +1184,10 @@ fn has_phase2_stmts(stmts: &[ModifyStmt]) -> bool {
 
 // ── Change tracking ─────────────────────────────────────────────
 
-fn collect_param_changes(old: &[(Name, Value)], new: &[(Name, Value)]) -> Vec<FieldChange> {
+pub(crate) fn collect_param_changes(
+    old: &[(Name, Value)],
+    new: &[(Name, Value)],
+) -> Vec<FieldChange> {
     let mut changes = Vec::new();
     for (i, (name, old_val)) in old.iter().enumerate() {
         let new_val = &new[i].1;
@@ -1079,7 +1202,11 @@ fn collect_param_changes(old: &[(Name, Value)], new: &[(Name, Value)]) -> Vec<Fi
     changes
 }
 
-fn collect_result_changes(old: &Value, new: &Value, _fn_info: &FnInfo) -> Vec<FieldChange> {
+pub(crate) fn collect_result_changes(
+    old: &Value,
+    new: &Value,
+    _fn_info: &FnInfo,
+) -> Vec<FieldChange> {
     if old == new {
         return Vec::new();
     }
@@ -1115,130 +1242,6 @@ fn collect_result_changes(old: &Value, new: &Value, _fn_info: &FnInfo) -> Vec<Fi
         old: old.clone(),
         new: new.clone(),
     }]
-}
-
-// ── Built-in modify_applied event emission ──────────────────────
-
-/// Emit `modify_applied` events to fire matching DSL hooks.
-///
-/// Deduplicates by `condition_id` — a condition with multiple modify clauses
-/// that all fired emits only one event. Skips option-sourced modifiers (no
-/// condition to report). Skips entirely when no hooks are registered for
-/// `modify_applied` (fast path).
-pub(crate) fn emit_modify_applied_events(
-    env: &mut Env,
-    modifiers: &[OwnedModifier],
-    fn_name: &str,
-    span: Span,
-) -> Result<(), RuntimeError> {
-    // Fast path: skip if no hooks listen for modify_applied
-    if !env
-        .interp
-        .type_env
-        .trigger_index
-        .contains_key("modify_applied")
-    {
-        return Ok(());
-    }
-
-    // Check emit depth
-    if env.emit_depth >= MAX_EMIT_DEPTH {
-        return Err(RuntimeError::with_span(
-            format!(
-                "emit depth limit ({MAX_EMIT_DEPTH}) exceeded — possible circular emit chain from modify_applied"
-            ),
-            span,
-        ));
-    }
-
-    // Deduplicate by condition_id
-    let mut seen_ids: HashSet<u64> = HashSet::new();
-    let mut payloads: Vec<(Value, Value)> = Vec::new(); // (bearer, condition_value)
-
-    for modifier in modifiers {
-        let cond_id = match modifier.condition_id {
-            Some(id) => id,
-            None => continue, // option-sourced, skip
-        };
-        if !seen_ids.insert(cond_id) {
-            continue; // already emitted for this condition instance
-        }
-
-        let bearer = match &modifier.bearer {
-            Some(b) => b.clone(),
-            None => continue,
-        };
-
-        // Build ActiveCondition-like struct value
-        let condition_name = match &modifier.source {
-            ModifySource::Condition(name) => name.clone(),
-            _ => continue,
-        };
-
-        let mut cond_fields = BTreeMap::new();
-        cond_fields.insert(Name::from("name"), Value::Str(condition_name.to_string()));
-        cond_fields.insert(Name::from("id"), Value::Int(cond_id as i64));
-        cond_fields.insert(
-            Name::from("duration"),
-            modifier.condition_duration.clone().unwrap_or(Value::Void),
-        );
-
-        let condition_value = Value::Struct {
-            name: Name::from("ActiveCondition"),
-            fields: cond_fields,
-        };
-
-        payloads.push((bearer, condition_value));
-    }
-
-    if payloads.is_empty() {
-        return Ok(());
-    }
-
-    env.emit_depth += 1;
-    let result = (|| {
-        for (bearer, condition_value) in payloads {
-            let mut all_fields = BTreeMap::new();
-            all_fields.insert(Name::from("bearer"), bearer.clone());
-            all_fields.insert(Name::from("condition"), condition_value);
-            all_fields.insert(Name::from("target_fn"), Value::Str(fn_name.to_string()));
-
-            let payload = Value::Struct {
-                name: Name::from("__event_modify_applied"),
-                fields: all_fields,
-            };
-
-            let candidates = env.state.entities_in_play();
-            let hook_result = event::find_matching_hooks(
-                env.interp,
-                env.state,
-                "modify_applied",
-                &payload,
-                &candidates,
-            )?;
-
-            for hook_info in hook_result.hooks {
-                let hook_decl = env
-                    .interp
-                    .program
-                    .hooks
-                    .get(&hook_info.name)
-                    .ok_or_else(|| {
-                        RuntimeError::with_span(
-                            format!("undefined hook '{}'", hook_info.name),
-                            span,
-                        )
-                    })?
-                    .clone();
-
-                action::execute_hook(env, &hook_decl, hook_info.target, payload.clone(), span)?;
-            }
-        }
-        Ok(())
-    })();
-    env.emit_depth -= 1;
-
-    result
 }
 
 #[cfg(test)]

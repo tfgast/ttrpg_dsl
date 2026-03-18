@@ -50,6 +50,10 @@ impl EffectHandler for MinimalHandler {
 /// Every mutation is logged with before/after values for transparency.
 pub struct CliHandler<'a> {
     game_state: &'a RefCell<GameState>,
+    /// When set, reads go through this provider instead of `game_state`.
+    /// Used in step-based execution where the real state lives in the
+    /// Execution's StateAdapter, not in the Runner's RefCell.
+    state_override: Option<&'a dyn StateProvider>,
     reverse_handles: &'a HashMap<EntityRef, String>,
     rng: &'a mut StdRng,
     roll_queue: &'a mut VecDeque<i64>,
@@ -72,6 +76,7 @@ impl<'a> CliHandler<'a> {
     ) -> Self {
         CliHandler {
             game_state,
+            state_override: None,
             reverse_handles,
             rng,
             roll_queue,
@@ -84,6 +89,16 @@ impl<'a> CliHandler<'a> {
         }
     }
 
+    /// Use an external StateProvider for reads instead of the RefCell.
+    ///
+    /// In step-based execution the real game state lives in the Execution's
+    /// StateAdapter while the Runner's RefCell is empty. Setting this
+    /// override makes CliHandler read before-values from the correct source.
+    pub fn with_state(mut self, sp: &'a dyn StateProvider) -> Self {
+        self.state_override = Some(sp);
+        self
+    }
+
     pub fn quiet(mut self, quiet: bool) -> Self {
         self.quiet = quiet;
         self
@@ -92,6 +107,19 @@ impl<'a> CliHandler<'a> {
     pub fn interactive(mut self, interactive: bool) -> Self {
         self.interactive = interactive;
         self
+    }
+
+    /// Run a closure against the best available read-only state.
+    ///
+    /// Uses `state_override` when set (step-based mode), otherwise
+    /// falls back to a short-lived borrow of `game_state` (callback mode).
+    fn with_state_ref<R>(&self, f: impl FnOnce(&dyn StateProvider) -> R) -> R {
+        if let Some(sp) = self.state_override {
+            f(sp)
+        } else {
+            let gs = self.game_state.borrow();
+            f(&*gs)
+        }
     }
 
     /// Push a log line (suppressed in quiet mode).
@@ -208,19 +236,15 @@ impl EffectHandler for CliHandler<'_> {
             } => {
                 let name = self.entity_name(&entity);
                 let field_str = format_path(&path, self.unit_suffixes);
-                let old = adapter::read_at_path(&*self.game_state.borrow(), &entity, &path)
+                let old = self
+                    .with_state_ref(|sp| adapter::read_at_path(sp, &entity, &path))
                     .unwrap_or(match op {
                         AssignOp::PlusEq | AssignOp::MinusEq => Value::Int(0),
                         AssignOp::Eq => Value::Void,
                     });
-                let result = match adapter::compute_field_value(
-                    &*self.game_state.borrow(),
-                    &entity,
-                    &path,
-                    op,
-                    &value,
-                    &bounds,
-                ) {
+                let result = match self.with_state_ref(|sp| {
+                    adapter::compute_field_value(sp, &entity, &path, op, &value, &bounds)
+                }) {
                     Ok(r) => r,
                     Err(e) => {
                         self.log(format!(
@@ -322,18 +346,12 @@ impl EffectHandler for CliHandler<'_> {
             } => {
                 let name = self.entity_name(&actor);
                 let old = self
-                    .game_state
-                    .borrow()
-                    .read_turn_budget(&actor)
+                    .with_state_ref(|sp| sp.read_turn_budget(&actor))
                     .and_then(|b| b.get(&field).cloned())
                     .unwrap_or(Value::Int(0));
-                let new_val = match adapter::compute_turn_field_value(
-                    &*self.game_state.borrow(),
-                    &actor,
-                    &field,
-                    op,
-                    &value,
-                ) {
+                let new_val = match self.with_state_ref(|sp| {
+                    adapter::compute_turn_field_value(sp, &actor, &field, op, &value)
+                }) {
                     Ok(v) => v,
                     Err(e) => {
                         self.log(format!(
@@ -504,7 +522,12 @@ impl EffectHandler for CliHandler<'_> {
                 Response::Acknowledged
             }
             Effect::AdvanceTime { amount } => {
-                self.log(format!("[AdvanceTime] +{amount}"));
+                let mut gs = self.game_state.borrow_mut();
+                let current = gs.read_game_time();
+                let new_time = current.saturating_add(amount);
+                gs.set_game_time(new_time);
+                drop(gs);
+                self.log(format!("[AdvanceTime] +{amount} (time: {new_time})"));
                 Response::Acknowledged
             }
 
@@ -554,7 +577,7 @@ impl EffectHandler for CliHandler<'_> {
                 freeze_durations,
             } => {
                 let name = self.entity_name(&entity);
-                let time = self.game_state.borrow().read_game_time();
+                let time = self.with_state_ref(|sp| sp.read_game_time());
                 self.game_state.borrow_mut().add_suspension(
                     &entity,
                     SuspensionRecord {
@@ -731,7 +754,7 @@ fn prompt_loop(
 }
 
 /// Parse user input string into a Value according to the expected type.
-fn parse_prompt_input(input: &str, ty: &Ty) -> Result<Value, String> {
+pub(crate) fn parse_prompt_input(input: &str, ty: &Ty) -> Result<Value, String> {
     match ty {
         Ty::Int | Ty::Resource => input
             .parse::<i64>()
@@ -775,7 +798,7 @@ fn eval_simple_expr(expr: &ttrpg_ast::Spanned<ttrpg_ast::ast::ExprKind>) -> Resu
 }
 
 /// Human-readable type hint for prompt display.
-fn type_hint(ty: &Ty) -> &'static str {
+pub(crate) fn type_hint(ty: &Ty) -> &'static str {
     match ty {
         Ty::Int | Ty::Resource => "int",
         Ty::Float => "float",
@@ -787,7 +810,7 @@ fn type_hint(ty: &Ty) -> &'static str {
 }
 
 /// Format a suggest value for display in the prompt header.
-fn format_suggest(val: &Value) -> String {
+pub(crate) fn format_suggest(val: &Value) -> String {
     match val {
         Value::Int(n) => n.to_string(),
         Value::Float(n) => n.to_string(),

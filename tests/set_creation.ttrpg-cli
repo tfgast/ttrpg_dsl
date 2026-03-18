@@ -1,0 +1,44 @@
+// Set creation via .to_set() — no set literal syntax exists.
+
+source -s <<END
+    derive create_set() -> set<int> { [1, 2, 3].to_set() }
+    derive dedup_set() -> set<int> { [1, 1, 2, 2, 3].to_set() }
+    derive empty_set_len() -> int {
+        let xs: list<int> = []
+        let s = xs.to_set()
+        s.len()
+    }
+    derive set_ops() -> bool {
+        let a = [1, 2, 3].to_set()
+        let b = [2, 3, 4].to_set()
+        let inter = a.intersection(b)
+        inter.contains(2) && inter.contains(3) && !inter.contains(1)
+    }
+    derive set_add_remove() -> set<string> {
+        let s = ["a", "b"].to_set()
+        let s2 = s.add("c").remove("a")
+        s2
+    }
+    derive set_roundtrip() -> list<int> {
+        [3, 1, 2].to_set().to_list()
+    }
+END
+
+// ── Basic creation ────────────────────────────────────────────
+assert_eq create_set().len(), 3
+assert_eq dedup_set().len(), 3
+
+// ── Empty set ─────────────────────────────────────────────────
+assert_eq empty_set_len(), 0
+
+// ── Set operations ────────────────────────────────────────────
+assert set_ops()
+
+// ── Add/remove ────────────────────────────────────────────────
+let result = set_add_remove()
+assert result.contains("b")
+assert result.contains("c")
+assert (result.contains("a")) == false
+
+// ── Roundtrip to_set → to_list (sorted) ──────────────────────
+assert_eq set_roundtrip(), [1, 2, 3]

@@ -94,9 +94,9 @@ system "D&D 5e Expanded" {
     //
     // RESOLVED: Event-triggered durations (until_next_use, until_save) [ttrpg_dsl-rh4]
     // are just enum variants — the interpreter is opaque to Duration
-    // semantics. Hooks handle the lifecycle: modify_applied fires when
-    // a condition's modifier activates (for until_next_use), and
-    // turn_end + conditions() enables save-based removal (for until_save).
+    // semantics. Hooks and should_apply gates handle the lifecycle:
+    // should_apply + state implements until_next_use (one-shot modifiers),
+    // and turn_end + conditions() enables save-based removal (for until_save).
     enum Duration {
         EndOfTurn,
         StartOfNextTurn,
@@ -737,10 +737,10 @@ system "D&D 5e Expanded" {
         cost { action }
         requires { distance(helper.position, target.position) <= 5 }
         resolve {
-            // RESOLVED: until_next_use duration + modify_applied hook    [ttrpg_dsl-rh4]
+            // RESOLVED: until_next_use duration + should_apply gate     [ttrpg_dsl-rh4]
             // correctly models "advantage on next roll only". The
-            // ConsumeOnUse hook removes the condition after its modifier
-            // fires once — see Hooks section below.
+            // condition's should_apply flips a state flag after first
+            // use — see BardicInspiration for the pattern.
             apply_condition(target, Helped, Duration.UntilNextUse)
         }
     }
@@ -991,19 +991,25 @@ system "D&D 5e Expanded" {
         }
     }
 
-    // RESOLVED: Event-triggered duration hooks.                         [ttrpg_dsl-rh4]
-    // The interpreter is opaque to Duration semantics — these hooks
-    // implement "until next use" and "until save" lifecycle in DSL code.
+    // RESOLVED: "Until next use" lifecycle via should_apply + state.    [ttrpg_dsl-rh4]
+    // Conditions that fire once use a state flag checked by should_apply.
+    // Example: Bardic Inspiration (single-use saving throw bonus).
+    condition BardicInspiration on bearer: Character {
+        state {
+            used: bool = false
+        }
 
-    // "Until next use": consume condition after its modifier fires once.
-    // modify_applied is a built-in event emitted when a condition's
-    // modify clause activates — see spec 03_conditions.ttrpg.
-    hook ConsumeOnUse on c: Character (trigger: modify_applied(bearer: c)) {
-        match trigger.condition.duration {
-            UntilNextUse => {
-                remove_condition(c, trigger.condition)
-            },
-            _ => {}
+        should_apply saving_throw(target: bearer) -> bool {
+            if state.used {
+                false
+            } else {
+                state.used = true
+                true
+            }
+        }
+
+        modify saving_throw(target: bearer) {
+            bonus = bonus + 4
         }
     }
 
@@ -1387,8 +1393,7 @@ system "D&D 5e Expanded" {
     //  [RESOLVED] EVENT-TRIGGERED DURATIONS                      [ttrpg_dsl-rh4]
     //     - Duration enum variants (until_next_use, until_save) carry intent
     //     - Interpreter is opaque — hooks implement the lifecycle logic
-    //     - modify_applied built-in event fires when condition modifier activates
-    //     - ConsumeOnUse hook: matches until_next_use, removes after one use
+    //     - should_apply + state implements one-shot modifiers (until_next_use)
     //     - UntilSaveCheck hook: matches until_save, attempts save at turn_end
     //     - conditions() builtin returns list<ActiveCondition> for iteration
     //     - remove_condition() accepts ActiveCondition for precise id-based removal

@@ -101,6 +101,7 @@
 //       CAN call apply_condition, remove_condition (full function-body permissions)
 //       (NO invocation())
 //   trigger binding  -> side-effect-free builtins only
+//   lvalue index     -> side-effect-free builtins only (same as trigger binding)
 
 
 // --- Const declarations ---

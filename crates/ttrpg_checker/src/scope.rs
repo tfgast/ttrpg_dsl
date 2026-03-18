@@ -21,6 +21,11 @@ pub enum BlockKind {
     /// access, action/reaction calls, prompts, and mechanic calls. Only
     /// side-effect-free builtins (floor, ceil, min, max, distance) are permitted.
     TriggerBinding,
+    /// Index expressions in assignment LValues (e.g. `arr[i+1] = val`).
+    /// Same restrictions as TriggerBinding: only pure builtins allowed.
+    /// This lets the interpreter evaluate indices synchronously without
+    /// needing async frame resolution.
+    IndexExpression,
     /// `with_budget` body — provisions a scoped turn budget in a function.
     /// Does NOT grant `turn` access; use `budget_of(entity)` instead.
     WithBudget,
@@ -31,6 +36,9 @@ pub enum BlockKind {
     /// Function-body-like permissions: allows mutations, dice, emit,
     /// condition manipulation, return. No `invocation()` or `turn`.
     OnEventBlock,
+    /// `should_apply fn_name(...) -> bool { ... }` gate block inside a condition.
+    /// Same permissions as OnEventBlock: dice, mutations, emit, condition manipulation.
+    ShouldApplyBlock,
     /// Inner blocks (if, match, etc.) inherit from enclosing real block.
     Inner,
 }
@@ -47,6 +55,7 @@ impl BlockKind {
                 | BlockKind::WithBudget
                 | BlockKind::LifecycleBlock
                 | BlockKind::OnEventBlock
+                | BlockKind::ShouldApplyBlock
         )
     }
 
@@ -60,6 +69,7 @@ impl BlockKind {
                 | BlockKind::WithBudget
                 | BlockKind::LifecycleBlock
                 | BlockKind::OnEventBlock
+                | BlockKind::ShouldApplyBlock
         )
     }
 
@@ -90,13 +100,14 @@ impl BlockKind {
                 | BlockKind::WithBudget
                 | BlockKind::LifecycleBlock
                 | BlockKind::OnEventBlock
+                | BlockKind::ShouldApplyBlock
         )
     }
 
     /// Whether function calls (derives, mechanics, prompts, actions, reactions)
     /// are allowed. TriggerBinding only permits side-effect-free builtins.
     pub fn allows_calls(&self) -> bool {
-        !matches!(self, BlockKind::TriggerBinding)
+        !matches!(self, BlockKind::TriggerBinding | BlockKind::IndexExpression)
     }
 
     pub fn allows_emit(&self) -> bool {
@@ -109,6 +120,7 @@ impl BlockKind {
                 | BlockKind::WithBudget
                 | BlockKind::LifecycleBlock
                 | BlockKind::OnEventBlock
+                | BlockKind::ShouldApplyBlock
         )
     }
 

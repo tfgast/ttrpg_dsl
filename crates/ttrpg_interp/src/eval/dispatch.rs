@@ -31,7 +31,7 @@ pub(crate) fn eval_expr(env: &mut Env, expr: &Spanned<ExprKind>) -> Result<Value
 
         ExprKind::BoolLit(b) => Ok(Value::Bool(*b)),
 
-        ExprKind::NoneLit => Ok(Value::Void),
+        ExprKind::NoneLit => Ok(Value::Option(None)),
 
         ExprKind::DiceLit {
             count,
@@ -158,7 +158,12 @@ pub(crate) fn eval_expr(env: &mut Env, expr: &Spanned<ExprKind>) -> Result<Value
             let scrutinee_val = eval_expr(env, scrutinee)?;
             for (i, arm) in arms.iter().enumerate() {
                 let mut bindings = FxHashMap::default();
-                if match_pattern(env, &arm.pattern, &scrutinee_val, &mut bindings) {
+                if match_pattern(
+                    env.interp.type_env,
+                    &arm.pattern,
+                    &scrutinee_val,
+                    &mut bindings,
+                ) {
                     let arm_span = match &arm.body {
                         ttrpg_ast::ast::ArmBody::Expr(e) => e.span,
                         ttrpg_ast::ast::ArmBody::Block(b) => b.span,
@@ -318,10 +323,21 @@ fn eval_ident(env: &mut Env, name: &str, expr: &Spanned<ExprKind>) -> Result<Val
 
     // 2. Check if it's a named const (lazy evaluation)
     if let Some(val) = env.interp.consts.borrow().get(name).cloned() {
+        // Void sentinel means we're in a cycle (const references itself)
+        if val == Value::Void {
+            return Err(RuntimeError::new(format!(
+                "circular const reference: '{name}'"
+            )));
+        }
         return Ok(val);
     }
     if let Some(const_decl) = env.interp.program.consts.get(name) {
         let const_decl = const_decl.clone();
+        // Insert sentinel to detect cycles
+        env.interp
+            .consts
+            .borrow_mut()
+            .insert(Name::from(name), Value::Void);
         let val = eval_expr(env, &const_decl.value)?;
         env.interp
             .consts
@@ -469,7 +485,7 @@ fn eval_entity_construction(
         entity_type: name.clone(),
         fields: field_map,
     };
-    let response = env.handler.handle(effect);
+    let response = env.emit(effect);
     let entity_ref = match response {
         Response::EntitySpawned(r) => r,
         Response::Vetoed => {
@@ -521,7 +537,7 @@ fn eval_entity_construction(
             group_name: group.name.clone(),
             fields: struct_val,
         };
-        env.handler.handle(grant_effect);
+        env.emit(grant_effect);
     }
 
     // 5. Auto-materialize required include groups not already provided
@@ -554,7 +570,7 @@ fn eval_entity_construction(
             group_name: group_name.clone(),
             fields: struct_val,
         };
-        env.handler.handle(grant_effect);
+        env.emit(grant_effect);
     }
 
     // 6. Apply `with [...]` conditions as Indefinite

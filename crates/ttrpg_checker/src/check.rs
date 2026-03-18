@@ -665,24 +665,16 @@ impl<'a> Checker<'a> {
             let mut positional_index = 0usize;
             let mut seen_bindings = HashSet::new();
 
-            // By design: positional trigger bindings use fill-the-gaps resolution.
-            // All named bindings are collected first, then positional bindings fill the
-            // remaining slots left-to-right. This means the positional mapping depends
-            // on the full set of named bindings, not just those preceding the positional
-            // one. This is more permissive than Python (which forbids positional after
-            // keyword) but keeps the implementation simple and the behavior predictable:
-            // named bindings always claim their slot, positional bindings always fill
-            // the leftmost unclaimed slot.
-            let named_param_names: HashSet<Name> = trigger
-                .bindings
-                .iter()
-                .filter_map(|b| b.name.clone())
-                .collect();
+            // Positional bindings fill slots 0..N sequentially, named bindings
+            // fill by name. Positional bindings must come before named bindings
+            // (Python-style).
+            let mut seen_named = false;
 
             // Trigger binding expressions must be side-effect-free
             self.scope.push(BlockKind::TriggerBinding);
             for binding in &trigger.bindings {
                 if let Some(ref name) = binding.name {
+                    seen_named = true;
                     if !seen_bindings.insert(name.clone()) {
                         self.error(format!("duplicate trigger binding `{name}`"), binding.span);
                     }
@@ -721,12 +713,13 @@ impl<'a> Checker<'a> {
                         );
                     }
                 } else {
-                    // Positional binding — match against event params by position,
-                    // skipping params already bound by name
-                    while positional_index < event_info.params.len()
-                        && named_param_names.contains(&event_info.params[positional_index].name)
-                    {
-                        positional_index += 1;
+                    // Positional binding — match against event params sequentially
+                    if seen_named {
+                        self.error(
+                            "positional trigger bindings must come before named bindings"
+                                .to_string(),
+                            binding.span,
+                        );
                     }
                     if positional_index < event_info.params.len() {
                         let expected = &event_info.params[positional_index].ty;
@@ -921,8 +914,11 @@ impl<'a> Checker<'a> {
             .map(|info| info.state_fields.clone())
             .unwrap_or_default();
 
+        // Check clauses in two passes: first all non-ShouldApply clauses
+        // (so modify selector match sets are populated), then ShouldApply.
         for clause in &c.clauses {
             match clause {
+                ConditionClause::ShouldApply(_) => {} // deferred to second pass
                 ConditionClause::Modify(m) => {
                     self.check_modify_clause_with_state(
                         m,
@@ -1051,6 +1047,12 @@ impl<'a> Checker<'a> {
                         inc.span,
                     );
                 }
+            }
+        }
+        // Second pass: check should_apply clauses (needs modify selector matches populated)
+        for clause in &c.clauses {
+            if let ConditionClause::ShouldApply(sa) = clause {
+                self.check_should_apply_clause(sa, c, &state_ty_fields);
             }
         }
     }

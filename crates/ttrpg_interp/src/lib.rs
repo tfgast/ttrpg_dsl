@@ -6,9 +6,12 @@ pub mod coverage;
 pub mod effect;
 pub mod eval;
 pub mod event;
+pub mod execution;
+pub(crate) mod expr_eval;
 pub mod handle_registry;
 pub mod pipeline;
 pub mod reference_state;
+pub mod runtime_core;
 pub mod state;
 pub mod value;
 
@@ -21,7 +24,7 @@ use ttrpg_ast::ast::{ActionDecl, DeclKind, ExprKind, Program, TopLevel, TypeExpr
 use ttrpg_ast::{Name, Span, Spanned};
 use ttrpg_checker::env::TypeEnv;
 
-use crate::effect::{EffectHandler, FieldPathSegment};
+use crate::effect::{Effect, EffectHandler, FieldPathSegment, Response};
 use crate::event::{EventResult, HookResult};
 use crate::state::{ConditionToken, EntityRef, InvocationId, StateProvider};
 use crate::value::Value;
@@ -210,6 +213,28 @@ impl<'p> Interpreter<'p> {
     /// Read the current condition counter value (for host persistence).
     pub fn next_condition_id(&self) -> u64 {
         self.next_condition_id.get()
+    }
+
+    /// Create a lightweight bridge interpreter from RuntimeCore data.
+    ///
+    /// Used by the step-based `Execution` to delegate expression and block
+    /// evaluation to the existing recursive evaluator. The caller must sync
+    /// ID counters back to RuntimeCore via [`id_counters`] after use.
+    pub(crate) fn bridge(
+        program: &'p Program,
+        type_env: &'p TypeEnv,
+        invocation_id: u64,
+        condition_id: u64,
+        coverage: Option<Rc<RefCell<coverage::CoverageData>>>,
+    ) -> Self {
+        Interpreter {
+            program,
+            type_env,
+            next_invocation_id: Cell::new(invocation_id),
+            next_condition_id: Cell::new(condition_id),
+            coverage,
+            consts: RefCell::new(FxHashMap::default()),
+        }
     }
 
     /// Attach shared coverage data to this interpreter.
@@ -479,7 +504,14 @@ impl<'p> Interpreter<'p> {
         payload: Value,
         candidates: &[EntityRef],
     ) -> Result<HookResult, RuntimeError> {
-        event::find_matching_hooks(self, state, name, &payload, candidates)
+        event::find_matching_hooks(
+            self.program,
+            self.type_env,
+            state,
+            name,
+            &payload,
+            candidates,
+        )
     }
 
     /// Execute a named hook through the full pipeline.
@@ -511,6 +543,13 @@ impl<'p> Interpreter<'p> {
     ///
     /// This is the convenience method that combines `what_hooks` + `execute_hook`
     /// for each match. Returns the list of hook results in execution order.
+    ///
+    /// **Deprecated:** Use the step-based [`Execution::start_hook`] (per-hook) or
+    /// [`Execution::start_hooks`] (batch) entry points instead — they yield effects
+    /// to the host rather than consuming them internally.
+    #[deprecated(
+        note = "Use Execution::start_hook() or Execution::start_hooks() for step-based hosts"
+    )]
     pub fn fire_hooks(
         &self,
         state: &dyn StateProvider,
@@ -541,6 +580,13 @@ impl<'p> Interpreter<'p> {
     /// This is the condition-handler analogue of `fire_hooks`. It finds all
     /// condition `on` clauses matching the event, then executes each handler
     /// in entity → application → clause order. Returns the count of handlers fired.
+    ///
+    /// **Deprecated:** Use the step-based [`Execution::start_condition_handler`]
+    /// (per-handler) or [`Execution::start_condition_handlers`] (batch) entry
+    /// points instead — they yield effects to the host.
+    #[deprecated(
+        note = "Use Execution::start_condition_handler() or Execution::start_condition_handlers() for step-based hosts"
+    )]
     pub fn fire_condition_handlers(
         &self,
         state: &dyn StateProvider,
@@ -549,8 +595,14 @@ impl<'p> Interpreter<'p> {
         payload: Value,
         candidates: &[EntityRef],
     ) -> Result<usize, RuntimeError> {
-        let cond_result =
-            event::find_matching_condition_handlers(self, state, event_name, &payload, candidates)?;
+        let cond_result = event::find_matching_condition_handlers(
+            self.program,
+            self.type_env,
+            state,
+            event_name,
+            &payload,
+            candidates,
+        )?;
 
         let count = cond_result.handlers.len();
         if count > 0 {
@@ -602,6 +654,10 @@ pub(crate) struct Env<'a, 'p> {
     /// Set by a `return` statement to signal early exit from the enclosing block.
     /// `eval_block` checks this after each statement and unwinds if set.
     pub return_value: Option<Value>,
+    /// Set by `execute_pipeline` when requires or cost checks abort the action.
+    /// Read and cleared by `scoped_execute` to emit `ActionOutcome::Failed`
+    /// instead of `Succeeded`.
+    pub pipeline_aborted: bool,
 }
 
 impl<'a, 'p> Env<'a, 'p> {
@@ -623,6 +679,7 @@ impl<'a, 'p> Env<'a, 'p> {
             lifecycle_condition_stack: Vec::new(),
             current_condition_token: None,
             return_value: None,
+            pipeline_aborted: false,
         }
     }
 
@@ -641,6 +698,13 @@ impl<'a, 'p> Env<'a, 'p> {
         if let Some(scope) = self.scopes.last_mut() {
             scope.bindings.insert(name, value);
         }
+    }
+
+    /// Single interception point for all effect emissions.
+    /// Every effect the evaluator produces flows through this method.
+    #[inline]
+    pub fn emit(&mut self, effect: Effect) -> Response {
+        self.handler.handle(effect)
     }
 
     /// Look up a variable by name, searching from innermost to outermost scope.

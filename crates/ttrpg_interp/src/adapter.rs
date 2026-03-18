@@ -1,4 +1,4 @@
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 use std::collections::HashSet;
 
 use ttrpg_ast::Name;
@@ -12,6 +12,43 @@ use crate::effect::FieldPathSegment;
 use crate::effect::{Effect, EffectHandler, EffectKind, Response};
 use crate::state::{ActiveCondition, EntityRef, StateProvider, WritableState};
 use crate::value::Value;
+
+// ── MutationTracker ──────────────────────────────────────────────
+
+/// Tracks whether a local mutation was applied during the current
+/// bridge_eval_with call. Used by the Block frame's async path
+/// to detect when CachingHandler replay would be unsound (because
+/// mutations already applied would be re-applied on replay).
+/// Reset before each bridge call, checked after.
+pub struct MutationTracker(Cell<bool>);
+
+impl MutationTracker {
+    /// Create a new tracker with the flag unset.
+    pub fn new() -> Self {
+        MutationTracker(Cell::new(false))
+    }
+
+    /// Reset the flag. Call before a bridge_eval_with run to start tracking fresh.
+    pub fn reset(&self) {
+        self.0.set(false);
+    }
+
+    /// Check whether any local mutation was applied since the last reset.
+    pub fn applied(&self) -> bool {
+        self.0.get()
+    }
+
+    /// Mark that a local mutation was applied.
+    pub fn set(&self) {
+        self.0.set(true);
+    }
+}
+
+impl Default for MutationTracker {
+    fn default() -> Self {
+        Self::new()
+    }
+}
 
 // ── StateAdapter ───────────────────────────────────────────────
 
@@ -40,6 +77,7 @@ pub struct StateAdapter<S: WritableState> {
     /// type compatibility checks. Maps condition name → receiver Ty.
     /// Empty means skip bearer type checking.
     condition_receiver_types: FxHashMap<Name, Ty>,
+    mutation_tracker: MutationTracker,
 }
 
 impl<S: WritableState> StateAdapter<S> {
@@ -49,6 +87,7 @@ impl<S: WritableState> StateAdapter<S> {
             state: RefCell::new(state),
             pass_through: HashSet::new(),
             condition_receiver_types: FxHashMap::default(),
+            mutation_tracker: MutationTracker::new(),
         }
     }
 
@@ -70,7 +109,7 @@ impl<S: WritableState> StateAdapter<S> {
     ///
     /// `&self` serves as `&dyn StateProvider` (per-call borrows via RefCell).
     /// An `AdaptedHandler` serves as `&mut dyn EffectHandler`.
-    pub fn run<H: EffectHandler, R>(
+    pub fn run<H: EffectHandler + ?Sized, R>(
         &self,
         inner: &mut H,
         f: impl FnOnce(&dyn StateProvider, &mut dyn EffectHandler) -> R,
@@ -93,6 +132,256 @@ impl<S: WritableState> StateAdapter<S> {
     /// Consume the adapter and return the inner state.
     pub fn into_inner(self) -> S {
         self.state.into_inner()
+    }
+
+    /// Access the mutation tracker (for passing to execution functions).
+    pub fn mutation_tracker(&self) -> &MutationTracker {
+        &self.mutation_tracker
+    }
+
+    /// Core effect routing used by `AdaptedHandler::handle()`.
+    fn route_effect<H: EffectHandler + ?Sized>(&self, inner: &mut H, effect: Effect) -> Response {
+        let kind = EffectKind::of(&effect);
+
+        // DeductCost: always passed through, adapter applies mutation based on response
+        if kind == EffectKind::DeductCost {
+            return self.route_deduct_cost(inner, effect);
+        }
+
+        // SpawnEntity: adapter always allocates the EntityRef.
+        // In pass-through mode the host sees the effect and may respond
+        // Acknowledged (proceed) or Vetoed (cancel). The adapter translates
+        // Acknowledged into apply_spawn + EntitySpawned(ref).
+        if kind == EffectKind::SpawnEntity {
+            if self.pass_through.contains(&kind) {
+                let response = inner.handle(effect.clone());
+                match response {
+                    Response::Acknowledged => {
+                        let entity_ref =
+                            apply_spawn(&mut *self.state.borrow_mut(), &effect);
+                        self.mutation_tracker.set();
+                        return Response::EntitySpawned(entity_ref);
+                    }
+                    Response::Vetoed => return Response::Vetoed,
+                    _ => return Response::Vetoed, // invalid → treat as veto
+                }
+            }
+            let entity_ref = apply_spawn(&mut *self.state.borrow_mut(), &effect);
+            self.mutation_tracker.set();
+            return Response::EntitySpawned(entity_ref);
+        }
+
+        if is_mutation(kind) {
+            if self.pass_through.contains(&kind) {
+                let response = inner.handle(effect.clone());
+                match &response {
+                    Response::Acknowledged => {
+                        apply_mutation(
+                            &mut *self.state.borrow_mut(),
+                            &effect,
+                            &self.condition_receiver_types,
+                        );
+                        self.mutation_tracker.set();
+                    }
+                    Response::Override(override_val) => {
+                        apply_mutation_with_override(
+                            &mut *self.state.borrow_mut(),
+                            &effect,
+                            override_val,
+                        );
+                        self.mutation_tracker.set();
+                    }
+                    Response::Vetoed => {}
+                    _ => {}
+                }
+                response
+            } else {
+                apply_mutation(
+                    &mut *self.state.borrow_mut(),
+                    &effect,
+                    &self.condition_receiver_types,
+                );
+                self.mutation_tracker.set();
+                Response::Acknowledged
+            }
+        } else {
+            inner.handle(effect)
+        }
+    }
+
+    /// Route DeductCost: always passed through; adapter applies the state
+    /// mutation based on the host's response.
+    fn route_deduct_cost<H: EffectHandler + ?Sized>(
+        &self,
+        inner: &mut H,
+        effect: Effect,
+    ) -> Response {
+        let (actor, budget_field) = match &effect {
+            Effect::DeductCost {
+                actor,
+                budget_field,
+                ..
+            } => (*actor, budget_field.clone()),
+            _ => unreachable!(),
+        };
+
+        let response = inner.handle(effect);
+
+        match &response {
+            Response::Acknowledged => {
+                deduct_budget_field(&mut *self.state.borrow_mut(), &actor, &budget_field);
+                self.mutation_tracker.set();
+            }
+            Response::Override(Value::Str(replacement)) => {
+                let replacement_field = token_to_budget_field(replacement).unwrap_or(replacement);
+                deduct_budget_field(&mut *self.state.borrow_mut(), &actor, replacement_field);
+                self.mutation_tracker.set();
+            }
+            Response::Vetoed => {}
+            _ => {}
+        }
+
+        response
+    }
+}
+
+// ── Poll-based effect routing ─────────────────────────────────
+
+/// Result of classifying an effect for the poll-based API.
+pub enum PollRoute {
+    /// Adapter handled the effect locally (auto-applied mutation).
+    /// Feed this response back to the frame and continue polling
+    /// without suspending.
+    Handled(Response),
+    /// Effect requires host input. Yield from `poll()` as `Step::Yielded`.
+    /// After receiving the host's response, call `apply_host_response()`
+    /// to apply pass-through mutations or decision effects.
+    Forward(Effect),
+}
+
+impl<S: WritableState> StateAdapter<S> {
+    /// Classify and potentially auto-apply an effect for the poll-based API.
+    ///
+    /// Mutation effects not in the `pass_through` set are applied locally
+    /// and return `Handled(Acknowledged)` (or `Handled(EntitySpawned(ref))`
+    /// for spawns). Everything else returns `Forward` — the caller must
+    /// yield to the host and later call `apply_host_response()`.
+    ///
+    /// For pass-through `SpawnEntity`, the host should respond `Acknowledged`
+    /// or `Vetoed`; `apply_host_response()` translates `Acknowledged` into
+    /// `EntitySpawned(ref)` for the frame.
+    pub fn route_for_poll(&self, effect: Effect) -> PollRoute {
+        let kind = EffectKind::of(&effect);
+
+        // DeductCost: always forward (decision effect)
+        if kind == EffectKind::DeductCost {
+            return PollRoute::Forward(effect);
+        }
+
+        // SpawnEntity: auto-apply unless pass-through
+        if kind == EffectKind::SpawnEntity {
+            if self.pass_through.contains(&kind) {
+                return PollRoute::Forward(effect);
+            }
+            let entity_ref = apply_spawn(&mut *self.state.borrow_mut(), &effect);
+            self.mutation_tracker.set();
+            return PollRoute::Handled(Response::EntitySpawned(entity_ref));
+        }
+
+        if is_mutation(kind) {
+            if self.pass_through.contains(&kind) {
+                return PollRoute::Forward(effect);
+            }
+            apply_mutation(
+                &mut *self.state.borrow_mut(),
+                &effect,
+                &self.condition_receiver_types,
+            );
+            self.mutation_tracker.set();
+            return PollRoute::Handled(Response::Acknowledged);
+        }
+
+        // Non-mutation (gates, value, informational): always forward
+        PollRoute::Forward(effect)
+    }
+
+    /// Apply the host's response to a forwarded effect.
+    ///
+    /// Called after the host responds to a `Forward`ed effect from
+    /// `route_for_poll()`. Handles pass-through mutations (apply/override/
+    /// skip based on response) and `DeductCost` (apply budget deduction
+    /// based on response). No-op for non-mutation effects.
+    ///
+    /// Returns `Some(translated)` when the response fed to the frame should
+    /// differ from the host's response (e.g. SpawnEntity pass-through
+    /// translates `Acknowledged` → `EntitySpawned(ref)`). Returns `None`
+    /// when the host's response should be used as-is.
+    pub fn apply_host_response(
+        &self,
+        effect: &Effect,
+        response: &Response,
+    ) -> Option<Response> {
+        let kind = EffectKind::of(effect);
+
+        if kind == EffectKind::DeductCost {
+            if let Effect::DeductCost {
+                actor,
+                budget_field,
+                ..
+            } = effect
+            {
+                match response {
+                    Response::Acknowledged => {
+                        deduct_budget_field(&mut *self.state.borrow_mut(), actor, budget_field);
+                        self.mutation_tracker.set();
+                    }
+                    Response::Override(Value::Str(replacement)) => {
+                        let field = token_to_budget_field(replacement).unwrap_or(replacement);
+                        deduct_budget_field(&mut *self.state.borrow_mut(), actor, field);
+                        self.mutation_tracker.set();
+                    }
+                    _ => {} // Vetoed or other
+                }
+            }
+            return None;
+        }
+
+        // SpawnEntity pass-through: host says Acknowledged (proceed) or
+        // Vetoed (cancel). On Acknowledged the adapter applies the spawn
+        // and returns EntitySpawned(ref) to replace the host's response.
+        if kind == EffectKind::SpawnEntity {
+            if let Response::Acknowledged = response {
+                let entity_ref = apply_spawn(&mut *self.state.borrow_mut(), effect);
+                self.mutation_tracker.set();
+                return Some(Response::EntitySpawned(entity_ref));
+            }
+            return None;
+        }
+
+        if is_mutation(kind) {
+            match response {
+                Response::Acknowledged => {
+                    apply_mutation(
+                        &mut *self.state.borrow_mut(),
+                        effect,
+                        &self.condition_receiver_types,
+                    );
+                    self.mutation_tracker.set();
+                }
+                Response::Override(override_val) => {
+                    apply_mutation_with_override(
+                        &mut *self.state.borrow_mut(),
+                        effect,
+                        override_val,
+                    );
+                    self.mutation_tracker.set();
+                }
+                Response::Vetoed => {}
+                _ => {}
+            }
+        }
+        // Non-mutations: nothing to apply
+        None
     }
 }
 
@@ -169,13 +458,13 @@ impl<S: WritableState> StateProvider for StateAdapter<S> {
 ///
 /// Holds a shared `&StateAdapter<S>` reference for mutations via
 /// `borrow_mut()`. Each mutation does one short-lived mutable borrow.
-pub struct AdaptedHandler<'a, S: WritableState, H: EffectHandler> {
+pub struct AdaptedHandler<'a, S: WritableState, H: EffectHandler + ?Sized> {
     adapter: &'a StateAdapter<S>,
     inner: &'a mut H,
 }
 
 /// The mutation effect kinds.
-const MUTATION_KINDS: [EffectKind; 16] = [
+pub const MUTATION_KINDS: [EffectKind; 16] = [
     EffectKind::MutateField,
     EffectKind::ApplyCondition,
     EffectKind::RemoveCondition,
@@ -194,127 +483,26 @@ const MUTATION_KINDS: [EffectKind; 16] = [
     EffectKind::TransferConditions,
 ];
 
-fn is_mutation(kind: EffectKind) -> bool {
+pub fn is_mutation(kind: EffectKind) -> bool {
     MUTATION_KINDS.contains(&kind)
 }
 
-impl<S: WritableState, H: EffectHandler> EffectHandler for AdaptedHandler<'_, S, H> {
+impl<S: WritableState, H: EffectHandler + ?Sized> EffectHandler for AdaptedHandler<'_, S, H> {
     fn handle(&mut self, effect: Effect) -> Response {
-        let kind = EffectKind::of(&effect);
-
-        // DeductCost: always passed through, adapter applies mutation based on response
-        if kind == EffectKind::DeductCost {
-            return self.handle_deduct_cost(effect);
-        }
-
-        // SpawnEntity: special handling — must return EntitySpawned with the ref
-        if kind == EffectKind::SpawnEntity {
-            if self.adapter.pass_through.contains(&kind) {
-                let response = self.inner.handle(effect.clone());
-                if let Response::EntitySpawned(_) = &response {
-                    // Host handled spawning; sync locally too
-                    apply_spawn(&mut *self.adapter.state.borrow_mut(), &effect);
-                }
-                return response;
-            }
-            let entity_ref = apply_spawn(&mut *self.adapter.state.borrow_mut(), &effect);
-            return Response::EntitySpawned(entity_ref);
-        }
-
-        if is_mutation(kind) {
-            if self.adapter.pass_through.contains(&kind) {
-                // Pass-through: forward to inner, then sync locally
-                let response = self.inner.handle(effect.clone());
-                match &response {
-                    Response::Acknowledged => {
-                        apply_mutation(
-                            &mut *self.adapter.state.borrow_mut(),
-                            &effect,
-                            &self.adapter.condition_receiver_types,
-                        );
-                    }
-                    Response::Override(override_val) => {
-                        apply_mutation_with_override(
-                            &mut *self.adapter.state.borrow_mut(),
-                            &effect,
-                            override_val,
-                        );
-                    }
-                    Response::Vetoed => {
-                        // No local mutation
-                    }
-                    _ => {
-                        // Unexpected response type — do not mutate state.
-                        // The interpreter will surface a protocol error for this response,
-                        // so state must remain unchanged to preserve consistency.
-                    }
-                }
-                response
-            } else {
-                // Intercepted: apply locally, return Acknowledged
-                apply_mutation(
-                    &mut *self.adapter.state.borrow_mut(),
-                    &effect,
-                    &self.adapter.condition_receiver_types,
-                );
-                Response::Acknowledged
-            }
-        } else {
-            // Non-mutation: always forward
-            self.inner.handle(effect)
-        }
-    }
-}
-
-impl<S: WritableState, H: EffectHandler> AdaptedHandler<'_, S, H> {
-    /// Handle DeductCost: always passed through; adapter applies
-    /// the state mutation based on the host's response.
-    fn handle_deduct_cost(&mut self, effect: Effect) -> Response {
-        let (actor, budget_field) = match &effect {
-            Effect::DeductCost {
-                actor,
-                budget_field,
-                ..
-            } => (*actor, budget_field.clone()),
-            _ => unreachable!(),
-        };
-
-        let response = self.inner.handle(effect);
-
-        match &response {
-            Response::Acknowledged => {
-                // Decrement the original budget field by 1
-                deduct_budget_field(&mut *self.adapter.state.borrow_mut(), &actor, &budget_field);
-            }
-            Response::Override(Value::Str(replacement)) => {
-                // Legacy aliases map to TurnBudget field names; custom tokens are
-                // direct field names validated by the interpreter.
-                let replacement_field = token_to_budget_field(replacement).unwrap_or(replacement);
-                deduct_budget_field(
-                    &mut *self.adapter.state.borrow_mut(),
-                    &actor,
-                    replacement_field,
-                );
-            }
-            Response::Vetoed => {
-                // Cost waived — no mutation
-            }
-            _ => {
-                // Unexpected response — do not mutate state.
-                // The interpreter will surface a protocol error for this response,
-                // so state must remain unchanged to preserve consistency.
-            }
-        }
-
-        response
+        self.adapter.route_effect(self.inner, effect)
     }
 }
 
 // ── Mutation application helpers ───────────────────────────────
 
-/// Apply a mutation effect to the writable state.
 /// Apply a SpawnEntity effect to the writable state, returning the new entity ref.
-fn apply_spawn<S: WritableState>(state: &mut S, effect: &Effect) -> EntityRef {
+///
+/// Hosts can call this after receiving a yielded `SpawnEntity` effect
+/// and deciding to apply it.
+///
+/// # Panics
+/// Panics if `effect` is not `Effect::SpawnEntity`.
+pub fn apply_spawn<S: WritableState>(state: &mut S, effect: &Effect) -> EntityRef {
     match effect {
         Effect::SpawnEntity {
             entity_type,
@@ -324,7 +512,18 @@ fn apply_spawn<S: WritableState>(state: &mut S, effect: &Effect) -> EntityRef {
     }
 }
 
-fn apply_mutation<S: WritableState>(
+/// Apply a mutation effect to the writable state.
+///
+/// Hosts can call this after receiving a yielded mutation effect and deciding
+/// to apply it. Non-mutation effects are silently ignored.
+///
+/// `condition_receiver_types` is needed for bearer type compatibility checks
+/// on `ApplyCondition` and `TransferConditions`. Pass an empty map to skip
+/// these checks.
+///
+/// For `SpawnEntity`, use [`apply_spawn`] instead (it returns the new entity ref).
+#[allow(clippy::implicit_hasher)]
+pub fn apply_mutation<S: WritableState>(
     state: &mut S,
     effect: &Effect,
     condition_receiver_types: &FxHashMap<Name, Ty>,
@@ -552,7 +751,10 @@ pub fn apply_transfer_conditions<S: WritableState>(
 /// For MutateField/MutateTurnField, the override value replaces the RHS
 /// in the computation. For ApplyCondition, it replaces the duration.
 /// For RemoveCondition, a `Str` override replaces the condition name.
-fn apply_mutation_with_override<S: WritableState>(
+///
+/// Hosts can call this after receiving a yielded mutation and responding
+/// with `Response::Override(value)`.
+pub fn apply_mutation_with_override<S: WritableState>(
     state: &mut S,
     effect: &Effect,
     override_val: &Value,
@@ -642,6 +844,51 @@ fn apply_mutation_with_override<S: WritableState>(
     }
 }
 
+/// Apply a mutation effect to state, dispatching based on the host's response.
+///
+/// This is the top-level convenience function for hosts. After receiving a
+/// yielded mutation effect and deciding on a response, call this to apply
+/// (or skip) the mutation:
+///
+/// - `Acknowledged` → apply as-is
+/// - `Override(value)` → apply with the override value
+/// - `Vetoed` → no-op
+/// - `EntitySpawned(_)` → apply spawn (for `SpawnEntity` effects)
+///
+/// Returns `true` if the mutation was applied, `false` if vetoed/skipped.
+#[allow(clippy::implicit_hasher)]
+pub fn apply_effect<S: WritableState>(
+    state: &mut S,
+    effect: &Effect,
+    response: &Response,
+    condition_receiver_types: &FxHashMap<Name, Ty>,
+) -> bool {
+    match response {
+        Response::Acknowledged => {
+            if matches!(effect, Effect::SpawnEntity { .. }) {
+                apply_spawn(state, effect);
+            } else {
+                apply_mutation(state, effect, condition_receiver_types);
+            }
+            true
+        }
+        Response::Override(override_val) => {
+            apply_mutation_with_override(state, effect, override_val);
+            true
+        }
+        Response::EntitySpawned(_) => {
+            if matches!(effect, Effect::SpawnEntity { .. }) {
+                apply_spawn(state, effect);
+                true
+            } else {
+                false
+            }
+        }
+        Response::Vetoed => false,
+        _ => false,
+    }
+}
+
 /// Result of computing a field mutation, including whether clamping occurred.
 #[derive(Debug, Clone)]
 pub struct MutationResult {
@@ -655,7 +902,7 @@ pub struct MutationResult {
 /// Compute the final field value after applying op + bounds clamping.
 ///
 /// Returns a [`MutationResult`] with the final value and whether clamping occurred.
-pub fn compute_field_value<S: StateProvider>(
+pub fn compute_field_value<S: StateProvider + ?Sized>(
     state: &S,
     entity: &EntityRef,
     path: &[FieldPathSegment],
@@ -687,7 +934,7 @@ pub fn compute_field_value<S: StateProvider>(
 }
 
 /// Compute the final turn field value after applying op.
-pub fn compute_turn_field_value<S: StateProvider>(
+pub fn compute_turn_field_value<S: StateProvider + ?Sized>(
     state: &S,
     actor: &EntityRef,
     field: &str,

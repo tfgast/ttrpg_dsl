@@ -867,7 +867,7 @@ condition Imprisoned on bearer: entity
 ```ttrpg-snippet
 // In an action or function:
 suspend_with_source(target, source_id: 42,
-    Presence.OffBoard, freeze_turns: true, freeze_durations: true)
+    presence: Presence.OffBoard, freeze_turns: true, freeze_durations: true)
 
 // Later, to restore:
 remove_suspension_source(target, source_id: 42)
@@ -935,7 +935,7 @@ condition Polymorphed(original: Character, suspension_key: int) on bearer: Monst
 
 function polymorph(target: Character, form_name: string, form_ac: int, key: int) -> Monster {
     suspend_with_source(target, source_id: key,
-        Presence.OffBoard, freeze_turns: true, freeze_durations: true)
+        presence: Presence.OffBoard, freeze_turns: true, freeze_durations: true)
 
     let form = Monster {
         name: form_name,
@@ -982,6 +982,22 @@ derive apply_resistances(
 }
 ```
 
+
+### Struct Spread (copy-and-modify)
+
+```ttrpg
+struct Weapon {
+    name: string
+    damage: DiceExpr
+    bonus: int = 0
+}
+
+derive enchant_weapon(w: Weapon, extra_bonus: int) -> Weapon {
+    Weapon { bonus: w.bonus + extra_bonus, ..w }
+}
+```
+
+`..base` copies all unspecified fields from `base`. Explicit fields override the spread. Spread must come last: `Weapon { bonus: 5, ..old }`. Works with structs only (not entities).
 
 ---
 

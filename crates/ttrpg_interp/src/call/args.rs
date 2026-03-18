@@ -26,44 +26,33 @@ pub(super) fn bind_args(
 ) -> Result<Vec<(Name, Value)>, RuntimeError> {
     let mut result: Vec<Option<Value>> = vec![None; params.len()];
 
-    // Pre-pass: determine which slots are claimed by named args so positional
-    // assignment knows which slots to skip. This must happen before evaluation
-    // so we can evaluate all arguments in source order.
-    let mut named_slots = vec![false; params.len()];
+    // Single pass: positional args fill slots 0..N sequentially, then named
+    // args fill by name. Positional args must come before named args
+    // (enforced by the checker).
+    let mut next_positional = 0usize;
     for arg in args {
         if let Some(ref name) = arg.name {
             let pos = params.iter().position(|p| p.name == *name).ok_or_else(|| {
                 RuntimeError::with_span(format!("unknown parameter '{name}'"), arg.span)
             })?;
-            if named_slots[pos] {
+            if result[pos].is_some() {
                 return Err(RuntimeError::with_span(
                     format!("duplicate argument for parameter '{name}'"),
                     arg.span,
                 ));
             }
-            named_slots[pos] = true;
-        }
-    }
-
-    // Single pass: evaluate all arguments in source order, assigning each to
-    // its correct parameter slot. This preserves side-effect ordering.
-    let mut pos_iter = (0..params.len()).filter(|i| !named_slots[*i]);
-    for arg in args {
-        if let Some(ref name) = arg.name {
-            let pos = params.iter().position(|p| p.name == *name).ok_or_else(|| {
-                RuntimeError::with_span(
-                    format!("internal: named arg '{name}' not found after validation"),
-                    arg.span,
-                )
-            })?;
             let val = try_eval_with_hint(env, &arg.value, &params[pos].ty)?;
             result[pos] = Some(val);
         } else {
-            let pos = pos_iter.next().ok_or_else(|| {
-                RuntimeError::with_span("too many positional arguments", arg.span)
-            })?;
-            let val = try_eval_with_hint(env, &arg.value, &params[pos].ty)?;
-            result[pos] = Some(val);
+            if next_positional >= params.len() {
+                return Err(RuntimeError::with_span(
+                    "too many positional arguments",
+                    arg.span,
+                ));
+            }
+            let val = try_eval_with_hint(env, &arg.value, &params[next_positional].ty)?;
+            result[next_positional] = Some(val);
+            next_positional += 1;
         }
     }
 

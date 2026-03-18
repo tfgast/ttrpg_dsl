@@ -13,5 +13,6 @@ mod tests;
 // Re-export the crate-visible API.
 pub(crate) use dispatch::eval_call;
 pub(crate) use functions::{
-    dispatch_table_with_values, evaluate_fn_with_values, evaluate_function_with_values,
+    dispatch_table_exec, dispatch_table_with_values, evaluate_fn_with_values,
+    evaluate_function_with_values,
 };

@@ -27,7 +27,7 @@ fn emit_action_started(
     actor: EntityRef,
     call_span: Span,
 ) -> Result<LifecycleStart, RuntimeError> {
-    let response = env.handler.handle(effect);
+    let response = env.emit(effect);
     match response {
         Response::Acknowledged => Ok(LifecycleStart::Proceed),
         Response::Vetoed => {
@@ -56,7 +56,7 @@ fn emit_action_completed(
     invocation: Option<InvocationId>,
     call_span: Span,
 ) -> Result<(), RuntimeError> {
-    let response = env.handler.handle(Effect::ActionCompleted {
+    let response = env.emit(Effect::ActionCompleted {
         name: Name::from(name),
         actor,
         outcome,
@@ -105,7 +105,11 @@ fn scoped_execute(
     env.current_invocation_id = prev_invocation;
 
     // Always emit ActionCompleted
-    let outcome = if result.is_ok() {
+    let aborted = env.pipeline_aborted;
+    env.pipeline_aborted = false;
+    let outcome = if aborted {
+        ActionOutcome::Failed
+    } else if result.is_ok() {
         ActionOutcome::Succeeded
     } else {
         ActionOutcome::Failed
@@ -123,7 +127,10 @@ fn scoped_execute(
 
 /// Inner pipeline shared by actions and reactions: optional requires → optional
 /// cost → resolve block.
-fn execute_pipeline(
+///
+/// `action_params` are the action's bound params (receiver + args) — passed to
+/// `filter_by_should_apply` so cost modifier should_apply gates can reference them.
+pub(crate) fn execute_pipeline(
     env: &mut Env,
     actor: &EntityRef,
     action_name: &str,
@@ -132,6 +139,7 @@ fn execute_pipeline(
     resolve: &Block,
     has_return_type: bool,
     call_span: Span,
+    action_params: &[(Name, Value)],
 ) -> Result<Value, RuntimeError> {
     let abort_value = if has_return_type {
         Value::Option(None)
@@ -151,7 +159,7 @@ fn execute_pipeline(
             }
         };
 
-        let response = env.handler.handle(Effect::RequiresCheck {
+        let response = env.emit(Effect::RequiresCheck {
             action: Name::from(action_name),
             passed,
             reason: None,
@@ -173,6 +181,7 @@ fn execute_pipeline(
 
         if !effective_passed {
             // Requires failed: no cost spent, action ends
+            env.pipeline_aborted = true;
             return Ok(abort_value);
         }
     }
@@ -181,13 +190,32 @@ fn execute_pipeline(
     if let Some(cost) = cost
         && !cost.free
     {
-        // Collect cost modifiers from conditions on the actor
-        let effective_cost =
-            collect_and_apply_cost_modifiers(env, actor, action_name, cost, call_span)?;
-        if let Some(ref eff) = effective_cost {
-            match deduct_costs(env, action_name, eff, call_span)? {
+        // Collect and apply cost modifiers from conditions on the actor
+        let modifiers = collect_cost_modifiers(env, actor, action_name)?;
+        let modifiers = crate::pipeline::filter_by_should_apply(env, modifiers, action_params)?;
+        let mut effective = cost.clone();
+        for modifier in &modifiers {
+            let maybe_effect =
+                apply_single_cost_modifier(env, modifier, &mut effective, action_name)?;
+            if let Some(effect) = maybe_effect {
+                let response = env.emit(effect);
+                if !matches!(response, crate::effect::Response::Acknowledged) {
+                    return Err(RuntimeError::with_span(
+                        format!(
+                            "protocol error: expected Acknowledged for ModifyApplied, got {response:?}"
+                        ),
+                        modifier.clause.span,
+                    ));
+                }
+            }
+        }
+        if !effective.free {
+            match deduct_costs(env, action_name, &effective, call_span)? {
                 CostOutcome::Proceed => {}
-                CostOutcome::ActionFailed => return Ok(abort_value),
+                CostOutcome::ActionFailed => {
+                    env.pipeline_aborted = true;
+                    return Ok(abort_value);
+                }
             }
         }
         // else: cost was overridden to free by a modifier
@@ -267,6 +295,9 @@ pub(crate) fn execute_action(
             }
         }
 
+        // Build action params: receiver + provided args.
+        let mut ap: Vec<(Name, Value)> = vec![(action.receiver_name.clone(), Value::Entity(actor))];
+        ap.extend(args.iter().cloned());
         execute_pipeline(
             env,
             &actor,
@@ -276,6 +307,7 @@ pub(crate) fn execute_action(
             &action.resolve,
             has_return_type,
             call_span,
+            &ap,
         )
     })
 }
@@ -323,7 +355,11 @@ pub(crate) fn execute_reaction(
     // 2–4. Scoped execution with lifecycle completion
     scoped_execute(env, &reaction_name, reactor, inv_id, call_span, |env| {
         env.bind(reaction.receiver_name.clone(), Value::Entity(reactor));
-        env.bind(Name::from("trigger"), event_payload);
+        env.bind(Name::from("trigger"), event_payload.clone());
+        let ap = vec![
+            (reaction.receiver_name.clone(), Value::Entity(reactor)),
+            (Name::from("trigger"), event_payload),
+        ];
         execute_pipeline(
             env,
             &reactor,
@@ -333,6 +369,7 @@ pub(crate) fn execute_reaction(
             &reaction.resolve,
             false, // reactions never have return types
             call_span,
+            &ap,
         )
     })
 }
@@ -395,41 +432,30 @@ pub(crate) fn execute_hook(
 ///
 /// Cost modifiers are `modify ActionName.cost(...)` clauses in conditions.
 /// They can replace the cost tokens or make the cost free.
-fn collect_and_apply_cost_modifiers(
+///
+/// Collect matching cost modifiers for the given action, sorted by gained_at.
+/// Returns the modifiers as `OwnedModifier` for use by the frame-based path.
+pub(crate) fn collect_cost_modifiers(
     env: &mut Env,
     actor: &EntityRef,
     action_name: &str,
-    original_cost: &CostClause,
-    call_span: Span,
-) -> Result<Option<CostClause>, RuntimeError> {
-    use crate::effect::{Effect, FieldChange, ModifySource, Phase, Response};
+) -> Result<Vec<crate::pipeline::OwnedModifier>, RuntimeError> {
+    use crate::effect::ModifySource;
     use crate::eval::{eval_expr, value_eq};
+    use crate::pipeline::OwnedModifier;
     use ttrpg_ast::ast::{ConditionClause, ModifyTarget};
-
-    let mut effective = original_cost.clone();
 
     // Read conditions on the actor
     let conditions = match env.state.read_conditions(actor) {
         Some(c) => c,
-        None => return Ok(Some(effective)),
+        None => return Ok(Vec::new()),
     };
 
     let stacking_winners =
         crate::pipeline::compute_stacking_winners(&conditions, env.interp.program);
 
-    // Collect matching cost modifiers, ordered by gained_at
-    struct CostModifier {
-        source: ModifySource,
-        clause: ttrpg_ast::ast::ModifyClause,
-        bearer: EntityRef,
-        receiver_name: Name,
-        condition_params: std::collections::BTreeMap<Name, Value>,
-        gained_at: u64,
-        condition_id: u64,
-        condition_duration: Value,
-        condition_state_fields: std::collections::BTreeMap<Name, Value>,
-    }
-    let mut cost_modifiers: Vec<CostModifier> = Vec::new();
+    // Collect matching cost modifiers with gained_at for sorting
+    let mut cost_modifiers: Vec<(u64, OwnedModifier)> = Vec::new();
 
     for condition in &conditions {
         // Skip conditions that lost stacking precedence
@@ -451,7 +477,8 @@ fn collect_and_apply_cost_modifiers(
                 | ConditionClause::OnApply(_)
                 | ConditionClause::OnRemove(_)
                 | ConditionClause::OnEvent(_)
-                | ConditionClause::Include(_) => continue,
+                | ConditionClause::Include(_)
+                | ConditionClause::ShouldApply(_) => continue,
             };
 
             // Only match Cost targets for this action
@@ -461,9 +488,7 @@ fn collect_and_apply_cost_modifiers(
             }
 
             // Check bindings: evaluate each binding expression and compare
-            // with the actual parameter values. Resolve each binding.name
-            // against the action/reaction scope (receiver + params are bound
-            // in the calling scope before cost evaluation).
+            // with the actual parameter values.
             let bindings_match = if clause.bindings.is_empty() {
                 true
             } else {
@@ -484,7 +509,6 @@ fn collect_and_apply_cost_modifiers(
                 for (name, val) in &condition.params {
                     env.bind(name.clone(), val.clone());
                 }
-                // Bind state fields as read-only struct
                 if !condition.state_fields.is_empty() {
                     env.bind(
                         Name::from("state"),
@@ -518,7 +542,6 @@ fn collect_and_apply_cost_modifiers(
                             }
                         }
                     }
-                    // None = wildcard, always matches
                 }
 
                 env.pop_scope();
@@ -526,125 +549,108 @@ fn collect_and_apply_cost_modifiers(
             };
 
             if bindings_match {
-                cost_modifiers.push(CostModifier {
-                    source: ModifySource::Condition(condition.name.clone()),
-                    clause: clause.clone(),
-                    bearer: condition.bearer,
-                    receiver_name: cond_decl.receiver_name.clone(),
-                    condition_params: condition.params.clone(),
-                    gained_at: condition.gained_at,
-                    condition_id: condition.id,
-                    condition_duration: condition.duration.clone(),
-                    condition_state_fields: condition.state_fields.clone(),
-                });
-            }
-        }
-    }
-
-    // Sort by gained_at (stable preserves declaration order)
-    cost_modifiers.sort_by_key(|m| m.gained_at);
-
-    // Apply each cost modifier (last writer wins)
-    for modifier in &cost_modifiers {
-        let old_tokens: Vec<String> = effective
-            .tokens
-            .iter()
-            .map(|t| t.node.to_string())
-            .collect();
-        let old_free = effective.free;
-
-        env.push_scope();
-
-        // Bind condition receiver (bearer)
-        env.bind(
-            modifier.receiver_name.clone(),
-            Value::Entity(modifier.bearer),
-        );
-
-        // Bind condition params
-        for (name, val) in &modifier.condition_params {
-            env.bind(name.clone(), val.clone());
-        }
-
-        // Bind state fields as read-only struct
-        if !modifier.condition_state_fields.is_empty() {
-            env.bind(
-                Name::from("state"),
-                Value::Struct {
-                    name: Name::from("state"),
-                    fields: modifier.condition_state_fields.clone(),
-                },
-            );
-        }
-
-        // Execute cost modify statements
-        let result = exec_cost_modify_stmts(env, &modifier.clause.body, &mut effective);
-        env.pop_scope();
-        result?;
-
-        // Check if anything changed and emit ModifyApplied effect
-        let new_tokens: Vec<String> = effective
-            .tokens
-            .iter()
-            .map(|t| t.node.to_string())
-            .collect();
-        if old_free != effective.free || old_tokens != new_tokens {
-            let old_desc = if old_free {
-                "free".to_string()
-            } else {
-                old_tokens.join(", ")
-            };
-            let new_desc = if effective.free {
-                "free".to_string()
-            } else {
-                new_tokens.join(", ")
-            };
-            let changes = vec![FieldChange {
-                name: Name::from("cost"),
-                old: Value::Str(old_desc),
-                new: Value::Str(new_desc),
-            }];
-            let response = env.handler.handle(Effect::ModifyApplied {
-                source: modifier.source.clone(),
-                target_fn: Name::from(action_name),
-                phase: Phase::Phase1,
-                changes,
-                tags: modifier.clause.tags.clone(),
-            });
-            if !matches!(response, Response::Acknowledged) {
-                return Err(RuntimeError::with_span(
-                    format!(
-                        "protocol error: expected Acknowledged for ModifyApplied, got {response:?}"
-                    ),
-                    modifier.clause.span,
+                cost_modifiers.push((
+                    condition.gained_at,
+                    OwnedModifier {
+                        source: ModifySource::Condition(condition.name.clone()),
+                        should_apply_body: crate::pipeline::find_should_apply_body(
+                            cond_decl,
+                            clause,
+                            &env.interp.type_env.selector_matches,
+                        ),
+                        clause: clause.clone(),
+                        bearer: Some(Value::Entity(condition.bearer)),
+                        receiver_name: Some(cond_decl.receiver_name.clone()),
+                        condition_params: condition.params.clone(),
+                        condition_id: Some(condition.id),
+                        condition_state_fields: condition.state_fields.clone(),
+                    },
                 ));
             }
         }
     }
 
-    // Emit modify_applied events for any condition cost modifiers that fired
-    if !cost_modifiers.is_empty() {
-        use crate::pipeline::{OwnedModifier, emit_modify_applied_events};
-        let owned: Vec<OwnedModifier> = cost_modifiers
-            .iter()
-            .map(|m| OwnedModifier {
-                source: m.source.clone(),
-                clause: m.clause.clone(),
-                bearer: Some(Value::Entity(m.bearer)),
-                receiver_name: Some(m.receiver_name.clone()),
-                condition_params: m.condition_params.clone(),
-                condition_id: Some(m.condition_id),
-                condition_duration: Some(m.condition_duration.clone()),
-                condition_state_fields: m.condition_state_fields.clone(),
-            })
-            .collect();
-        emit_modify_applied_events(env, &owned, action_name, call_span)?;
+    // Sort by gained_at (stable preserves declaration order)
+    cost_modifiers.sort_by_key(|(gained_at, _)| *gained_at);
+    Ok(cost_modifiers.into_iter().map(|(_, m)| m).collect())
+}
+
+/// Apply a single cost modifier to the effective cost clause.
+/// Returns an optional `ModifyApplied` effect if the cost changed.
+pub(crate) fn apply_single_cost_modifier(
+    env: &mut Env,
+    modifier: &crate::pipeline::OwnedModifier,
+    effective: &mut CostClause,
+    action_name: &str,
+) -> Result<Option<Effect>, RuntimeError> {
+    use crate::effect::{FieldChange, Phase};
+
+    let old_tokens: Vec<String> = effective
+        .tokens
+        .iter()
+        .map(|t| t.node.to_string())
+        .collect();
+    let old_free = effective.free;
+
+    env.push_scope();
+
+    // Bind condition receiver (bearer)
+    if let (Some(receiver_name), Some(bearer)) = (&modifier.receiver_name, &modifier.bearer) {
+        env.bind(receiver_name.clone(), bearer.clone());
     }
 
-    if effective.free {
-        Ok(None)
+    // Bind condition params
+    for (name, val) in &modifier.condition_params {
+        env.bind(name.clone(), val.clone());
+    }
+
+    // Bind state fields as read-only struct
+    if !modifier.condition_state_fields.is_empty() {
+        env.bind(
+            Name::from("state"),
+            Value::Struct {
+                name: Name::from("state"),
+                fields: modifier.condition_state_fields.clone(),
+            },
+        );
+    }
+
+    // Execute cost modify statements
+    let result = exec_cost_modify_stmts(env, &modifier.clause.body, effective);
+    env.pop_scope();
+    result?;
+
+    // Check if anything changed and build ModifyApplied effect
+    let new_tokens: Vec<String> = effective
+        .tokens
+        .iter()
+        .map(|t| t.node.to_string())
+        .collect();
+    if old_free != effective.free || old_tokens != new_tokens {
+        let old_desc = if old_free {
+            "free".to_string()
+        } else {
+            old_tokens.join(", ")
+        };
+        let new_desc = if effective.free {
+            "free".to_string()
+        } else {
+            new_tokens.join(", ")
+        };
+        let changes = vec![FieldChange {
+            name: Name::from("cost"),
+            old: Value::Str(old_desc),
+            new: Value::Str(new_desc),
+        }];
+        Ok(Some(Effect::ModifyApplied {
+            source: modifier.source.clone(),
+            target_fn: Name::from(action_name),
+            phase: Phase::Phase1,
+            changes,
+            tags: modifier.clause.tags.clone(),
+        }))
     } else {
-        Ok(Some(effective))
+        Ok(None)
     }
 }
 
@@ -780,7 +786,7 @@ fn deduct_costs(
                 let required = 1; // 1 per bare token
 
                 if current_int < required {
-                    let response = env.handler.handle(Effect::RequiresCheck {
+                    let response = env.emit(Effect::RequiresCheck {
                         action: Name::from(action_name),
                         passed: false,
                         reason: Some(format!(
@@ -828,7 +834,7 @@ fn deduct_costs(
                 )
             })?;
 
-        let response = env.handler.handle(Effect::DeductCost {
+        let response = env.emit(Effect::DeductCost {
             actor: payer,
             token: token.node.clone(),
             budget_field: budget_field.clone(),
