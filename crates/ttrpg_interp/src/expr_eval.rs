@@ -126,9 +126,12 @@ pub(crate) enum ExprWork {
 
     /// Construct a struct value: pop N field values, push struct.
     /// Fields are (name, _) pairs; values are on the operand stack in order.
+    /// If `has_base` is true, an additional value (the base struct) sits below
+    /// the explicit fields on the operand stack and its fields are merged first.
     MakeStruct {
         name: Name,
         field_names: Vec<Name>,
+        has_base: bool,
         span: Span,
     },
 
@@ -587,9 +590,15 @@ fn compile_inner(
                     work,
                 )?;
             } else {
-                // Non-entity: groups/base/with_conditions → fall back
-                if !groups.is_empty() || base.is_some() || !with_conditions.is_empty() {
+                // Non-entity: groups/with_conditions → fall back
+                if !groups.is_empty() || !with_conditions.is_empty() {
                     return None;
+                }
+                // If ..base spread is present, compile the base expression first
+                // so it lands on the operand stack below the explicit field values.
+                let has_base = base.is_some();
+                if let Some(base_expr) = base {
+                    compile_inner(base_expr, type_env, program, work)?;
                 }
                 // Plain struct: compile each field, using type hints
                 // for enum variant disambiguation (mirrors recursive mode).
@@ -608,30 +617,34 @@ fn compile_inner(
                 }
                 // Compile defaults for omitted fields into the work stream
                 // so they participate in frame-based evaluation (no eval_expr_step).
-                if let Some(defaults) = find_struct_defaults_step(program, name) {
-                    for (fname, default_expr) in defaults {
-                        if !field_names.contains(&fname) {
-                            let hint = schema_fields
-                                .and_then(|sf| sf.iter().find(|fi| fi.name == fname))
-                                .map(|fi| &fi.ty);
-                            if let Some(hint) = hint {
-                                try_compile_with_hint(
-                                    &default_expr,
-                                    type_env,
-                                    program,
-                                    work,
-                                    hint,
-                                )?;
-                            } else {
-                                compile_inner(&default_expr, type_env, program, work)?;
+                // Skip defaults when base is provided — base already carries all fields.
+                if !has_base {
+                    if let Some(defaults) = find_struct_defaults_step(program, name) {
+                        for (fname, default_expr) in defaults {
+                            if !field_names.contains(&fname) {
+                                let hint = schema_fields
+                                    .and_then(|sf| sf.iter().find(|fi| fi.name == fname))
+                                    .map(|fi| &fi.ty);
+                                if let Some(hint) = hint {
+                                    try_compile_with_hint(
+                                        &default_expr,
+                                        type_env,
+                                        program,
+                                        work,
+                                        hint,
+                                    )?;
+                                } else {
+                                    compile_inner(&default_expr, type_env, program, work)?;
+                                }
+                                field_names.push(fname);
                             }
-                            field_names.push(fname);
                         }
                     }
                 }
                 work.push(ExprWork::MakeStruct {
                     name: name.clone(),
                     field_names,
+                    has_base,
                     span,
                 });
             }
@@ -1382,15 +1395,37 @@ pub(crate) fn advance_expr_eval(
             ExprWork::MakeStruct {
                 name,
                 field_names,
+                has_base,
                 span: mk_span,
             } => {
                 let values = operands.split_off(operands.len() - field_names.len());
-                let mut fields = BTreeMap::new();
+                // If ..base spread, pop the base struct and start from its fields.
+                let mut fields = if *has_base {
+                    match operands.pop() {
+                        Some(Value::Struct {
+                            fields: base_fields,
+                            ..
+                        }) => base_fields,
+                        Some(other) => {
+                            return Advance::Error(RuntimeError::with_span(
+                                format!("expected struct in ..base, got {}", type_name(&other)),
+                                *mk_span,
+                            ));
+                        }
+                        None => {
+                            return Advance::Error(RuntimeError::with_span(
+                                "operand stack underflow in ..base spread".to_string(),
+                                *mk_span,
+                            ));
+                        }
+                    }
+                } else {
+                    BTreeMap::new()
+                };
+                // Explicit fields override base values.
                 for (fname, val) in field_names.iter().zip(values) {
                     fields.insert(fname.clone(), val);
                 }
-                // Defaults are now compiled into the work stream at compile time,
-                // so all field values (provided + defaults) are already on the operand stack.
                 operands.push(Value::Struct {
                     name: name.clone(),
                     fields,

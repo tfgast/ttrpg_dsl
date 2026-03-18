@@ -1,0 +1,42 @@
+// Struct spread (..base) in step-based evaluator.
+
+source -s <<END
+    struct Point { x: int, y: int, z: int }
+
+    derive base_point() -> Point {
+        Point { x: 1, y: 2, z: 3 }
+    }
+
+    derive spread_override() -> Point {
+        let base = Point { x: 1, y: 2, z: 3 }
+        Point { x: 99, ..base }
+    }
+
+    derive spread_clone() -> Point {
+        let base = Point { x: 10, y: 20, z: 30 }
+        Point { ..base }
+    }
+
+    derive spread_override_multiple() -> Point {
+        let base = Point { x: 1, y: 2, z: 3 }
+        Point { x: 100, z: 300, ..base }
+    }
+END
+
+// ── Spread with one override ────────────────────────────────
+let p1 = spread_override()
+assert_eq p1.x, 99
+assert_eq p1.y, 2
+assert_eq p1.z, 3
+
+// ── Spread clone (no overrides) ─────────────────────────────
+let p2 = spread_clone()
+assert_eq p2.x, 10
+assert_eq p2.y, 20
+assert_eq p2.z, 30
+
+// ── Spread with multiple overrides ──────────────────────────
+let p3 = spread_override_multiple()
+assert_eq p3.x, 100
+assert_eq p3.y, 2
+assert_eq p3.z, 300
