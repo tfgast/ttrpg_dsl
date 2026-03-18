@@ -442,8 +442,8 @@ predicates, and including them would make modifier scope unpredictable. Use
 name-based targeting (`modify lowered_fn_name(...)`) to modify specific lowered
 functions when needed.
 
-**Implementation note:** `FnInfo` does not currently carry a `synthetic` field;
-it must be propagated from `FnDecl.synthetic` during pass 1b collection.
+**Implementation note:** `FnInfo` carries a `synthetic` field, propagated from
+`FnDecl.synthetic` during pass 1b collection.
 
 ### Module visibility
 

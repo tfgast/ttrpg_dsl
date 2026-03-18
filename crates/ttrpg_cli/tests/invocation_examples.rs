@@ -63,7 +63,7 @@ const CASTER_FIELDS: &str = "name: \"Caster\", level: 5, abilities: { STR: 10, D
 const TARGET_FIELDS: &str = "name: \"Target\", level: 1, abilities: { STR: 8, DEX: 14, CON: 10, INT: 6, WIS: 8, CHA: 6 }, AC: 13, HP: 20, max_HP: 20, speed: 30";
 
 /// Standard PF2e caster fields.
-const PF2E_CASTER: &str = "name: \"Druid\", level: 5, abilities: { STR: 10, DEX: 12, CON: 14, INT: 10, WIS: 18, CHA: 10 }, AC: 16, HP: 50, max_HP: 50, speed: 25, sustained_1: none, sustained_2: none";
+const PF2E_CASTER: &str = "name: \"Druid\", level: 5, abilities: { STR: 10, DEX: 12, CON: 14, INT: 10, WIS: 18, CHA: 10 }, AC: 16, HP: 50, max_HP: 50, speed: 25";
 
 /// Standard PF2e target fields.
 const PF2E_TARGET: &str = "name: \"Goblin\", level: 1, abilities: { STR: 8, DEX: 14, CON: 10, INT: 6, WIS: 8, CHA: 6 }, AC: 13, HP: 20, max_HP: 20, speed: 25";
@@ -415,18 +415,16 @@ fn sustained_cast_fills_first_slot() {
         "druid should have Sustaining_Flaming_Sphere: {conds:?}"
     );
 
-    // First sustained slot should be filled
-    let slot = exec(&mut r, "inspect druid.sustained_1");
+    // Sustained list should have one entry
+    let sustained = exec(&mut r, "inspect druid.sustained");
     assert!(
-        slot[0].contains("some(Invocation("),
-        "sustained_1 should hold the invocation: {slot:?}"
+        sustained[0].contains("Invocation("),
+        "sustained list should contain the invocation: {sustained:?}"
     );
-
-    // Second slot should still be empty
-    let slot2 = exec(&mut r, "inspect druid.sustained_2");
+    let len = exec(&mut r, "do druid.sustained.len()");
     assert!(
-        slot2[0].contains("none"),
-        "sustained_2 should still be none: {slot2:?}"
+        len.iter().any(|l| l.contains("1")),
+        "sustained list should have length 1: {len:?}"
     );
 }
 
@@ -444,17 +442,11 @@ fn sustained_two_spells_fill_both_slots() {
     // Cast Inspire Courage (1 action)
     exec(&mut r, "do CastInspireCourage(druid, ally)");
 
-    // Both slots should be filled
-    let slot1 = exec(&mut r, "inspect druid.sustained_1");
+    // Sustained list should have two entries
+    let len = exec(&mut r, "do druid.sustained.len()");
     assert!(
-        slot1[0].contains("some(Invocation("),
-        "sustained_1 should be set: {slot1:?}"
-    );
-
-    let slot2 = exec(&mut r, "inspect druid.sustained_2");
-    assert!(
-        slot2[0].contains("some(Invocation("),
-        "sustained_2 should be set: {slot2:?}"
+        len.iter().any(|l| l.contains("2")),
+        "sustained list should have length 2: {len:?}"
     );
 
     // Both conditions should be active
@@ -483,23 +475,18 @@ fn sustained_dismiss_revokes_conditions_and_clears_slot() {
     exec(&mut r, "do CastFlamingSphere(druid, goblin)");
     exec(&mut r, "do CastInspireCourage(druid, ally)");
 
-    // Read the first slot's invocation value for dismiss
-    let slot1 = exec(&mut r, "inspect druid.sustained_1");
-    assert!(slot1[0].contains("some(Invocation("));
-
-    // Dismiss the first spell by passing its invocation
-    // We need to get the raw Invocation value. Use eval to extract it.
-    let output = exec(&mut r, "do DismissSpell(druid, druid.sustained_1)");
+    // Dismiss the first spell (first entry in the sustained list)
+    let output = exec(&mut r, "do DismissSpell(druid, 0)");
     assert!(
         output.iter().any(|l| l.contains("RevokeInvocation")),
         "DismissSpell should revoke the invocation: {output:?}"
     );
 
-    // First slot should be cleared
-    let slot1 = exec(&mut r, "inspect druid.sustained_1");
+    // Sustained list should have one entry remaining
+    let len = exec(&mut r, "do druid.sustained.len()");
     assert!(
-        slot1[0].contains("none"),
-        "sustained_1 should be none after dismiss: {slot1:?}"
+        len.iter().any(|l| l.contains("1")),
+        "sustained list should have 1 entry after dismiss: {len:?}"
     );
 
     // Sustaining_Flaming_Sphere should be gone
@@ -515,13 +502,6 @@ fn sustained_dismiss_revokes_conditions_and_clears_slot() {
     assert!(
         conds.iter().any(|l| l.contains("InspiredCourage")),
         "InspiredCourage should survive dismiss of other spell: {conds:?}"
-    );
-
-    // Second slot should still hold its invocation
-    let slot2 = exec(&mut r, "inspect druid.sustained_2");
-    assert!(
-        slot2[0].contains("some(Invocation("),
-        "sustained_2 should still be set: {slot2:?}"
     );
 }
 
@@ -624,22 +604,17 @@ fn sustained_dismiss_both_spells_clears_all() {
     exec(&mut r, "do CastFlamingSphere(druid, goblin)");
     exec(&mut r, "do CastInspireCourage(druid, ally)");
 
-    // Dismiss first spell
-    exec(&mut r, "do DismissSpell(druid, druid.sustained_1)");
+    // Dismiss first spell (first in list)
+    exec(&mut r, "do DismissSpell(druid, 0)");
 
-    // Dismiss second spell
-    exec(&mut r, "do DismissSpell(druid, druid.sustained_2)");
+    // Dismiss remaining spell (now first in list)
+    exec(&mut r, "do DismissSpell(druid, 0)");
 
-    // Both slots should be cleared
-    let slot1 = exec(&mut r, "inspect druid.sustained_1");
-    let slot2 = exec(&mut r, "inspect druid.sustained_2");
+    // Sustained list should be empty
+    let len = exec(&mut r, "do druid.sustained.len()");
     assert!(
-        slot1[0].contains("none"),
-        "sustained_1 should be none: {slot1:?}"
-    );
-    assert!(
-        slot2[0].contains("none"),
-        "sustained_2 should be none: {slot2:?}"
+        len.iter().any(|l| l.contains("0")),
+        "sustained list should be empty: {len:?}"
     );
 
     // No conditions should remain
@@ -655,3 +630,4 @@ fn sustained_dismiss_both_spells_clears_all() {
         "no inspired conditions should remain: {conds:?}"
     );
 }
+

@@ -909,7 +909,7 @@ function find_first_positive(xs: list<int>) -> int {
 `len(xs)` `keys(m)` `values(m)` `first(xs)` `last(xs)` `append(xs, item)` `concat(a, b)` `reverse(xs)` `sum(xs)` `any(xs)` `all(xs)` `sort(xs)` `take(xs, n)`
 
 ### List Methods
-`.to_set()` `.contains(e)` `.remove_first(e)` `.take(n)`
+`.len()` `.first()` `.last()` `.append(e)` `.concat(other)` `.reverse()` `.sum()` `.any()` `.all()` `.sort()` `.take(n)` `.to_set()` `.contains(e)` `.remove_first(e)`
 
 ### Option
 `some(x)` `.unwrap()` `.unwrap_or(default)` `.is_some()` `.is_none()`

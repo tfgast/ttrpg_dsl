@@ -15,11 +15,8 @@
 // Key difference from 5e: same language primitives
 // (invocation, revoke, events, hooks), different policy.
 //
-// NOTE: PF2e ideally uses `list<Invocation>` for multi-slot
-// tracking. Since list builtins (append, remove) are not yet
-// available, this example uses `option<Invocation>` fields for
-// two sustained spell slots. The pattern is identical — only
-// the container changes when list operations land.
+// Uses list<Invocation> for multi-slot tracking, so the
+// caster can sustain any number of spells simultaneously.
 // ============================================================
 
 system "PF2e Sustained Spells" {
@@ -55,11 +52,10 @@ system "PF2e Sustained Spells" {
         speed: int = 25
         position: Position
 
-        // Sustained spell slots. PF2e allows multiple sustained
-        // spells; each slot holds the invocation of a sustained
-        // spell (or none if the slot is free).
-        sustained_1: option<Invocation>
-        sustained_2: option<Invocation>
+        // Sustained spells tracked as a list of invocations.
+        // PF2e allows multiple sustained spells; each entry
+        // is the invocation of an active sustained spell.
+        sustained: list<Invocation> = []
     }
 
 
@@ -85,7 +81,7 @@ system "PF2e Sustained Spells" {
     tag #attack
 
     // Fired when a sustained spell is cast. The hook records the
-    // invocation in the first available slot.
+    // invocation in the sustained list.
     event SpellSustained(caster: Character, inv: Invocation)
 
     // Fired at end of turn for each sustained spell that was NOT
@@ -100,37 +96,20 @@ system "PF2e Sustained Spells" {
 
     // --- Sustained spell hooks ---
 
-    // When a sustained spell is cast, record it in the first
-    // available slot. With list<Invocation> this would be a
-    // simple append; with fixed slots we check each in order.
+    // When a sustained spell is cast, append it to the sustained list.
     hook track_sustain on caster: Character (
         trigger: SpellSustained(caster: caster)
     ) {
-        if caster.sustained_1 == none {
-            caster.sustained_1 = some(trigger.inv)
-        } else {
-            if caster.sustained_2 == none {
-                caster.sustained_2 = some(trigger.inv)
-            }
-            // If both slots full, the spell is lost — PF2e
-            // limits the number of sustained spells.
-        }
+        caster.sustained = caster.sustained.append(trigger.inv)
     }
 
     // When a sustained spell lapses (not sustained this turn),
-    // revoke its conditions and free the slot.
+    // revoke its conditions and remove it from the list.
     hook on_lapse on caster: Character (
         trigger: SustainedSpellLapsed(caster: caster)
     ) {
         revoke(trigger.inv)
-
-        // Clear the matching slot.
-        if caster.sustained_1 == some(trigger.inv) {
-            caster.sustained_1 = none
-        }
-        if caster.sustained_2 == some(trigger.inv) {
-            caster.sustained_2 = none
-        }
+        caster.sustained = caster.sustained.remove_first(trigger.inv)
     }
 
 
@@ -223,21 +202,13 @@ system "PF2e Sustained Spells" {
     //
     // The caster voluntarily ends a sustained spell.
 
-    action DismissSpell on caster: Character (inv: option<Invocation>) {
+    action DismissSpell on caster: Character (idx: int) {
         cost { action }
 
         resolve {
-            // revoke() handles option<Invocation> directly —
-            // none is a no-op, some(id) revokes that invocation.
+            let inv = caster.sustained[idx]
+            caster.sustained = caster.sustained.remove_first(inv)
             revoke(inv)
-
-            // Clear the matching slot.
-            if caster.sustained_1 == inv {
-                caster.sustained_1 = none
-            }
-            if caster.sustained_2 == inv {
-                caster.sustained_2 = none
-            }
         }
     }
 

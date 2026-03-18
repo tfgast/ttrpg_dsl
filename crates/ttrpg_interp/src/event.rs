@@ -24,7 +24,7 @@
 //!             Step::Done(_) => break,
 //!         }
 //!     }
-//!     state_adapter = exec.state_mut().take(); // recover state for next execution
+//!     state_adapter = exec.into_state(); // recover state for next execution
 //! }
 //!
 //! // 3. Execute condition handlers (batch or individual)

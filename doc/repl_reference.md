@@ -108,7 +108,7 @@ Resource fields auto-clamp to bounds on `set`.
 | Command                       | Description                              |
 |-------------------------------|------------------------------------------|
 | `do <expr>`                   | Evaluate expression for side effects     |
-| `call <func>(args)`           | Call a derive or mechanic                |
+| `call <expr>`                 | Alias for `do`                           |
 | `breakdown <expr>`            | Show modify provenance for a call        |
 | `let <name> = <expr>`         | Bind result to a variable                |
 
@@ -211,7 +211,7 @@ Options with `default: on` are auto-enabled on load.
 
 ```
 assert fighter.HP > 0
-assert_eq call modifier(16), 3
+assert_eq modifier(16), 3
 assert_ne fighter.HP, 0
 assert_match result, TurnOutcome.Turned
 assert_err destroy nonexistent
