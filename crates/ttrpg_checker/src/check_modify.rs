@@ -113,12 +113,7 @@ impl Checker<'_> {
     ) {
         // Dispatch to selector-specific path if needed
         if let ModifyTarget::Selector(preds) = &sa.target {
-            self.check_should_apply_selector(
-                sa,
-                preds,
-                cond,
-                state_fields,
-            );
+            self.check_should_apply_selector(sa, preds, cond, state_fields);
             return;
         }
 
@@ -226,9 +221,10 @@ impl Checker<'_> {
                 // For cost targets, the action's receiver is also bindable
                 if matches!(&sa.target, ModifyTarget::Cost(_))
                     && let Some(ref recv) = fn_info.receiver
-                        && recv.name == name {
-                            return Some(recv.ty.clone());
-                        }
+                    && recv.name == name
+                {
+                    return Some(recv.ty.clone());
+                }
                 fn_info
                     .params
                     .iter()
@@ -241,16 +237,17 @@ impl Checker<'_> {
 
         // Bind target function's receiver into scope for cost targets
         if matches!(&sa.target, ModifyTarget::Cost(_))
-            && let Some(ref recv) = fn_info.receiver {
-                self.scope.bind(
-                    recv.name.clone(),
-                    VarBinding {
-                        ty: recv.ty.clone(),
-                        mutable: false,
-                        is_local: false,
-                    },
-                );
-            }
+            && let Some(ref recv) = fn_info.receiver
+        {
+            self.scope.bind(
+                recv.name.clone(),
+                VarBinding {
+                    ty: recv.ty.clone(),
+                    mutable: false,
+                    is_local: false,
+                },
+            );
+        }
         // Bind target function's params into scope (read-only)
         for param in &fn_info.params {
             self.scope.bind(
@@ -344,11 +341,10 @@ impl Checker<'_> {
         }
 
         if match_set.is_empty() {
-            self.diagnostics
-                .push(Diagnostic::warning(
-                    "should_apply selector matches no functions",
-                    sa.span,
-                ));
+            self.diagnostics.push(Diagnostic::warning(
+                "should_apply selector matches no functions",
+                sa.span,
+            ));
             return;
         }
 
@@ -441,11 +437,10 @@ impl Checker<'_> {
             }
 
             if match_set.is_empty() {
-                self.diagnostics
-                    .push(Diagnostic::warning(
-                        "should_apply selector matches no functions after binding narrowing",
-                        sa.span,
-                    ));
+                self.diagnostics.push(Diagnostic::warning(
+                    "should_apply selector matches no functions after binding narrowing",
+                    sa.span,
+                ));
                 return;
             }
         }
