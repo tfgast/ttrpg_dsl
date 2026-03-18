@@ -237,6 +237,128 @@ impl<S: WritableState> StateAdapter<S> {
     }
 }
 
+// ── Poll-based effect routing ─────────────────────────────────
+
+/// Result of classifying an effect for the poll-based API.
+pub enum PollRoute {
+    /// Adapter handled the effect locally (auto-applied mutation).
+    /// Feed this response back to the frame and continue polling
+    /// without suspending.
+    Handled(Response),
+    /// Effect requires host input. Yield from `poll()` as `Step::Yielded`.
+    /// After receiving the host's response, call `apply_host_response()`
+    /// to apply pass-through mutations or decision effects.
+    Forward(Effect),
+}
+
+impl<S: WritableState> StateAdapter<S> {
+    /// Classify and potentially auto-apply an effect for the poll-based API.
+    ///
+    /// Mutation effects not in the `pass_through` set are applied locally
+    /// and return `Handled(Acknowledged)` (or `Handled(EntitySpawned)` for
+    /// spawns). Everything else returns `Forward` — the caller must yield
+    /// to the host and later call `apply_host_response()`.
+    pub fn route_for_poll(&self, effect: Effect) -> PollRoute {
+        let kind = EffectKind::of(&effect);
+
+        // DeductCost: always forward (decision effect)
+        if kind == EffectKind::DeductCost {
+            return PollRoute::Forward(effect);
+        }
+
+        // SpawnEntity: auto-apply unless pass-through
+        if kind == EffectKind::SpawnEntity {
+            if self.pass_through.contains(&kind) {
+                return PollRoute::Forward(effect);
+            }
+            let entity_ref = apply_spawn(&mut *self.state.borrow_mut(), &effect);
+            self.mutation_tracker.set();
+            return PollRoute::Handled(Response::EntitySpawned(entity_ref));
+        }
+
+        if is_mutation(kind) {
+            if self.pass_through.contains(&kind) {
+                return PollRoute::Forward(effect);
+            }
+            apply_mutation(
+                &mut *self.state.borrow_mut(),
+                &effect,
+                &self.condition_receiver_types,
+            );
+            self.mutation_tracker.set();
+            return PollRoute::Handled(Response::Acknowledged);
+        }
+
+        // Non-mutation (gates, value, informational): always forward
+        PollRoute::Forward(effect)
+    }
+
+    /// Apply the host's response to a forwarded effect.
+    ///
+    /// Called after the host responds to a `Forward`ed effect from
+    /// `route_for_poll()`. Handles pass-through mutations (apply/override/
+    /// skip based on response) and `DeductCost` (apply budget deduction
+    /// based on response). No-op for non-mutation effects.
+    pub fn apply_host_response(&self, effect: &Effect, response: &Response) {
+        let kind = EffectKind::of(effect);
+
+        if kind == EffectKind::DeductCost {
+            if let Effect::DeductCost {
+                actor,
+                budget_field,
+                ..
+            } = effect
+            {
+                match response {
+                    Response::Acknowledged => {
+                        deduct_budget_field(&mut *self.state.borrow_mut(), actor, budget_field);
+                        self.mutation_tracker.set();
+                    }
+                    Response::Override(Value::Str(replacement)) => {
+                        let field = token_to_budget_field(replacement).unwrap_or(replacement);
+                        deduct_budget_field(&mut *self.state.borrow_mut(), actor, field);
+                        self.mutation_tracker.set();
+                    }
+                    _ => {} // Vetoed or other
+                }
+            }
+            return;
+        }
+
+        if kind == EffectKind::SpawnEntity {
+            if let Response::EntitySpawned(_) = response {
+                apply_spawn(&mut *self.state.borrow_mut(), effect);
+                self.mutation_tracker.set();
+            }
+            return;
+        }
+
+        if is_mutation(kind) {
+            match response {
+                Response::Acknowledged => {
+                    apply_mutation(
+                        &mut *self.state.borrow_mut(),
+                        effect,
+                        &self.condition_receiver_types,
+                    );
+                    self.mutation_tracker.set();
+                }
+                Response::Override(override_val) => {
+                    apply_mutation_with_override(
+                        &mut *self.state.borrow_mut(),
+                        effect,
+                        override_val,
+                    );
+                    self.mutation_tracker.set();
+                }
+                Response::Vetoed => {}
+                _ => {}
+            }
+        }
+        // Non-mutations: nothing to apply
+    }
+}
+
 // ── StateProvider impl ─────────────────────────────────────────
 
 impl<S: WritableState> StateProvider for StateAdapter<S> {

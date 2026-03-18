@@ -282,11 +282,12 @@ system "test" {
 
     let mut exec =
         Execution::start_condition_handler(core, adapter, handler_info, payload, Span::dummy())
-            .expect("start_condition_handler should succeed");
+            .expect("start_condition_handler should succeed")
+            .raw();
 
     let (_val, effects) = run_to_completion(&mut exec);
 
-    // SetConditionState is now yielded to the host in poll mode (not auto-applied
+    // In raw mode, SetConditionState is yielded to the host (not auto-applied
     // by StateAdapter). Verify it was yielded with the updated ticks value.
     let set_state = effects
         .iter()
@@ -350,11 +351,11 @@ system "test" {
 
     let adapter = StateAdapter::new(state);
     let mut exec =
-        Execution::start_condition_handlers(core, adapter, cond_result.handlers, payload);
+        Execution::start_condition_handlers(core, adapter, cond_result.handlers, payload).raw();
 
     let (_val, effects) = run_to_completion(&mut exec);
 
-    // SetConditionState is now yielded in poll mode. Verify it was yielded.
+    // In raw mode, SetConditionState is yielded to the host. Verify it was yielded.
     let set_state = effects
         .iter()
         .find(|e| matches!(e, Effect::SetConditionState { .. }));

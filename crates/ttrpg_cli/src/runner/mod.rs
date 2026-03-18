@@ -963,7 +963,17 @@ impl Runner {
             core
         };
 
-        let adapter = StateAdapter::new(gs);
+        // Pass through mutation kinds so the CLI can log them.
+        // The adapter's apply_host_response() in respond() handles
+        // state application. SpawnEntity is excluded because the CLI
+        // handles it specially (needs to allocate the EntityRef and
+        // return EntitySpawned).
+        let mut adapter = StateAdapter::new(gs);
+        for &kind in &ttrpg_interp::adapter::MUTATION_KINDS {
+            if kind != EffectKind::SpawnEntity {
+                adapter = adapter.pass_through(kind);
+            }
+        }
 
         // Build bindings
         let bindings: Vec<(Name, Value)> = self
@@ -1073,9 +1083,10 @@ impl Runner {
                         return Err(CliError::GatePending);
                     }
 
-                    // SpawnEntity: apply directly to execution state
-                    // (CliHandler can't return EntitySpawned without
-                    // writable access, so handle it here).
+                    // SpawnEntity: the adapter needs an EntitySpawned
+                    // response containing the new EntityRef. We read it
+                    // from state here; apply_host_response() in respond()
+                    // handles the actual state application.
                     if matches!(&*effect, Effect::SpawnEntity { .. }) {
                         let entity_ref = exec
                             .state()
@@ -1091,39 +1102,11 @@ impl Runner {
                         continue;
                     }
 
-                    // DeductCost: apply directly to execution state
-                    // (not in MUTATION_KINDS, needs explicit handling).
-                    if let Effect::DeductCost {
-                        actor,
-                        budget_field,
-                        token,
-                    } = &*effect
-                    {
-                        exec.state().with_state_mut(|gs| {
-                            ttrpg_interp::adapter::deduct_budget_field(gs, actor, budget_field);
-                        });
-                        if !self.quiet {
-                            let name = self
-                                .handles
-                                .by_entity()
-                                .get(actor)
-                                .cloned()
-                                .unwrap_or_else(|| format!("Entity({})", actor.0));
-                            self.output.push(format!("[DeductCost] {name}: {token}"));
-                        }
-                        exec.respond(Response::Acknowledged)
-                            .map_err(|pe| CliError::Message(format!("protocol error: {pe}")))?;
-                        continue;
-                    }
-
-                    // Handle all other effects via CliHandler, reading
-                    // from the execution's state (not the empty RefCell).
-                    let is_mutation = ttrpg_interp::adapter::is_mutation(EffectKind::of(&effect));
-                    let effect_for_apply = if is_mutation {
-                        Some((*effect).clone())
-                    } else {
-                        None
-                    };
+                    // All other effects (mutations, DeductCost, gates,
+                    // informational, value effects): handle via CliHandler
+                    // for logging/response, then respond(). The adapter's
+                    // apply_host_response() in respond() handles state
+                    // application for pass-through mutations and DeductCost.
                     let response = {
                         let mut handler = CliHandler::new(
                             &self.game_state,
@@ -1145,26 +1128,6 @@ impl Runner {
 
                         response
                     };
-
-                    // Apply mutations to the execution's owned state so they
-                    // persist after finish_execution transfers it back.
-                    if let Some(ref eff) = effect_for_apply {
-                        match &response {
-                            Response::Acknowledged => {
-                                exec.state().with_state_mut(|gs| {
-                                    ttrpg_interp::adapter::apply_mutation(
-                                        gs,
-                                        eff,
-                                        &rustc_hash::FxHashMap::default(),
-                                    );
-                                });
-                            }
-                            Response::Vetoed => {
-                                // Vetoed — don't apply
-                            }
-                            _ => {}
-                        }
-                    }
 
                     exec.respond(response)
                         .map_err(|pe| CliError::Message(format!("protocol error: {pe}")))?;

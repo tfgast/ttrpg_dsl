@@ -81,11 +81,11 @@ fn add_creature(game: &mut GameState, hp: i64) -> EntityRef {
     game.add_entity("Creature", fields)
 }
 
-/// Poll-mode helper: expect a mutation yield, apply it to state, and acknowledge.
+/// Raw-poll-mode helper: expect a mutation yield, apply it, and acknowledge.
 ///
-/// MutationYield frames yield `MutateField` / `MutateTurnField` / etc. effects
-/// to the host. In poll mode the host must apply them (unlike `run_with_handler`
-/// where `StateAdapter` auto-applies).
+/// In raw mode, mutations are yielded to the host instead of being auto-applied
+/// by the StateAdapter. This helper expects the next poll to yield a mutation,
+/// applies it to state, and responds with Acknowledged.
 fn expect_and_apply_mutation(exec: &mut Execution<GameState>) -> Effect {
     let step = exec.poll().unwrap();
     let effect = match step {
@@ -99,8 +99,9 @@ fn expect_and_apply_mutation(exec: &mut Execution<GameState>) -> Effect {
     effect
 }
 
-/// Poll-mode loop helper: acknowledge a yielded effect and, if it is a
-/// mutation effect, apply it to state before responding.
+/// Raw-poll-mode loop helper: acknowledge a yielded effect and, if it is a
+/// mutation effect, apply it to state before responding. Only needed in raw
+/// mode where mutations are not auto-applied.
 fn ack_and_maybe_apply(exec: &mut Execution<GameState>, effect: &Effect) {
     if crate::adapter::MUTATION_KINDS.contains(&EffectKind::of(effect)) {
         exec.state().with_state_mut(|gs| {
@@ -140,7 +141,8 @@ fn action_lifecycle_acknowledged() {
         vec![Value::Entity(defender)],
         Span::dummy(),
     )
-    .unwrap();
+    .unwrap()
+    .raw();
 
     // Step 1: ActionStarted
     let step = exec.poll().unwrap();
@@ -333,7 +335,8 @@ fn action_with_requires_pass() {
         vec![Value::Entity(patient)],
         Span::dummy(),
     )
-    .unwrap();
+    .unwrap()
+    .raw();
 
     // ActionStarted
     let step = exec.poll().unwrap();
@@ -3778,7 +3781,8 @@ fn block_frame_multiple_mutations() {
         vec![Value::Entity(target)],
         Span::dummy(),
     )
-    .unwrap();
+    .unwrap()
+    .raw();
 
     // ActionStarted
     let step = exec.poll().unwrap();
@@ -4127,7 +4131,8 @@ fn fill_defaults_poll_path() {
         vec![Value::Entity(patient)], // omit amount → default 5
         Span::dummy(),
     )
-    .unwrap();
+    .unwrap()
+    .raw();
 
     // ActionStarted
     let step = exec.poll().unwrap();
@@ -4316,6 +4321,27 @@ fn exec_with_frame(frame: Frame) -> Execution<GameState> {
     );
     let game = GameState::new();
     let adapter = StateAdapter::new(game);
+    let mut exec = Execution::new(core, adapter);
+    exec.frames.push(frame);
+    exec
+}
+
+/// Like `exec_with_frame` but yields all effects including mutations
+/// (pass-through mode). Used by tests that need to observe and control
+/// every effect via poll/respond.
+fn exec_with_frame_pass_through(frame: Frame) -> Execution<GameState> {
+    let (core, _) = make_core(
+        r"
+        system Test {
+            entity Creature { HP: int }
+        }
+        ",
+    );
+    let game = GameState::new();
+    let mut adapter = StateAdapter::new(game);
+    for &kind in &crate::adapter::MUTATION_KINDS {
+        adapter = adapter.pass_through(kind);
+    }
     let mut exec = Execution::new(core, adapter);
     exec.frames.push(frame);
     exec
@@ -4566,7 +4592,7 @@ fn prompt_waiting_use_default_no_block_errors() {
 
 #[test]
 fn spawn_entity_no_groups() {
-    let mut exec = exec_with_frame(Frame::SpawnEntity {
+    let mut exec = exec_with_frame_pass_through(Frame::SpawnEntity {
         entity_type: Name::from("Creature"),
         base_fields: vec![(Name::from("HP"), Value::Int(10))],
         groups: vec![],
@@ -4597,7 +4623,7 @@ fn spawn_entity_no_groups() {
 
 #[test]
 fn spawn_entity_with_groups() {
-    let mut exec = exec_with_frame(Frame::SpawnEntity {
+    let mut exec = exec_with_frame_pass_through(Frame::SpawnEntity {
         entity_type: Name::from("Character"),
         base_fields: vec![(Name::from("HP"), Value::Int(20))],
         groups: vec![
@@ -4660,7 +4686,7 @@ fn spawn_entity_with_groups() {
 
 #[test]
 fn spawn_entity_vetoed() {
-    let mut exec = exec_with_frame(Frame::SpawnEntity {
+    let mut exec = exec_with_frame_pass_through(Frame::SpawnEntity {
         entity_type: Name::from("Creature"),
         base_fields: vec![(Name::from("HP"), Value::Int(5))],
         groups: vec![],
@@ -4681,7 +4707,7 @@ fn spawn_entity_vetoed() {
 
 #[test]
 fn spawn_entity_invalid_response() {
-    let mut exec = exec_with_frame(Frame::SpawnEntity {
+    let mut exec = exec_with_frame_pass_through(Frame::SpawnEntity {
         entity_type: Name::from("Creature"),
         base_fields: vec![(Name::from("HP"), Value::Int(5))],
         groups: vec![],
@@ -5023,7 +5049,7 @@ fn budget_guard_restores_on_success() {
         span: Span::dummy(),
     };
 
-    let mut exec = exec_with_frame(Frame::BudgetGuard {
+    let mut exec = exec_with_frame_pass_through(Frame::BudgetGuard {
         actor: EntityRef(1),
         budget: {
             let mut m = BTreeMap::new();
@@ -5083,7 +5109,7 @@ fn budget_guard_restores_on_error() {
         span: Span::dummy(),
     };
 
-    let mut exec = exec_with_frame(Frame::BudgetGuard {
+    let mut exec = exec_with_frame_pass_through(Frame::BudgetGuard {
         actor: EntityRef(1),
         budget: {
             let mut m = BTreeMap::new();
@@ -5170,7 +5196,7 @@ fn multi_budget_guard_restores_all() {
         span: Span::dummy(),
     };
 
-    let mut exec = exec_with_frame(Frame::MultiBudgetGuard {
+    let mut exec = exec_with_frame_pass_through(Frame::MultiBudgetGuard {
         entries: vec![
             (EntityRef(1), {
                 let mut m = BTreeMap::new();
@@ -5261,7 +5287,8 @@ fn async_action_with_roll_yields_roll_dice() {
         vec![Value::Entity(defender)],
         Span::dummy(),
     )
-    .unwrap();
+    .unwrap()
+    .raw();
 
     // ActionStarted
     let step = exec.poll().unwrap();
@@ -5356,7 +5383,8 @@ fn async_action_with_two_rolls() {
         vec![Value::Entity(defender)],
         Span::dummy(),
     )
-    .unwrap();
+    .unwrap()
+    .raw();
 
     // ActionStarted
     let step = exec.poll().unwrap();
@@ -5736,7 +5764,8 @@ fn async_differential_condition_with_state_default() {
         vec![Value::Entity(t2)],
         Span::dummy(),
     )
-    .unwrap();
+    .unwrap()
+    .raw();
 
     let mut step_effects = Vec::new();
     loop {
@@ -5805,7 +5834,9 @@ fn async_mutation_before_roll_no_double_fire() {
     assert_eq!(game.game_time(), 0);
     let adapter = StateAdapter::new(game);
 
-    let mut exec = Execution::start_function(core, adapter, "caller", vec![]).unwrap();
+    let mut exec = Execution::start_function(core, adapter, "caller", vec![])
+        .unwrap()
+        .raw();
 
     // advance_time(1) now yields to the host.
     let step = exec.poll().unwrap();
@@ -5880,7 +5911,9 @@ fn async_let_binding_with_fn_call_no_double_fire() {
     let game = GameState::new();
     let adapter = StateAdapter::new(game);
 
-    let mut exec = Execution::start_function(core, adapter, "caller", vec![]).unwrap();
+    let mut exec = Execution::start_function(core, adapter, "caller", vec![])
+        .unwrap()
+        .raw();
 
     // advance_time(1) yields first.
     let step = exec.poll().unwrap();
@@ -5943,8 +5976,9 @@ fn async_assign_with_fn_call_rhs_no_double_fire() {
     let target = add_creature(&mut game, 20);
     let adapter = StateAdapter::new(game);
 
-    let mut exec =
-        Execution::start_function(core, adapter, "caller", vec![Value::Entity(target)]).unwrap();
+    let mut exec = Execution::start_function(core, adapter, "caller", vec![Value::Entity(target)])
+        .unwrap()
+        .raw();
 
     // advance_time(1) yields first.
     let step = exec.poll().unwrap();
@@ -6153,7 +6187,9 @@ fn mutation_and_yield_in_arg_dispatches_via_child_frame() {
     let game = GameState::new();
     let adapter = StateAdapter::new(game);
 
-    let mut exec = Execution::start_function(core, adapter, "caller", vec![]).unwrap();
+    let mut exec = Execution::start_function(core, adapter, "caller", vec![])
+        .unwrap()
+        .raw();
 
     // advance_time(1) yields first.
     let result = exec.poll();
@@ -6637,7 +6673,8 @@ fn poll_respond_emit_from_on_apply() {
         vec![Value::Entity(target)],
         Span::dummy(),
     )
-    .unwrap();
+    .unwrap()
+    .raw();
 
     let mut effect_kinds = Vec::new();
 
@@ -6759,7 +6796,9 @@ fn poll_respond_hook_removes_condition_before_handler() {
     let adapter = StateAdapter::new(game);
 
     let mut exec =
-        Execution::start_action(core, adapter, "StartTurn", actor, vec![], Span::dummy()).unwrap();
+        Execution::start_action(core, adapter, "StartTurn", actor, vec![], Span::dummy())
+            .unwrap()
+            .raw();
 
     let mut effect_kinds = Vec::new();
     let mut saw_removal_gate = false;
@@ -6867,7 +6906,9 @@ fn poll_respond_removal_deferred_error() {
     let adapter = StateAdapter::new(game);
 
     let mut exec =
-        Execution::start_action(core, adapter, "ClearMarks", actor, vec![], Span::dummy()).unwrap();
+        Execution::start_action(core, adapter, "ClearMarks", actor, vec![], Span::dummy())
+            .unwrap()
+            .raw();
 
     let mut effect_kinds = Vec::new();
     let mut removal_gate_count = 0;

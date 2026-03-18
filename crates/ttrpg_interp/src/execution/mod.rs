@@ -1444,6 +1444,9 @@ pub struct Execution<S: WritableState> {
 
     // ── Raw mode: poll() bypasses StateAdapter auto-apply ──
     raw: bool,
+
+    // ── Pending effect for respond() to apply (poll mode only) ──
+    pending_effect: Option<Effect>,
 }
 
 impl<S: WritableState> Execution<S> {
@@ -1458,6 +1461,7 @@ impl<S: WritableState> Execution<S> {
             pending_before_yield: None,
             final_result: None,
             raw: false,
+            pending_effect: None,
         }
     }
 
@@ -2044,17 +2048,16 @@ impl<S: WritableState> Execution<S> {
             final_result,
             protocol,
             pending_before_yield,
+            pending_effect,
             raw,
             ..
         } = self;
-        /// Handler that should never be reached — in raw poll mode, non-spawn
-        /// effects are yielded to the host, not handled internally.
+        /// Handler that should never be reached — non-mutation effects
+        /// inside synchronous frame evaluation (e.g., modifier pipeline)
+        /// should not produce host-decided effects.
         struct NoYieldHandler;
         impl EffectHandler for NoYieldHandler {
             fn handle(&mut self, effect: Effect) -> Response {
-                // This is an internal invariant violation: if we reach here,
-                // a frame is trying to auto-resolve a host-decided effect
-                // that should have been yielded instead.
                 panic!(
                     "internal invariant violated: unexpected host-decided effect \
                      in synchronous poll: {:?}",
@@ -2066,9 +2069,8 @@ impl<S: WritableState> Execution<S> {
         let tracker = state.mutation_tracker();
 
         if *raw {
-            // Raw mode: use state directly (not through AdaptedHandler) so we
-            // can auto-apply SpawnEntity while bypassing adapter for everything
-            // else.  SpawnEntity must be applied internally because subsequent
+            // Raw mode (Layer 1): yield all effects to the host, except
+            // SpawnEntity which must be auto-applied because subsequent
             // GrantGroup frames need a valid EntityRef.
             let mut handler = NoYieldHandler;
             loop {
@@ -2093,7 +2095,6 @@ impl<S: WritableState> Execution<S> {
 
                 match advance {
                     Advance::Yield(effect) if matches!(&effect, Effect::SpawnEntity { .. }) => {
-                        // Auto-apply spawn and feed EntityRef back to frame.
                         let entity_ref =
                             state.with_state_mut(|gs| crate::adapter::apply_spawn(gs, &effect));
                         if let Some(frame) = frames.last_mut() {
@@ -2135,67 +2136,96 @@ impl<S: WritableState> Execution<S> {
                 }
             }
         } else {
-            state.run(&mut NoYieldHandler, |sp, eh| {
-                loop {
-                    if frames.is_empty() {
-                        if let ProtocolState::Unwinding(e) =
-                            std::mem::replace(protocol, ProtocolState::Completed)
-                        {
-                            return Err(PollError::Runtime(e));
-                        }
-                        *protocol = ProtocolState::Completed;
-                        let result = final_result.take().unwrap_or(Ok(Value::Void));
-                        return match result {
-                            Ok(v) => Ok(Step::Done(v)),
-                            Err(e) => Err(PollError::Runtime(e)),
-                        };
+            // Non-raw mode (Layer 2): auto-apply mutation effects via
+            // StateAdapter, only yield host-decided/informational/pass-
+            // through effects.
+            //
+            // We scope state.run() to just the advance() call so that
+            // the adapter borrow is released before route_for_poll().
+            // Internal eh usage by frames (modifier pipeline, etc.)
+            // still goes through the AdaptedHandler correctly within
+            // the advance() call.
+            let mut no_yield = NoYieldHandler;
+            loop {
+                if frames.is_empty() {
+                    if let ProtocolState::Unwinding(e) =
+                        std::mem::replace(protocol, ProtocolState::Completed)
+                    {
+                        return Err(PollError::Runtime(e));
                     }
+                    *protocol = ProtocolState::Completed;
+                    let result = final_result.take().unwrap_or(Ok(Value::Void));
+                    return match result {
+                        Ok(v) => Ok(Step::Done(v)),
+                        Err(e) => Err(PollError::Runtime(e)),
+                    };
+                }
 
+                let advance = {
                     let frame = frames
                         .last_mut()
                         .expect("frame stack non-empty (checked above)");
-                    let advance = frame.advance(core, env, sp, eh, tracker);
+                    state.run(&mut no_yield, |sp, eh| {
+                        frame.advance(core, env, sp, eh, tracker)
+                    })
+                };
+                // state borrow from run() is released; route_for_poll() is safe
 
-                    match advance {
-                        Advance::Yield(effect) => {
-                            *pending_before_yield =
-                                Some(std::mem::replace(protocol, ProtocolState::Pending));
-                            return Ok(Step::Yielded(Box::new(effect)));
-                        }
-                        Advance::Push(child) => {
-                            frames.push(child);
-                        }
-                        Advance::Pop(value) => {
-                            frames.pop();
-                            if let Some(parent) = frames.last_mut() {
-                                parent.receive_child_result(value);
-                            } else {
-                                *final_result = Some(Ok(value));
-                            }
-                        }
-                        Advance::Continue => {}
-                        Advance::Error(e) => {
-                            frames.pop();
-                            if let Some(parent) = frames.last_mut() {
-                                match parent.receive_child_error(e) {
-                                    Ok(()) => {}
-                                    Err(e) => {
-                                        *protocol = ProtocolState::Completed;
-                                        return Err(PollError::Runtime(e));
-                                    }
+                match advance {
+                    Advance::Yield(effect) => {
+                        use crate::adapter::PollRoute;
+                        match state.route_for_poll(effect) {
+                            PollRoute::Handled(response) => {
+                                if let Some(frame) = frames.last_mut() {
+                                    frame.receive_response(response);
                                 }
-                            } else {
-                                *protocol = ProtocolState::Completed;
-                                return Err(PollError::Runtime(e));
+                            }
+                            PollRoute::Forward(effect) => {
+                                *pending_effect = Some(effect.clone());
+                                *pending_before_yield =
+                                    Some(std::mem::replace(protocol, ProtocolState::Pending));
+                                return Ok(Step::Yielded(Box::new(effect)));
                             }
                         }
                     }
+                    Advance::Push(child) => {
+                        frames.push(child);
+                    }
+                    Advance::Pop(value) => {
+                        frames.pop();
+                        if let Some(parent) = frames.last_mut() {
+                            parent.receive_child_result(value);
+                        } else {
+                            *final_result = Some(Ok(value));
+                        }
+                    }
+                    Advance::Continue => {}
+                    Advance::Error(e) => {
+                        frames.pop();
+                        if let Some(parent) = frames.last_mut() {
+                            match parent.receive_child_error(e) {
+                                Ok(()) => {}
+                                Err(e) => {
+                                    *protocol = ProtocolState::Completed;
+                                    return Err(PollError::Runtime(e));
+                                }
+                            }
+                        } else {
+                            *protocol = ProtocolState::Completed;
+                            return Err(PollError::Runtime(e));
+                        }
+                    }
                 }
-            })
+            }
         }
     }
 
     /// Provide a host response to a yielded effect.
+    ///
+    /// In non-raw mode, if the yielded effect was a pass-through mutation
+    /// or decision effect (e.g., `DeductCost`), the adapter applies the
+    /// corresponding state change based on the response before feeding
+    /// it to the frame.
     pub fn respond(&mut self, response: Response) -> Result<(), ProtocolError> {
         match &self.protocol {
             ProtocolState::Idle | ProtocolState::Unwinding(_) => {
@@ -2204,6 +2234,17 @@ impl<S: WritableState> Execution<S> {
             ProtocolState::Completed => return Err(ProtocolError::ExecutionCompleted),
             ProtocolState::Pending => {}
         }
+
+        // Apply pass-through mutations / decision effects based on host response.
+        // In raw mode, the host is responsible for state management.
+        if !self.raw {
+            if let Some(effect) = self.pending_effect.take() {
+                self.state.apply_host_response(&effect, &response);
+            }
+        } else {
+            self.pending_effect = None;
+        }
+
         self.protocol = self
             .pending_before_yield
             .take()

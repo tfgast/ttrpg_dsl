@@ -283,7 +283,10 @@ system "test" {
 
     // After a failed load, non-meta commands are suppressed to avoid cascade errors
     let err = runner.exec("eval 1 + 2").unwrap_err();
-    assert!(err.is_suppressed(), "eval should be suppressed after failed load");
+    assert!(
+        err.is_suppressed(),
+        "eval should be suppressed after failed load"
+    );
     runner.take_output();
 
     // Reload should re-attempt the bad file, not the good one
