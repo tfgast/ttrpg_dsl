@@ -17,7 +17,7 @@ The interpreter needs a typed value back. Cannot be skipped or vetoed.
 
 ## Mutation Effects
 
-State changes. In Layer 2/3 (StateAdapter), auto-applied by default; `pass_through` forwards to host first. In raw poll mode, always yielded to host.
+State changes. At Layer 2/3 (`StateAdapter`), auto-applied by default; `pass_through` forwards to host first. At Layer 1 (raw `EffectHandler`, or `Execution::raw()` in poll mode), always yielded to host. See [`integration_layers.md`](integration_layers.md) for layer definitions.
 
 | Effect | `Acknowledged` | `Override(Value)` | `Vetoed` | Override semantics |
 |--------|:-:|:-:|:-:|-----|
@@ -38,13 +38,13 @@ State changes. In Layer 2/3 (StateAdapter), auto-applied by default; `pass_throu
 
 ## Spawn Effects
 
-Entity construction. Always applied immediately by the runtime (even in raw mode) because subsequent `GrantGroup` effects and the spawning expression depend on a valid `EntityRef`. Yielded to the host as informational in poll mode.
+Entity construction. Always applied immediately by the runtime (even at Layer 1 / raw poll mode) because subsequent `GrantGroup` effects and the spawning expression depend on a valid `EntityRef`. Yielded to the host as informational in poll mode.
 
 | Effect | `Acknowledged` | `EntitySpawned` | `Vetoed` | Notes |
 |--------|:-:|:-:|:-:|-------|
 | **SpawnEntity** | — | ✓ | ✓ cancel | Runtime applies spawn, returns `EntitySpawned(ref)`. Veto errors the spawning expression. |
 
-> **Raw mode note:** SpawnEntity is the one mutation that raw mode cannot defer. The runtime applies the spawn internally and yields the effect with the `EntityRef` so the host can observe it. This matches the walk-the-tree interpreter's behavior where `env.emit(SpawnEntity)` always applied immediately.
+> **Layer 1 / raw poll note:** SpawnEntity is the one mutation that cannot be deferred, even at Layer 1. The runtime applies the spawn internally and yields the effect with the `EntityRef` so the host can observe it.
 
 ## Decision Effects
 

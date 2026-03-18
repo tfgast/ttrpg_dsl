@@ -1,4 +1,6 @@
-# Layer 1 Step Evaluator — Design Document
+# Step-Based Expression Evaluator — Design Document
+
+> **Terminology note:** This document describes the migration of the *internal expression evaluator* from recursive to step-based execution. The terms "recursive evaluator" and "step-based frames" refer to internal execution architecture, not the host integration layers (Layer 1/2/3) defined in [`integration_layers.md`](integration_layers.md).
 
 ## Problem
 
@@ -20,13 +22,13 @@ Replace `ResumableBridge` with native frame-based expression evaluation. Every e
 
 ## Current Architecture (What We're Replacing)
 
-### Layer 2+ (already step-based)
+### Already step-based (frame-driven)
 ```
 ActionLifecycle → Block → FunctionEval → DeriveEval → EmitEval → ...
                           CallSetup → ConditionApplyGate → ...
 ```
 
-### Layer 1 (currently recursive, via bridges)
+### Still recursive (via bridges)
 
 **In Block frame:**
 ```
