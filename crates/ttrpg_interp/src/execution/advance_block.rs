@@ -114,10 +114,11 @@ pub(super) fn advance_block(
     // statement completes.  Skipping the check when expr_cache is non-empty
     // matches that behaviour.
     if expr_cache.is_empty()
-        && let Some(ret) = env.return_value.clone() {
-            env.pop_scope();
-            return Advance::Pop(ret);
-        }
+        && let Some(ret) = env.return_value.clone()
+    {
+        env.pop_scope();
+        return Advance::Pop(ret);
+    }
 
     // Evaluate the current statement.
     let stmt = stmts[*index].clone();

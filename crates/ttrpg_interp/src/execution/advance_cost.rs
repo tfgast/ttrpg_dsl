@@ -76,7 +76,12 @@ pub(super) fn advance_cost_eval(
                         _ => continue,
                     }
 
-                    let owned_mod = owned_modifier_from_condition(condition, cond_decl, clause, &core.type_env.selector_matches);
+                    let owned_mod = owned_modifier_from_condition(
+                        condition,
+                        cond_decl,
+                        clause,
+                        &core.type_env.selector_matches,
+                    );
 
                     if clause.bindings.is_empty() {
                         collected_direct.push((condition.gained_at, owned_mod));
@@ -502,16 +507,17 @@ pub(super) fn advance_cost_eval(
             if let (Some(Value::Entity(bearer_ref)), Some(cond_id)) =
                 (&modifier.bearer, modifier.condition_id)
                 && let Some(conditions) = sp.read_conditions(bearer_ref)
-                    && let Some(live_cond) = conditions.iter().find(|c| c.id == cond_id)
-                        && !live_cond.state_fields.is_empty() {
-                            env.bind(
-                                Name::from("state"),
-                                Value::Struct {
-                                    name: Name::from("state"),
-                                    fields: live_cond.state_fields.clone(),
-                                },
-                            );
-                        }
+                && let Some(live_cond) = conditions.iter().find(|c| c.id == cond_id)
+                && !live_cond.state_fields.is_empty()
+            {
+                env.bind(
+                    Name::from("state"),
+                    Value::Struct {
+                        name: Name::from("state"),
+                        fields: live_cond.state_fields.clone(),
+                    },
+                );
+            }
 
             // Bind action params (receiver + args) so should_apply body
             // can reference them for gating decisions.
@@ -552,26 +558,26 @@ pub(super) fn advance_cost_eval(
                     }
 
                     if let Some(fields) = final_state
-                        && !fields.is_empty() {
-                            let cond_id = modifiers[idx].condition_id;
-                            let bearer = modifiers[idx].bearer.clone();
-                            if let (Some(cond_id), Some(Value::Entity(bearer_ref))) =
-                                (cond_id, bearer)
-                            {
-                                modifiers[idx].condition_state_fields = fields.clone();
-                                let effect = Effect::SetConditionState {
-                                    target: bearer_ref,
-                                    condition_id: cond_id,
-                                    fields,
-                                };
-                                *phase = CostEvalPhase::YieldShouldApplyState(idx);
-                                return Advance::Push(Frame::MutationYield {
-                                    effect,
-                                    pending: None,
-                                    span: Span::default(),
-                                });
-                            }
+                        && !fields.is_empty()
+                    {
+                        let cond_id = modifiers[idx].condition_id;
+                        let bearer = modifiers[idx].bearer.clone();
+                        if let (Some(cond_id), Some(Value::Entity(bearer_ref))) = (cond_id, bearer)
+                        {
+                            modifiers[idx].condition_state_fields = fields.clone();
+                            let effect = Effect::SetConditionState {
+                                target: bearer_ref,
+                                condition_id: cond_id,
+                                fields,
+                            };
+                            *phase = CostEvalPhase::YieldShouldApplyState(idx);
+                            return Advance::Push(Frame::MutationYield {
+                                effect,
+                                pending: None,
+                                span: Span::default(),
+                            });
                         }
+                    }
 
                     *phase = CostEvalPhase::ShouldApplyGate(idx + 1);
                     Advance::Continue

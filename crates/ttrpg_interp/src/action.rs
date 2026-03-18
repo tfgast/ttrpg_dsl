@@ -296,8 +296,7 @@ pub(crate) fn execute_action(
         }
 
         // Build action params: receiver + provided args.
-        let mut ap: Vec<(Name, Value)> =
-            vec![(action.receiver_name.clone(), Value::Entity(actor))];
+        let mut ap: Vec<(Name, Value)> = vec![(action.receiver_name.clone(), Value::Entity(actor))];
         ap.extend(args.iter().cloned());
         execute_pipeline(
             env,
@@ -555,7 +554,9 @@ pub(crate) fn collect_cost_modifiers(
                     OwnedModifier {
                         source: ModifySource::Condition(condition.name.clone()),
                         should_apply_body: crate::pipeline::find_should_apply_body(
-                            cond_decl, clause, &env.interp.type_env.selector_matches,
+                            cond_decl,
+                            clause,
+                            &env.interp.type_env.selector_matches,
                         ),
                         clause: clause.clone(),
                         bearer: Some(Value::Entity(condition.bearer)),

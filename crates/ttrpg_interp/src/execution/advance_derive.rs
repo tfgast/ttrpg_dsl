@@ -53,10 +53,11 @@ pub(super) fn advance_binding_check(
                     .map(|(_, v)| v);
                 // param_val must exist — we checked before pushing ExprEval.
                 if let Some(pv) = param_val
-                    && !crate::eval::value_eq(sp, pv, &val) {
-                        cleanup(env, scope_pushed, *scope_mode);
-                        return Advance::Pop(Value::Bool(false));
-                    }
+                    && !crate::eval::value_eq(sp, pv, &val)
+                {
+                    cleanup(env, scope_pushed, *scope_mode);
+                    return Advance::Pop(Value::Bool(false));
+                }
                 *index += 1;
                 return Advance::Continue;
             }
@@ -368,7 +369,12 @@ pub(super) fn advance_derive_eval(
                             _ => continue,
                         }
 
-                        let owned_mod = owned_modifier_from_condition(condition, cond_decl, clause, &core.type_env.selector_matches);
+                        let owned_mod = owned_modifier_from_condition(
+                            condition,
+                            cond_decl,
+                            clause,
+                            &core.type_env.selector_matches,
+                        );
 
                         if clause.bindings.is_empty() {
                             collected_direct.push((condition.gained_at, owned_mod));
@@ -1098,16 +1104,17 @@ pub(super) fn advance_derive_eval(
             if let (Some(Value::Entity(bearer_ref)), Some(cond_id)) =
                 (&modifier.bearer, modifier.condition_id)
                 && let Some(conditions) = sp.read_conditions(bearer_ref)
-                    && let Some(live_cond) = conditions.iter().find(|c| c.id == cond_id)
-                        && !live_cond.state_fields.is_empty() {
-                            env.bind(
-                                Name::from("state"),
-                                Value::Struct {
-                                    name: Name::from("state"),
-                                    fields: live_cond.state_fields.clone(),
-                                },
-                            );
-                        }
+                && let Some(live_cond) = conditions.iter().find(|c| c.id == cond_id)
+                && !live_cond.state_fields.is_empty()
+            {
+                env.bind(
+                    Name::from("state"),
+                    Value::Struct {
+                        name: Name::from("state"),
+                        fields: live_cond.state_fields.clone(),
+                    },
+                );
+            }
 
             // Bind target function params from bound_args.
             if let Some(ba) = bound_args.as_ref() {
@@ -1152,27 +1159,27 @@ pub(super) fn advance_derive_eval(
 
                     // If state was mutated, emit SetConditionState.
                     if let Some(fields) = final_state
-                        && !fields.is_empty() {
-                            let cond_id = modifiers[idx].condition_id;
-                            let bearer = modifiers[idx].bearer.clone();
-                            if let (Some(cond_id), Some(Value::Entity(bearer_ref))) =
-                                (cond_id, bearer)
-                            {
-                                // Update the snapshot on the modifier for subsequent phases.
-                                modifiers[idx].condition_state_fields = fields.clone();
-                                let effect = Effect::SetConditionState {
-                                    target: bearer_ref,
-                                    condition_id: cond_id,
-                                    fields,
-                                };
-                                *phase = DeriveEvalPhase::YieldShouldApplyState(idx);
-                                return Advance::Push(Frame::MutationYield {
-                                    effect,
-                                    pending: None,
-                                    span: Span::default(),
-                                });
-                            }
+                        && !fields.is_empty()
+                    {
+                        let cond_id = modifiers[idx].condition_id;
+                        let bearer = modifiers[idx].bearer.clone();
+                        if let (Some(cond_id), Some(Value::Entity(bearer_ref))) = (cond_id, bearer)
+                        {
+                            // Update the snapshot on the modifier for subsequent phases.
+                            modifiers[idx].condition_state_fields = fields.clone();
+                            let effect = Effect::SetConditionState {
+                                target: bearer_ref,
+                                condition_id: cond_id,
+                                fields,
+                            };
+                            *phase = DeriveEvalPhase::YieldShouldApplyState(idx);
+                            return Advance::Push(Frame::MutationYield {
+                                effect,
+                                pending: None,
+                                span: Span::default(),
+                            });
                         }
+                    }
 
                     *phase = DeriveEvalPhase::ShouldApplyGate(idx + 1);
                     Advance::Continue

@@ -20,9 +20,7 @@ impl Runner {
         if let Some(rest) = tail.strip_prefix("clear") {
             let handle = rest.trim();
             if handle.is_empty() {
-                return Err(CliError::Message(
-                    "usage: budget clear <handle>".into(),
-                ));
+                return Err(CliError::Message("usage: budget clear <handle>".into()));
             }
             let entity = self.resolve_handle(handle)?;
             self.game_state.borrow_mut().clear_turn_budget(&entity);
@@ -47,15 +45,17 @@ impl Runner {
                     let fields: Vec<String> = budget
                         .iter()
                         .map(|(k, v)| {
-                            format!("{k}: {}", crate::format::format_value(v, &self.unit_suffixes))
+                            format!(
+                                "{k}: {}",
+                                crate::format::format_value(v, &self.unit_suffixes)
+                            )
                         })
                         .collect();
                     self.output
                         .push(format!("{handle} budget: {{ {} }}", fields.join(", ")));
                 }
                 None => {
-                    self.output
-                        .push(format!("{handle}: no budget provisioned"));
+                    self.output.push(format!("{handle}: no budget provisioned"));
                 }
             }
             return Ok(());
@@ -64,11 +64,9 @@ impl Runner {
         // budget <handle> field=value field=value ...
         let mut budget = BTreeMap::new();
         for token in rest.split_whitespace() {
-            let eq_pos = token.find('=').ok_or_else(|| {
-                CliError::Message(format!(
-                    "expected field=value, got: {token}"
-                ))
-            })?;
+            let eq_pos = token
+                .find('=')
+                .ok_or_else(|| CliError::Message(format!("expected field=value, got: {token}")))?;
             let field_name = &token[..eq_pos];
             let val_str = &token[eq_pos + 1..];
             if field_name.is_empty() || val_str.is_empty() {
@@ -90,7 +88,12 @@ impl Runner {
 
         let fields: Vec<String> = budget
             .iter()
-            .map(|(k, v)| format!("{k}: {}", crate::format::format_value(v, &self.unit_suffixes)))
+            .map(|(k, v)| {
+                format!(
+                    "{k}: {}",
+                    crate::format::format_value(v, &self.unit_suffixes)
+                )
+            })
             .collect();
         self.output.push(format!(
             "provisioned {handle} budget: {{ {} }}",
