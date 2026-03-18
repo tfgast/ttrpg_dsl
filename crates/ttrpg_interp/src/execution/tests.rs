@@ -4706,7 +4706,7 @@ fn spawn_entity_vetoed() {
 }
 
 #[test]
-fn spawn_entity_invalid_response() {
+fn spawn_entity_pass_through_acknowledged() {
     let mut exec = exec_with_frame_pass_through(Frame::SpawnEntity {
         entity_type: Name::from("Creature"),
         base_fields: vec![(Name::from("HP"), Value::Int(5))],
@@ -4717,10 +4717,37 @@ fn spawn_entity_invalid_response() {
         span: Span::dummy(),
     });
 
-    let _ = exec.poll().unwrap();
+    // SpawnEntity is yielded because pass-through is enabled.
+    let step = exec.poll().unwrap();
+    assert!(matches!(&*unwrap_yielded(step), Effect::SpawnEntity { .. }));
+
+    // Host responds Acknowledged; adapter translates to EntitySpawned(ref).
     exec.respond(Response::Acknowledged).unwrap();
 
-    // Acknowledged is not valid for SpawnEntity
+    // Frame completes with the entity value.
+    let step = exec.poll().unwrap();
+    assert!(matches!(step, Step::Done(Value::Entity(_))));
+}
+
+#[test]
+fn spawn_entity_pass_through_vetoed() {
+    let mut exec = exec_with_frame_pass_through(Frame::SpawnEntity {
+        entity_type: Name::from("Creature"),
+        base_fields: vec![(Name::from("HP"), Value::Int(5))],
+        groups: vec![],
+        phase: SpawnPhase::Defaults,
+        pending: None,
+        entity_ref: None,
+        span: Span::dummy(),
+    });
+
+    let step = exec.poll().unwrap();
+    assert!(matches!(&*unwrap_yielded(step), Effect::SpawnEntity { .. }));
+
+    // Host vetoes the spawn.
+    exec.respond(Response::Vetoed).unwrap();
+
+    // Frame errors because the spawn was vetoed.
     let result = exec.poll();
     assert!(matches!(result, Err(PollError::Runtime(_))));
 }
@@ -7508,7 +7535,7 @@ fn raw_mode_is_raw_accessor() {
 }
 
 #[test]
-fn raw_mode_auto_applies_spawn_entity() {
+fn raw_mode_yields_spawn_entity() {
     let (core, _) = make_core(
         r#"
         system "Test" {
@@ -7546,13 +7573,26 @@ fn raw_mode_auto_applies_spawn_entity() {
     ));
     exec.respond(Response::Acknowledged).unwrap();
 
-    // SpawnEntity is NOT yielded to host — auto-applied internally.
-    // Next visible effect should be ActionCompleted (no mutation in this action).
+    // SpawnEntity is yielded to the host in raw mode — same contract as
+    // the recursive tree-walker. Host must respond EntitySpawned or Vetoed.
+    let step = exec.poll().unwrap();
+    let effect = *unwrap_yielded(step);
+    assert!(
+        matches!(&effect, Effect::SpawnEntity { .. }),
+        "raw mode should yield SpawnEntity, got {:?}",
+        EffectKind::of(&effect)
+    );
+    // Host applies the spawn and responds with EntitySpawned.
+    let entity_ref =
+        exec.state().with_state_mut(|gs| crate::adapter::apply_spawn(gs, &effect));
+    exec.respond(Response::EntitySpawned(entity_ref)).unwrap();
+
+    // ActionCompleted
     let step = exec.poll().unwrap();
     let effect = *unwrap_yielded(step);
     assert!(
         matches!(&effect, Effect::ActionCompleted { .. }),
-        "SpawnEntity should be silent in raw mode, expected ActionCompleted, got {:?}",
+        "expected ActionCompleted, got {:?}",
         EffectKind::of(&effect)
     );
     exec.respond(Response::Acknowledged).unwrap();

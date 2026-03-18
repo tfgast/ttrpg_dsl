@@ -38,13 +38,13 @@ State changes. At Layer 2/3 (`StateAdapter`), auto-applied by default; `pass_thr
 
 ## Spawn Effects
 
-Entity construction. Always applied immediately by the runtime (even at Layer 1 / raw poll mode) because subsequent `GrantGroup` effects and the spawning expression depend on a valid `EntityRef`. Yielded to the host as informational in poll mode.
+Entity construction. The host must create the entity (or delegate to `StateAdapter`) and return `EntitySpawned(ref)` with a valid `EntityRef`, because subsequent `GrantGroup` effects and the spawning expression depend on it. `Vetoed` errors the spawning expression.
 
 | Effect | `Acknowledged` | `EntitySpawned` | `Vetoed` | Notes |
 |--------|:-:|:-:|:-:|-------|
-| **SpawnEntity** | — | ✓ | ✓ cancel | Runtime applies spawn, returns `EntitySpawned(ref)`. Veto errors the spawning expression. |
+| **SpawnEntity** | — | ✓ | ✓ cancel | Host creates entity, returns `EntitySpawned(ref)`. Veto errors the spawning expression. |
 
-> **Layer 1 / raw poll note:** SpawnEntity is the one mutation that cannot be deferred, even at Layer 1. The runtime applies the spawn internally and yields the effect with the `EntityRef` so the host can observe it.
+> **Layer 2 note:** `StateAdapter` auto-applies `SpawnEntity` by default (like other mutations), so the host never sees it unless `pass_through(EffectKind::SpawnEntity)` is enabled. When pass-through is enabled, the host responds `Acknowledged` or `Vetoed` — the adapter allocates the `EntityRef` and synthesizes `EntitySpawned(ref)` internally.
 
 ## Decision Effects
 

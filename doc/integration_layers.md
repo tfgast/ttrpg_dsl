@@ -43,7 +43,7 @@ loop {
 }
 ```
 
-Raw mode on `Execution<S>` achieves Layer 1 semantics over the poll-based API. All effects (except `SpawnEntity`, which must be applied immediately for internal consistency) are yielded to the host.
+Raw mode on `Execution<S>` achieves Layer 1 semantics over the poll-based API. All effects — including `SpawnEntity` — are yielded to the host. For `SpawnEntity`, the host must respond with `EntitySpawned(ref)` or `Vetoed`.
 
 ---
 

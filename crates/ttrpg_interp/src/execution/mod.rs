@@ -2069,9 +2069,9 @@ impl<S: WritableState> Execution<S> {
         let tracker = state.mutation_tracker();
 
         if *raw {
-            // Raw mode (Layer 1): yield all effects to the host, except
-            // SpawnEntity which must be auto-applied because subsequent
-            // GrantGroup frames need a valid EntityRef.
+            // Raw mode (Layer 1): yield ALL effects to the host, including
+            // SpawnEntity. The host must respond with EntitySpawned(ref) or
+            // Vetoed — same contract as the recursive tree-walker.
             let mut handler = NoYieldHandler;
             loop {
                 if frames.is_empty() {
@@ -2094,13 +2094,6 @@ impl<S: WritableState> Execution<S> {
                 let advance = frame.advance(core, env, &*state, &mut handler, tracker);
 
                 match advance {
-                    Advance::Yield(effect) if matches!(&effect, Effect::SpawnEntity { .. }) => {
-                        let entity_ref =
-                            state.with_state_mut(|gs| crate::adapter::apply_spawn(gs, &effect));
-                        if let Some(frame) = frames.last_mut() {
-                            frame.receive_response(Response::EntitySpawned(entity_ref));
-                        }
-                    }
                     Advance::Yield(effect) => {
                         *pending_before_yield =
                             Some(std::mem::replace(protocol, ProtocolState::Pending));
@@ -2237,13 +2230,20 @@ impl<S: WritableState> Execution<S> {
 
         // Apply pass-through mutations / decision effects based on host response.
         // In raw mode, the host is responsible for state management.
-        if !self.raw {
+        // apply_host_response may return a translated response (e.g.
+        // SpawnEntity pass-through: Acknowledged → EntitySpawned(ref)).
+        let response = if !self.raw {
             if let Some(effect) = self.pending_effect.take() {
-                self.state.apply_host_response(&effect, &response);
+                self.state
+                    .apply_host_response(&effect, &response)
+                    .unwrap_or(response)
+            } else {
+                response
             }
         } else {
             self.pending_effect = None;
-        }
+            response
+        };
 
         self.protocol = self
             .pending_before_yield
@@ -2338,8 +2338,9 @@ impl<S: WritableState> Execution<S> {
     // ── Configuration ────────────────────────────────────────────
 
     /// Enable raw execution mode. When raw, `poll()` bypasses `StateAdapter`
-    /// auto-apply — mutations flow through `Advance::Yield` to the host,
-    /// which must call `apply_effect()` to apply them. The sync
+    /// auto-apply — all effects (including `SpawnEntity`) flow through
+    /// `Advance::Yield` to the host. For `SpawnEntity` the host must respond
+    /// with `EntitySpawned(ref)` or `Vetoed`. The sync
     /// `run_with_handler`/`drive()` path is unaffected.
     pub fn raw(mut self) -> Self {
         self.raw = true;

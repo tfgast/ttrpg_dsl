@@ -148,15 +148,23 @@ impl<S: WritableState> StateAdapter<S> {
             return self.route_deduct_cost(inner, effect);
         }
 
-        // SpawnEntity: special handling — must return EntitySpawned with the ref
+        // SpawnEntity: adapter always allocates the EntityRef.
+        // In pass-through mode the host sees the effect and may respond
+        // Acknowledged (proceed) or Vetoed (cancel). The adapter translates
+        // Acknowledged into apply_spawn + EntitySpawned(ref).
         if kind == EffectKind::SpawnEntity {
             if self.pass_through.contains(&kind) {
                 let response = inner.handle(effect.clone());
-                if let Response::EntitySpawned(_) = &response {
-                    apply_spawn(&mut *self.state.borrow_mut(), &effect);
-                    self.mutation_tracker.set();
+                match response {
+                    Response::Acknowledged => {
+                        let entity_ref =
+                            apply_spawn(&mut *self.state.borrow_mut(), &effect);
+                        self.mutation_tracker.set();
+                        return Response::EntitySpawned(entity_ref);
+                    }
+                    Response::Vetoed => return Response::Vetoed,
+                    _ => return Response::Vetoed, // invalid → treat as veto
                 }
-                return response;
             }
             let entity_ref = apply_spawn(&mut *self.state.borrow_mut(), &effect);
             self.mutation_tracker.set();
@@ -255,9 +263,13 @@ impl<S: WritableState> StateAdapter<S> {
     /// Classify and potentially auto-apply an effect for the poll-based API.
     ///
     /// Mutation effects not in the `pass_through` set are applied locally
-    /// and return `Handled(Acknowledged)` (or `Handled(EntitySpawned)` for
-    /// spawns). Everything else returns `Forward` — the caller must yield
-    /// to the host and later call `apply_host_response()`.
+    /// and return `Handled(Acknowledged)` (or `Handled(EntitySpawned(ref))`
+    /// for spawns). Everything else returns `Forward` — the caller must
+    /// yield to the host and later call `apply_host_response()`.
+    ///
+    /// For pass-through `SpawnEntity`, the host should respond `Acknowledged`
+    /// or `Vetoed`; `apply_host_response()` translates `Acknowledged` into
+    /// `EntitySpawned(ref)` for the frame.
     pub fn route_for_poll(&self, effect: Effect) -> PollRoute {
         let kind = EffectKind::of(&effect);
 
@@ -299,7 +311,16 @@ impl<S: WritableState> StateAdapter<S> {
     /// `route_for_poll()`. Handles pass-through mutations (apply/override/
     /// skip based on response) and `DeductCost` (apply budget deduction
     /// based on response). No-op for non-mutation effects.
-    pub fn apply_host_response(&self, effect: &Effect, response: &Response) {
+    ///
+    /// Returns `Some(translated)` when the response fed to the frame should
+    /// differ from the host's response (e.g. SpawnEntity pass-through
+    /// translates `Acknowledged` → `EntitySpawned(ref)`). Returns `None`
+    /// when the host's response should be used as-is.
+    pub fn apply_host_response(
+        &self,
+        effect: &Effect,
+        response: &Response,
+    ) -> Option<Response> {
         let kind = EffectKind::of(effect);
 
         if kind == EffectKind::DeductCost {
@@ -322,15 +343,19 @@ impl<S: WritableState> StateAdapter<S> {
                     _ => {} // Vetoed or other
                 }
             }
-            return;
+            return None;
         }
 
+        // SpawnEntity pass-through: host says Acknowledged (proceed) or
+        // Vetoed (cancel). On Acknowledged the adapter applies the spawn
+        // and returns EntitySpawned(ref) to replace the host's response.
         if kind == EffectKind::SpawnEntity {
-            if let Response::EntitySpawned(_) = response {
-                apply_spawn(&mut *self.state.borrow_mut(), effect);
+            if let Response::Acknowledged = response {
+                let entity_ref = apply_spawn(&mut *self.state.borrow_mut(), effect);
                 self.mutation_tracker.set();
+                return Some(Response::EntitySpawned(entity_ref));
             }
-            return;
+            return None;
         }
 
         if is_mutation(kind) {
@@ -356,6 +381,7 @@ impl<S: WritableState> StateAdapter<S> {
             }
         }
         // Non-mutations: nothing to apply
+        None
     }
 }
 
