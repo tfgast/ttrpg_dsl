@@ -7582,10 +7582,12 @@ fn raw_mode_yields_spawn_entity() {
         "raw mode should yield SpawnEntity, got {:?}",
         EffectKind::of(&effect)
     );
-    // Host applies the spawn and responds with EntitySpawned.
-    let entity_ref =
-        exec.state().with_state_mut(|gs| crate::adapter::apply_spawn(gs, &effect));
-    exec.respond(Response::EntitySpawned(entity_ref)).unwrap();
+    // Host applies the spawn via apply_effect and responds with EntitySpawned.
+    let response = exec
+        .apply_effect(&effect, &Response::Acknowledged)
+        .unwrap_or(Response::Acknowledged);
+    assert!(matches!(&response, Response::EntitySpawned(_)));
+    exec.respond(response).unwrap();
 
     // ActionCompleted
     let step = exec.poll().unwrap();

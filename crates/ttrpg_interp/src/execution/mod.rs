@@ -2352,6 +2352,23 @@ impl<S: WritableState> Execution<S> {
         self.raw
     }
 
+    // ── Raw-mode helpers ──────────────────────────────────────
+
+    /// Apply a yielded effect to the owned state in raw mode.
+    ///
+    /// In raw mode, mutation effects are yielded to the host instead of
+    /// being auto-applied. After the host decides the response, call this
+    /// method to apply the mutation to the `StateAdapter`'s inner state.
+    ///
+    /// Returns the translated response if it differs from the input (e.g.
+    /// `Acknowledged` → `EntitySpawned(ref)` for `SpawnEntity`), or `None`
+    /// if the original response should be used as-is.
+    ///
+    /// This is a no-op for non-mutation effects (gates, informational, etc.).
+    pub fn apply_effect(&self, effect: &Effect, response: &Response) -> Option<Response> {
+        self.state.apply_host_response(effect, response)
+    }
+
     // ── Accessors ──────────────────────────────────────────────
 
     /// Current ID counter values. Call after completion to persist.

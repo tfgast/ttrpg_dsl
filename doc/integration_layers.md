@@ -36,6 +36,10 @@ loop {
     match exec.poll()? {
         Step::Yielded(effect) => {
             let response = decide(&effect);
+            // Optional: apply mutations to the owned state inside Execution.
+            // Returns a translated response when needed (e.g. SpawnEntity).
+            let response = exec.apply_effect(&effect, &response)
+                .unwrap_or(response);
             exec.respond(response)?;
         }
         Step::Done(value) => break,
@@ -43,7 +47,7 @@ loop {
 }
 ```
 
-Raw mode on `Execution<S>` achieves Layer 1 semantics over the poll-based API. All effects — including `SpawnEntity` — are yielded to the host. For `SpawnEntity`, the host must respond with `EntitySpawned(ref)` or `Vetoed`.
+Raw mode on `Execution<S>` achieves Layer 1 semantics over the poll-based API. All effects — including `SpawnEntity` — are yielded to the host. For `SpawnEntity`, the host must respond with `EntitySpawned(ref)` or `Vetoed`. Use `apply_effect()` to apply mutations to the `Execution`'s owned state.
 
 ---
 
