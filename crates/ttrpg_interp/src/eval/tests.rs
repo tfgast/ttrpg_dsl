@@ -3170,11 +3170,11 @@ fn try_from_ordinal_returns_some_on_valid_index() {
     });
     assert_eq!(
         eval_expr(&mut env, &expr).unwrap(),
-        Value::EnumVariant {
+        Value::Option(Some(Box::new(Value::EnumVariant {
             enum_name: "Size".into(),
             variant: "large".into(),
             fields: BTreeMap::new(),
-        }
+        })))
     );
 }
 
