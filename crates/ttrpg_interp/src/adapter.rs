@@ -16,8 +16,8 @@ use crate::value::Value;
 // ── MutationTracker ──────────────────────────────────────────────
 
 /// Tracks whether a local mutation was applied during the current
-/// bridge_eval_with call. Used by the Block frame's async path
-/// to detect when CachingHandler replay would be unsound (because
+/// step-based evaluation. Used by the Block frame's async path
+/// to detect when cached-response replay would be unsound (because
 /// mutations already applied would be re-applied on replay).
 /// Reset before each bridge call, checked after.
 pub struct MutationTracker(Cell<bool>);
@@ -28,7 +28,7 @@ impl MutationTracker {
         MutationTracker(Cell::new(false))
     }
 
-    /// Reset the flag. Call before a bridge_eval_with run to start tracking fresh.
+    /// Reset the flag. Call before a step-based evaluation run to start tracking fresh.
     pub fn reset(&self) {
         self.0.set(false);
     }

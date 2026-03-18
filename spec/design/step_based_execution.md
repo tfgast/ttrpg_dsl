@@ -1023,7 +1023,7 @@ This is a prerequisite for everything else and delivers immediate value: a singl
 
 Define `Frame`, `Advance`, `RuntimeCore`, `Execution<S>`, `ProtocolState`, `ProtocolError`, and the `poll`/`respond`/`run_with_handler` API. No frame `advance()` implementations yet — just the structural types.
 
-**Scope:** New `execution.rs` and `runtime_core.rs` modules. Compiles but is not yet callable.
+**Scope:** New `execution/` module tree and `RuntimeCore` type. Defines the structural types that all subsequent phases build on.
 
 **Parity bar:** Type-checks. No runtime behavior yet.
 
@@ -1108,7 +1108,7 @@ Differential tests run each scenario through both the recursive and step-based p
 
 **Note on abort outcomes:** The current interpreter returns `Ok(abort_value)` when `RequiresCheck` or cost checks fail (`action.rs:170, 184`), so `scoped_execute` derives the outcome from `result.is_ok()` → `ActionOutcome::Succeeded`. This means graceful aborts report Succeeded, not Failed, even though the action did not execute its body. If a future change wants to report these as Failed, it should be tracked as a separate behavior-change issue with its own differential test, not introduced silently as part of the step-based migration.
 
-**Note on `fire_hooks` / `fire_condition_handlers` return types:** These entry points return `Vec<(Name, EntityRef, Value)>` and `usize` respectively, which do not fit `Step::Done(Value)`. This spec defers step-based versions of these entry points to a future phase. The v1 scope (Phases 3-6) covers `execute_action`, `execute_reaction`, `execute_hook`, `evaluate_derive`, `evaluate_mechanic`, `evaluate_function`, and `evaluate_expr` — all of which return `Value`. A future extension can either wrap these results in `Value` encodings or parameterize `Execution` over its result type.
+**Note on `fire_hooks` / `fire_condition_handlers` return types:** These entry points return `Vec<(Name, EntityRef, Value)>` and `usize` respectively, which do not fit `Step::Done(Value)`. Step-based versions are implemented as `Execution::start_hooks` and `Execution::start_condition_handlers`, which wrap the results into `Value` encodings. See `crates/ttrpg_interp/src/execution/mod.rs` and `crates/ttrpg_interp/tests/step_hooks_integration.rs` for the implementation and tests.
 
 **Note on invocation ID allocation:** The recursive path now pre-allocates the invocation ID before emitting `ActionStarted` (`action.rs:228`). If allocation fails (u64 overflow), no `ActionStarted` is emitted and no pairing is needed. This closes the previous gap where `scoped_execute` called `alloc_invocation_id()?` after `ActionStarted`, which could leave an unpaired `ActionStarted` on allocation failure. The `ActionGate` frame follows the same pattern: it receives a pre-allocated `inv_id: InvocationId` at construction time. A vetoed action consumes the invocation ID (the counter advances) but `ActionCompleted` reports `invocation: None`. Invocation IDs are not required to be dense.
 

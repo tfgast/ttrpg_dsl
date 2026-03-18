@@ -243,8 +243,8 @@ fn patch_jumps_to_end(work: &mut [ExprWork], indices: &[usize]) {
 
 /// Try to compile an expression into a work sequence for ExprEval.
 ///
-/// Returns `None` if the expression contains non-trivial sub-expressions
-/// that cannot yet be compiled (control flow, struct literals, etc.).
+/// Returns `None` if the expression contains sub-expressions that
+/// require the full recursive evaluator (e.g., closures, method calls).
 pub(crate) fn compile_expr(
     expr: &Spanned<ExprKind>,
     type_env: &TypeEnv,
