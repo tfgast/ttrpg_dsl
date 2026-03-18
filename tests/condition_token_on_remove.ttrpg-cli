@@ -1,0 +1,33 @@
+// condition_token() available in on_remove blocks
+//
+// Regression test: condition_token() used to fail with "requires an
+// active condition token" when called directly inside on_remove via
+// the recursive evaluator path (builtins.rs).
+
+source -s <<END
+entity Character { name: string, hp: int, marker: int }
+
+condition Tracked on target: Character stacking first {
+    on_apply {
+        let _t = condition_token()
+        target.marker = 1
+    }
+    on_remove {
+        // This is the regression: condition_token() must work here too
+        let _t = condition_token()
+        target.marker = 2
+    }
+}
+END
+
+// ── condition_token() in on_apply (baseline) ─────────────────
+spawn Character a { name: "Alice", hp: 10, marker: 0 }
+
+call apply_condition(a, Tracked, Duration.Indefinite)
+assert_condition a, Tracked
+assert_eq a.marker, 1
+
+// ── condition_token() in on_remove (the regression) ──────────
+call remove_condition(a, Tracked)
+assert_no_condition a, Tracked
+assert_eq a.marker, 2
