@@ -484,7 +484,7 @@ system "test" {
 "#;
     expect_errors(
         source,
-        &["emit is only allowed in action, reaction, or hook"],
+        &["emit is only allowed in action, reaction, hook, function, with_budget, lifecycle, on_event, or should_apply context"],
     );
 }
 
@@ -502,7 +502,7 @@ system "test" {
 "#;
     expect_errors(
         source,
-        &["emit is only allowed in action, reaction, or hook"],
+        &["emit is only allowed in action, reaction, hook, function, with_budget, lifecycle, on_event, or should_apply context"],
     );
 }
 
@@ -5306,7 +5306,7 @@ system "test" {
 "#;
     expect_errors(
         source,
-        &["grant is only allowed in action, reaction, or hook context"],
+        &["grant is only allowed in action, reaction, hook, function, with_budget, lifecycle, on_event, or should_apply context"],
     );
 }
 
@@ -5328,7 +5328,7 @@ system "test" {
 "#;
     expect_errors(
         source,
-        &["revoke is only allowed in action, reaction, or hook context"],
+        &["revoke is only allowed in action, reaction, hook, function, with_budget, lifecycle, on_event, or should_apply context"],
     );
 }
 
@@ -10606,7 +10606,7 @@ system "test" {
 "#;
     expect_errors(
         source,
-        &["grant is only allowed in action, reaction, or hook"],
+        &["grant is only allowed in action, reaction, hook, function, with_budget, lifecycle, on_event, or should_apply context"],
     );
 }
 
@@ -10626,7 +10626,7 @@ system "test" {
 "#;
     expect_errors(
         source,
-        &["grant is only allowed in action, reaction, or hook"],
+        &["grant is only allowed in action, reaction, hook, function, with_budget, lifecycle, on_event, or should_apply context"],
     );
 }
 

@@ -1,7 +1,7 @@
 use super::*;
 
 impl Runner {
-    /// `spawn <EntityType> <handle> { field: value, ..., GroupName { ... } }`
+    /// `spawn <EntityType> <handle> [{ field: value, ..., GroupName { ... } }] [with [Cond, ...]]`
     pub(super) fn cmd_spawn(&mut self, tail: &str) -> Result<(), CliError> {
         // Extract entity type and handle
         let tail = tail.trim();

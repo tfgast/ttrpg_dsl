@@ -40,8 +40,8 @@ osric/tests/osric_saves.ttrpg-cli
 ose/tests/ose_combat.ttrpg-cli
 ```
 
-`just test-scripts` discovers `osric/tests/*.ttrpg-cli` and
-`ose/tests/*.ttrpg-cli` automatically.
+`just test-scripts` discovers `osric/tests/*.ttrpg-cli`,
+`ose/tests/*.ttrpg-cli`, and `tests/*.ttrpg-cli` automatically.
 
 ## Script structure
 

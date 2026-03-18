@@ -12,4 +12,4 @@ Documents marked **Proposed** are under design; all others are **implemented** a
 | [transfer_conditions.md](transfer_conditions.md) | Atomic condition transfer between entities (polymorph) |
 | [condition_event_handlers.md](condition_event_handlers.md) | Event-reactive logic co-located with condition declarations |
 | [with_budget.md](with_budget.md) | Function-provisioned turn budgets for calling costed actions |
-| [step_based_execution.md](step_based_execution.md) | **(Proposed)** Resumable poll/respond execution API with explicit frame stack |
+| [step_based_execution.md](step_based_execution.md) | **(Implemented)** Resumable poll/respond execution API with explicit frame stack |

@@ -109,7 +109,7 @@ system "test" {
     assert!(
         errors
             .iter()
-            .any(|e| e.contains("only allowed in action, reaction, or hook")),
+            .any(|e| e.contains("only allowed in action, reaction, hook,")),
         "expected context error, got: {errors:?}"
     );
 }

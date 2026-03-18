@@ -71,12 +71,13 @@ const COMMANDS: &[CommandInfo] = &[
     // Entities
     CommandInfo {
         name: "spawn",
-        syntax: "spawn <Type> <handle> [{ field: value, ... }]",
+        syntax: "spawn <Type> <handle> [{ field: value, ... }] [with [Cond1, Cond2(...)]]",
         description: "Create an entity instance",
-        detail: "Create a new entity in game state with optional field initialization.\n  Fields with defaults can be omitted. Optional groups use inline syntax.",
+        detail: "Create a new entity in game state with optional field initialization.\n  Fields with defaults can be omitted. Optional groups use inline syntax.\n  The optional `with [...]` clause applies conditions as Indefinite duration.",
         examples: &[
             "spawn Character fighter { name: \"Ava\", HP: 30, AC: 18 }",
             "spawn Character caster { Spellcasting { spell_dc: 15 } }",
+            "spawn Character hero with [Blessed, Shield(bonus: 2)]",
         ],
         category: "Entities",
     },
@@ -127,13 +128,13 @@ const COMMANDS: &[CommandInfo] = &[
     },
     CommandInfo {
         name: "call",
-        syntax: "call <func>(args...)",
-        description: "Call a derive, mechanic, or function",
-        detail: "Call a derive, mechanic, or function block.\n  Derives are pure computations, mechanics can roll dice,\n  and functions can roll dice and mutate state.\n  Arguments are evaluated as expressions.",
+        syntax: "call <expr>",
+        description: "Alias for `do`",
+        detail: "Evaluate any expression and print the result. This is an alias for `do`.\n  Supports both function-call and method-call syntax.",
         examples: &[
             "call modifier(16)",
             "call attack_roll(5)",
-            "call heal_target(hero, 10)",
+            "call fighter.Attack(goblin)",
         ],
         category: "Execution",
     },

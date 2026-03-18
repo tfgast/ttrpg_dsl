@@ -556,10 +556,10 @@ impl Checker<'_> {
         span: ttrpg_ast::Span,
     ) {
         self.check_name_visible(group_name, Namespace::Group, span);
-        // grant/revoke only allowed in action/reaction/hook context
+        // grant only allowed in contexts that permit mutation
         if !self.scope.allows_mutation() {
             self.error(
-                "grant is only allowed in action, reaction, or hook context".to_string(),
+                "grant is only allowed in action, reaction, hook, function, with_budget, lifecycle, on_event, or should_apply context".to_string(),
                 span,
             );
         }
@@ -685,10 +685,10 @@ impl Checker<'_> {
     }
 
     fn check_emit(&mut self, event_name: &str, args: &[Arg], span: ttrpg_ast::Span) {
-        // emit only allowed in action/reaction/hook context
+        // emit only allowed in contexts that permit it
         if !self.scope.allows_emit() {
             self.error(
-                "emit is only allowed in action, reaction, or hook context".to_string(),
+                "emit is only allowed in action, reaction, hook, function, with_budget, lifecycle, on_event, or should_apply context".to_string(),
                 span,
             );
         }
@@ -785,10 +785,10 @@ impl Checker<'_> {
         span: ttrpg_ast::Span,
     ) {
         self.check_name_visible(group_name, Namespace::Group, span);
-        // grant/revoke only allowed in action/reaction/hook context
+        // revoke only allowed in contexts that permit mutation
         if !self.scope.allows_mutation() {
             self.error(
-                "revoke is only allowed in action, reaction, or hook context".to_string(),
+                "revoke is only allowed in action, reaction, hook, function, with_budget, lifecycle, on_event, or should_apply context".to_string(),
                 span,
             );
         }

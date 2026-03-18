@@ -160,7 +160,8 @@ pub struct ActiveCondition {
 impl ActiveCondition {
     /// Convert this active condition to a `Value::Struct` for DSL-level access.
     ///
-    /// Always includes base fields, condition parameters, and state.
+    /// Includes base fields and condition parameters. State sub-struct is
+    /// included only when state_fields is non-empty.
     /// Before `is ActiveCondition<CondName>` narrowing, param fields are typed
     /// as `any` by the checker. After narrowing, they get their declared types.
     pub fn to_value(&self) -> Value {

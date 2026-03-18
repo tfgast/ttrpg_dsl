@@ -1,6 +1,6 @@
 # Design: Resumable Step-Based Execution API
 
-**Status:** Proposed (tdsl-qi09)
+**Status:** Implemented (tdsl-qi09)
 
 ## Context
 
@@ -1075,7 +1075,7 @@ Add `Execution::start_action`, `start_reaction`, `start_derive`, `start_mechanic
 
 ### Differential test matrix
 
-Before implementation begins, define differential tests that run each scenario through both the recursive and step-based paths and assert identical effect sequences. Priority scenarios:
+Differential tests run each scenario through both the recursive and step-based paths and assert identical effect sequences. Priority scenarios:
 
 | Category | Scenario | Key invariant |
 |----------|----------|---------------|

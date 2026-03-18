@@ -19,10 +19,11 @@ pub enum BlockKind {
     ModifyClause,
     /// Trigger/suppress binding expressions — disallows dice, mutations, turn
     /// access, action/reaction calls, prompts, and mechanic calls. Only
-    /// side-effect-free builtins (floor, ceil, min, max, distance) are permitted.
+    /// side-effect-free builtins (floor, ceil, min, max, distance, conditions,
+    /// has_condition, error, budget_of) are permitted.
     TriggerBinding,
     /// Index expressions in assignment LValues (e.g. `arr[i+1] = val`).
-    /// Same restrictions as TriggerBinding: only pure builtins allowed.
+    /// Same restrictions as TriggerBinding: only side-effect-free builtins allowed.
     /// This lets the interpreter evaluate indices synchronously without
     /// needing async frame resolution.
     IndexExpression,

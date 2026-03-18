@@ -8,7 +8,7 @@ ttrpg --vi                      # REPL with vi keybindings
 ttrpg run <script.ttrpg-cli>    # execute script file
 ttrpg -c "<commands>"           # execute inline commands
 ttrpg check <files...>          # type-check files (no execution)
-ttrpg check -s "<snippet>"      # check snippet (auto-wrapped in system block)
+ttrpg check -s -c "<snippet>"    # check snippet (auto-wrapped in system block)
 ttrpg query <topic> <files...>  # introspect type declarations (no execution)
 ttrpg query <topic> -s -c <src> # query inline snippet
 cat commands.txt | ttrpg        # pipe mode (no line editing)

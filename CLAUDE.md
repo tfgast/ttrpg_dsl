@@ -24,7 +24,7 @@ Pipeline: lex → parse → lower_moves → check → interpret.
 Use `just` (task runner):
 
 ```bash
-just test      # Run test suite (cargo test --workspace)
+just test      # Run Rust tests + .ttrpg-cli scripts (both execution modes)
 just clippy    # Lint
 just fmt       # Format
 just all       # Full CI check: fmt + clippy + test
@@ -36,7 +36,7 @@ Validate .ttrpg files:
 ```bash
 ttrpg check myfile.ttrpg              # Check a file
 ttrpg check core.ttrpg combat.ttrpg   # Check multiple files together
-ttrpg check -s                         # Snippet mode (auto-wraps in system block)
+ttrpg check -s -c "<snippet>"          # Snippet mode (auto-wraps in system block)
 ```
 
 Always run `ttrpg check` on .ttrpg files before considering work done. Always run `just test` after Rust changes.
