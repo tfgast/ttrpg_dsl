@@ -283,6 +283,25 @@ set fighter.hp -= 5
 set fighter.hp += 3
 ```
 
+### Provisioning budgets
+
+Use `budget` to provision, read, or clear turn budgets without DSL `with_budget` blocks:
+
+```
+// Provision a budget
+budget fighter action=1 bonus_action=1
+
+// Read current budget
+budget fighter
+
+// Clear budget
+budget clear fighter
+```
+
+Budget fields map to cost tokens declared on actions (e.g. `cost { action }`).
+Actions will enforce budget limits while a budget is provisioned, and
+run without enforcement after the budget is cleared.
+
 ### Executing actions
 
 ```

@@ -1,0 +1,60 @@
+// Test the `budget` CLI command for provisioning, reading, and clearing budgets.
+
+source <<END
+system "test" {
+    struct TurnBudget { action: int, bonus: int }
+
+    entity Character { hp: int }
+
+    action MeleeAttack on attacker: Character (target: Character) {
+        cost { action }
+        resolve {
+            target.hp -= 1
+        }
+    }
+
+    action BonusStrike on attacker: Character (target: Character) {
+        cost { bonus }
+        resolve {
+            target.hp -= 1
+        }
+    }
+}
+END
+
+spawn Character fighter { hp: 20 }
+spawn Character goblin { hp: 10 }
+
+// Read with no budget provisioned
+budget fighter
+
+// Provision a budget
+budget fighter action=1 bonus=1
+
+// Read the provisioned budget
+budget fighter
+
+// Action should deduct from the budget
+do fighter.MeleeAttack(goblin)
+assert_eq goblin.hp, 9
+
+// Budget should be exhausted for action now
+budget fighter
+
+// Second action should fail (budget exhausted) — action completes but doesn't resolve
+do fighter.MeleeAttack(goblin)
+assert_eq goblin.hp, 9  // hp unchanged
+
+// Bonus action should still work
+do fighter.BonusStrike(goblin)
+assert_eq goblin.hp, 8
+
+// Clear the budget
+budget clear fighter
+
+// Read after clear — should show no budget
+budget fighter
+
+// Actions should work without budget enforcement
+do fighter.MeleeAttack(goblin)
+assert_eq goblin.hp, 7

@@ -803,6 +803,7 @@ impl Runner {
             // Provenance
             Command::Breakdown(tail) => self.cmd_breakdown(&tail),
             // Host simulation
+            Command::Budget(tail) => self.cmd_budget(&tail),
             Command::Emit(tail) => self.cmd_emit(&tail),
             Command::Place(tail) => self.cmd_place(&tail),
             Command::Pos(tail) => self.cmd_pos(&tail),

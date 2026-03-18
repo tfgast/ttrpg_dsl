@@ -383,6 +383,18 @@ const COMMANDS: &[CommandInfo] = &[
     },
     // Host Simulation
     CommandInfo {
+        name: "budget",
+        syntax: "budget <handle> [field=value ...]",
+        description: "Provision, read, or clear a turn budget",
+        detail: "Provision a turn budget for an entity, read its current budget, or clear it.\n  Budget fields map to cost tokens used by actions (e.g. action, bonus_action, movement).\n  Use 'budget clear <handle>' to remove a provisioned budget.\n  With no field=value pairs, reads the current budget.",
+        examples: &[
+            "budget fighter action=1 bonus_action=1",
+            "budget fighter",
+            "budget clear fighter",
+        ],
+        category: "Host Simulation",
+    },
+    CommandInfo {
         name: "emit",
         syntax: "emit <Event>(param: expr, ...)",
         description: "Fire a DSL event from the host side",

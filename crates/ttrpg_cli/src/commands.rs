@@ -49,6 +49,7 @@ pub enum Command {
     // Provenance
     Breakdown(String),
     // Host simulation
+    Budget(String),
     Emit(String),
     Place(String),
     Pos(String),
@@ -303,6 +304,14 @@ pub fn parse_command(line: &str) -> Option<Command> {
             }
         }
         // Host simulation
+        "budget" => {
+            let s = strip_comment(tail).trim();
+            if s.is_empty() {
+                Some(Command::Unknown("budget".into()))
+            } else {
+                Some(Command::Budget(s.into()))
+            }
+        }
         "emit" => {
             let s = strip_comment(tail).trim();
             if s.is_empty() {
