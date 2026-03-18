@@ -4078,11 +4078,11 @@ fn eval_try_from_ordinal_step(
     if !variant.fields.is_empty() {
         return Ok(Value::Option(None));
     }
-    Ok(Value::EnumVariant {
+    Ok(Value::Option(Some(Box::new(Value::EnumVariant {
         enum_name,
         variant: variant.name.clone(),
         fields: BTreeMap::new(),
-    })
+    }))))
 }
 
 // ── Enum variant construction (value-level) ─────────────────────

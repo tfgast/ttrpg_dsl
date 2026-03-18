@@ -33,10 +33,27 @@ assert roundtrip(Size.Small)
 assert roundtrip(Size.Medium)
 assert roundtrip(Size.Large)
 
-// ── try_from_ordinal ──────────────────────────────────────────
-// NOTE: try_from_ordinal has a known bug (tdsl-XXXXXX) where valid
-// ordinals return the raw EnumVariant instead of some(EnumVariant).
-// Out-of-range returns none correctly. Test only what works:
+// ── try_from_ordinal — success returns some(variant) ─────────
+source -s <<END
+    enum Size ordered { Small, Medium, Large }
+    derive try_valid() -> option<Size> { try_from_ordinal(Size, 1) }
+    derive try_first() -> option<Size> { try_from_ordinal(Size, 0) }
+    derive try_last() -> option<Size> { try_from_ordinal(Size, 2) }
+    derive try_unwrap() -> Size { try_from_ordinal(Size, 1).unwrap() }
+    derive try_roundtrip(s: Size) -> bool {
+        let result = try_from_ordinal(Size, ordinal(s))
+        result.unwrap() == s
+    }
+END
+assert_eq try_valid(), some(Size.Medium)
+assert_eq try_first(), some(Size.Small)
+assert_eq try_last(), some(Size.Large)
+assert_eq try_unwrap(), Size.Medium
+assert try_roundtrip(Size.Small)
+assert try_roundtrip(Size.Medium)
+assert try_roundtrip(Size.Large)
+
+// ── try_from_ordinal — failure returns none ──────────────────
 source -s <<END
     enum Size ordered { Small, Medium, Large }
     derive try_out_of_range() -> bool {
